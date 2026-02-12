@@ -3,6 +3,7 @@ UI utilities for Circuit Agent - colors, terminal helpers, display functions.
 """
 
 import os
+import re
 import sys
 import difflib
 from typing import Optional
@@ -221,3 +222,130 @@ def spinner_frame(frame: int) -> str:
     """Get a spinner frame for progress indication."""
     frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
     return frames[frame % len(frames)]
+
+
+class StreamingMarkdownRenderer:
+    """Renders streamed markdown with syntax-highlighted code blocks for the terminal."""
+
+    def __init__(self):
+        self._buffer = ""
+        self._in_code_block = False
+        self._code_lang = ""
+        self._code_lines: list[str] = []
+
+    def feed(self, chunk: str):
+        """Process a chunk of streamed text."""
+        self._buffer += chunk
+
+        while '\n' in self._buffer:
+            line, self._buffer = self._buffer.split('\n', 1)
+            self._process_line(line)
+
+    def flush(self):
+        """Flush any remaining buffered content."""
+        if self._buffer:
+            if self._in_code_block:
+                self._code_lines.append(self._buffer)
+            else:
+                print(self._format_inline(self._buffer), end="", flush=True)
+            self._buffer = ""
+
+        if self._in_code_block:
+            self._render_code_block()
+            self._in_code_block = False
+
+    def _process_line(self, line: str):
+        stripped = line.strip()
+
+        if stripped.startswith('```'):
+            if self._in_code_block:
+                self._render_code_block()
+                self._in_code_block = False
+            else:
+                self._in_code_block = True
+                self._code_lang = stripped[3:].strip()
+                self._code_lines = []
+            return
+
+        if self._in_code_block:
+            self._code_lines.append(line)
+        else:
+            print(self._format_line(line), flush=True)
+
+    def _format_line(self, line: str) -> str:
+        stripped = line.strip()
+
+        if stripped.startswith('### '):
+            return f"{C.BOLD}{C.CYAN}{stripped[4:]}{C.RESET}"
+        if stripped.startswith('## '):
+            return f"{C.BOLD}{C.CYAN}{stripped[3:]}{C.RESET}"
+        if stripped.startswith('# '):
+            return f"{C.BOLD}{C.CYAN}{stripped[2:]}{C.RESET}"
+
+        if stripped.startswith('- ') or stripped.startswith('* '):
+            indent = len(line) - len(line.lstrip())
+            content = self._format_inline(stripped[2:])
+            return f"{' ' * indent}{C.CYAN}•{C.RESET} {content}"
+
+        match = re.match(r'^(\s*)(\d+)\.\s+(.+)', line)
+        if match:
+            return f"{match.group(1)}{C.CYAN}{match.group(2)}.{C.RESET} {self._format_inline(match.group(3))}"
+
+        if stripped.startswith('> '):
+            return f"{C.DIM}│ {self._format_inline(stripped[2:])}{C.RESET}"
+
+        if stripped in ('---', '***', '___'):
+            return f"{C.DIM}{'─' * 50}{C.RESET}"
+
+        return self._format_inline(line)
+
+    def _format_inline(self, text: str) -> str:
+        text = re.sub(r'`([^`]+)`', f'{C.YELLOW}\\1{C.RESET}', text)
+        text = re.sub(r'\*\*(.+?)\*\*', f'{C.BOLD}\\1{C.RESET}', text)
+        text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', f'\033[3m\\1{C.RESET}', text)
+        return text
+
+    def _render_code_block(self):
+        code = '\n'.join(self._code_lines)
+        highlighted = self._highlight_code(code, self._code_lang)
+
+        lang_label = f" {self._code_lang} " if self._code_lang else ""
+        border_len = max(50, 4 + len(lang_label))
+        print(f"{C.DIM}┌─{lang_label}{'─' * (border_len - 2 - len(lang_label))}┐{C.RESET}")
+        for hl_line in highlighted.splitlines():
+            print(f"{C.DIM}│{C.RESET} {hl_line}")
+        print(f"{C.DIM}└{'─' * border_len}┘{C.RESET}")
+
+    def _highlight_code(self, code: str, lang: str) -> str:
+        try:
+            from pygments import highlight
+            from pygments.lexers import get_lexer_by_name, guess_lexer
+            from pygments.formatters import Terminal256Formatter
+
+            if lang:
+                try:
+                    lexer = get_lexer_by_name(lang)
+                except Exception:
+                    lexer = guess_lexer(code)
+            else:
+                try:
+                    lexer = guess_lexer(code)
+                except Exception:
+                    return code
+
+            return highlight(code, lexer, Terminal256Formatter(style='monokai')).rstrip()
+        except Exception:
+            return code
+
+
+def render_markdown(text: str) -> str:
+    """Render a complete markdown string for terminal display."""
+    renderer = StreamingMarkdownRenderer()
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        renderer.feed(text + '\n')
+        renderer.flush()
+    return buf.getvalue().rstrip('\n')

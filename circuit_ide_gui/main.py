@@ -93,6 +93,19 @@ THEMES = {
         # Provider-specific colors
         "CLAUDE_COLOR": "#E8A87C",     # Light orange/coral for Claude
         "CIRCUIT_COLOR": "#88CFFF",    # Light blue for Circuit/Cisco
+        # Code block tokens
+        "CODE_BLOCK_BG": "#1a1a1a",
+        "CODE_BLOCK_BORDER": "#333333",
+        "CODE_BLOCK_HEADER_BG": "#2a2a2e",
+        # Chat message tokens
+        "USER_MSG_BG": "#1a2733",
+        "AGENT_MSG_BG": "#1e1e1e",
+        # Input tokens
+        "INPUT_BG": "#3c3c3c",
+        "INPUT_BORDER": "#505050",
+        "INPUT_FOCUS_BORDER": "#0078d4",
+        # Button tokens
+        "BUTTON_HOVER": "#454545",
     },
     "light": {
         "name": "Light",
@@ -123,6 +136,19 @@ THEMES = {
         # Provider-specific colors
         "CLAUDE_COLOR": "#D4845C",     # Darker orange for light theme
         "CIRCUIT_COLOR": "#4A90C2",    # Darker blue for light theme
+        # Code block tokens
+        "CODE_BLOCK_BG": "#f6f6f6",
+        "CODE_BLOCK_BORDER": "#d4d4d4",
+        "CODE_BLOCK_HEADER_BG": "#e8e8e8",
+        # Chat message tokens
+        "USER_MSG_BG": "#e3f2fd",
+        "AGENT_MSG_BG": "#ffffff",
+        # Input tokens
+        "INPUT_BG": "#ffffff",
+        "INPUT_BORDER": "#d4d4d4",
+        "INPUT_FOCUS_BORDER": "#0066bf",
+        # Button tokens
+        "BUTTON_HOVER": "#e0e0e0",
     },
     "midnight": {
         "name": "Midnight Blue",
@@ -153,6 +179,19 @@ THEMES = {
         # Provider-specific colors
         "CLAUDE_COLOR": "#FFB080",     # Light orange for midnight
         "CIRCUIT_COLOR": "#99DDFF",    # Light blue for midnight
+        # Code block tokens
+        "CODE_BLOCK_BG": "#0a0a10",
+        "CODE_BLOCK_BORDER": "#2a2a4a",
+        "CODE_BLOCK_HEADER_BG": "#161630",
+        # Chat message tokens
+        "USER_MSG_BG": "#0c1428",
+        "AGENT_MSG_BG": "#0e0e18",
+        # Input tokens
+        "INPUT_BG": "#1e1e3c",
+        "INPUT_BORDER": "#3a3a5a",
+        "INPUT_FOCUS_BORDER": "#4080ff",
+        # Button tokens
+        "BUTTON_HOVER": "#28284a",
     },
     "forest": {
         "name": "Forest",
@@ -183,8 +222,61 @@ THEMES = {
         # Provider-specific colors
         "CLAUDE_COLOR": "#E8A070",     # Light orange for forest
         "CIRCUIT_COLOR": "#88CFFF",    # Light blue for forest
+        # Code block tokens
+        "CODE_BLOCK_BG": "#0c100c",
+        "CODE_BLOCK_BORDER": "#2a3a28",
+        "CODE_BLOCK_HEADER_BG": "#162016",
+        # Chat message tokens
+        "USER_MSG_BG": "#0e1a14",
+        "AGENT_MSG_BG": "#111a14",
+        # Input tokens
+        "INPUT_BG": "#223020",
+        "INPUT_BORDER": "#3a4a38",
+        "INPUT_FOCUS_BORDER": "#50c080",
+        # Button tokens
+        "BUTTON_HOVER": "#2a3a28",
     },
 }
+
+
+def _alpha_color(hex_color: str, alpha: float) -> str:
+    """Convert hex color + alpha to rgba() string for Qt stylesheets."""
+    hex_color = hex_color.lstrip('#')
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"rgba({r}, {g}, {b}, {alpha})"
+
+
+class DesignTokens:
+    """Centralized design constants for spacing, typography, borders, and sizing."""
+
+    # Spacing scale (px)
+    SPACING_XS = 2
+    SPACING_SM = 4
+    SPACING_MD = 8
+    SPACING_LG = 12
+    SPACING_XL = 16
+    SPACING_XXL = 24
+
+    # Border radius (px)
+    RADIUS_SM = 4
+    RADIUS_MD = 6
+    RADIUS_LG = 8
+
+    # Font families
+    FONT_MONO = "'Menlo', 'Consolas', 'Monaco', monospace"
+    FONT_UI = "-apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif"
+
+    # Font sizes (px)
+    FONT_SIZE_SM = 11
+    FONT_SIZE_MD = 13
+    FONT_SIZE_LG = 14
+
+    # Box shadows (Qt stylesheet compatible)
+    SHADOW_SM = "0px 1px 3px rgba(0, 0, 0, 0.12)"
+    SHADOW_MD = "0px 2px 8px rgba(0, 0, 0, 0.2)"
+
+    # Transition duration (ms)
+    TRANSITION = 150
 
 
 class ThemeManager:
@@ -1151,7 +1243,7 @@ class StatusDot(QWidget):
 # Try to import Pygments for enhanced syntax highlighting
 try:
     from pygments import highlight
-    from pygments.lexers import get_lexer_for_filename, get_lexer_by_name, TextLexer
+    from pygments.lexers import get_lexer_for_filename, get_lexer_by_name, guess_lexer, TextLexer
     from pygments.token import Token
     PYGMENTS_AVAILABLE = True
 except ImportError:
@@ -1277,6 +1369,153 @@ class PygmentsHighlighter(QSyntaxHighlighter):
                 index += length
         except Exception:
             pass
+
+
+def _pygments_highlight_html(code: str, lang: str) -> str:
+    """Highlight code using Pygments and return HTML with inline styles matching Theme."""
+    def _escape(text: str) -> str:
+        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+    if not PYGMENTS_AVAILABLE:
+        return f'<span style="color: {Theme.TEXT_PRIMARY};">{_escape(code)}</span>'
+
+    try:
+        if lang:
+            try:
+                lexer = get_lexer_by_name(lang)
+            except Exception:
+                try:
+                    lexer = guess_lexer(code)
+                except Exception:
+                    return f'<span style="color: {Theme.TEXT_PRIMARY};">{_escape(code)}</span>'
+        else:
+            try:
+                lexer = guess_lexer(code)
+            except Exception:
+                return f'<span style="color: {Theme.TEXT_PRIMARY};">{_escape(code)}</span>'
+
+        token_colors = {
+            Token.Keyword: Theme.ACCENT_PURPLE,
+            Token.Keyword.Constant: Theme.ACCENT_PURPLE,
+            Token.Keyword.Declaration: Theme.ACCENT_PURPLE,
+            Token.Keyword.Namespace: Theme.ACCENT_PURPLE,
+            Token.Keyword.Pseudo: Theme.ACCENT_PURPLE,
+            Token.Keyword.Reserved: Theme.ACCENT_PURPLE,
+            Token.Keyword.Type: Theme.ACCENT_CYAN,
+            Token.Name.Builtin: Theme.ACCENT_CYAN,
+            Token.Name.Builtin.Pseudo: Theme.ACCENT_CYAN,
+            Token.Name.Class: Theme.ACCENT_CYAN,
+            Token.Name.Decorator: Theme.ACCENT_YELLOW,
+            Token.Name.Exception: Theme.ACCENT_RED,
+            Token.Name.Function: Theme.ACCENT_YELLOW,
+            Token.Name.Function.Magic: Theme.ACCENT_YELLOW,
+            Token.Name.Tag: Theme.ACCENT_RED,
+            Token.Name.Attribute: Theme.ACCENT_YELLOW,
+            Token.String: Theme.ACCENT_ORANGE,
+            Token.String.Doc: Theme.ACCENT_GREEN,
+            Token.String.Escape: Theme.ACCENT_CYAN,
+            Token.String.Interpol: Theme.ACCENT_CYAN,
+            Token.String.Regex: Theme.ACCENT_RED,
+            Token.Number: Theme.ACCENT_GREEN,
+            Token.Number.Float: Theme.ACCENT_GREEN,
+            Token.Number.Hex: Theme.ACCENT_GREEN,
+            Token.Number.Integer: Theme.ACCENT_GREEN,
+            Token.Number.Oct: Theme.ACCENT_GREEN,
+            Token.Operator: Theme.TEXT_SECONDARY,
+            Token.Operator.Word: Theme.ACCENT_PURPLE,
+            Token.Comment: Theme.TEXT_MUTED,
+            Token.Comment.Multiline: Theme.TEXT_MUTED,
+            Token.Comment.Single: Theme.TEXT_MUTED,
+            Token.Comment.Special: Theme.TEXT_MUTED,
+            Token.Generic.Deleted: Theme.ACCENT_RED,
+            Token.Generic.Inserted: Theme.ACCENT_GREEN,
+            Token.Generic.Heading: Theme.ACCENT_BLUE,
+            Token.Generic.Subheading: Theme.ACCENT_CYAN,
+        }
+
+        def get_color(token_type):
+            if token_type in token_colors:
+                return token_colors[token_type]
+            for parent_type, color in token_colors.items():
+                if str(token_type).startswith(str(parent_type)):
+                    return color
+            return Theme.TEXT_PRIMARY
+
+        html_parts = []
+        for token_type, value in lexer.get_tokens(code):
+            escaped = _escape(value)
+            color = get_color(token_type)
+            extra = ""
+            if str(token_type).startswith('Token.Keyword'):
+                extra = " font-weight: bold;"
+            elif str(token_type).startswith('Token.Comment'):
+                extra = " font-style: italic;"
+            html_parts.append(f'<span style="color: {color};{extra}">{escaped}</span>')
+
+        # Pygments always appends a trailing \n which shows as an
+        # extra blank line inside <pre>; strip it.
+        result = ''.join(html_parts)
+        if result.endswith('\n'):
+            result = result[:-1]
+        return result
+
+    except Exception:
+        return f'<span style="color: {Theme.TEXT_PRIMARY};">{_escape(code)}</span>'
+
+
+def _render_code_block_html(code: str, lang: str, block_id: int) -> str:
+    """Render a polished code block with header bar, language label, and action buttons.
+
+    Uses table-based layout since Qt's HTML subset ignores display:flex.
+    Ends with a transparent reset paragraph to prevent background bleed.
+    """
+    DT = DesignTokens
+    highlighted = _pygments_highlight_html(code, lang)
+
+    lang_label = (
+        f'<span style="color: {Theme.TEXT_SECONDARY}; font-size: {DT.FONT_SIZE_SM}px; '
+        f'font-family: {DT.FONT_MONO};">{lang}</span>'
+        if lang else ''
+    )
+
+    # Styled action buttons — distinct colors, generous padding, clear spacing
+    copy_btn = (
+        f'<a href="copy://{block_id}" style="color: {Theme.ACCENT_BLUE}; text-decoration: none; '
+        f'font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_BLUE, 0.12)}; '
+        f'padding: 3px 12px; border-radius: {DT.RADIUS_SM}px;">Copy</a>'
+    )
+    insert_btn = (
+        f'<a href="insert://{block_id}" style="color: {Theme.ACCENT_GREEN}; text-decoration: none; '
+        f'font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_GREEN, 0.12)}; '
+        f'padding: 3px 12px; border-radius: {DT.RADIUS_SM}px;">Insert</a>'
+    )
+
+    # Table-based header layout (Qt ignores display:flex)
+    # Use a spacer cell between buttons for reliable spacing
+    header_html = (
+        f'<table width="100%" cellpadding="0" cellspacing="0" style="background: {Theme.CODE_BLOCK_HEADER_BG}; '
+        f'border-bottom: 1px solid {Theme.CODE_BLOCK_BORDER};">'
+        f'<tr>'
+        f'<td style="padding: 6px {DT.SPACING_LG}px;">{lang_label}</td>'
+        f'<td align="right" style="padding: 6px {DT.SPACING_LG}px;">'
+        f'{copy_btn}&nbsp;&nbsp;&nbsp;{insert_btn}'
+        f'</td>'
+        f'</tr></table>'
+    )
+
+    # Code block with tight line-height; trailing reset <p> prevents
+    # Qt's block-format bleed (background leaking into subsequent text)
+    return (
+        f'<div style="background: {Theme.CODE_BLOCK_BG}; border: 1px solid {Theme.CODE_BLOCK_BORDER}; '
+        f'border-radius: {DT.RADIUS_MD}px; margin: {DT.SPACING_MD}px 0; overflow: hidden;">'
+        f'{header_html}'
+        f'<pre style="margin: 0; padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; overflow-x: auto; '
+        f'white-space: pre; word-wrap: break-word; '
+        f'font-family: {DT.FONT_MONO}; font-size: {DT.FONT_SIZE_SM}px; line-height: 1.35;">'
+        f'{highlighted}</pre>'
+        f'</div>'
+        f'<p style="margin:0; padding:0; font-size:2px; line-height:1px;">&nbsp;</p>'
+    )
 
 
 class PythonHighlighter(QSyntaxHighlighter):
@@ -2097,8 +2336,8 @@ class ActivityBar(QWidget):
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 8, 0, 8)
-        layout.setSpacing(2)
+        layout.setContentsMargins(0, DesignTokens.SPACING_MD, 0, DesignTokens.SPACING_MD)
+        layout.setSpacing(DesignTokens.SPACING_XS)
 
         self.buttons = {}
         self.icon_methods = {}  # Store icon method references
@@ -2112,25 +2351,26 @@ class ActivityBar(QWidget):
 
         for name, icon_method, tooltip in icons:
             btn = QPushButton()
-            btn.setFixedSize(48, 44)
+            btn.setFixedSize(48, 46)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setToolTip(tooltip)
-            btn.setIcon(icon_method(18, Theme.TEXT_MUTED))
-            btn.setIconSize(QSize(18, 18))
+            btn.setIcon(icon_method(20, Theme.TEXT_MUTED))
+            btn.setIconSize(QSize(20, 20))
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
                     border: none;
                     border-left: 3px solid transparent;
-                    margin: 2px 0;
+                    margin: 1px 0;
+                    padding: {DesignTokens.SPACING_MD}px;
                 }}
                 QPushButton:hover {{
-                    background: {Theme.BG_TERTIARY};
+                    background: {_alpha_color(Theme.TEXT_PRIMARY, 0.08)};
                 }}
                 QPushButton:checked {{
                     border-left: 3px solid {Theme.ACCENT_BLUE};
-                    background: rgba(0, 122, 204, 0.1);
+                    background: {_alpha_color(Theme.ACCENT_BLUE, 0.1)};
                 }}
             """)
             btn.clicked.connect(lambda checked, n=name: self._on_click(n))
@@ -3038,7 +3278,7 @@ class AgentControlPanel(QWidget):
                 font-size: 11px;
                 font-weight: 500;
             }}
-            QPushButton:hover {{ background: #3b82f6; }}
+            QPushButton:hover {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.85)}; }}
         """)
         banner_layout.addWidget(self.reconnect_btn)
 
@@ -3257,9 +3497,9 @@ class AgentControlPanel(QWidget):
             self.reconnect_btn.setText("Reconnect")
             self.status_banner.setStyleSheet(f"""
                 QWidget {{
-                    background: rgba(35, 134, 54, 0.1);
-                    border: 1px solid rgba(35, 134, 54, 0.3);
-                    border-radius: 6px;
+                    background: {_alpha_color(Theme.SUCCESS, 0.1)};
+                    border: 1px solid {_alpha_color(Theme.SUCCESS, 0.3)};
+                    border-radius: {DesignTokens.RADIUS_MD}px;
                 }}
             """)
             # Start session timer
@@ -3452,8 +3692,8 @@ class GitPanel(QWidget):
                 font-size: 11px;
                 font-weight: 500;
             }}
-            QPushButton:hover {{ background: #3b82f6; }}
-            QPushButton:pressed {{ background: #1d4ed8; }}
+            QPushButton:hover {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.85)}; }}
+            QPushButton:pressed {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.7)}; }}
         """)
         commit_btns.addWidget(commit_btn)
 
@@ -4377,8 +4617,8 @@ class SettingsPanel(QWidget):
                     font-size: 11px;
                     font-weight: 500;
                 }}
-                QPushButton:hover {{ background: #3b82f6; }}
-                QPushButton:pressed {{ background: #1d4ed8; }}
+                QPushButton:hover {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.85)}; }}
+                QPushButton:pressed {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.7)}; }}
             """)
         else:
             btn.setStyleSheet(f"""
@@ -7071,28 +7311,38 @@ class EditorTabs(QTabWidget):
             QTabBar {{ background: {Theme.BG_SECONDARY}; }}
             QTabBar::tab {{
                 background: {Theme.BG_SECONDARY};
-                color: {Theme.TEXT_SECONDARY};
-                padding: 6px 24px 6px 14px;
+                color: {Theme.TEXT_MUTED};
+                padding: {DesignTokens.SPACING_MD}px {DesignTokens.SPACING_XXL}px {DesignTokens.SPACING_MD}px {DesignTokens.SPACING_XL}px;
                 border: none;
-                border-bottom: 1px solid transparent;
-                font-size: 11px;
+                border-top-left-radius: {DesignTokens.RADIUS_SM}px;
+                border-top-right-radius: {DesignTokens.RADIUS_SM}px;
+                border-right: 1px solid {Theme.BORDER};
+                font-size: {DesignTokens.FONT_SIZE_SM}px;
+                margin-top: 0px;
             }}
             QTabBar::tab:selected {{
                 background: {Theme.BG_MAIN};
                 color: {Theme.TEXT_PRIMARY};
-                border-bottom: 1px solid {Theme.ACCENT_BLUE};
+                border-bottom: none;
             }}
-            QTabBar::tab:hover {{ background: {Theme.BG_TERTIARY}; }}
+            QTabBar::tab:!selected {{
+                margin-top: 0px;
+                border-bottom: 1px solid {Theme.BORDER};
+            }}
+            QTabBar::tab:hover:!selected {{
+                background: {Theme.BG_TERTIARY};
+                color: {Theme.TEXT_SECONDARY};
+            }}
             QTabBar::close-button {{
                 subcontrol-position: right;
-                margin-right: 4px;
-                width: 12px;
-                height: 12px;
-                border-radius: 2px;
+                margin-right: {DesignTokens.SPACING_SM}px;
+                width: 14px;
+                height: 14px;
+                border-radius: {DesignTokens.RADIUS_SM}px;
                 background: transparent;
             }}
             QTabBar::close-button:hover {{
-                background: rgba(255, 255, 255, 0.1);
+                background: {_alpha_color(Theme.TEXT_PRIMARY, 0.12)};
             }}
         """)
 
@@ -7240,7 +7490,7 @@ class EditorTabs(QTabWidget):
                 padding: 2px;
             }}
             QPushButton:hover {{
-                background: rgba(255, 255, 255, 0.1);
+                background: {_alpha_color(Theme.TEXT_PRIMARY, 0.12)};
             }}
         """)
         close_btn.clicked.connect(self._on_close_button_clicked)
@@ -8537,6 +8787,8 @@ class ClaudeCodeWorker(QThread):
 class ClaudeCodePanel(QWidget):
     """Claude Code panel using headless mode with session continuity."""
 
+    code_insert_requested = Signal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker: Optional[ClaudeCodeWorker] = None
@@ -8568,16 +8820,17 @@ class ClaudeCodePanel(QWidget):
 
         # Header
         header = QWidget()
-        header.setFixedHeight(32)
+        header.setFixedHeight(36)
         header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 0, 12, 0)
+        header_layout.setContentsMargins(DesignTokens.SPACING_XL, 0, DesignTokens.SPACING_LG, 0)
+        header_layout.setSpacing(DesignTokens.SPACING_MD)
 
-        self.status_dot = StatusDot(Theme.TEXT_MUTED, 6)
+        self.status_dot = StatusDot(Theme.TEXT_MUTED, 7)
         header_layout.addWidget(self.status_dot)
 
         self.status_label = QLabel("Claude Code")
-        self.status_label.setStyleSheet(f"color: {Theme.CLAUDE_COLOR}; font-size: 11px; font-weight: bold;")
+        self.status_label.setStyleSheet(f"color: {Theme.CLAUDE_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;")
         header_layout.addWidget(self.status_label)
 
         header_layout.addStretch()
@@ -8589,16 +8842,16 @@ class ClaudeCodePanel(QWidget):
 
         layout.addWidget(header)
 
-        # Terminal output area
+        # Chat output area
         self.output = QTextEdit()
         self.output.setReadOnly(True)
         self.output.setFont(QFont("Menlo", 12))
         self.output.setStyleSheet(f"""
             QTextEdit {{
-                background: {Theme.BG_DARK};
+                background: {Theme.AGENT_MSG_BG};
                 color: {Theme.TEXT_PRIMARY};
                 border: none;
-                padding: 12px;
+                padding: {DesignTokens.SPACING_XL}px;
                 selection-background-color: {Theme.BG_SELECTED};
             }}
         """)
@@ -8641,46 +8894,40 @@ class ClaudeCodePanel(QWidget):
         input_container = QWidget()
         input_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
         input_layout = QHBoxLayout(input_container)
-        input_layout.setContentsMargins(12, 10, 12, 10)
-        input_layout.setSpacing(10)
-
-        # Prompt marker
-        prompt = QLabel(">")
-        prompt.setStyleSheet(f"color: {Theme.CLAUDE_COLOR}; font-size: 14px; font-weight: bold;")
-        prompt.setFixedWidth(16)
-        input_layout.addWidget(prompt)
+        input_layout.setContentsMargins(DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG)
+        input_layout.setSpacing(DesignTokens.SPACING_MD)
 
         self.input_field = CompactLineEdit("")
         self.input_field.setPlaceholderText("Message Claude Code...")
         self.input_field.returnPressed.connect(self._send_input)
         self.input_field.setStyleSheet(f"""
             QLineEdit {{
-                background: {Theme.BG_INPUT};
-                border: 1px solid {Theme.BORDER};
-                border-radius: 4px;
-                padding: 8px 12px;
+                background: {Theme.INPUT_BG};
+                border: 1px solid {Theme.INPUT_BORDER};
+                border-radius: {DesignTokens.RADIUS_MD}px;
+                padding: 10px 12px;
                 color: {Theme.TEXT_PRIMARY};
-                font-size: 13px;
-                font-family: Menlo, monospace;
+                font-size: {DesignTokens.FONT_SIZE_MD}px;
+                font-family: {DesignTokens.FONT_MONO};
             }}
-            QLineEdit:focus {{ border-color: {Theme.CLAUDE_COLOR}; }}
+            QLineEdit:focus {{ border-color: {Theme.INPUT_FOCUS_BORDER}; }}
         """)
         input_layout.addWidget(self.input_field)
 
         self.send_btn = CompactButton("Send")
-        self.send_btn.setFixedSize(60, 32)
+        self.send_btn.setFixedSize(64, 34)
         self.send_btn.clicked.connect(self._send_input)
         self.send_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {Theme.CLAUDE_COLOR};
-                color: white;
+                color: {Theme.BG_DARK};
                 border: none;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: 500;
+                border-radius: {DesignTokens.RADIUS_LG}px;
+                font-size: {DesignTokens.FONT_SIZE_SM}px;
+                font-weight: 600;
             }}
-            QPushButton:hover {{ background: #D4956B; }}
-            QPushButton:pressed {{ background: #C08358; }}
+            QPushButton:hover {{ background: {_alpha_color(Theme.CLAUDE_COLOR, 0.85)}; }}
+            QPushButton:pressed {{ background: {_alpha_color(Theme.CLAUDE_COLOR, 0.7)}; }}
         """)
         input_layout.addWidget(self.send_btn)
 
@@ -8729,8 +8976,16 @@ class ClaudeCodePanel(QWidget):
 
         self.input_field.clear()
 
-        # Show user message with gap before response
-        self._append_output(f"\n> {text}\n\n", Theme.CLAUDE_COLOR)
+        # Show user message as styled card
+        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        DT = DesignTokens
+        self._append_raw_html(
+            f'<div style="background: {Theme.USER_MSG_BG}; border-radius: {DT.RADIUS_MD}px; '
+            f'padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; margin: {DT.SPACING_MD}px 0 {DT.SPACING_MD}px 40px;">'
+            f'<div style="color: {Theme.TEXT_MUTED}; font-size: {DT.FONT_SIZE_SM}px; margin-bottom: {DT.SPACING_SM}px;">You</div>'
+            f'<div style="color: {Theme.TEXT_PRIMARY}; font-size: {DT.FONT_SIZE_MD}px;">{escaped_text}</div>'
+            f'</div><br>'
+        )
 
         # Update status
         self.status_label.setText("Claude Code - Thinking...")
@@ -8787,35 +9042,24 @@ class ClaudeCodePanel(QWidget):
         # Handle code block start/end
         if stripped.startswith('```'):
             if self._in_code_block:
-                # End code block - save content and add to list
+                # End code block - render with shared function
+                code = self._current_code_block.rstrip('\n')
                 self._code_blocks.append(self._current_code_block)
+                code_block_id = len(self._code_blocks) - 1
+                self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
                 self._current_code_block = ""
                 self._in_code_block = False
                 self._code_block_lang = ""
-                self._append_raw_html(f'</pre></div>')
             else:
-                # Start code block
+                # Start code block - just set state, render on close
                 self._in_code_block = True
                 self._current_code_block = ""
                 self._code_block_lang = stripped[3:].strip()
-                lang_label = f'<span style="color: {Theme.TEXT_MUTED}; font-size: 10px;">{self._code_block_lang}</span>' if self._code_block_lang else ''
-                code_block_id = len(self._code_blocks)
-                copy_btn = f'<a href="copy://{code_block_id}" style="color: {Theme.ACCENT_BLUE}; text-decoration: none; font-size: 10px;">Copy</a>'
-                self._append_raw_html(
-                    f'<div style="background: {Theme.BG_DARK}; border: 1px solid {Theme.BORDER}; '
-                    f'border-radius: 4px; margin: 8px 0; padding: 0;">'
-                    f'<div style="background: {Theme.BG_TERTIARY}; padding: 4px 8px; '
-                    f'border-bottom: 1px solid {Theme.BORDER}; font-size: 11px; display: flex; justify-content: space-between;">'
-                    f'{lang_label}<span style="margin-left: auto;">{copy_btn}</span></div>'
-                    f'<pre style="margin: 0; padding: 8px; overflow-x: auto; font-family: Menlo, monospace; font-size: 12px;">'
-                )
             return
 
-        # Inside code block - accumulate content and append with syntax coloring
+        # Inside code block - accumulate content only
         if self._in_code_block:
             self._current_code_block += line
-            escaped = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            self._append_raw_html(f'<span style="color: {Theme.TEXT_PRIMARY};">{escaped}</span>')
             return
 
         # Format markdown elements
@@ -8846,7 +9090,6 @@ class ClaudeCodePanel(QWidget):
             return f'&nbsp;&nbsp;<span style="color: {Theme.TEXT_MUTED};">-</span> {self._format_inline(text[4:])}'
 
         # Numbered lists (supports multi-digit numbers like 10, 11, etc.)
-        import re
         num_match = re.match(r'^(\d+)\.\s', text)
         if num_match:
             num = num_match.group(1)
@@ -8911,17 +9154,22 @@ class ClaudeCodePanel(QWidget):
         self.output.ensureCursorVisible()
 
     def _on_output_click(self, event):
-        """Handle clicks on output area, including copy links."""
+        """Handle clicks on output area, including copy and insert links."""
         cursor = self.output.cursorForPosition(event.pos())
         anchor = cursor.charFormat().anchorHref()
-        if anchor and anchor.startswith("copy://"):
+        if anchor:
             try:
-                block_id = int(anchor.replace("copy://", ""))
-                if 0 <= block_id < len(self._code_blocks):
-                    code = self._code_blocks[block_id]
-                    QApplication.clipboard().setText(code)
-                    # Show toast notification
-                    ToastNotification.success("Code copied to clipboard", self.window())
+                if anchor.startswith("copy://"):
+                    block_id = int(anchor.replace("copy://", ""))
+                    if 0 <= block_id < len(self._code_blocks):
+                        code = self._code_blocks[block_id]
+                        QApplication.clipboard().setText(code)
+                        ToastNotification.success("Code copied to clipboard", self.window())
+                elif anchor.startswith("insert://"):
+                    block_id = int(anchor.replace("insert://", ""))
+                    if 0 <= block_id < len(self._code_blocks):
+                        code = self._code_blocks[block_id]
+                        self.code_insert_requested.emit(code)
             except (ValueError, IndexError):
                 pass
         # Call original handler for selection etc.
@@ -9046,10 +9294,15 @@ class ClaudeCodePanel(QWidget):
         if self._text_buffer:
             self._process_markdown_line(self._text_buffer)
             self._text_buffer = ""
-        # Close any open code block
+        # Render any unclosed code block
         if self._in_code_block:
-            self._append_raw_html('</pre></div>')
+            code = self._current_code_block.rstrip('\n')
+            self._code_blocks.append(self._current_code_block)
+            code_block_id = len(self._code_blocks) - 1
+            self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+            self._current_code_block = ""
             self._in_code_block = False
+            self._code_block_lang = ""
 
         # Stop status tracking
         self._status_timer.stop()
@@ -9160,6 +9413,7 @@ class CiscoCodePanel(QWidget):
     """
 
     message_sent = Signal(str)
+    code_insert_requested = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -9190,16 +9444,17 @@ class CiscoCodePanel(QWidget):
 
         # Header
         header = QWidget()
-        header.setFixedHeight(32)
+        header.setFixedHeight(36)
         header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 0, 12, 0)
+        header_layout.setContentsMargins(DesignTokens.SPACING_XL, 0, DesignTokens.SPACING_LG, 0)
+        header_layout.setSpacing(DesignTokens.SPACING_MD)
 
-        self.status_dot = StatusDot(Theme.TEXT_MUTED, 6)
+        self.status_dot = StatusDot(Theme.TEXT_MUTED, 7)
         header_layout.addWidget(self.status_dot)
 
         self.status_label = QLabel("Circuit AI")
-        self.status_label.setStyleSheet(f"color: {Theme.ACCENT_BLUE}; font-size: 11px; font-weight: bold;")
+        self.status_label.setStyleSheet(f"color: {Theme.CIRCUIT_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;")
         header_layout.addWidget(self.status_label)
 
         header_layout.addStretch()
@@ -9211,16 +9466,16 @@ class CiscoCodePanel(QWidget):
 
         layout.addWidget(header)
 
-        # Terminal output area
+        # Chat output area
         self.output = QTextEdit()
         self.output.setReadOnly(True)
         self.output.setFont(QFont("Menlo", 12))
         self.output.setStyleSheet(f"""
             QTextEdit {{
-                background: {Theme.BG_DARK};
+                background: {Theme.AGENT_MSG_BG};
                 color: {Theme.TEXT_PRIMARY};
                 border: none;
-                padding: 12px;
+                padding: {DesignTokens.SPACING_XL}px;
                 selection-background-color: {Theme.BG_SELECTED};
             }}
         """)
@@ -9263,46 +9518,40 @@ class CiscoCodePanel(QWidget):
         input_container = QWidget()
         input_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
         input_layout = QHBoxLayout(input_container)
-        input_layout.setContentsMargins(12, 10, 12, 10)
-        input_layout.setSpacing(10)
-
-        # Prompt marker
-        prompt = QLabel(">")
-        prompt.setStyleSheet(f"color: {Theme.ACCENT_BLUE}; font-size: 14px; font-weight: bold;")
-        prompt.setFixedWidth(16)
-        input_layout.addWidget(prompt)
+        input_layout.setContentsMargins(DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG)
+        input_layout.setSpacing(DesignTokens.SPACING_MD)
 
         self.input_field = CompactLineEdit("")
         self.input_field.setPlaceholderText("Message Circuit AI...")
         self.input_field.returnPressed.connect(self._send_input)
         self.input_field.setStyleSheet(f"""
             QLineEdit {{
-                background: {Theme.BG_INPUT};
-                border: 1px solid {Theme.BORDER};
-                border-radius: 4px;
-                padding: 8px 12px;
+                background: {Theme.INPUT_BG};
+                border: 1px solid {Theme.INPUT_BORDER};
+                border-radius: {DesignTokens.RADIUS_MD}px;
+                padding: 10px 12px;
                 color: {Theme.TEXT_PRIMARY};
-                font-size: 13px;
-                font-family: Menlo, monospace;
+                font-size: {DesignTokens.FONT_SIZE_MD}px;
+                font-family: {DesignTokens.FONT_MONO};
             }}
-            QLineEdit:focus {{ border-color: {Theme.ACCENT_BLUE}; }}
+            QLineEdit:focus {{ border-color: {Theme.INPUT_FOCUS_BORDER}; }}
         """)
         input_layout.addWidget(self.input_field)
 
         self.send_btn = CompactButton("Send")
-        self.send_btn.setFixedSize(60, 32)
+        self.send_btn.setFixedSize(64, 34)
         self.send_btn.clicked.connect(self._send_input)
         self.send_btn.setStyleSheet(f"""
             QPushButton {{
                 background: {Theme.ACCENT_BLUE};
-                color: white;
+                color: {Theme.BG_DARK};
                 border: none;
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: 500;
+                border-radius: {DesignTokens.RADIUS_LG}px;
+                font-size: {DesignTokens.FONT_SIZE_SM}px;
+                font-weight: 600;
             }}
-            QPushButton:hover {{ background: #3b82f6; }}
-            QPushButton:pressed {{ background: #1d4ed8; }}
+            QPushButton:hover {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.85)}; }}
+            QPushButton:pressed {{ background: {_alpha_color(Theme.ACCENT_BLUE, 0.7)}; }}
         """)
         input_layout.addWidget(self.send_btn)
 
@@ -9342,8 +9591,16 @@ class CiscoCodePanel(QWidget):
 
         self.input_field.clear()
 
-        # Show user message with gap before response
-        self._append_output(f"\n> {text}\n\n", Theme.CIRCUIT_COLOR)
+        # Show user message as styled card
+        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        DT = DesignTokens
+        self._append_raw_html(
+            f'<div style="background: {Theme.USER_MSG_BG}; border-radius: {DT.RADIUS_MD}px; '
+            f'padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; margin: {DT.SPACING_MD}px 0 {DT.SPACING_MD}px 40px;">'
+            f'<div style="color: {Theme.TEXT_MUTED}; font-size: {DT.FONT_SIZE_SM}px; margin-bottom: {DT.SPACING_SM}px;">You</div>'
+            f'<div style="color: {Theme.TEXT_PRIMARY}; font-size: {DT.FONT_SIZE_MD}px;">{escaped_text}</div>'
+            f'</div><br>'
+        )
 
         # Update status
         self.status_label.setText("Circuit AI - Thinking...")
@@ -9400,10 +9657,15 @@ class CiscoCodePanel(QWidget):
         if self._text_buffer:
             self._process_markdown_line(self._text_buffer)
             self._text_buffer = ""
-        # Close any open code block
+        # Render any unclosed code block
         if self._in_code_block:
-            self._append_raw_html('</pre></div>')
+            code = self._current_code_block.rstrip('\n')
+            self._code_blocks.append(self._current_code_block)
+            code_block_id = len(self._code_blocks) - 1
+            self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+            self._current_code_block = ""
             self._in_code_block = False
+            self._code_block_lang = ""
 
         # Stop status tracking
         self._status_timer.stop()
@@ -9458,35 +9720,24 @@ class CiscoCodePanel(QWidget):
         # Handle code block start/end
         if stripped.startswith('```'):
             if self._in_code_block:
-                # End code block - save content and add to list
+                # End code block - render with shared function
+                code = self._current_code_block.rstrip('\n')
                 self._code_blocks.append(self._current_code_block)
+                code_block_id = len(self._code_blocks) - 1
+                self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
                 self._current_code_block = ""
                 self._in_code_block = False
                 self._code_block_lang = ""
-                self._append_raw_html(f'</pre></div>')
             else:
-                # Start code block
+                # Start code block - just set state, render on close
                 self._in_code_block = True
                 self._current_code_block = ""
                 self._code_block_lang = stripped[3:].strip()
-                lang_label = f'<span style="color: {Theme.TEXT_MUTED}; font-size: 10px;">{self._code_block_lang}</span>' if self._code_block_lang else ''
-                code_block_id = len(self._code_blocks)
-                copy_btn = f'<a href="copy://{code_block_id}" style="color: {Theme.ACCENT_BLUE}; text-decoration: none; font-size: 10px;">Copy</a>'
-                self._append_raw_html(
-                    f'<div style="background: {Theme.BG_DARK}; border: 1px solid {Theme.BORDER}; '
-                    f'border-radius: 4px; margin: 8px 0; padding: 0;">'
-                    f'<div style="background: {Theme.BG_TERTIARY}; padding: 4px 8px; '
-                    f'border-bottom: 1px solid {Theme.BORDER}; font-size: 11px; display: flex; justify-content: space-between;">'
-                    f'{lang_label}<span style="margin-left: auto;">{copy_btn}</span></div>'
-                    f'<pre style="margin: 0; padding: 8px; overflow-x: auto; font-family: Menlo, monospace; font-size: 12px;">'
-                )
             return
 
-        # Inside code block - accumulate content and append with syntax coloring
+        # Inside code block - accumulate content only
         if self._in_code_block:
             self._current_code_block += line
-            escaped = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            self._append_raw_html(f'<span style="color: {Theme.TEXT_PRIMARY};">{escaped}</span>')
             return
 
         # Format markdown elements
@@ -9517,7 +9768,6 @@ class CiscoCodePanel(QWidget):
             return f'&nbsp;&nbsp;<span style="color: {Theme.TEXT_MUTED};">-</span> {self._format_inline(text[4:])}'
 
         # Numbered lists (supports multi-digit numbers like 10, 11, etc.)
-        import re
         num_match = re.match(r'^(\d+)\.\s', text)
         if num_match:
             num = num_match.group(1)
@@ -9582,17 +9832,22 @@ class CiscoCodePanel(QWidget):
         self.output.ensureCursorVisible()
 
     def _on_output_click(self, event):
-        """Handle clicks on output area, including copy links."""
+        """Handle clicks on output area, including copy and insert links."""
         cursor = self.output.cursorForPosition(event.pos())
         anchor = cursor.charFormat().anchorHref()
-        if anchor and anchor.startswith("copy://"):
+        if anchor:
             try:
-                block_id = int(anchor.replace("copy://", ""))
-                if 0 <= block_id < len(self._code_blocks):
-                    code = self._code_blocks[block_id]
-                    QApplication.clipboard().setText(code)
-                    # Show toast notification
-                    ToastNotification.success("Code copied to clipboard", self.window())
+                if anchor.startswith("copy://"):
+                    block_id = int(anchor.replace("copy://", ""))
+                    if 0 <= block_id < len(self._code_blocks):
+                        code = self._code_blocks[block_id]
+                        QApplication.clipboard().setText(code)
+                        ToastNotification.success("Code copied to clipboard", self.window())
+                elif anchor.startswith("insert://"):
+                    block_id = int(anchor.replace("insert://", ""))
+                    if 0 <= block_id < len(self._code_blocks):
+                        code = self._code_blocks[block_id]
+                        self.code_insert_requested.emit(code)
             except (ValueError, IndexError):
                 pass
         # Call original handler for selection etc.
@@ -10099,16 +10354,16 @@ class StatusBarItem(QPushButton):
                 background: transparent;
                 border: none;
                 color: {self._base_color};
-                font-size: 10px;
-                padding: 0 6px;
-                min-height: 18px;
-                max-height: 18px;
+                font-size: {DesignTokens.FONT_SIZE_SM}px;
+                padding: 0 {DesignTokens.SPACING_MD}px;
+                min-height: 20px;
+                max-height: 20px;
             }}
             QPushButton:hover {{
-                background: {Theme.BG_HOVER};
+                background: {_alpha_color(Theme.TEXT_PRIMARY, 0.1)};
             }}
             QPushButton:pressed {{
-                background: {Theme.BG_TERTIARY};
+                background: {_alpha_color(Theme.TEXT_PRIMARY, 0.15)};
             }}
         """)
 
@@ -10130,7 +10385,7 @@ class EnhancedStatusBar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(22)
+        self.setFixedHeight(24)
         self.setStyleSheet(f"""
             QWidget {{
                 background: {Theme.BG_DARK};
@@ -10149,10 +10404,10 @@ class EnhancedStatusBar(QWidget):
                 background: {Theme.ACCENT_BLUE};
                 border: none;
                 color: white;
-                font-size: 10px;
-                padding: 0 8px;
-                min-height: 18px;
-                max-height: 18px;
+                font-size: {DesignTokens.FONT_SIZE_SM}px;
+                padding: 0 {DesignTokens.SPACING_MD}px;
+                min-height: 20px;
+                max-height: 20px;
             }}
             QPushButton:hover {{
                 background: {Theme.TEXT_LINK};
@@ -10238,15 +10493,15 @@ class EnhancedStatusBar(QWidget):
             self.agent_btn.setIcon(Icons.check(12, Theme.SUCCESS))
             self.agent_btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: rgba(35, 134, 54, 0.2);
+                    background: {_alpha_color(Theme.SUCCESS, 0.2)};
                     border: none;
                     color: {Theme.SUCCESS};
-                    font-size: 11px;
+                    font-size: {DesignTokens.FONT_SIZE_SM}px;
                     padding: 2px 10px;
-                    border-radius: 2px;
+                    border-radius: {DesignTokens.RADIUS_SM}px;
                 }}
                 QPushButton:hover {{
-                    background: rgba(35, 134, 54, 0.3);
+                    background: {_alpha_color(Theme.SUCCESS, 0.3)};
                 }}
             """)
         else:
@@ -10340,7 +10595,10 @@ class CircuitIDEWindow(QMainWindow):
         # Side panel stack - only file explorer and search
         self.side_stack = QStackedWidget()
         self.side_stack.setFixedWidth(260)
-        self.side_stack.setStyleSheet(f"background: {Theme.BG_SECONDARY};")
+        self.side_stack.setStyleSheet(f"""
+            background: {Theme.BG_SECONDARY};
+            border-right: 1px solid {Theme.BORDER};
+        """)
 
         self.file_explorer = FileExplorer()
         self.file_explorer.file_selected.connect(self._open_file_from_explorer)
@@ -10369,13 +10627,27 @@ class CircuitIDEWindow(QMainWindow):
 
         # Main content splitter (horizontal: editor area | chat)
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(1)
-        splitter.setStyleSheet(f"QSplitter::handle {{ background: {Theme.BORDER}; }}")
+        splitter.setHandleWidth(2)
+        splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background: {Theme.BORDER};
+            }}
+            QSplitter::handle:hover {{
+                background: {Theme.ACCENT_BLUE};
+            }}
+        """)
 
         # Editor area with terminal (vertical splitter)
         editor_splitter = QSplitter(Qt.Orientation.Vertical)
-        editor_splitter.setHandleWidth(1)
-        editor_splitter.setStyleSheet(f"QSplitter::handle {{ background: {Theme.BORDER}; }}")
+        editor_splitter.setHandleWidth(2)
+        editor_splitter.setStyleSheet(f"""
+            QSplitter::handle {{
+                background: {Theme.BORDER};
+            }}
+            QSplitter::handle:hover {{
+                background: {Theme.ACCENT_BLUE};
+            }}
+        """)
 
         # Editor area with split support
         self.editor_tabs = EditorArea()
@@ -10405,10 +10677,12 @@ class CircuitIDEWindow(QMainWindow):
         # Cisco AI panel (index 0) - Uses same terminal-style UI as Claude Code
         self.cisco_code_panel = CiscoCodePanel()
         self.cisco_code_panel.message_sent.connect(self._on_cisco_message)
+        self.cisco_code_panel.code_insert_requested.connect(self._insert_code_to_editor)
         self.chat_stack.addWidget(self.cisco_code_panel)
 
         # Claude Code panel (index 1)
         self.claude_code_panel = ClaudeCodePanel()
+        self.claude_code_panel.code_insert_requested.connect(self._insert_code_to_editor)
         self.chat_stack.addWidget(self.claude_code_panel)
 
         splitter.addWidget(self.chat_stack)
@@ -11200,6 +11474,21 @@ class CircuitIDEWindow(QMainWindow):
         self.enhanced_status.set_message("Processing...")
         self.agent_panel.increment_messages()  # User message
         self.send_message_signal.emit(text)
+
+    def _insert_code_to_editor(self, code: str):
+        """Insert code from a chat code block into the active editor at cursor."""
+        widget = self.editor_tabs.currentWidget()
+        if widget and hasattr(widget, 'editor'):
+            editor = widget.editor
+            cursor = editor.textCursor()
+            cursor.insertText(code)
+            editor.setTextCursor(cursor)
+            editor.setFocus()
+            ToastNotification.success("Code inserted into editor", self)
+        else:
+            # No editor open — fall back to clipboard
+            QApplication.clipboard().setText(code)
+            ToastNotification.success("No file open — code copied to clipboard", self)
 
     def _new_chat(self):
         """Start a new chat conversation."""

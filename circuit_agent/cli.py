@@ -19,7 +19,8 @@ from .config import (
 )
 from .ui import (
     C, clear_screen, clear_line, print_header, print_welcome, print_help,
-    print_token_usage, print_error, print_success, print_warning, print_info
+    print_token_usage, print_error, print_success, print_warning, print_info,
+    StreamingMarkdownRenderer, render_markdown
 )
 from .memory import SessionManager
 
@@ -125,24 +126,26 @@ async def chat_loop(agent: CircuitAgent, working_dir: str):
             # Regular chat
             print(f"{C.DIM}  Thinking...{C.RESET}", end="", flush=True)
 
-            # Streaming callback to print content as it arrives
+            # Streaming callback with markdown rendering
             first_chunk = [True]  # Use list to allow modification in closure
+            md_renderer = StreamingMarkdownRenderer()
 
             def on_content(chunk: str):
                 if first_chunk[0]:
                     clear_line()
-                    print(f"\n{C.MAGENTA}Agent:{C.RESET} ", end="", flush=True)
+                    print(f"\n{C.MAGENTA}Agent:{C.RESET}")
                     first_chunk[0] = False
-                print(chunk, end="", flush=True)
+                md_renderer.feed(chunk)
 
             response = await agent.chat(user_input, on_content=on_content)
             clear_line()
 
-            # If streaming printed content, just add newline
+            # If streaming printed content, flush remaining buffer
             if not first_chunk[0]:
-                print()  # Newline after streamed content
+                md_renderer.flush()
             elif response:
-                print(f"\n{C.MAGENTA}Agent:{C.RESET} {response}")
+                print(f"\n{C.MAGENTA}Agent:{C.RESET}")
+                print(render_markdown(response))
 
             # Show token usage
             stats = agent.get_token_stats()
