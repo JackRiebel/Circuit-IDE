@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Background gradient - deep dark like Antigravity -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1d24"/>
+      <stop offset="100%" style="stop-color:#0d0f13"/>
+    </linearGradient>
+
+    <!-- Electric blue accent gradient -->
+    <linearGradient id="circuitGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4FC3F7"/>
+      <stop offset="50%" style="stop-color:#1a73e8"/>
+      <stop offset="100%" style="stop-color:#7C4DFF"/>
+    </linearGradient>
+
+    <!-- Glow for circuit traces -->
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Soft outer glow -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Node glow -->
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#4FC3F7;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#4FC3F7;stop-opacity:0"/>
+    </radialGradient>
+
+    <!-- Subtle inner shadow on bg -->
+    <filter id="innerShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="20" result="blur"/>
+      <feOffset dx="0" dy="4" result="offsetBlur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.3"/>
+      <feComposite in2="offsetBlur" operator="in"/>
+    </filter>
+  </defs>
+
+  <!-- macOS squircle background -->
+  <rect x="20" y="20" width="984" height="984" rx="220" ry="220" fill="url(#bgGrad)"/>
+
+  <!-- Subtle border -->
+  <rect x="20" y="20" width="984" height="984" rx="220" ry="220"
+        fill="none" stroke="#2a2f3a" stroke-width="2"/>
+
+  <!-- Subtle grid pattern (circuit board texture) -->
+  <g opacity="0.04" stroke="#4FC3F7" stroke-width="1">
+    <line x1="180" y1="20" x2="180" y2="1004"/>
+    <line x1="340" y1="20" x2="340" y2="1004"/>
+    <line x1="512" y1="20" x2="512" y2="1004"/>
+    <line x1="684" y1="20" x2="684" y2="1004"/>
+    <line x1="844" y1="20" x2="844" y2="1004"/>
+    <line x1="20" y1="180" x2="1004" y2="180"/>
+    <line x1="20" y1="340" x2="1004" y2="340"/>
+    <line x1="20" y1="512" x2="1004" y2="512"/>
+    <line x1="20" y1="684" x2="1004" y2="684"/>
+    <line x1="20" y1="844" x2="1004" y2="844"/>
+  </g>
+
+  <!-- === CIRCUIT TRACES === -->
+  <g filter="url(#glow)">
+    <!-- Main circuit paths - forming an abstract "C" shape -->
+    <g fill="none" stroke="url(#circuitGrad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+
+      <!-- Central "C" trace - the main circuit path -->
+      <path d="M 620 280 L 520 280 Q 320 280 320 380 L 320 644 Q 320 744 420 744 L 620 744"/>
+
+      <!-- Top horizontal branch -->
+      <path d="M 620 280 L 720 280"/>
+
+      <!-- Bottom horizontal branch -->
+      <path d="M 620 744 L 720 744"/>
+
+      <!-- Middle cross-connection -->
+      <path d="M 320 512 L 240 512"/>
+
+      <!-- Top vertical branch going up -->
+      <path d="M 520 280 L 520 200"/>
+
+      <!-- Bottom vertical going down -->
+      <path d="M 420 744 L 420 824"/>
+
+      <!-- Inner traces -->
+      <path d="M 470 380 L 620 380 L 620 460"/>
+      <path d="M 470 644 L 620 644 L 620 564"/>
+
+      <!-- Right side vertical connector -->
+      <path d="M 720 280 L 720 380"/>
+      <path d="M 720 644 L 720 744"/>
+
+      <!-- Small diagonal traces for visual interest -->
+      <path d="M 380 340 L 420 300"/>
+      <path d="M 380 684 L 420 724"/>
+    </g>
+  </g>
+
+  <!-- === CIRCUIT NODES (junction dots) === -->
+  <g filter="url(#softGlow)">
+    <!-- Major nodes - bright accent -->
+    <circle cx="620" cy="280" r="14" fill="#4FC3F7"/>
+    <circle cx="620" cy="744" r="14" fill="#4FC3F7"/>
+    <circle cx="320" cy="512" r="14" fill="#4FC3F7"/>
+
+    <!-- Medium nodes -->
+    <circle cx="520" cy="280" r="10" fill="#1a73e8"/>
+    <circle cx="420" cy="744" r="10" fill="#1a73e8"/>
+    <circle cx="720" cy="280" r="10" fill="#7C4DFF"/>
+    <circle cx="720" cy="744" r="10" fill="#7C4DFF"/>
+
+    <!-- Small junction nodes -->
+    <circle cx="520" cy="200" r="8" fill="#4FC3F7"/>
+    <circle cx="420" cy="824" r="8" fill="#4FC3F7"/>
+    <circle cx="240" cy="512" r="8" fill="#4FC3F7"/>
+    <circle cx="620" cy="460" r="8" fill="#1a73e8"/>
+    <circle cx="620" cy="564" r="8" fill="#1a73e8"/>
+    <circle cx="470" cy="380" r="7" fill="#1a73e8"/>
+    <circle cx="470" cy="644" r="7" fill="#1a73e8"/>
+    <circle cx="720" cy="380" r="7" fill="#7C4DFF"/>
+    <circle cx="720" cy="644" r="7" fill="#7C4DFF"/>
+    <circle cx="620" cy="380" r="6" fill="#4FC3F7"/>
+    <circle cx="620" cy="644" r="6" fill="#4FC3F7"/>
+  </g>
+
+  <!-- Central pulse - the "brain" of the circuit -->
+  <circle cx="470" cy="512" r="40" fill="none" stroke="url(#circuitGrad)" stroke-width="4" opacity="0.3"/>
+  <circle cx="470" cy="512" r="24" fill="url(#circuitGrad)" opacity="0.9"/>
+  <circle cx="470" cy="512" r="12" fill="#ffffff" opacity="0.9"/>
+
+  <!-- Connection from center to left node -->
+  <line x1="430" y1="512" x2="320" y2="512" stroke="url(#circuitGrad)" stroke-width="6"
+        stroke-linecap="round" filter="url(#glow)"/>
+
+  <!-- Connection from center to inner traces -->
+  <line x1="470" y1="472" x2="470" y2="380" stroke="url(#circuitGrad)" stroke-width="4"
+        stroke-linecap="round" filter="url(#glow)" opacity="0.7"/>
+  <line x1="470" y1="552" x2="470" y2="644" stroke="url(#circuitGrad)" stroke-width="4"
+        stroke-linecap="round" filter="url(#glow)" opacity="0.7"/>
+
+  <!-- Decorative small nodes in corners for depth -->
+  <circle cx="180" cy="300" r="4" fill="#4FC3F7" opacity="0.2"/>
+  <circle cx="180" cy="720" r="4" fill="#4FC3F7" opacity="0.2"/>
+  <circle cx="840" cy="300" r="4" fill="#7C4DFF" opacity="0.2"/>
+  <circle cx="840" cy="720" r="4" fill="#7C4DFF" opacity="0.2"/>
+  <circle cx="180" cy="512" r="3" fill="#4FC3F7" opacity="0.15"/>
+  <circle cx="840" cy="512" r="3" fill="#7C4DFF" opacity="0.15"/>
+</svg>

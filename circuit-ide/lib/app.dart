@@ -1,0 +1,67 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'state/theme_provider.dart';
+import 'state/command_palette_provider.dart';
+import 'state/settings_provider.dart';
+import 'state/terminal_provider.dart';
+import 'theme/app_theme.dart';
+import 'theme/theme_tokens.dart';
+import 'ui/layout/ide_scaffold.dart';
+import 'ui/screens/ide_screen.dart';
+
+class CircuitIDEApp extends ConsumerStatefulWidget {
+  const CircuitIDEApp({super.key});
+
+  @override
+  ConsumerState<CircuitIDEApp> createState() => _CircuitIDEAppState();
+}
+
+class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
+  bool _themeRestored = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = ref.watch(themeProvider);
+    final theme = AppTheme.fromTokens(tokens);
+
+    // Restore theme from persisted settings once
+    ref.listen(settingsProvider, (prev, next) {
+      if (!_themeRestored && next.themeName.isNotEmpty) {
+        _themeRestored = true;
+        final savedTheme = ThemeTokens.fromName(next.themeName);
+        if (savedTheme.name != tokens.name) {
+          ref.read(themeProvider.notifier).setTheme(savedTheme);
+        }
+      }
+    });
+
+    return MaterialApp(
+      title: 'CircuitCode',
+      debugShowCheckedModeBanner: false,
+      theme: theme,
+      home: Scaffold(
+        backgroundColor: tokens.bgDark,
+        body: CallbackShortcuts(
+          bindings: {
+            const SingleActivator(LogicalKeyboardKey.keyP,
+                meta: true, shift: true): () =>
+                ref.read(commandPaletteProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () =>
+                ref.read(sidePanelVisibleProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): () =>
+                ref.read(terminalProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyL,
+                meta: true, shift: true): () =>
+                ref.read(chatPanelVisibleProvider.notifier).toggle(),
+          },
+          child: const Focus(
+            autofocus: true,
+            child: IDEScreen(),
+          ),
+        ),
+      ),
+    );
+  }
+}

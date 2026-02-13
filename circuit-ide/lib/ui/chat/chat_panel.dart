@@ -1,0 +1,531 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/constants/design_tokens.dart';
+import '../../core/utils/platform_utils.dart';
+import '../../state/chat_provider.dart';
+import '../../state/theme_provider.dart';
+import '../../state/connection_provider.dart';
+import '../../state/file_tree_provider.dart';
+import '../../state/settings_provider.dart';
+import '../../enums/connection_status.dart';
+import 'chat_message_widget.dart';
+import 'chat_input.dart';
+import 'streaming_indicator.dart';
+import 'confirmation_dialog.dart';
+import 'provider_switcher.dart';
+import 'session_list.dart';
+import 'token_tracker.dart';
+
+class ChatPanel extends ConsumerStatefulWidget {
+  const ChatPanel({super.key});
+
+  @override
+  ConsumerState<ChatPanel> createState() => _ChatPanelState();
+}
+
+class _ChatPanelState extends ConsumerState<ChatPanel> {
+  final _scrollController = ScrollController();
+  bool _showHistory = false;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _reconnect(WidgetRef ref) async {
+    ref
+        .read(connectionStatusProvider.notifier)
+        .set(ConnectionStatus.connecting);
+
+    final service = ref.read(agentServiceProvider);
+    final workingDir = ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
+    final provider = ref.read(settingsProvider).activeProvider;
+
+    try {
+      final success = await service.connectWithSavedCredentials(
+        workingDir: workingDir,
+        preferredProvider: provider,
+      );
+      if (!mounted) return;
+      ref.read(connectionStatusProvider.notifier).set(
+            success
+                ? ConnectionStatus.connected
+                : ConnectionStatus.error,
+          );
+    } catch (_) {
+      if (!mounted) return;
+      ref
+          .read(connectionStatusProvider.notifier)
+          .set(ConnectionStatus.error);
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = ref.watch(themeProvider);
+    final chatState = ref.watch(chatProvider);
+    final connectionStatus = ref.watch(connectionStatusProvider);
+
+    if (chatState.isStreaming || chatState.messages.isNotEmpty) {
+      _scrollToBottom();
+    }
+
+    return Container(
+      color: tokens.bgMain,
+      child: Column(
+        children: [
+          // Header
+          Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
+            decoration: BoxDecoration(
+              color: tokens.bgLight,
+              border: Border(
+                bottom: BorderSide(color: tokens.border.withValues(alpha: 0.6)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome, size: 13, color: tokens.accent.withValues(alpha: 0.7)),
+                const SizedBox(width: 6),
+                Text(
+                  'AI ASSISTANT',
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: connectionStatus == ConnectionStatus.connected
+                        ? const Color(0xFF4ADE80)
+                        : connectionStatus == ConnectionStatus.connecting
+                            ? tokens.warning
+                            : tokens.error,
+                    boxShadow: connectionStatus == ConnectionStatus.connected
+                        ? [BoxShadow(color: const Color(0xFF4ADE80).withValues(alpha: 0.4), blurRadius: 4)]
+                        : null,
+                  ),
+                ),
+                const Spacer(),
+                const ProviderSwitcher(),
+                if (chatState.messages.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: Spacing.md),
+                    child: Tooltip(
+                      message: 'Save session',
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () async {
+                            final name = await ref.read(chatProvider.notifier).saveSession();
+                            if (name != null && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Session saved'),
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          },
+                          child: Icon(
+                            Icons.bookmark_border,
+                            size: 14,
+                            color: tokens.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.only(left: Spacing.md),
+                  child: Tooltip(
+                    message: 'Session history',
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _showHistory = !_showHistory),
+                        child: Icon(
+                          Icons.history,
+                          size: 14,
+                          color: _showHistory
+                              ? tokens.accent
+                              : tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (chatState.messages.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: Spacing.md),
+                    child: Tooltip(
+                      message: 'Clear chat',
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => ref.read(chatProvider.notifier).clearHistory(),
+                          child: Icon(
+                            Icons.delete_outline,
+                            size: 14,
+                            color: tokens.textMuted,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Connection status
+          if (connectionStatus != ConnectionStatus.connected)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.xl,
+                vertical: Spacing.md,
+              ),
+              decoration: BoxDecoration(
+                color: connectionStatus == ConnectionStatus.error
+                    ? tokens.error.withValues(alpha: 0.08)
+                    : tokens.warning.withValues(alpha: 0.08),
+                border: Border(
+                  bottom: BorderSide(
+                    color: connectionStatus == ConnectionStatus.error
+                        ? tokens.error.withValues(alpha: 0.15)
+                        : tokens.warning.withValues(alpha: 0.15),
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    connectionStatus == ConnectionStatus.connecting
+                        ? Icons.sync
+                        : Icons.info_outline,
+                    size: 13,
+                    color: connectionStatus == ConnectionStatus.error
+                        ? tokens.error
+                        : tokens.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      switch (connectionStatus) {
+                        ConnectionStatus.disconnected =>
+                          'Not connected — configure credentials in Settings.',
+                        ConnectionStatus.connecting => 'Connecting...',
+                        ConnectionStatus.error => 'Connection error',
+                        _ => '',
+                      },
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xs,
+                      ),
+                    ),
+                  ),
+                  if (connectionStatus == ConnectionStatus.disconnected ||
+                      connectionStatus == ConnectionStatus.error)
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => _reconnect(ref),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: Spacing.md,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(Radii.sm),
+                            border: Border.all(
+                              color: tokens.accent.withValues(alpha: 0.25),
+                            ),
+                          ),
+                          child: Text(
+                            'Connect',
+                            style: TextStyle(
+                              color: tokens.accent,
+                              fontSize: FontSizes.xs,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+
+          // Error banner
+          if (chatState.error != null)
+            GestureDetector(
+              onTap: () => ref.read(chatProvider.notifier).clearError(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.xl,
+                  vertical: Spacing.md,
+                ),
+                decoration: BoxDecoration(
+                  color: tokens.error.withValues(alpha: 0.08),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: tokens.error.withValues(alpha: 0.15),
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 13,
+                      color: tokens.error,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        chatState.error!,
+                        style: TextStyle(
+                          color: tokens.error,
+                          fontSize: FontSizes.xs,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.close,
+                      size: 12,
+                      color: tokens.error.withValues(alpha: 0.6),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+          // Session history panel
+          if (_showHistory)
+            SessionList(
+              onClose: () => setState(() => _showHistory = false),
+              onSessionLoaded: () => setState(() => _showHistory = false),
+            ),
+
+          // Messages
+          Expanded(
+            child: chatState.messages.isEmpty
+                ? _EmptyChat()
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(vertical: Spacing.md),
+                    itemCount: chatState.messages.length +
+                        ((chatState.isProcessing || chatState.isStreaming) ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index < chatState.messages.length) {
+                        return _FadeInMessage(
+                          key: ValueKey(chatState.messages[index].id),
+                          child: ChatMessageWidget(
+                            message: chatState.messages[index],
+                          ),
+                        );
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: Spacing.xl,
+                          vertical: Spacing.sm,
+                        ),
+                        child: StreamingIndicator(
+                          content: chatState.streamingContent,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          if (chatState.pendingConfirmation != null)
+            ConfirmationDialog(request: chatState.pendingConfirmation!),
+
+          const TokenTracker(),
+          const ChatInput(),
+        ],
+      ),
+    );
+  }
+}
+
+class _FadeInMessage extends StatefulWidget {
+  final Widget child;
+
+  const _FadeInMessage({super.key, required this.child});
+
+  @override
+  State<_FadeInMessage> createState() => _FadeInMessageState();
+}
+
+class _FadeInMessageState extends State<_FadeInMessage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: AnimationDurations.smooth,
+      vsync: this,
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    );
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.05),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOut,
+    ));
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _EmptyChat extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.xl),
+              color: tokens.accent.withValues(alpha: 0.08),
+              border: Border.all(color: tokens.accent.withValues(alpha: 0.15)),
+            ),
+            child: Icon(
+              Icons.auto_awesome,
+              size: 22,
+              color: tokens.accent.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: Spacing.xl),
+          Text(
+            'Start a conversation',
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.base,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          Text(
+            'Ask about your code, request changes,\nor get help with debugging.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.sm,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: Spacing.xxl),
+          Wrap(
+            spacing: Spacing.md,
+            runSpacing: Spacing.md,
+            alignment: WrapAlignment.center,
+            children: [
+              _QuickChip(label: 'Explain this codebase', tokens: tokens, ref: ref),
+              _QuickChip(label: 'Find bugs in open file', tokens: tokens, ref: ref),
+              _QuickChip(label: 'Write tests', tokens: tokens, ref: ref),
+              _QuickChip(label: 'Review recent git changes', tokens: tokens, ref: ref),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickChip extends StatelessWidget {
+  final String label;
+  final dynamic tokens;
+  final WidgetRef ref;
+
+  const _QuickChip({
+    required this.label,
+    required this.tokens,
+    required this.ref,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => ref.read(chatProvider.notifier).sendMessage(label),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.lg,
+            vertical: Spacing.sm + 2,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.pill),
+            border: Border.all(
+              color: tokens.accent.withValues(alpha: 0.3),
+            ),
+            color: tokens.accent.withValues(alpha: 0.05),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: tokens.accent,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
