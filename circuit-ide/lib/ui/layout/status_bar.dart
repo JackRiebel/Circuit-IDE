@@ -7,7 +7,13 @@ import '../../state/editor_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/git_provider.dart';
+import '../../state/model_routing_provider.dart';
 import '../../enums/connection_status.dart';
+import '../../agent/config/models_config.dart';
+import '../../models/routing_models.dart';
+import '../editor/prediction_status_widget.dart';
+import '../agents/background_agent_status.dart';
+import '../ghost/ghost_status_widget.dart';
 
 class StatusBar extends ConsumerWidget {
   const StatusBar({super.key});
@@ -55,7 +61,52 @@ class StatusBar extends ConsumerWidget {
             const SizedBox(width: Spacing.xl),
           ],
 
+          const PredictionStatusWidget(),
+
+          const SizedBox(width: Spacing.lg),
+          const BackgroundAgentStatus(),
+          const SizedBox(width: Spacing.lg),
+          const GhostStatusWidget(),
+
           const Spacer(),
+
+          // Model routing indicator
+          Consumer(
+            builder: (context, ref, _) {
+              final routing = ref.watch(modelRoutingProvider);
+              if (!routing.enabled) return const SizedBox.shrink();
+              final service = ref.watch(agentServiceProvider);
+              final routedModel = service.lastRoutedModel;
+              if (routedModel == null) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.alt_route, size: 12, color: tokens.textMuted.withValues(alpha: 0.6)),
+                    const SizedBox(width: 3),
+                    Text('routing', style: textStyle.copyWith(color: tokens.textMuted.withValues(alpha: 0.6))),
+                    _Divider(color: tokens.statusBarText),
+                  ],
+                );
+              }
+              final tier = ModelsConfig.getTierForModel(routedModel);
+              final tierColor = switch (tier) {
+                ModelTier.fast => tokens.success,
+                ModelTier.balanced => tokens.warning,
+                ModelTier.powerful => tokens.accent,
+                null => tokens.textMuted,
+              };
+              final shortName = routedModel.split('-').last.split('.').last;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.alt_route, size: 12, color: tierColor),
+                  const SizedBox(width: 3),
+                  Text(shortName, style: textStyle.copyWith(color: tierColor)),
+                  _Divider(color: tokens.statusBarText),
+                ],
+              );
+            },
+          ),
 
           if (activeTab != null) ...[
             Text(

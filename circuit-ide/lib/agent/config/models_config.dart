@@ -1,3 +1,5 @@
+import '../../enums/ai_provider.dart';
+import '../../models/routing_models.dart';
 import '../providers/provider_interface.dart';
 
 class ModelsConfig {
@@ -56,9 +58,41 @@ class ModelsConfig {
     ),
   ];
 
+  /// Tier mappings for each provider.
+  static const _ciscoTierMap = {
+    ModelTier.fast: 'gpt-4.1-nano',
+    ModelTier.balanced: 'gpt-4.1-mini',
+    ModelTier.powerful: 'gpt-4.1',
+  };
+
+  static const _anthropicTierMap = {
+    ModelTier.fast: 'claude-3-5-haiku-20241022',
+    ModelTier.balanced: 'claude-sonnet-4-20250514',
+    ModelTier.powerful: 'claude-opus-4-20250514',
+  };
+
   static ModelInfo? getModel(String id) {
     for (final m in [...ciscoModels, ...anthropicModels]) {
       if (m.id == id) return m;
+    }
+    return null;
+  }
+
+  /// Get the model ID for a given provider and tier.
+  static String getModelForTier(AIProviderType provider, ModelTier tier) {
+    return switch (provider) {
+      AIProviderType.cisco => _ciscoTierMap[tier]!,
+      AIProviderType.anthropic => _anthropicTierMap[tier]!,
+    };
+  }
+
+  /// Get the tier for a given model ID.
+  static ModelTier? getTierForModel(String modelId) {
+    for (final entry in _ciscoTierMap.entries) {
+      if (entry.value == modelId) return entry.key;
+    }
+    for (final entry in _anthropicTierMap.entries) {
+      if (entry.value == modelId) return entry.key;
     }
     return null;
   }

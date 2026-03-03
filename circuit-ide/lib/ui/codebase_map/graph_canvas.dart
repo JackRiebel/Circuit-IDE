@@ -212,29 +212,37 @@ class _GraphCanvasState extends ConsumerState<GraphCanvas> {
 
   double _computeCanvasWidth(CodebaseGraphState graphState) {
     if (graphState.nodes.isEmpty) return 1200;
-    double maxX = 0;
+    double minX = double.infinity, maxX = double.negativeInfinity;
     for (final node in graphState.nodes) {
-      maxX = max(maxX, node.position.dx.abs());
+      minX = min(minX, node.position.dx);
+      maxX = max(maxX, node.position.dx);
     }
-    return max(1200, maxX * 2 + 400);
+    return max(1200, (maxX - minX) + 400);
   }
 
   double _computeCanvasHeight(CodebaseGraphState graphState) {
     if (graphState.nodes.isEmpty) return 800;
-    double maxY = 0;
+    double minY = double.infinity, maxY = double.negativeInfinity;
     for (final node in graphState.nodes) {
-      maxY = max(maxY, node.position.dy.abs());
+      minY = min(minY, node.position.dy);
+      maxY = max(maxY, node.position.dy);
     }
-    return max(800, maxY * 2 + 400);
+    return max(800, (maxY - minY) + 400);
   }
 
   void _handleTap(TapDownDetails details, CodebaseGraphState graphState) {
     // Transform screen coordinates to graph-space using inverse matrix
-    final inverseMatrix = Matrix4.inverted(_transformController.value);
-    final scenePoint = MatrixUtils.transformPoint(
-      inverseMatrix,
-      details.localPosition,
-    );
+    Offset scenePoint;
+    try {
+      final inverseMatrix = Matrix4.inverted(_transformController.value);
+      scenePoint = MatrixUtils.transformPoint(
+        inverseMatrix,
+        details.localPosition,
+      );
+    } catch (_) {
+      // Matrix is singular — fall back to local position
+      scenePoint = details.localPosition;
+    }
 
     // Find nearest node within hit radius
     const hitRadius = 20.0;

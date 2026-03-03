@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../state/editor_provider.dart';
+import '../../state/test_generation_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/icon_theme.dart';
+import '../testing/test_preview_dialog.dart';
 
 class EditorTabBar extends ConsumerWidget {
   const EditorTabBar({super.key});
@@ -96,6 +98,9 @@ class _EditorTabState extends ConsumerState<_EditorTab> {
           onExit: (_) => setState(() => _isHovered = false),
           child: GestureDetector(
             onTap: widget.onTap,
+            onSecondaryTapUp: (details) {
+              _showContextMenu(context, details.globalPosition);
+            },
             child: Container(
           constraints: const BoxConstraints(maxWidth: 200),
           padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
@@ -124,11 +129,23 @@ class _EditorTabState extends ConsumerState<_EditorTab> {
               Icon(
                 widget.filePath == 'circuit://settings'
                     ? Icons.tune_outlined
-                    : FileIconTheme.getIcon(widget.fileName),
+                    : widget.filePath.startsWith('circuit://diff/')
+                        ? Icons.compare_outlined
+                        : widget.filePath.startsWith('circuit://spec/')
+                            ? Icons.description_outlined
+                            : widget.filePath.startsWith('circuit://runtime/')
+                                ? Icons.timeline_outlined
+                                : FileIconTheme.getIcon(widget.fileName),
                 size: 14,
                 color: widget.filePath == 'circuit://settings'
                     ? tokens.textSecondary
-                    : FileIconTheme.getColor(widget.fileName),
+                    : widget.filePath.startsWith('circuit://diff/')
+                        ? tokens.warning
+                        : widget.filePath.startsWith('circuit://spec/')
+                            ? tokens.accent
+                            : widget.filePath.startsWith('circuit://runtime/')
+                                ? tokens.success
+                                : FileIconTheme.getColor(widget.fileName),
               ),
               const SizedBox(width: 6),
               Flexible(
@@ -178,5 +195,70 @@ class _EditorTabState extends ConsumerState<_EditorTab> {
       ),
       ),
     );
+  }
+
+  void _showContextMenu(BuildContext context, Offset position) {
+    final tokens = ref.read(themeProvider);
+    final isSourceFile = !widget.filePath.startsWith('circuit://');
+
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        position.dx + 1,
+        position.dy + 1,
+      ),
+      color: tokens.bgMain,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.md),
+        side: BorderSide(color: tokens.border),
+      ),
+      items: [
+        PopupMenuItem<String>(
+          value: 'close',
+          child: Text(
+            'Close Tab',
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontSize: FontSizes.sm,
+            ),
+          ),
+        ),
+        if (isSourceFile)
+          PopupMenuItem<String>(
+            value: 'generate_tests',
+            child: Row(
+              children: [
+                Icon(Icons.bug_report_outlined, size: 14, color: tokens.accent),
+                const SizedBox(width: Spacing.md),
+                Text(
+                  'Generate Tests',
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ).then((value) async {
+      if (value == 'close') {
+        widget.onClose();
+      } else if (value == 'generate_tests' && context.mounted) {
+        await ref
+            .read(testGenerationProvider.notifier)
+            .generate(widget.filePath);
+
+        final result = ref.read(testGenerationProvider).result;
+        if (result != null && context.mounted) {
+          showDialog(
+            context: context,
+            builder: (_) => const TestPreviewDialog(),
+          );
+        }
+      }
+    });
   }
 }

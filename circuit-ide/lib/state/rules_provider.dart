@@ -52,11 +52,15 @@ class RulesNotifier extends Notifier<RulesState> {
     }
   }
 
-  Future<void> saveRule(String name, String content) async {
+  Future<void> saveRule(
+    String name,
+    String content, {
+    List<String> patterns = const [],
+  }) async {
     final workingDir = ref.read(fileTreeProvider).rootPath;
     if (workingDir == null) return;
 
-    await RulesLoader.saveRule(workingDir, name, content);
+    await RulesLoader.saveRule(workingDir, name, content, patterns: patterns);
     await loadRules();
   }
 

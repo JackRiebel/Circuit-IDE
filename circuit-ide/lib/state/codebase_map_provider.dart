@@ -348,6 +348,12 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
 
     try {
       final service = ref.read(agentServiceProvider);
+      if (!service.isConnected) {
+        state = state.copyWith(
+          aiExplanation: 'AI is not connected. Connect to an AI provider first.',
+        );
+        return;
+      }
       final response = await service.sendOneShot(
         prompt,
         systemPrompt:
@@ -364,7 +370,7 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
         state = state.copyWith(nodes: updatedNodes);
       } else {
         state = state.copyWith(
-          aiExplanation: 'AI is not connected. Connect to an AI provider first.',
+          aiExplanation: 'AI returned no response.',
         );
       }
     } catch (e) {

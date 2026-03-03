@@ -8,11 +8,13 @@ class ProjectRule {
   final String name;
   final String content;
   final String filePath;
+  final List<String> patterns;
 
   const ProjectRule({
     required this.name,
     required this.content,
     required this.filePath,
+    this.patterns = const [],
   });
 }
 
@@ -31,12 +33,14 @@ class RulesLoader {
         if (!name.endsWith('.md')) continue;
 
         try {
-          final content = await entity.readAsString();
-          if (content.trim().isNotEmpty) {
+          final rawContent = await entity.readAsString();
+          if (rawContent.trim().isNotEmpty) {
+            final parsed = _parseFrontmatter(rawContent.trim());
             rules.add(ProjectRule(
               name: name.replaceAll('.md', ''),
-              content: content.trim(),
+              content: parsed.content,
               filePath: entity.path,
+              patterns: parsed.patterns,
             ));
           }
         } catch (e) {
@@ -77,18 +81,31 @@ class RulesLoader {
     }
   }
 
-  /// Save a rule file.
+  /// Save a rule file, including optional patterns as YAML frontmatter.
   static Future<void> saveRule(
     String workingDir,
     String name,
-    String content,
-  ) async {
+    String content, {
+    List<String> patterns = const [],
+  }) async {
     final rulesDir = Directory(p.join(workingDir, '.circuit', 'rules'));
     if (!await rulesDir.exists()) {
       await rulesDir.create(recursive: true);
     }
+
+    final buffer = StringBuffer();
+    if (patterns.isNotEmpty) {
+      buffer.writeln('---');
+      buffer.writeln('patterns:');
+      for (final pattern in patterns) {
+        buffer.writeln('  - "$pattern"');
+      }
+      buffer.writeln('---');
+    }
+    buffer.write(content);
+
     final file = File(p.join(rulesDir.path, '$name.md'));
-    await file.writeAsString(content);
+    await file.writeAsString(buffer.toString());
   }
 
   /// Delete a rule file.
@@ -98,4 +115,48 @@ class RulesLoader {
       await file.delete();
     }
   }
+
+  /// Parse YAML frontmatter from a rule file.
+  /// Returns the content body and any patterns defined in the frontmatter.
+  static _ParsedRule _parseFrontmatter(String raw) {
+    if (!raw.startsWith('---')) {
+      return _ParsedRule(content: raw, patterns: []);
+    }
+
+    final endIndex = raw.indexOf('---', 3);
+    if (endIndex == -1) {
+      return _ParsedRule(content: raw, patterns: []);
+    }
+
+    final frontmatter = raw.substring(3, endIndex).trim();
+    final body = raw.substring(endIndex + 3).trim();
+
+    // Simple YAML parsing for patterns list
+    final patterns = <String>[];
+    final patternRegex = RegExp(r"""^\s*-\s*["']?(.+?)["']?\s*$""", multiLine: true);
+    bool inPatterns = false;
+
+    for (final line in frontmatter.split('\n')) {
+      if (line.trim().startsWith('patterns:')) {
+        inPatterns = true;
+        continue;
+      }
+      if (inPatterns) {
+        final match = patternRegex.firstMatch(line);
+        if (match != null) {
+          patterns.add(match.group(1)!);
+        } else if (line.trim().isNotEmpty && !line.startsWith(' ') && !line.startsWith('\t')) {
+          inPatterns = false;
+        }
+      }
+    }
+
+    return _ParsedRule(content: body, patterns: patterns);
+  }
+}
+
+class _ParsedRule {
+  final String content;
+  final List<String> patterns;
+  const _ParsedRule({required this.content, required this.patterns});
 }

@@ -7,8 +7,11 @@ import '../../state/theme_provider.dart';
 import '../../theme/syntax_theme.dart';
 import '../codebase_map/graph_canvas.dart';
 import '../notebook/notebook_editor.dart';
+import '../spec/spec_editor_tab.dart';
 import '../welcome/welcome_screen.dart';
 import '../settings/settings_panel.dart';
+import '../runtime/runtime_tab.dart';
+import 'diff_editor_widget.dart';
 import 'editor_tab_bar.dart';
 import 'code_editor_widget.dart';
 import 'breadcrumb_bar.dart';
@@ -109,7 +112,10 @@ class _EditorAreaState extends ConsumerState<EditorArea> {
     final isSettingsTab = activeTab?.filePath == 'circuit://settings';
     final isCodebaseMapTab = activeTab?.filePath == 'circuit://codebase-map';
     final isNotebookTab = activeTab?.filePath.startsWith('circuit://notebook/') ?? false;
-    final isSpecialTab = isSettingsTab || isCodebaseMapTab || isNotebookTab;
+    final isDiffTab = activeTab?.filePath.startsWith('circuit://diff/') ?? false;
+    final isSpecTab = activeTab?.filePath.startsWith('circuit://spec/') ?? false;
+    final isRuntimeTab = activeTab?.filePath.startsWith('circuit://runtime/') ?? false;
+    final isSpecialTab = isSettingsTab || isCodebaseMapTab || isNotebookTab || isDiffTab || isSpecTab || isRuntimeTab;
 
     // Get syntax theme for minimap coloring
     final syntaxTheme = SyntaxTheme.fromThemeTokens(tokens);
@@ -137,7 +143,22 @@ class _EditorAreaState extends ConsumerState<EditorArea> {
                                 notebookId: activeTab.filePath
                                     .replaceFirst('circuit://notebook/', ''),
                               )
-                            : Row(
+                            : isDiffTab
+                                ? DiffEditorWidget(
+                                    diffId: activeTab.filePath
+                                        .replaceFirst('circuit://diff/', ''),
+                                  )
+                                : isSpecTab
+                                    ? SpecEditorTab(
+                                        specId: activeTab.filePath
+                                            .replaceFirst('circuit://spec/', ''),
+                                      )
+                                    : isRuntimeTab
+                                        ? RuntimeTab(
+                                            traceId: activeTab.filePath
+                                                .replaceFirst('circuit://runtime/', ''),
+                                          )
+                                        : Row(
                                 children: [
                                   Expanded(
                                     child: CodeEditorWidget(

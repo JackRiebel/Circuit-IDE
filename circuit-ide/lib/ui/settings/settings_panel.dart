@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agent/config/models_config.dart';
+import '../../agent/providers/provider_interface.dart';
 import '../../core/constants/design_tokens.dart';
+import '../../enums/ai_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../state/vericoding_provider.dart';
 import '../common/toggle_switch.dart';
 import 'credential_card.dart';
+import 'routing_config_widget.dart';
 import 'theme_picker.dart';
 
 class SettingsPanel extends ConsumerWidget {
@@ -17,6 +22,7 @@ class SettingsPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final settings = ref.watch(settingsProvider);
+    final vstate = ref.watch(vericodingProvider);
 
     return ListView(
       padding: const EdgeInsets.all(Spacing.lg),
@@ -31,6 +37,39 @@ class SettingsPanel extends ConsumerWidget {
         // Credentials
         const _SectionHeader(title: 'AI Credentials'),
         const CredentialCard(),
+        const SizedBox(height: Spacing.xxl),
+
+        // Model Selection
+        const _SectionHeader(title: 'Model'),
+        _SettingsCard(
+          child: Column(
+            children: [
+              _ModelSelector(
+                label: 'Cisco Model',
+                value: settings.ciscoModel,
+                models: ModelsConfig.ciscoModels,
+                onChanged: (model) {
+                  ref.read(settingsProvider.notifier).setCiscoModel(model);
+                  if (settings.activeProvider == AIProviderType.cisco) {
+                    ref.read(agentServiceProvider).setModel(model);
+                  }
+                },
+              ),
+              Divider(color: tokens.border, height: 1),
+              _ModelSelector(
+                label: 'Anthropic Model',
+                value: settings.anthropicModel,
+                models: ModelsConfig.anthropicModels,
+                onChanged: (model) {
+                  ref.read(settingsProvider.notifier).setAnthropicModel(model);
+                  if (settings.activeProvider == AIProviderType.anthropic) {
+                    ref.read(agentServiceProvider).setModel(model);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: Spacing.xxl),
 
         // Editor Settings
@@ -71,6 +110,59 @@ class SettingsPanel extends ConsumerWidget {
         ),
         const SizedBox(height: Spacing.xxl),
 
+        // Model Routing
+        const _SectionHeader(title: 'Model Routing'),
+        const _SettingsCard(
+          child: RoutingConfigWidget(),
+        ),
+        const SizedBox(height: Spacing.xxl),
+
+        // Vericoding
+        const _SectionHeader(title: 'Vericoding'),
+        _SettingsCard(
+          child: Column(
+            children: [
+              _SettingToggleWithDescription(
+                label: 'Enabled',
+                description:
+                    'Automatically verify code after AI edits by running '
+                    'configurable checks (dart analyze, tests, etc).',
+                value: vstate.config.enabled,
+                onChanged: (v) {
+                  ref.read(vericodingProvider.notifier).updateConfig(
+                        vstate.config.copyWith(enabled: v),
+                      );
+                },
+              ),
+              Divider(color: tokens.border, height: 1),
+              _SettingToggle(
+                label: 'Auto-run after AI edits',
+                value: vstate.config.autoRunAfterEdit,
+                onChanged: (_) {
+                  ref.read(vericodingProvider.notifier).updateConfig(
+                        vstate.config.copyWith(
+                            autoRunAfterEdit: !vstate.config.autoRunAfterEdit),
+                      );
+                },
+              ),
+              Divider(color: tokens.border, height: 1),
+              _SettingRow(
+                label: 'Max fix attempts',
+                child: _FontSizeStepper(
+                  value: vstate.config.maxRetries.toDouble(),
+                  onChanged: (v) {
+                    ref.read(vericodingProvider.notifier).updateConfig(
+                          vstate.config
+                              .copyWith(maxRetries: v.toInt().clamp(1, 10)),
+                        );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: Spacing.xxl),
+
         // Agent Settings
         const _SectionHeader(title: 'Agent'),
         _SettingsCard(
@@ -87,10 +179,15 @@ class SettingsPanel extends ConsumerWidget {
                 },
               ),
               Divider(color: tokens.border, height: 1),
-              _SettingToggle(
-                label: 'Stream responses',
-                value: settings.streamResponses,
-                onChanged: (_) {},
+              _SettingToggleWithDescription(
+                label: 'Thinking Mode',
+                description:
+                    'Enable extended thinking for more thorough AI reasoning. '
+                    'May increase response time.',
+                value: settings.thinkingMode,
+                onChanged: (v) {
+                  ref.read(settingsProvider.notifier).setThinkingMode(v);
+                },
               ),
             ],
           ),
@@ -263,6 +360,77 @@ class _SettingToggleWithDescription extends ConsumerWidget {
           ToggleSwitch(
             value: value,
             onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModelSelector extends ConsumerWidget {
+  final String label;
+  final String value;
+  final List<ModelInfo> models;
+  final ValueChanged<String> onChanged;
+
+  const _ModelSelector({
+    required this.label,
+    required this.value,
+    required this.models,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Spacing.md),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(Radii.md),
+              border: Border.all(color: tokens.border),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: models.any((m) => m.id == value) ? value : models.first.id,
+                dropdownColor: tokens.bgLight,
+                style: TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: FontSizes.xs,
+                  fontFamily: 'JetBrains Mono',
+                ),
+                icon: Icon(Icons.expand_more, size: 16, color: tokens.textMuted),
+                isDense: true,
+                items: models.map((model) {
+                  return DropdownMenuItem<String>(
+                    value: model.id,
+                    child: Text(
+                      model.displayName,
+                      style: TextStyle(
+                        color: tokens.textPrimary,
+                        fontSize: FontSizes.xs,
+                      ),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (v) {
+                  if (v != null) onChanged(v);
+                },
+              ),
+            ),
           ),
         ],
       ),

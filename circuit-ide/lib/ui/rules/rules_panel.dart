@@ -6,6 +6,7 @@ import '../../core/constants/design_tokens.dart';
 import '../../state/rules_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/theme_provider.dart';
+import 'pattern_editor_widget.dart';
 
 class RulesPanel extends ConsumerStatefulWidget {
   const RulesPanel({super.key});
@@ -259,13 +260,45 @@ class _RuleItemState extends ConsumerState<_RuleItem> {
                     ),
                     const SizedBox(width: Spacing.md),
                     Expanded(
-                      child: Text(
-                        widget.rule.name,
-                        style: TextStyle(
-                          color: tokens.textPrimary,
-                          fontSize: FontSizes.sm,
-                          fontWeight: FontWeight.w500,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.rule.name,
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: FontSizes.sm,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (widget.rule.patterns.isNotEmpty) ...[
+                            const SizedBox(height: 3),
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 2,
+                              children: widget.rule.patterns.map((p) =>
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 5,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(3),
+                                    color: tokens.accent.withValues(alpha: 0.1),
+                                  ),
+                                  child: Text(
+                                    p,
+                                    style: TextStyle(
+                                      color: tokens.accent,
+                                      fontSize: FontSizes.xxs - 1,
+                                      fontFamily: 'JetBrains Mono',
+                                    ),
+                                  ),
+                                ),
+                              ).toList(),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                     if (_isHovered) ...[
@@ -414,6 +447,7 @@ class _RuleEditorDialog extends ConsumerStatefulWidget {
 class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _contentController;
+  List<String> _patterns = [];
 
   @override
   void initState() {
@@ -421,6 +455,7 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
     _nameController = TextEditingController(text: widget.existing?.name ?? '');
     _contentController =
         TextEditingController(text: widget.existing?.content ?? '');
+    _patterns = List<String>.from(widget.existing?.patterns ?? []);
   }
 
   @override
@@ -466,6 +501,11 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
               style: TextStyle(
                   color: tokens.textPrimary, fontSize: FontSizes.sm),
               decoration: _inputDecoration(tokens, 'e.g., coding-style'),
+            ),
+            const SizedBox(height: Spacing.xl),
+            PatternEditorWidget(
+              patterns: _patterns,
+              onChanged: (p) => setState(() => _patterns = p),
             ),
             const SizedBox(height: Spacing.xl),
             Text(
@@ -550,7 +590,11 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
     // Sanitize name for filename
     final safeName =
         name.replaceAll(RegExp(r'[^\w\-]'), '-').toLowerCase();
-    ref.read(rulesProvider.notifier).saveRule(safeName, content);
+    ref.read(rulesProvider.notifier).saveRule(
+          safeName,
+          content,
+          patterns: _patterns,
+        );
     Navigator.of(context).pop();
   }
 }

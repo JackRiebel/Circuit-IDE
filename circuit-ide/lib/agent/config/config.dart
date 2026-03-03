@@ -7,7 +7,11 @@ import 'package:path/path.dart' as p;
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../core/utils/logger.dart';
+import '../context/flow_analyzer.dart';
+import '../context/flow_context_builder.dart';
+import '../context/memories_loader.dart';
 import '../context/rules_loader.dart';
+import '../context/smart_rules_matcher.dart';
 
 class AgentConfig {
   String? ciscoClientId;
@@ -143,8 +147,9 @@ class AgentConfig {
 
   bool get hasAnthropicCredentials => anthropicApiKey != null;
 
-  /// Load CIRCUIT.md system prompt from working dir or global config
-  Future<String> loadSystemPrompt() async {
+  /// Load CIRCUIT.md system prompt from working dir or global config.
+  /// [activeFilePath] is used to filter smart rules by pattern.
+  Future<String> loadSystemPrompt({String? activeFilePath}) async {
     final prompts = <String>[];
 
     // Global CIRCUIT.md
@@ -165,12 +170,40 @@ class AgentConfig {
       prompts.add(_defaultSystemPrompt);
     }
 
-    // Load project rules from .circuit/rules/
+    // Load project rules from .circuit/rules/ (filtered by active file patterns)
     if (workingDir != null) {
       final rules = await RulesLoader.loadRules(workingDir!);
-      final rulesSection = RulesLoader.formatRulesPrompt(rules);
+      final activeRules = activeFilePath != null
+          ? SmartRulesMatcher.filterRules(rules, activeFilePath)
+          : rules;
+      final rulesSection = RulesLoader.formatRulesPrompt(activeRules);
       if (rulesSection.isNotEmpty) {
         prompts.add(rulesSection);
+      }
+    }
+
+    // Load project + global memories
+    if (workingDir != null) {
+      final projectMemories = await MemoriesLoader.loadMemories(workingDir!);
+      final globalMemories = await MemoriesLoader.loadGlobalMemories();
+      final allMemories = [...globalMemories, ...projectMemories];
+      final memoriesSection = MemoriesLoader.formatMemoriesPrompt(allMemories);
+      if (memoriesSection.isNotEmpty) {
+        prompts.add(memoriesSection);
+      }
+    }
+
+    // Inject flow-aware context (connected file signatures)
+    if (activeFilePath != null && workingDir != null) {
+      try {
+        final analyzer = FlowAnalyzer(rootPath: workingDir!);
+        final flowCtx = await analyzer.analyze(activeFilePath);
+        final flowSection = FlowContextBuilder.format(flowCtx);
+        if (flowSection.isNotEmpty) {
+          prompts.add(flowSection);
+        }
+      } catch (_) {
+        // Flow analysis is best-effort — don't block on failure
       }
     }
 

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'agent_trigger.dart';
+
 class AgentConfigModel {
   final String id;
   final String name;
@@ -9,6 +11,7 @@ class AgentConfigModel {
   final String model;
   final bool autoApprove;
   final DateTime createdAt;
+  final List<AgentTrigger> triggers;
 
   const AgentConfigModel({
     required this.id,
@@ -19,6 +22,7 @@ class AgentConfigModel {
     this.model = 'gpt-4.1',
     this.autoApprove = false,
     required this.createdAt,
+    this.triggers = const [],
   });
 
   AgentConfigModel copyWith({
@@ -30,6 +34,7 @@ class AgentConfigModel {
     String? model,
     bool? autoApprove,
     DateTime? createdAt,
+    List<AgentTrigger>? triggers,
   }) {
     return AgentConfigModel(
       id: id ?? this.id,
@@ -40,6 +45,7 @@ class AgentConfigModel {
       model: model ?? this.model,
       autoApprove: autoApprove ?? this.autoApprove,
       createdAt: createdAt ?? this.createdAt,
+      triggers: triggers ?? this.triggers,
     );
   }
 
@@ -52,6 +58,7 @@ class AgentConfigModel {
         'model': model,
         'auto_approve': autoApprove,
         'created_at': createdAt.toIso8601String(),
+        'triggers': triggers.map((t) => t.toJson()).toList(),
       };
 
   factory AgentConfigModel.fromJson(Map<String, dynamic> json) {
@@ -67,7 +74,16 @@ class AgentConfigModel {
       model: json['model'] as String? ?? 'gpt-4o',
       autoApprove: json['auto_approve'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
+      triggers: (json['triggers'] as List<dynamic>?)
+              ?.map((t) => AgentTrigger.fromJson(t as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
+  }
+
+  /// Check if this agent has any enabled triggers of the given type.
+  bool hasEnabledTrigger(AgentTriggerType type) {
+    return triggers.any((t) => t.type == type && t.enabled);
   }
 
   String toJsonString() => const JsonEncoder.withIndent('  ').convert(toJson());

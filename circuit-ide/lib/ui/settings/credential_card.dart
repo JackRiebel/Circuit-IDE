@@ -23,6 +23,7 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
   final _clientSecretController = TextEditingController();
   final _appKeyController = TextEditingController();
   final _anthropicKeyController = TextEditingController();
+  final _githubPatController = TextEditingController();
   bool _obscure = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -50,6 +51,9 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       if (config.anthropicApiKey != null) {
         _anthropicKeyController.text = config.anthropicApiKey!;
       }
+      if (config.githubPat != null) {
+        _githubPatController.text = config.githubPat!;
+      }
     });
   }
 
@@ -59,6 +63,7 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
     _clientSecretController.dispose();
     _appKeyController.dispose();
     _anthropicKeyController.dispose();
+    _githubPatController.dispose();
     super.dispose();
   }
 
@@ -122,6 +127,39 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
             controller: _anthropicKeyController,
             label: 'API Key',
             obscure: _obscure,
+          ),
+          const SizedBox(height: Spacing.xl),
+
+          // Divider
+          Container(
+            height: 1,
+            color: tokens.border.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: Spacing.xl),
+
+          // GitHub section
+          const _SectionLabel(
+            label: 'GitHub',
+            color: Color(0xFF8B949E),
+            icon: Icons.code_outlined,
+          ),
+          const SizedBox(height: Spacing.lg),
+          _CredentialField(
+            controller: _githubPatController,
+            label: 'Personal Access Token',
+            obscure: _obscure,
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: Spacing.xs),
+            child: Text(
+              'Used for GitHub tools (issues, PRs, repos). '
+              'Generate at github.com/settings/tokens',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                height: 1.4,
+              ),
+            ),
           ),
           const SizedBox(height: Spacing.xl),
 
@@ -283,6 +321,9 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
         anthropicApiKey: _anthropicKeyController.text.isEmpty
             ? null
             : _anthropicKeyController.text,
+        githubPat: _githubPatController.text.isEmpty
+            ? null
+            : _githubPatController.text,
       );
 
       await config.save();

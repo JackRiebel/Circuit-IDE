@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../agent/tools/tool_registry.dart';
 import '../../models/agent_config_model.dart';
+import '../../models/agent_trigger.dart';
 import '../../state/agent_manager_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/theme_tokens.dart';
@@ -25,6 +26,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
   late String _model;
   late bool _autoApprove;
   late Set<String> _selectedTools;
+  late List<AgentTrigger> _triggers;
 
   static const _models = [
     'gpt-4.1',
@@ -44,6 +46,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
     _model = e?.model ?? 'gpt-4o';
     _autoApprove = e?.autoApprove ?? false;
     _selectedTools = Set.from(e?.allowedTools ?? {});
+    _triggers = List.from(e?.triggers ?? []);
   }
 
   @override
@@ -67,6 +70,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
       model: _model,
       autoApprove: _autoApprove,
       createdAt: widget.existing?.createdAt ?? DateTime.now(),
+      triggers: _triggers,
     );
 
     ref.read(agentManagerProvider.notifier).saveConfig(config);
@@ -85,7 +89,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
         side: BorderSide(color: tokens.border.withValues(alpha: 0.5)),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 600),
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 700),
         child: Padding(
           padding: const EdgeInsets.all(Spacing.xxl),
           child: Column(
@@ -238,6 +242,101 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: Spacing.xl),
+
+                      // Triggers section
+                      _buildLabel(tokens, 'Background Triggers'),
+                      const SizedBox(height: Spacing.sm),
+                      ..._triggers.asMap().entries.map((entry) {
+                        final idx = entry.key;
+                        final trigger = entry.value;
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: Spacing.sm),
+                          padding: const EdgeInsets.all(Spacing.md),
+                          decoration: BoxDecoration(
+                            color: tokens.inputBg,
+                            borderRadius: BorderRadius.circular(Radii.md),
+                            border: Border.all(color: tokens.inputBorder),
+                          ),
+                          child: Row(
+                            children: [
+                              Switch(
+                                value: trigger.enabled,
+                                onChanged: (v) {
+                                  setState(() {
+                                    _triggers[idx] = trigger.copyWith(enabled: v);
+                                  });
+                                },
+                                activeTrackColor: tokens.accent,
+                              ),
+                              const SizedBox(width: Spacing.sm),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      trigger.type.displayName,
+                                      style: TextStyle(
+                                        color: tokens.textPrimary,
+                                        fontSize: FontSizes.xs,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    if (trigger.filePatterns.isNotEmpty)
+                                      Text(
+                                        trigger.filePatterns.join(', '),
+                                        style: TextStyle(
+                                          color: tokens.textMuted,
+                                          fontSize: FontSizes.xxs,
+                                          fontFamily: 'JetBrains Mono',
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() => _triggers.removeAt(idx));
+                                },
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: Icon(Icons.close, size: 14, color: tokens.error),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      GestureDetector(
+                        onTap: () => _showAddTriggerDialog(context, tokens),
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Container(
+                            padding: const EdgeInsets.all(Spacing.md),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(Radii.md),
+                              border: Border.all(
+                                color: tokens.accent.withValues(alpha: 0.3),
+                                style: BorderStyle.solid,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add, size: 14, color: tokens.accent),
+                                const SizedBox(width: Spacing.sm),
+                                Text(
+                                  'Add Trigger',
+                                  style: TextStyle(
+                                    color: tokens.accent,
+                                    fontSize: FontSizes.xs,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -271,6 +370,123 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddTriggerDialog(BuildContext context, ThemeTokens tokens) {
+    AgentTriggerType selectedType = AgentTriggerType.onFileSave;
+    final patternController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: tokens.bgMain,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(Radii.lg),
+            side: BorderSide(color: tokens.border),
+          ),
+          title: Text(
+            'Add Trigger',
+            style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+                decoration: BoxDecoration(
+                  color: tokens.inputBg,
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  border: Border.all(color: tokens.inputBorder),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<AgentTriggerType>(
+                    value: selectedType,
+                    isExpanded: true,
+                    dropdownColor: tokens.bgLighter,
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontSize: FontSizes.sm,
+                    ),
+                    items: AgentTriggerType.values.map((t) => DropdownMenuItem(
+                      value: t,
+                      child: Text(t.displayName),
+                    )).toList(),
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => selectedType = v);
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: Spacing.lg),
+              Text(
+                selectedType.description,
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                ),
+              ),
+              if (selectedType == AgentTriggerType.onFileSave) ...[
+                const SizedBox(height: Spacing.lg),
+                TextField(
+                  controller: patternController,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                    fontFamily: 'JetBrains Mono',
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '**/*.dart, **/*.py (empty = all files)',
+                    hintStyle: TextStyle(
+                      color: tokens.textDisabled,
+                      fontSize: FontSizes.xs,
+                    ),
+                    filled: true,
+                    fillColor: tokens.inputBg,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      borderSide: BorderSide(color: tokens.inputBorder),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      borderSide: BorderSide(color: tokens.inputBorder),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.md),
+                      borderSide: BorderSide(color: tokens.inputFocusBorder),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () {
+                final patterns = patternController.text
+                    .split(',')
+                    .map((p) => p.trim())
+                    .where((p) => p.isNotEmpty)
+                    .toList();
+                setState(() {
+                  _triggers.add(AgentTrigger(
+                    type: selectedType,
+                    filePatterns: patterns,
+                  ));
+                });
+                Navigator.of(ctx).pop();
+              },
+              child: Text('Add', style: TextStyle(color: tokens.accent)),
+            ),
+          ],
         ),
       ),
     );

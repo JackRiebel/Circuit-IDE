@@ -69,7 +69,9 @@ class GraphPainter extends CustomPainter {
           ),
         ),
         textDirection: ui.TextDirection.ltr,
-      )..layout();
+        maxLines: 1,
+        ellipsis: '...',
+      )..layout(maxWidth: cluster.bounds.width - 12);
       textPainter.paint(
         canvas,
         Offset(cluster.bounds.left + 6, cluster.bounds.top + 4),

@@ -8,10 +8,15 @@ import '../agents/agent_manager_panel.dart';
 import '../checkpoints/checkpoint_panel.dart';
 import '../codebase_map/codebase_map_panel.dart';
 import '../file_explorer/file_explorer.dart';
+import '../memories/memories_panel.dart';
 import '../notebook/notebook_panel.dart';
 import '../rules/rules_panel.dart';
 import '../search/search_panel.dart';
 import '../git/git_panel.dart';
+import '../mcp/mcp_hub_panel.dart';
+import '../security/security_scan_panel.dart';
+import '../testing/test_generation_panel.dart';
+import '../vericoding/vericoding_panel.dart';
 
 class SidePanel extends ConsumerWidget {
   const SidePanel({super.key});
@@ -64,6 +69,11 @@ class SidePanel extends ConsumerWidget {
               ActivityBarItem.git => const GitPanel(),
               ActivityBarItem.codebaseMap => const CodebaseMapPanel(),
               ActivityBarItem.notebook => const NotebookPanel(),
+              ActivityBarItem.testing => const TestGenerationPanel(),
+              ActivityBarItem.security => const SecurityScanPanel(),
+              ActivityBarItem.mcp => const McpHubPanel(),
+              ActivityBarItem.vericoding => const VericodingPanel(),
+              ActivityBarItem.memories => const MemoriesPanel(),
               ActivityBarItem.checkpoints => const CheckpointPanel(),
               ActivityBarItem.rules => const RulesPanel(),
               ActivityBarItem.agents => const AgentManagerPanel(),

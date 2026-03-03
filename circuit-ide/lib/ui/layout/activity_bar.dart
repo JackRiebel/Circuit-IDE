@@ -13,6 +13,11 @@ enum ActivityBarItem {
   git(Icons.account_tree_outlined, Icons.account_tree, 'Source Control'),
   codebaseMap(Icons.hub_outlined, Icons.hub, 'Codebase Map'),
   notebook(Icons.science_outlined, Icons.science, 'Notebooks'),
+  testing(Icons.bug_report_outlined, Icons.bug_report, 'Test Generation'),
+  security(Icons.shield_outlined, Icons.shield, 'Security Scan'),
+  mcp(Icons.extension_outlined, Icons.extension, 'MCP Hub'),
+  vericoding(Icons.verified_outlined, Icons.verified, 'Vericoding'),
+  memories(Icons.auto_awesome_outlined, Icons.auto_awesome, 'AI Memories'),
   checkpoints(Icons.history_outlined, Icons.history, 'Checkpoints'),
   rules(Icons.rule_outlined, Icons.rule, 'Rules'),
   agents(Icons.smart_toy_outlined, Icons.smart_toy, 'Agents');

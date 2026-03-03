@@ -8,12 +8,14 @@ import '../../enums/tool_status.dart';
 import '../checkpoint/checkpoint_manager.dart';
 import '../security/secret_detector.dart';
 import '../security/command_sanitizer.dart';
+import '../mcp/mcp_client.dart';
 import 'tool_registry.dart';
 import 'file_tools.dart';
 import 'git_tools.dart';
 import 'command_tools.dart';
 import 'web_tools.dart';
 import 'github_tools.dart';
+import 'orchestrate_tool.dart';
 
 typedef ConfirmationCallback = Future<bool> Function(ConfirmationRequest);
 
@@ -43,6 +45,8 @@ class ToolExecutor {
   late final WebTools _webTools;
   late final GitHubTools _githubTools;
   final _secretDetector = SecretDetector();
+  McpClient? _mcpClient;
+  OrchestrateToolExecutor? _orchestrateTool;
 
   /// Checkpoint manager for snapshotting files before writes/edits.
   late final CheckpointManager checkpointManager;
@@ -86,6 +90,16 @@ class ToolExecutor {
     _githubTools.configure(token: token);
   }
 
+  /// Set the MCP client for proxying MCP tool calls
+  void setMcpClient(McpClient? client) {
+    _mcpClient = client;
+  }
+
+  /// Set the orchestration tool executor for subagent spawning
+  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
+    _orchestrateTool = tool;
+  }
+
   /// Execute tool calls, running read-only tools in parallel
   Future<List<ToolExecutionResult>> executeToolCalls(
     List<ToolCallInfo> toolCalls,
@@ -95,7 +109,7 @@ class ToolExecutor {
     final writeOps = <ToolCallInfo>[];
 
     for (final tc in toolCalls) {
-      if (ToolRegistry.isReadOnly(tc.name)) {
+      if (ToolRegistry.isReadOnly(tc.name) || ToolRegistry.isMcpTool(tc.name)) {
         readOnly.add(tc);
       } else {
         writeOps.add(tc);
@@ -241,7 +255,22 @@ class ToolExecutor {
       case 'github_create_repo':
         return _githubTools.execute(name, args);
 
+      // Orchestration tool
+      case 'orchestrate':
+        if (_orchestrateTool == null) {
+          return 'Error: Orchestration not available';
+        }
+        return _orchestrateTool!.execute(args);
+
       default:
+        // MCP tool dispatch
+        if (ToolRegistry.isMcpTool(name) && _mcpClient != null) {
+          final parsed = _mcpClient!.parseMcpToolName(name);
+          if (parsed != null) {
+            return _mcpClient!.callTool(parsed.$2, args);
+          }
+          return 'Error: Could not parse MCP tool name: $name';
+        }
         return 'Unknown tool: $name';
     }
   }

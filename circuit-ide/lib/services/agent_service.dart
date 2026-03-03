@@ -5,11 +5,13 @@ import 'package:uuid/uuid.dart';
 import '../agent/agent.dart';
 import '../agent/checkpoint/checkpoint_manager.dart';
 import '../agent/config/config.dart';
+import '../agent/config/model_router.dart';
 import '../agent/memory/session_manager.dart';
 import '../agent/providers/provider_interface.dart';
 import '../agent/providers/cisco_provider.dart';
 import '../agent/providers/anthropic_provider.dart';
 import '../core/utils/logger.dart';
+import '../agent/mcp/mcp_client.dart';
 import '../enums/ai_provider.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
@@ -17,11 +19,17 @@ import '../enums/message_role.dart';
 import '../models/agent_state.dart';
 import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
+import '../models/routing_models.dart';
 import 'event_bus.dart';
 
 class AgentService {
   final EventBus events = EventBus();
   final SessionManager _sessionManager = SessionManager();
+
+  // Model routing state
+  RoutingConfig? _routingConfig;
+  String? _lastRoutedModel;
+  void Function(double savings)? onRoutingSavings;
 
   CircuitAgent? _agent;
   AIProvider? _provider;
@@ -180,6 +188,29 @@ class AgentService {
     _updateState((s) => s.copyWith(isProcessing: false));
   }
 
+  /// Update routing config from provider
+  void setRoutingConfig(RoutingConfig? config) {
+    _routingConfig = config;
+  }
+
+  /// Get the last auto-routed model (null if routing was not used)
+  String? get lastRoutedModel => _lastRoutedModel;
+
+  /// Set MCP client on the active agent
+  void setMcpClient(McpClient? client) {
+    _agent?.setMcpClient(client);
+  }
+
+  /// Expose the agent for orchestration
+  CircuitAgent? get agent => _agent;
+
+  /// Get the active provider type
+  AIProviderType? get activeProviderType {
+    if (_provider is CiscoProvider) return AIProviderType.cisco;
+    if (_provider is AnthropicProvider) return AIProviderType.anthropic;
+    return null;
+  }
+
   /// Send a message to the AI
   Future<String?> sendMessage(String content) async {
     if (_agent == null) {
@@ -188,6 +219,34 @@ class AgentService {
     }
 
     _updateState((s) => s.copyWith(isProcessing: true));
+
+    // Apply model routing if enabled
+    String? originalModel;
+    _lastRoutedModel = null;
+    if (_routingConfig != null && _routingConfig!.enabled && activeProviderType != null) {
+      final complexity = ModelRouter.classify(content);
+      final routed = ModelRouter.selectModel(
+        complexity,
+        activeProviderType!,
+        _routingConfig!,
+      );
+      if (routed != _agent!.model) {
+        originalModel = _agent!.model;
+        _agent!.model = routed;
+        _lastRoutedModel = routed;
+        Logger.info('Routed to $routed (complexity: ${complexity.name})', 'ModelRouter');
+
+        // Track savings
+        final savings = ModelRouter.estimateSavings(
+          activeProviderType!,
+          routed,
+          500, // estimated tokens per request
+        );
+        if (savings > 0) {
+          onRoutingSavings?.call(savings);
+        }
+      }
+    }
 
     try {
       final response = await _agent!.chat(
@@ -219,6 +278,11 @@ class AgentService {
             error: e.toString(),
           ));
       return null;
+    } finally {
+      // Restore original model after routing
+      if (originalModel != null && _agent != null) {
+        _agent!.model = originalModel;
+      }
     }
   }
 

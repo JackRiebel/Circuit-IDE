@@ -113,6 +113,11 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     _save();
   }
 
+  void setThinkingMode(bool value) {
+    state = state.copyWith(thinkingMode: value);
+    _save();
+  }
+
   void addRecentProject(String path) {
     final projects = List<String>.from(state.recentProjects);
     projects.remove(path);

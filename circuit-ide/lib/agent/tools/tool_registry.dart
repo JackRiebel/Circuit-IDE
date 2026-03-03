@@ -22,6 +22,13 @@ class ToolRegistry {
     'github_search_issues',
   };
 
+  /// Check if a tool name is an MCP-proxied tool
+  static bool isMcpTool(String name) => name.startsWith('mcp_');
+
+  /// MCP tools are treated as read-only (they don't modify local files)
+  static bool isReadOnlyIncludingMcp(String name) =>
+      readOnlyTools.contains(name) || isMcpTool(name);
+
   static const confirmationRequired = {
     'write_file',
     'edit_file',
@@ -41,6 +48,7 @@ class ToolRegistry {
         ..._gitTools,
         ..._webTools,
         ..._githubTools,
+        ..._orchestrationTools,
       ];
 
   static final _fileTools = [
@@ -403,6 +411,30 @@ class ToolRegistry {
           'query': {'type': 'string'},
         },
         'required': ['query'],
+      },
+    ),
+  ];
+
+  static final _orchestrationTools = [
+    const ToolDefinition(
+      name: 'orchestrate',
+      description: 'Spawn a subagent to handle a specific task autonomously. '
+          'The subagent has full tool access and will return its result. '
+          'Use this for tasks that can run independently.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'task': {
+            'type': 'string',
+            'description': 'Detailed task description for the subagent',
+          },
+          'name': {
+            'type': 'string',
+            'description':
+                'Short name for this subagent (e.g., "test-writer", "refactorer")',
+          },
+        },
+        'required': ['task', 'name'],
       },
     ),
   ];

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -78,6 +80,12 @@ class WelcomeScreen extends ConsumerWidget {
                     icon: Icons.folder_open_outlined,
                     label: 'Open Folder',
                     onTap: () => _openFolder(ref),
+                  ),
+                  const SizedBox(width: Spacing.xl),
+                  _WelcomeAction(
+                    icon: Icons.create_new_folder_outlined,
+                    label: 'New Folder',
+                    onTap: () => _createNewFolder(context, ref),
                   ),
                   const SizedBox(width: Spacing.xl),
                   _WelcomeAction(
@@ -166,6 +174,104 @@ class WelcomeScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _createNewFolder(BuildContext context, WidgetRef ref) async {
+    final tokens = ref.read(themeProvider);
+    final controller = TextEditingController();
+
+    final folderName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: tokens.bgLight,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Radii.lg),
+          side: BorderSide(color: tokens.border),
+        ),
+        title: Text(
+          'New Folder',
+          style: TextStyle(
+            color: tokens.textPrimary,
+            fontSize: FontSizes.lg,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Created in ~/Documents',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+              ),
+              decoration: InputDecoration(
+                hintText: 'my-project',
+                hintStyle: TextStyle(color: tokens.textMuted),
+                filled: true,
+                fillColor: tokens.editorBg,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  borderSide: BorderSide(color: tokens.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  borderSide: BorderSide(color: tokens.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(Radii.md),
+                  borderSide: BorderSide(color: tokens.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.lg,
+                  vertical: Spacing.md,
+                ),
+              ),
+              onSubmitted: (value) => Navigator.of(ctx).pop(value),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('Cancel',
+                style: TextStyle(color: tokens.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: Text('Create',
+                style: TextStyle(color: tokens.accent)),
+          ),
+        ],
+      ),
+    );
+
+    if (folderName == null || folderName.trim().isEmpty) return;
+
+    final documentsDir = '${Platform.environment['HOME']}/Documents';
+    final newPath = '$documentsDir/${folderName.trim()}';
+    final dir = Directory(newPath);
+
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    await ref.read(fileTreeProvider.notifier).openDirectory(newPath);
+    ref.read(settingsProvider.notifier).addRecentProject(newPath);
+    final service = ref.read(agentServiceProvider);
+    if (service.isConnected) {
+      service.updateWorkingDir(newPath);
+    }
   }
 
   Future<void> _openFolder(WidgetRef ref) async {

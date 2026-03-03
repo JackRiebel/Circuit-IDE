@@ -169,6 +169,58 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
     }
   }
 
+  /// Spawn an agent and await its response (for orchestration).
+  Future<String> spawnAndAwait(String task, {String? name}) async {
+    final service = ref.read(agentServiceProvider);
+    if (!service.isConnected) {
+      return 'Error: Not connected to AI provider';
+    }
+
+    final instanceId = _uuid.v4();
+    final eventBus = EventBus();
+
+    final instance = AgentInstance(
+      instanceId: instanceId,
+      configId: 'orchestration',
+      name: name ?? 'subagent',
+      events: eventBus,
+      task: task,
+    );
+
+    final running = Map<String, AgentInstance>.from(state.running);
+    running[instanceId] = instance;
+    state = state.copyWith(running: running);
+
+    try {
+      final agent = CircuitAgent(
+        provider: service.provider!,
+        workingDir: service.state.workingDir,
+        events: eventBus,
+        model: service.state.model,
+        autoApprove: true, // Subagents auto-approve for autonomy
+      );
+      await agent.init();
+      _agents[instanceId] = agent;
+      _wireEvents(instanceId, eventBus);
+
+      final response = await agent.chat(task);
+
+      _updateInstance(instanceId, (i) => i.copyWith(
+        status: AgentRunStatus.completed,
+        streamingContent: '',
+      ));
+
+      return response;
+    } catch (e) {
+      _updateInstance(instanceId, (i) => i.copyWith(
+        status: AgentRunStatus.error,
+        error: e.toString().replaceFirst('Exception: ', ''),
+        streamingContent: '',
+      ));
+      return 'Error: $e';
+    }
+  }
+
   void cancelAgent(String instanceId) {
     final agent = _agents[instanceId];
     agent?.cancel();

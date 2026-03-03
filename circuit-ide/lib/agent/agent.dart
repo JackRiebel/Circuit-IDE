@@ -17,8 +17,10 @@ import 'security/audit_logger.dart';
 import 'security/cost_tracker.dart';
 import 'streaming/streaming_response.dart';
 import 'checkpoint/checkpoint_manager.dart';
+import 'mcp/mcp_client.dart';
 import 'tools/tool_executor.dart';
 import 'tools/tool_registry.dart';
+import 'tools/orchestrate_tool.dart';
 
 class CircuitAgent {
   final AIProvider provider;
@@ -37,6 +39,7 @@ class CircuitAgent {
   String? _systemPromptOverride;
   bool _isProcessing = false;
   bool _isCancelled = false;
+  List<ToolDefinition> _mcpTools = [];
 
   static const _uuid = Uuid();
 
@@ -60,6 +63,20 @@ class CircuitAgent {
 
   /// Expose checkpoint manager for UI access.
   CheckpointManager get checkpointManager => _toolExecutor.checkpointManager;
+
+  /// Expose tool executor for external configuration.
+  ToolExecutor get toolExecutor => _toolExecutor;
+
+  /// Set MCP client for tool integration.
+  void setMcpClient(McpClient? client) {
+    _mcpTools = client?.toolDefinitions ?? [];
+    _toolExecutor.setMcpClient(client);
+  }
+
+  /// Set orchestration tool executor.
+  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
+    _toolExecutor.setOrchestrateTool(tool);
+  }
 
   set systemPromptOverride(String? prompt) {
     _systemPromptOverride = prompt;
@@ -123,10 +140,13 @@ class CircuitAgent {
         // Stream the response
         events.emit(EventType.thinkingStarted);
 
+        // Merge MCP tools into the tools list for AI provider
+        final allTools = [...ToolRegistry.allTools, ..._mcpTools];
+
         await for (final chunk in provider.chat(
           optimized,
           model: model,
-          tools: ToolRegistry.allTools,
+          tools: allTools,
           systemPrompt: _systemPromptOverride ?? _systemPrompt,
           maxTokens: 4096,
         )) {
@@ -240,6 +260,9 @@ class CircuitAgent {
         if (checkpoint != null) {
           events.emit(EventType.checkpointCreated, {
             'checkpoint': checkpoint,
+          });
+          events.emit(EventType.vericodeTriggered, {
+            'editedFiles': editedFiles.toList(),
           });
         }
       }

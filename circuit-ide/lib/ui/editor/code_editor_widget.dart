@@ -103,6 +103,31 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
           controller: _controller,
           findController: _findController,
           scrollController: widget.scrollController,
+          indicatorBuilder: (context, editingController, chunkController, notifier) {
+            return Row(
+              children: [
+                DefaultCodeLineNumber(
+                  controller: editingController,
+                  notifier: notifier,
+                  textStyle: TextStyle(
+                    color: tokens.textMuted.withValues(alpha: 0.5),
+                    fontSize: editorState.fontSize,
+                    fontFamily: 'JetBrains Mono',
+                  ),
+                  focusedTextStyle: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: editorState.fontSize,
+                    fontFamily: 'JetBrains Mono',
+                  ),
+                ),
+                DefaultCodeChunkIndicator(
+                  width: 20,
+                  controller: chunkController,
+                  notifier: notifier,
+                ),
+              ],
+            );
+          },
           style: CodeEditorStyle(
             fontSize: editorState.fontSize,
             fontFamily: 'JetBrains Mono',

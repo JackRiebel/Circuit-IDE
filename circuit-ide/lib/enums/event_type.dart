@@ -40,6 +40,11 @@ enum EventType {
   checkpointCreated,
   checkpointReverted,
 
+  // Orchestration events
+  orchestrationStarted,
+  orchestrationCompleted,
+  orchestrationFailed,
+
   // MCP events
   mcpServerConnecting,
   mcpServerConnected,
@@ -48,4 +53,19 @@ enum EventType {
   mcpToolCallStarted,
   mcpToolCallCompleted,
   mcpToolsUpdated,
+
+  // Vericoding events
+  vericodeTriggered,
+  vericodePassed,
+  vericodeFailed,
+
+  // Ghost mode events
+  ghostStarted,
+  ghostCompleted,
+  ghostFailed,
+  ghostUndone,
+
+  // Runtime visualization events
+  runtimeAnalyzing,
+  runtimeReady,
 }
