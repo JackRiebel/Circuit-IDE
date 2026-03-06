@@ -5,17 +5,15 @@ Main Textual application for the AI-powered Terminal IDE.
 Now uses the unified service layer for cleaner architecture.
 """
 
-import os
 import sys
 from pathlib import Path
 from typing import Optional
 
-from textual.app import App, ComposeResult
-from textual.binding import Binding
 from textual import work
+from textual.app import App
+from textual.binding import Binding
 
 from .screens import MainScreen
-from .config import config, IDEConfig
 
 # Add parent directory to path for imports
 _parent = Path(__file__).parent.parent
@@ -36,12 +34,7 @@ class CircuitIDE(App):
         Binding("ctrl+c", "quit", "Quit", show=False),
     ]
 
-    def __init__(
-        self,
-        project_dir: str | Path = ".",
-        theme: str = "dark",
-        **kwargs
-    ):
+    def __init__(self, project_dir: str | Path = ".", theme: str = "dark", **kwargs):
         """Initialize Circuit IDE.
 
         Args:
@@ -104,19 +97,13 @@ class CircuitIDE(App):
             else:
                 self.notify(
                     "Agent credentials not found. Run circuit_agent first to configure.",
-                    severity="warning"
+                    severity="warning",
                 )
 
         except ImportError as e:
-            self.notify(
-                f"Could not load agent: {e}",
-                severity="warning"
-            )
+            self.notify(f"Could not load agent: {e}", severity="warning")
         except Exception as e:
-            self.notify(
-                f"Agent initialization failed: {e}",
-                severity="error"
-            )
+            self.notify(f"Agent initialization failed: {e}", severity="error")
 
     @property
     def service(self):
@@ -137,32 +124,20 @@ class CircuitIDE(App):
         """Handle tool call started event."""
         tool_call = event.data.get("tool_call")
         if self._main_screen and tool_call:
-            self._main_screen._chat_panel.add_tool_call(
-                tool_call.name,
-                tool_call.detail,
-                "pending"
-            )
+            self._main_screen._chat_panel.add_tool_call(tool_call.name, tool_call.detail, "pending")
 
     def _on_tool_completed(self, event) -> None:
         """Handle tool call completed event."""
         tool_call = event.data.get("tool_call")
         if self._main_screen and tool_call:
-            self._main_screen._chat_panel.add_tool_call(
-                tool_call.name,
-                tool_call.detail,
-                "success"
-            )
+            self._main_screen._chat_panel.add_tool_call(tool_call.name, tool_call.detail, "success")
 
     def _on_tool_error(self, event) -> None:
         """Handle tool call error event."""
         tool_call = event.data.get("tool_call")
         error = event.data.get("error", "")
         if self._main_screen and tool_call:
-            self._main_screen._chat_panel.add_tool_call(
-                tool_call.name,
-                error[:50],
-                "error"
-            )
+            self._main_screen._chat_panel.add_tool_call(tool_call.name, error[:50], "error")
 
     def _on_tokens_updated(self, event) -> None:
         """Handle token update event."""
@@ -188,8 +163,7 @@ class CircuitIDE(App):
                 # Auto-reject for now - proper TUI dialog would be better
                 self._service.reject_confirmation(request.id)
                 self.notify(
-                    f"Tool '{request.tool_call.name}' requires confirmation",
-                    severity="warning"
+                    f"Tool '{request.tool_call.name}' requires confirmation", severity="warning"
                 )
 
     # =========================================================================
@@ -202,8 +176,7 @@ class CircuitIDE(App):
         if not self._service or not self._service.is_connected:
             if self._main_screen:
                 self._main_screen.add_chat_message(
-                    "system",
-                    "Agent not connected. Please configure credentials first."
+                    "system", "Agent not connected. Please configure credentials first."
                 )
             return
 
@@ -213,7 +186,7 @@ class CircuitIDE(App):
 
         try:
             # Send message through service
-            response = await self._service.send_message(message)
+            await self._service.send_message(message)
 
             # Update stats from service
             if self._main_screen and self._service:
@@ -227,10 +200,7 @@ class CircuitIDE(App):
 
         except Exception as e:
             if self._main_screen:
-                self._main_screen.add_chat_message(
-                    "system",
-                    f"Error: {e}"
-                )
+                self._main_screen.add_chat_message("system", f"Error: {e}")
         finally:
             if self._main_screen:
                 self._main_screen._chat_panel.is_processing = False
@@ -246,21 +216,10 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="circuit-ide",
-        description="Circuit IDE - AI-powered Terminal IDE"
+        prog="circuit-ide", description="Circuit IDE - AI-powered Terminal IDE"
     )
-    parser.add_argument(
-        "directory",
-        nargs="?",
-        default=".",
-        help="Project directory to open"
-    )
-    parser.add_argument(
-        "--theme",
-        choices=["dark", "light"],
-        default="dark",
-        help="Color theme"
-    )
+    parser.add_argument("directory", nargs="?", default=".", help="Project directory to open")
+    parser.add_argument("--theme", choices=["dark", "light"], default="dark", help="Color theme")
 
     args = parser.parse_args()
 

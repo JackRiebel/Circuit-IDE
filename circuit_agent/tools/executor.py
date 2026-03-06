@@ -6,8 +6,8 @@ import asyncio
 import os
 import re
 import time
-from typing import Dict, List, Tuple, Any, Optional, Callable
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..config import DANGEROUS_PATTERNS
 
@@ -45,15 +45,17 @@ class BackupManager:
         if not os.path.exists(full_path):
             if path not in self.backups:
                 self.backups[path] = []
-            self.backups[path].append({
-                'content': None,
-                'timestamp': time.time(),
-            })
+            self.backups[path].append(
+                {
+                    "content": None,
+                    "timestamp": time.time(),
+                }
+            )
             self.last_modified = path
             return True
 
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
+            with open(full_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if path not in self.backups:
@@ -62,10 +64,12 @@ class BackupManager:
             if len(self.backups[path]) >= 10:
                 self.backups[path].pop(0)
 
-            self.backups[path].append({
-                'content': content,
-                'timestamp': time.time(),
-            })
+            self.backups[path].append(
+                {
+                    "content": content,
+                    "timestamp": time.time(),
+                }
+            )
             self.last_modified = path
             return True
         except Exception:
@@ -74,7 +78,7 @@ class BackupManager:
     def get_backup(self, path: str) -> Optional[str]:
         """Get the most recent backup content for a file."""
         if path in self.backups and self.backups[path]:
-            return self.backups[path][-1]['content']
+            return self.backups[path][-1]["content"]
         return None
 
     def get_last_modified(self) -> Optional[str]:
@@ -96,7 +100,7 @@ class BackupManager:
         except ValueError as e:
             return False, f"Security error: {e}"
 
-        backup_content = self.backups[path][-1]['content']
+        backup_content = self.backups[path][-1]["content"]
 
         try:
             if backup_content is None:
@@ -105,7 +109,7 @@ class BackupManager:
                     self.backups[path].pop()
                     return True, f"Deleted {path} (file was newly created)"
             else:
-                with open(full_path, 'w', encoding='utf-8') as f:
+                with open(full_path, "w", encoding="utf-8") as f:
                     f.write(backup_content)
                 self.backups[path].pop()
                 return True, f"Restored {path} from backup"
@@ -143,7 +147,9 @@ class ToolExecutor:
                 return True
         return False
 
-    async def execute(self, tool_name: str, arguments: dict, confirmed: bool = False) -> Tuple[Any, bool]:
+    async def execute(
+        self, tool_name: str, arguments: dict, confirmed: bool = False
+    ) -> Tuple[Any, bool]:
         """
         Execute a single tool.
         Returns (result, needs_confirmation).
@@ -156,15 +162,11 @@ class ToolExecutor:
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
-            self._thread_pool,
-            lambda: tool_func(arguments, confirmed)
+            self._thread_pool, lambda: tool_func(arguments, confirmed)
         )
         return result
 
-    async def execute_parallel(
-        self,
-        calls: List[Tuple[str, dict, bool]]
-    ) -> List[Tuple[Any, bool]]:
+    async def execute_parallel(self, calls: List[Tuple[str, dict, bool]]) -> List[Tuple[Any, bool]]:
         """
         Execute multiple tools in parallel.
 
@@ -174,10 +176,7 @@ class ToolExecutor:
         Returns:
             List of (result, needs_confirmation) tuples in same order
         """
-        tasks = [
-            self.execute(name, args, confirmed)
-            for name, args, confirmed in calls
-        ]
+        tasks = [self.execute(name, args, confirmed) for name, args, confirmed in calls]
         return await asyncio.gather(*tasks)
 
     async def execute_batch_reads(self, paths: List[str]) -> Dict[str, str]:
@@ -192,15 +191,9 @@ class ToolExecutor:
         """
         calls = [("read_file", {"path": p}, False) for p in paths]
         results = await self.execute_parallel(calls)
-        return {
-            path: result[0]
-            for path, result in zip(paths, results)
-        }
+        return {path: result[0] for path, result in zip(paths, results, strict=False)}
 
-    async def execute_batch_searches(
-        self,
-        searches: List[Tuple[str, str]]
-    ) -> Dict[str, str]:
+    async def execute_batch_searches(self, searches: List[Tuple[str, str]]) -> Dict[str, str]:
         """
         Run multiple searches in parallel.
 
@@ -210,15 +203,9 @@ class ToolExecutor:
         Returns:
             Dict mapping pattern to results
         """
-        calls = [
-            ("search_files", {"pattern": p, "file_pattern": fp}, False)
-            for p, fp in searches
-        ]
+        calls = [("search_files", {"pattern": p, "file_pattern": fp}, False) for p, fp in searches]
         results = await self.execute_parallel(calls)
-        return {
-            pattern: result[0]
-            for (pattern, _), result in zip(searches, results)
-        }
+        return {pattern: result[0] for (pattern, _), result in zip(searches, results, strict=False)}
 
     def shutdown(self):
         """Shutdown the thread pool."""

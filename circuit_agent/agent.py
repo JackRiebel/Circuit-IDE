@@ -6,24 +6,21 @@ import asyncio
 import base64
 import json
 import os
-import re
 import time
-from typing import Optional, List, Dict, Any, Tuple, Callable
-from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import httpx
 
 from .config import (
-    TOKEN_URL, CHAT_BASE_URL, API_VERSION,
-    load_circuit_md, detect_project_type, ssl_config,
-    load_github_pat, load_github_mcp_config
+    API_VERSION,
+    CHAT_BASE_URL,
+    TOKEN_URL,
+    detect_project_type,
+    load_circuit_md,
+    load_github_mcp_config,
+    load_github_pat,
+    ssl_config,
 )
-from .tools import TOOLS, FileTools, GitTools, WebTools, BackupManager
-from .tools.github_tools import GitHubTools, GITHUB_TOOLS
-from .memory import SessionManager, ContextCompactor
-from .streaming import stream_chat_completion, non_streaming_chat_completion, StreamingResponse
-from .ui import C, clear_line, show_diff, print_tool_call, print_error, print_success
-from .security import SecretDetector, AuditLogger, CostTracker
 from .context import SmartContextManager
 from .errors import SmartError
 
@@ -31,6 +28,12 @@ from .errors import SmartError
 from .mcp import MCPClientManager
 from .mcp.servers.github import GitHubMCPServer
 from .mcp.transport import MCPTransportError
+from .memory import ContextCompactor, SessionManager
+from .security import AuditLogger, CostTracker, SecretDetector
+from .streaming import StreamingResponse, non_streaming_chat_completion, stream_chat_completion
+from .tools import TOOLS, BackupManager, FileTools, GitTools, WebTools
+from .tools.github_tools import GITHUB_TOOLS, GitHubTools
+from .ui import C, print_success, print_tool_call, show_diff
 
 
 class CircuitAgent:
@@ -231,21 +234,19 @@ Then proceed with your response."""
 
                 if use_remote:
                     config = GitHubMCPServer.get_remote_config(
-                        pat=github_pat,
-                        toolsets=toolsets,
-                        enabled=True
+                        pat=github_pat, toolsets=toolsets, enabled=True
                     )
                 else:
                     config = GitHubMCPServer.get_docker_config(
-                        pat=github_pat,
-                        toolsets=toolsets,
-                        enabled=True
+                        pat=github_pat, toolsets=toolsets, enabled=True
                     )
 
                 # Connect to the server
                 if self.mcp_manager.connect(config):
                     self._mcp_tools_cache = self.mcp_manager.list_tools()
-                    print(f"{C.DIM}  [MCP: GitHub connected, {len(self._mcp_tools_cache)} tools available]{C.RESET}")
+                    print(
+                        f"{C.DIM}  [MCP: GitHub connected, {len(self._mcp_tools_cache)} tools available]{C.RESET}"
+                    )
         except Exception as e:
             print(f"{C.DIM}  [MCP init warning: {e}]{C.RESET}")
 
@@ -333,14 +334,14 @@ Then proceed with your response."""
                     elif r.status_code >= 500:
                         # Server error, retry
                         if attempt < self.max_retries - 1:
-                            await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                            await asyncio.sleep(self.retry_delay * (2**attempt))
                             continue
                     raise Exception(f"Auth failed: {r.status_code} - {r.text}")
                 except httpx.RequestError as e:
                     if attempt < self.max_retries - 1:
-                        await asyncio.sleep(self.retry_delay * (2 ** attempt))
+                        await asyncio.sleep(self.retry_delay * (2**attempt))
                         continue
-                    raise Exception(f"Auth request failed: {e}")
+                    raise Exception(f"Auth request failed: {e}") from e
 
         raise Exception("Authentication failed after retries")
 
@@ -491,7 +492,7 @@ Then proceed with your response."""
         if tool_name == "write_file":
             path = arguments.get("path", "")
             content = arguments.get("content", "")
-            lines = content.count('\n') + 1
+            lines = content.count("\n") + 1
             print(f"{C.YELLOW}Write to: {C.BOLD}{path}{C.RESET} {C.DIM}({lines} lines){C.RESET}")
 
             # v4.0: Check for secrets
@@ -506,10 +507,10 @@ Then proceed with your response."""
                 print()
 
             print(f"{C.DIM}Preview:{C.RESET}")
-            preview_lines = content.split('\n')[:15]
+            preview_lines = content.split("\n")[:15]
             for i, line in enumerate(preview_lines, 1):
                 print(f"{C.DIM}{i:3}| {line[:100]}{C.RESET}")
-            if len(content.split('\n')) > 15:
+            if len(content.split("\n")) > 15:
                 print(f"{C.DIM}... ({len(content.split(chr(10))) - 15} more lines){C.RESET}")
 
         elif tool_name == "edit_file":
@@ -544,46 +545,46 @@ Then proceed with your response."""
             if files:
                 print(f"  Files: {', '.join(files)}")
             else:
-                print(f"  Files: (all changes)")
+                print("  Files: (all changes)")
 
         response = input(f"\n{C.CYAN}Allow? [y/N/a(all)]:{C.RESET} ").strip().lower()
 
-        if response == 'a':
+        if response == "a":
             self.auto_approve = True
             print_success("Auto-approve enabled for this session")
             return True
 
-        return response in ('y', 'yes')
+        return response in ("y", "yes")
 
     def _get_tool_detail(self, tool_name: str, arguments: dict) -> str:
         """Get a short detail string for tool call display."""
         if tool_name in ("read_file", "write_file", "edit_file"):
-            return arguments.get('path', '')
+            return arguments.get("path", "")
         elif tool_name == "list_files":
-            return arguments.get('pattern', '')
+            return arguments.get("pattern", "")
         elif tool_name == "search_files":
-            return arguments.get('pattern', '')
+            return arguments.get("pattern", "")
         elif tool_name == "run_command":
-            cmd = arguments.get('command', '')
-            return cmd[:60] + ('...' if len(cmd) > 60 else '')
+            cmd = arguments.get("command", "")
+            return cmd[:60] + ("..." if len(cmd) > 60 else "")
         elif tool_name == "git_status":
             return ""
         elif tool_name == "git_diff":
-            return arguments.get('path', '') or ('staged' if arguments.get('staged') else '')
+            return arguments.get("path", "") or ("staged" if arguments.get("staged") else "")
         elif tool_name == "git_log":
             return f"-{arguments.get('count', 10)}"
         elif tool_name == "git_commit":
-            msg = arguments.get('message', '')
-            return msg[:40] + ('...' if len(msg) > 40 else '')
+            msg = arguments.get("message", "")
+            return msg[:40] + ("..." if len(msg) > 40 else "")
         elif tool_name == "git_branch":
-            return arguments.get('action', 'list')
+            return arguments.get("action", "list")
         # Web tools
         elif tool_name == "web_fetch":
-            url = arguments.get('url', '')
-            return url[:50] + ('...' if len(url) > 50 else '')
+            url = arguments.get("url", "")
+            return url[:50] + ("..." if len(url) > 50 else "")
         elif tool_name == "web_search":
-            query = arguments.get('query', '')
-            return query[:40] + ('...' if len(query) > 40 else '')
+            query = arguments.get("query", "")
+            return query[:40] + ("..." if len(query) > 40 else "")
         # MCP tools
         elif tool_name.startswith("mcp_"):
             # Extract the actual tool name after mcp_serverid_
@@ -602,9 +603,15 @@ Then proceed with your response."""
 
     # Read-only tools that can run in parallel safely
     READ_ONLY_TOOLS = {
-        "read_file", "list_files", "search_files",
-        "git_status", "git_diff", "git_log", "git_branch",
-        "web_fetch", "web_search"
+        "read_file",
+        "list_files",
+        "search_files",
+        "git_status",
+        "git_diff",
+        "git_log",
+        "git_branch",
+        "web_fetch",
+        "web_search",
     }
 
     def _is_read_only_tool(self, tool_name: str) -> bool:
@@ -621,9 +628,7 @@ Then proceed with your response."""
         return False
 
     async def _process_tool_calls_parallel(
-        self,
-        tool_calls: List[dict],
-        messages: list
+        self, tool_calls: List[dict], messages: list
     ) -> List[str]:
         """
         Process multiple tool calls, running read-only tools in parallel.
@@ -648,19 +653,12 @@ Then proceed with your response."""
 
         # Process read-only calls in parallel
         if read_only_calls:
-            tasks = [
-                self._process_tool_call_async(tc)
-                for tc in read_only_calls
-            ]
+            tasks = [self._process_tool_call_async(tc) for tc in read_only_calls]
             results = await asyncio.gather(*tasks)
 
             # Add results to messages in order
-            for tc, (tool_name, result) in zip(read_only_calls, results):
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc["id"],
-                    "content": str(result)
-                })
+            for tc, (tool_name, result) in zip(read_only_calls, results, strict=False):
+                messages.append({"role": "tool", "tool_call_id": tc["id"], "content": str(result)})
                 tool_names.append(tool_name)
 
         # Process write calls sequentially (they need confirmations)
@@ -687,8 +685,7 @@ Then proceed with your response."""
         # Execute the tool (read-only tools don't need confirmation)
         loop = asyncio.get_event_loop()
         result, _ = await loop.run_in_executor(
-            None,
-            lambda: self._execute_tool(tool_name, arguments)
+            None, lambda: self._execute_tool(tool_name, arguments)
         )
 
         return tool_name, result
@@ -700,7 +697,7 @@ Then proceed with your response."""
         headers: Dict[str, str],
         payload: Dict[str, Any],
         on_content: Optional[Callable[[str], None]] = None,
-        use_streaming: bool = True
+        use_streaming: bool = True,
     ) -> StreamingResponse:
         """Make an API call with retry logic."""
         last_error = None
@@ -709,8 +706,7 @@ Then proceed with your response."""
             try:
                 if use_streaming and self.stream_responses:
                     return await stream_chat_completion(
-                        client, url, headers, payload,
-                        on_content=on_content
+                        client, url, headers, payload, on_content=on_content
                     )
                 else:
                     return await non_streaming_chat_completion(client, url, headers, payload)
@@ -718,7 +714,7 @@ Then proceed with your response."""
             except httpx.RequestError as e:
                 last_error = e
                 if attempt < self.max_retries - 1:
-                    delay = self.retry_delay * (2 ** attempt)
+                    delay = self.retry_delay * (2**attempt)
                     print(f"{C.DIM}  Connection error, retrying in {delay:.1f}s...{C.RESET}")
                     await asyncio.sleep(delay)
                     continue
@@ -729,7 +725,7 @@ Then proceed with your response."""
                 if "500" in error_msg or "502" in error_msg or "503" in error_msg:
                     last_error = e
                     if attempt < self.max_retries - 1:
-                        delay = self.retry_delay * (2 ** attempt)
+                        delay = self.retry_delay * (2**attempt)
                         print(f"{C.DIM}  Server error, retrying in {delay:.1f}s...{C.RESET}")
                         await asyncio.sleep(delay)
                         continue
@@ -737,7 +733,9 @@ Then proceed with your response."""
 
         raise Exception(f"API call failed after {self.max_retries} attempts: {last_error}")
 
-    async def chat(self, user_message: str, on_content: Optional[Callable[[str], None]] = None) -> str:
+    async def chat(
+        self, user_message: str, on_content: Optional[Callable[[str], None]] = None
+    ) -> str:
         """
         Send a message and handle the full tool-calling loop.
 
@@ -765,7 +763,9 @@ Then proceed with your response."""
         if len(messages) > 30:
             messages, opt_stats = self.context_manager.optimize_context(messages)
             if opt_stats.get("tokens_saved", 0) > 1000:
-                print(f"{C.DIM}  [Context optimized: {opt_stats['tokens_saved']:,} tokens saved]{C.RESET}")
+                print(
+                    f"{C.DIM}  [Context optimized: {opt_stats['tokens_saved']:,} tokens saved]{C.RESET}"
+                )
 
         iteration = 0
         max_iterations = 25
@@ -794,9 +794,7 @@ Then proceed with your response."""
 
                 # Stream ALL responses, not just the first one
                 response = await self._make_api_call(
-                    client, url, headers, payload,
-                    on_content=on_content,
-                    use_streaming=True
+                    client, url, headers, payload, on_content=on_content, use_streaming=True
                 )
 
                 # Track tokens
@@ -806,8 +804,12 @@ Then proceed with your response."""
                 self.session_completion_tokens += response.completion_tokens
 
                 # v4.0: Track costs and audit
-                self.cost_tracker.track(self.model, response.prompt_tokens, response.completion_tokens)
-                self.audit_logger.log_api_call(self.model, response.prompt_tokens, response.completion_tokens)
+                self.cost_tracker.track(
+                    self.model, response.prompt_tokens, response.completion_tokens
+                )
+                self.audit_logger.log_api_call(
+                    self.model, response.prompt_tokens, response.completion_tokens
+                )
 
                 # Add user message to history on first successful response
                 if not user_msg_added:
@@ -826,20 +828,21 @@ Then proceed with your response."""
 
                 # Process tool calls (with parallel execution for read-only tools)
                 tool_calls_dict = response.get_tool_calls_dict()
-                messages.append({
-                    "role": "assistant",
-                    "content": response.content or None,
-                    "tool_calls": tool_calls_dict
-                })
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response.content or None,
+                        "tool_calls": tool_calls_dict,
+                    }
+                )
 
                 # Use parallel processing for multiple tool calls
                 tool_names = await self._process_tool_calls_parallel(tool_calls_dict, messages)
 
                 # Add tool summary to history (not the full tool_calls object)
-                self.history.append({
-                    "role": "assistant",
-                    "content": f"[Used tools: {', '.join(tool_names)}]"
-                })
+                self.history.append(
+                    {"role": "assistant", "content": f"[Used tools: {', '.join(tool_names)}]"}
+                )
 
                 # Print newline after tools before next response
                 if on_content:
@@ -884,11 +887,7 @@ Then proceed with your response."""
         self.audit_logger.log_tool_call(tool_name, arguments, str(result), success=True)
 
         # Add tool result to messages
-        messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call["id"],
-            "content": str(result)
-        })
+        messages.append({"role": "tool", "tool_call_id": tool_call["id"], "content": str(result)})
 
         return tool_name
 
@@ -919,7 +918,7 @@ Then proceed with your response."""
             history=self.history,
             model=self.model,
             working_dir=self.working_dir,
-            auto_approve=self.auto_approve
+            auto_approve=self.auto_approve,
         )
 
     def load_session(self, name: str) -> Tuple[bool, str]:

@@ -2,10 +2,9 @@
 Configuration for Circuit IDE.
 """
 
-import os
-from pathlib import Path
-from typing import Dict, Any
 import json
+from pathlib import Path
+from typing import Any, Dict
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -81,6 +80,7 @@ class IDEConfig:
 
     def _merge(self, user_config: Dict[str, Any]):
         """Merge user config with defaults."""
+
         def deep_merge(base: dict, override: dict) -> dict:
             result = base.copy()
             for key, value in override.items():

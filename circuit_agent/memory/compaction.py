@@ -4,8 +4,8 @@ Context compaction for Circuit Agent.
 Summarizes older messages to reduce token usage while preserving context.
 """
 
-from typing import Dict, List, Any, Optional, Callable
 import json
+from typing import Any, Callable, Dict, List, Optional
 
 
 class ContextCompactor:
@@ -15,12 +15,7 @@ class ContextCompactor:
     This helps manage long conversations that would exceed token limits.
     """
 
-    def __init__(
-        self,
-        max_messages: int = 50,
-        keep_recent: int = 10,
-        summary_trigger: int = 40
-    ):
+    def __init__(self, max_messages: int = 50, keep_recent: int = 10, summary_trigger: int = 40):
         """
         Initialize compactor.
 
@@ -112,9 +107,7 @@ CONVERSATION:
 SUMMARY:"""
 
     def compact(
-        self,
-        history: List[Dict[str, Any]],
-        summarize_fn: Optional[Callable[[str], str]] = None
+        self, history: List[Dict[str, Any]], summarize_fn: Optional[Callable[[str], str]] = None
     ) -> tuple[List[Dict[str, Any]], str]:
         """
         Compact conversation history.
@@ -131,8 +124,8 @@ SUMMARY:"""
             return history, "History too short to compact"
 
         # Split into old and recent
-        old_messages = history[:-self.keep_recent]
-        recent_messages = history[-self.keep_recent:]
+        old_messages = history[: -self.keep_recent]
+        recent_messages = history[-self.keep_recent :]
 
         # Generate summary
         if summarize_fn:
@@ -145,7 +138,7 @@ SUMMARY:"""
         compacted = [
             {
                 "role": "system",
-                "content": f"[CONVERSATION SUMMARY - {len(old_messages)} messages compacted]\n\n{summary}"
+                "content": f"[CONVERSATION SUMMARY - {len(old_messages)} messages compacted]\n\n{summary}",
             }
         ] + recent_messages
 
@@ -183,14 +176,17 @@ SUMMARY:"""
                         args = json.loads(func.get("arguments", "{}"))
                         if "path" in args:
                             files_mentioned.add(args["path"])
-                    except:
+                    except Exception:
                         pass
 
             # Look for key actions in assistant messages
             if role == "assistant" and isinstance(content, str):
-                if any(word in content.lower() for word in ["created", "edited", "fixed", "added", "removed", "implemented"]):
+                if any(
+                    word in content.lower()
+                    for word in ["created", "edited", "fixed", "added", "removed", "implemented"]
+                ):
                     # Extract first sentence as key action
-                    first_sentence = content.split('.')[0][:100]
+                    first_sentence = content.split(".")[0][:100]
                     if first_sentence:
                         key_actions.append(first_sentence)
 
@@ -229,5 +225,5 @@ SUMMARY:"""
             "estimated_tokens": estimated_tokens,
             "needs_compaction": self.needs_compaction(history),
             "would_compact": max(0, len(history) - self.keep_recent),
-            "would_keep": min(len(history), self.keep_recent)
+            "would_keep": min(len(history), self.keep_recent),
         }

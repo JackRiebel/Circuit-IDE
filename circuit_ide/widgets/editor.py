@@ -5,23 +5,20 @@ Provides syntax-highlighted code editing with line numbers.
 """
 
 from pathlib import Path
-from typing import Optional, Callable
-import re
+from typing import Optional
 
-from textual.widgets import TextArea, Static
-from textual.containers import Vertical, Horizontal
+from textual import events
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
-from textual import events
+from textual.widgets import Static, TextArea
 
 # Try to import pygments for syntax highlighting
 try:
-    from pygments import highlight
-    from pygments.lexers import get_lexer_for_filename, get_lexer_by_name, TextLexer
-    from pygments.formatters import TerminalTrueColorFormatter
-    from pygments.token import Token
-    PYGMENTS_AVAILABLE = True
-except ImportError:
+    import importlib.util
+
+    PYGMENTS_AVAILABLE = importlib.util.find_spec("pygments") is not None
+except Exception:
     PYGMENTS_AVAILABLE = False
 
 
@@ -83,12 +80,14 @@ class CodeEditor(TextArea):
     # Messages
     class FileSaved(Message):
         """Message sent when file is saved."""
+
         def __init__(self, path: Path) -> None:
             self.path = path
             super().__init__()
 
     class FileModified(Message):
         """Message sent when content is modified."""
+
         def __init__(self, path: Path, modified: bool) -> None:
             self.path = path
             self.modified = modified
@@ -96,6 +95,7 @@ class CodeEditor(TextArea):
 
     class CursorMoved(Message):
         """Message sent when cursor position changes."""
+
         def __init__(self, line: int, column: int) -> None:
             self.line = line
             self.column = column
@@ -232,7 +232,7 @@ class CodeEditor(TextArea):
     def on_key(self, event: events.Key) -> None:
         """Handle key events."""
         # Track cursor position
-        if hasattr(self, 'cursor_location'):
+        if hasattr(self, "cursor_location"):
             line, col = self.cursor_location
             self.post_message(self.CursorMoved(line + 1, col + 1))
 
@@ -289,7 +289,7 @@ class CodeEditor(TextArea):
             if stripped.startswith(comment):
                 # Remove comment
                 indent = len(current_line) - len(stripped)
-                lines[line] = current_line[:indent] + stripped[len(comment):].lstrip()
+                lines[line] = current_line[:indent] + stripped[len(comment) :].lstrip()
             else:
                 # Add comment
                 indent = len(current_line) - len(stripped)

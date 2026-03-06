@@ -7,21 +7,21 @@ The primary workspace with file tree, editor, chat, and status panels.
 from pathlib import Path
 from typing import Optional
 
-from textual.screen import Screen
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Static
-from textual.binding import Binding
 from textual import work
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical
+from textual.screen import Screen
+from textual.widgets import Static
 
 from ..widgets import (
-    FileTreeWidget,
-    CodeEditor,
-    ChatPanel,
     AgentStatusWidget,
+    ChatPanel,
+    CodeEditor,
+    FileTreeWidget,
     StatusBar,
     TerminalWidget,
 )
-from ..widgets.editor import EditorPanel, EditorHeader
+from ..widgets.editor import EditorPanel
 from ..widgets.status import HeaderBar
 
 
@@ -70,10 +70,7 @@ class MainScreen(Screen):
     def compose(self):
         """Create the main layout."""
         # Header
-        self._header = HeaderBar(
-            f"Circuit IDE - {self.project_dir.name}",
-            id="header"
-        )
+        self._header = HeaderBar(f"Circuit IDE - {self.project_dir.name}", id="header")
         yield self._header
 
         # Main content area
@@ -81,10 +78,7 @@ class MainScreen(Screen):
             # Left sidebar - File tree
             with Vertical(id="sidebar"):
                 yield Static("FILES", id="file-tree-header")
-                self._file_tree = FileTreeWidget(
-                    self.project_dir,
-                    id="file-tree"
-                )
+                self._file_tree = FileTreeWidget(self.project_dir, id="file-tree")
                 yield self._file_tree
 
             # Right content area
@@ -118,20 +112,14 @@ class MainScreen(Screen):
             self._chat_panel.focus_input()
 
     # File tree events
-    def on_file_tree_widget_file_selected(
-        self,
-        event: FileTreeWidget.FileSelected
-    ) -> None:
+    def on_file_tree_widget_file_selected(self, event: FileTreeWidget.FileSelected) -> None:
         """Handle file selection from tree."""
         if self._editor_panel:
             self._editor_panel.load_file(event.path)
             self._editor_panel.editor.focus()
 
     # Chat events
-    def on_chat_panel_user_message(
-        self,
-        event: ChatPanel.UserMessage
-    ) -> None:
+    def on_chat_panel_user_message(self, event: ChatPanel.UserMessage) -> None:
         """Handle user message from chat."""
         # This will be connected to the agent
         self.process_user_message(event.content)
@@ -147,7 +135,7 @@ class MainScreen(Screen):
 
         try:
             # Get agent from app
-            agent = self.app.agent if hasattr(self.app, 'agent') else None
+            agent = self.app.agent if hasattr(self.app, "agent") else None
 
             if agent:
                 await self._run_agent_chat(agent, message)
@@ -167,7 +155,6 @@ class MainScreen(Screen):
     async def _run_agent_chat(self, agent, message: str) -> None:
         """Run actual agent chat."""
         # Track current tool for status updates
-        current_tool = None
 
         def on_content(chunk: str):
             """Handle streaming content."""
@@ -176,7 +163,7 @@ class MainScreen(Screen):
 
         try:
             # Call the agent
-            response = await agent.chat(message, on_content=on_content)
+            await agent.chat(message, on_content=on_content)
 
             # Update stats after response
             if self._agent_status:
@@ -217,10 +204,7 @@ class MainScreen(Screen):
             self._chat_panel.add_assistant_message(response)
 
     # Editor events
-    def on_code_editor_file_saved(
-        self,
-        event: CodeEditor.FileSaved
-    ) -> None:
+    def on_code_editor_file_saved(self, event: CodeEditor.FileSaved) -> None:
         """Handle file save event."""
         if self._status_bar:
             self._status_bar.show_message(f"Saved: {event.path.name}")
@@ -311,12 +295,7 @@ class MainScreen(Screen):
             elif role == "system":
                 self._chat_panel.add_system_message(content)
 
-    def add_tool_call(
-        self,
-        tool_name: str,
-        detail: str = "",
-        status: str = "pending"
-    ) -> None:
+    def add_tool_call(self, tool_name: str, detail: str = "", status: str = "pending") -> None:
         """Add a tool call indicator to the chat."""
         if self._chat_panel:
             self._chat_panel.add_tool_call(tool_name, detail, status)

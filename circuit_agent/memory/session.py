@@ -4,12 +4,11 @@ Session persistence for Circuit Agent.
 Allows saving and loading conversation sessions.
 """
 
-import os
 import json
-import time
+import os
 from datetime import datetime
-from typing import Dict, List, Optional, Any
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 
 class SessionManager:
@@ -46,7 +45,7 @@ class SessionManager:
         model: str,
         working_dir: str,
         auto_approve: bool = False,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> tuple[bool, str]:
         """
         Save a session to disk.
@@ -71,7 +70,7 @@ class SessionManager:
                 "auto_approve": auto_approve,
                 "history": history,
                 "metadata": metadata or {},
-                "version": "3.0"
+                "version": "3.0",
             }
 
             path = self._get_session_path(name)
@@ -79,7 +78,7 @@ class SessionManager:
             # Create file with restrictive permissions from the start (avoids TOCTOU)
             fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             try:
-                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(session_data, f, indent=2, default=str)
             except Exception:
                 os.close(fd)
@@ -110,7 +109,7 @@ class SessionManager:
             return False, f"Session not found: {name}"
 
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 session_data = json.load(f)
 
             return True, session_data
@@ -128,29 +127,35 @@ class SessionManager:
         """
         sessions = []
 
-        for path in sorted(self.sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        for path in sorted(
+            self.sessions_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True
+        ):
             try:
-                with open(path, 'r', encoding='utf-8') as f:
+                with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
 
-                sessions.append({
-                    "name": data.get("name", path.stem),
-                    "created_at": data.get("created_at", "Unknown"),
-                    "model": data.get("model", "Unknown"),
-                    "working_dir": data.get("working_dir", "Unknown"),
-                    "message_count": len(data.get("history", [])),
-                    "path": str(path)
-                })
-            except:
+                sessions.append(
+                    {
+                        "name": data.get("name", path.stem),
+                        "created_at": data.get("created_at", "Unknown"),
+                        "model": data.get("model", "Unknown"),
+                        "working_dir": data.get("working_dir", "Unknown"),
+                        "message_count": len(data.get("history", [])),
+                        "path": str(path),
+                    }
+                )
+            except Exception:
                 # Include even if we can't parse it fully
-                sessions.append({
-                    "name": path.stem,
-                    "created_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
-                    "model": "Unknown",
-                    "working_dir": "Unknown",
-                    "message_count": 0,
-                    "path": str(path)
-                })
+                sessions.append(
+                    {
+                        "name": path.stem,
+                        "created_at": datetime.fromtimestamp(path.stat().st_mtime).isoformat(),
+                        "model": "Unknown",
+                        "working_dir": "Unknown",
+                        "message_count": 0,
+                        "path": str(path),
+                    }
+                )
 
         return sessions
 
@@ -180,7 +185,7 @@ class SessionManager:
         history: List[Dict[str, Any]],
         model: str,
         working_dir: str,
-        auto_approve: bool = False
+        auto_approve: bool = False,
     ) -> tuple[bool, str]:
         """
         Auto-save session with timestamp-based name.
@@ -193,9 +198,7 @@ class SessionManager:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         name = f"{dir_name}-{timestamp}"
 
-        return self.save(name, history, model, working_dir, auto_approve, {
-            "auto_saved": True
-        })
+        return self.save(name, history, model, working_dir, auto_approve, {"auto_saved": True})
 
     def get_latest(self, working_dir: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """

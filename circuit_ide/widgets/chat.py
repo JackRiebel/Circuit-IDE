@@ -4,23 +4,22 @@ Chat Panel Widget for Circuit IDE.
 Provides the AI conversation interface with streaming support.
 """
 
-from datetime import datetime
-from typing import Optional, List, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import List, Optional
 
-from textual.widgets import Static, Input, RichLog
-from textual.containers import Vertical, Horizontal, ScrollableContainer
+from rich.markdown import Markdown
+from rich.text import Text
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
-from textual import work
-from rich.text import Text
-from rich.markdown import Markdown
-from rich.panel import Panel
+from textual.widgets import Input, RichLog, Static
 
 
 @dataclass
 class ChatMessage:
     """Represents a single chat message."""
+
     role: str  # "user", "assistant", "tool", "system"
     content: str
     timestamp: datetime = field(default_factory=datetime.now)
@@ -60,10 +59,7 @@ class ChatMessageWidget(Static):
         header = Text()
         header.append(self.message.display_role, style=f"bold {self.message.role_color}")
         header.append(" ")
-        header.append(
-            self.message.timestamp.strftime("%H:%M"),
-            style="dim"
-        )
+        header.append(self.message.timestamp.strftime("%H:%M"), style="dim")
 
         yield Static(header, classes="chat-message-header")
 
@@ -100,12 +96,7 @@ class ChatMessageWidget(Static):
 class ToolCallWidget(Static):
     """Widget for displaying a tool call inline."""
 
-    def __init__(
-        self,
-        tool_name: str,
-        detail: str = "",
-        status: str = "pending"
-    ):
+    def __init__(self, tool_name: str, detail: str = "", status: str = "pending"):
         self.tool_name = tool_name
         self.detail = detail
         self.status = status
@@ -212,19 +203,9 @@ class ChatLog(RichLog):
         self.write(content, expand=True)
         self.scroll_end(animate=False)
 
-    def add_tool_call(
-        self,
-        tool_name: str,
-        detail: str = "",
-        status: str = "pending"
-    ) -> None:
+    def add_tool_call(self, tool_name: str, detail: str = "", status: str = "pending") -> None:
         """Add a tool call indicator."""
-        msg = ChatMessage(
-            role="tool",
-            content=detail,
-            tool_name=tool_name,
-            tool_status=status
-        )
+        msg = ChatMessage(role="tool", content=detail, tool_name=tool_name, tool_status=status)
         self.add_message(msg)
 
     def clear_messages(self) -> None:
@@ -238,6 +219,7 @@ class ChatInput(Input):
 
     class MessageSubmitted(Message):
         """Message sent when user submits a message."""
+
         def __init__(self, content: str) -> None:
             self.content = content
             super().__init__()
@@ -293,6 +275,7 @@ class ChatPanel(Vertical):
 
     class UserMessage(Message):
         """Message sent when user submits a chat message."""
+
         def __init__(self, content: str) -> None:
             self.content = content
             super().__init__()
@@ -320,17 +303,11 @@ class ChatPanel(Vertical):
             self._input = ChatInput(id="chat-input")
             yield self._input
 
-    def on_chat_input_message_submitted(
-        self,
-        event: ChatInput.MessageSubmitted
-    ) -> None:
+    def on_chat_input_message_submitted(self, event: ChatInput.MessageSubmitted) -> None:
         """Handle user message submission."""
         # Add to log
         if self._log:
-            self._log.add_message(ChatMessage(
-                role="user",
-                content=event.content
-            ))
+            self._log.add_message(ChatMessage(role="user", content=event.content))
 
         # Forward the message
         self.post_message(self.UserMessage(event.content))
@@ -338,30 +315,19 @@ class ChatPanel(Vertical):
     def add_user_message(self, content: str) -> None:
         """Add a user message to the log."""
         if self._log:
-            self._log.add_message(ChatMessage(
-                role="user",
-                content=content
-            ))
+            self._log.add_message(ChatMessage(role="user", content=content))
 
     def add_assistant_message(self, content: str) -> None:
         """Add an assistant message to the log."""
         if self._log:
-            self._log.add_message(ChatMessage(
-                role="assistant",
-                content=content
-            ))
+            self._log.add_message(ChatMessage(role="assistant", content=content))
 
     def add_streaming_content(self, content: str) -> None:
         """Add streaming content."""
         if self._log:
             self._log.add_streaming_content(content)
 
-    def add_tool_call(
-        self,
-        tool_name: str,
-        detail: str = "",
-        status: str = "pending"
-    ) -> None:
+    def add_tool_call(self, tool_name: str, detail: str = "", status: str = "pending") -> None:
         """Add a tool call indicator."""
         if self._log:
             self._log.add_tool_call(tool_name, detail, status)
@@ -369,10 +335,7 @@ class ChatPanel(Vertical):
     def add_system_message(self, content: str) -> None:
         """Add a system message to the log."""
         if self._log:
-            self._log.add_message(ChatMessage(
-                role="system",
-                content=content
-            ))
+            self._log.add_message(ChatMessage(role="system", content=content))
 
     def clear(self) -> None:
         """Clear all messages."""

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 class ConnectionStatus(Enum):
     """Agent connection status."""
+
     DISCONNECTED = auto()
     CONNECTING = auto()
     CONNECTED = auto()
@@ -22,6 +23,7 @@ class ConnectionStatus(Enum):
 
 class MessageRole(Enum):
     """Chat message role."""
+
     USER = "user"
     ASSISTANT = "assistant"
     SYSTEM = "system"
@@ -30,6 +32,7 @@ class MessageRole(Enum):
 
 class ToolStatus(Enum):
     """Tool execution status."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCESS = "success"
@@ -52,6 +55,7 @@ class ChatMessage:
         is_streaming: Whether this message is still being streamed
         metadata: Additional message metadata
     """
+
     id: str
     role: MessageRole
     content: str
@@ -104,6 +108,7 @@ class ToolCallInfo:
         completed_at: When the tool call completed
         requires_confirmation: Whether user confirmation is needed
     """
+
     id: str
     name: str
     arguments: Dict[str, Any] = field(default_factory=dict)
@@ -136,10 +141,7 @@ class ToolCallInfo:
             return ""
 
     def with_status(
-        self,
-        status: ToolStatus,
-        result: Optional[str] = None,
-        error: Optional[str] = None
+        self, status: ToolStatus, result: Optional[str] = None, error: Optional[str] = None
     ) -> ToolCallInfo:
         """Create a new ToolCallInfo with updated status."""
         return ToolCallInfo(
@@ -150,7 +152,9 @@ class ToolCallInfo:
             result=result if result is not None else self.result,
             error=error if error is not None else self.error,
             started_at=self.started_at,
-            completed_at=datetime.now() if status in (ToolStatus.SUCCESS, ToolStatus.ERROR) else None,
+            completed_at=datetime.now()
+            if status in (ToolStatus.SUCCESS, ToolStatus.ERROR)
+            else None,
             requires_confirmation=self.requires_confirmation,
         )
 
@@ -168,6 +172,7 @@ class ConfirmationRequest:
         is_dangerous: Whether this is a potentially dangerous operation
         timeout: Timeout in seconds (0 = no timeout)
     """
+
     id: str
     tool_call: ToolCallInfo
     message: str
@@ -184,6 +189,7 @@ class ConfirmationRequest:
 @dataclass
 class TokenUsage:
     """Token usage statistics."""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
@@ -195,6 +201,7 @@ class TokenUsage:
 @dataclass
 class CostInfo:
     """Cost tracking information."""
+
     total_cost_usd: float = 0.0
     session_cost_usd: float = 0.0
     by_model: Dict[str, float] = field(default_factory=dict)
@@ -224,6 +231,7 @@ class AgentState:
         cost: Cost tracking information
         error: Current error message if any
     """
+
     # Connection
     connection_status: ConnectionStatus = ConnectionStatus.DISCONNECTED
     error: Optional[str] = None
@@ -261,11 +269,7 @@ class AgentState:
     @property
     def can_send_message(self) -> bool:
         """Check if a message can be sent."""
-        return (
-            self.is_connected and
-            not self.is_processing and
-            self.pending_confirmation is None
-        )
+        return self.is_connected and not self.is_processing and self.pending_confirmation is None
 
     @property
     def total_tokens(self) -> int:

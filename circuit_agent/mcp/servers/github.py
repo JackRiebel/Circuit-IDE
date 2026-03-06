@@ -7,8 +7,8 @@ which offers 100+ tools for GitHub operations.
 See: https://github.com/github/github-mcp-server
 """
 
-from typing import List, Optional
 from dataclasses import dataclass
+from typing import List, Optional
 
 from ..config import MCPServerConfig, MCPTransportType
 
@@ -16,6 +16,7 @@ from ..config import MCPServerConfig, MCPTransportType
 @dataclass
 class GitHubToolset:
     """Definition of a GitHub MCP toolset."""
+
     id: str
     name: str
     description: str
@@ -45,39 +46,29 @@ class GitHubMCPServer:
     # Available toolsets
     TOOLSETS = [
         GitHubToolset(
-            id="repos",
-            name="Repositories",
-            description="Create, manage, and search repositories"
+            id="repos", name="Repositories", description="Create, manage, and search repositories"
         ),
         GitHubToolset(
-            id="issues",
-            name="Issues",
-            description="Create, update, search, and manage issues"
+            id="issues", name="Issues", description="Create, update, search, and manage issues"
         ),
         GitHubToolset(
             id="pull_requests",
             name="Pull Requests",
-            description="Create, review, merge, and manage PRs"
+            description="Create, review, merge, and manage PRs",
         ),
         GitHubToolset(
-            id="actions",
-            name="Actions",
-            description="Manage GitHub Actions workflows and runs"
+            id="actions", name="Actions", description="Manage GitHub Actions workflows and runs"
         ),
         GitHubToolset(
             id="code_security",
             name="Code Security",
-            description="Code scanning, secret scanning, Dependabot"
+            description="Code scanning, secret scanning, Dependabot",
         ),
         GitHubToolset(
-            id="users",
-            name="Users",
-            description="User profile and organization management"
+            id="users", name="Users", description="User profile and organization management"
         ),
         GitHubToolset(
-            id="discussions",
-            name="Discussions",
-            description="GitHub Discussions management"
+            id="discussions", name="Discussions", description="GitHub Discussions management"
         ),
     ]
 
@@ -188,7 +179,7 @@ class GitHubMCPServer:
         if "discussions" in toolsets:
             scopes.add("write:discussion")
 
-        return sorted(list(scopes))
+        return sorted(scopes)
 
     @classmethod
     def validate_pat(cls, pat: str) -> bool:

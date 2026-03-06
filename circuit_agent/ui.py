@@ -2,15 +2,14 @@
 UI utilities for Circuit Agent - colors, terminal helpers, display functions.
 """
 
+import difflib
 import os
 import re
-import sys
-import difflib
-from typing import Optional
 
 
 class Colors:
     """ANSI color codes for terminal output."""
+
     GREEN = "\033[92m"
     RED = "\033[91m"
     YELLOW = "\033[93m"
@@ -28,7 +27,7 @@ C = Colors
 
 def clear_screen():
     """Clear the terminal screen."""
-    os.system('cls' if os.name == 'nt' else 'clear')
+    os.system("cls" if os.name == "nt" else "clear")
 
 
 def clear_line():
@@ -51,7 +50,7 @@ def print_header(working_dir: str):
 def print_welcome():
     """Print the welcome message with available commands."""
     print(f"""
-{C.CYAN}{'─' * 60}{C.RESET}
+{C.CYAN}{"─" * 60}{C.RESET}
 {C.BOLD}Circuit Agent v4.0 Ready!{C.RESET}
 
 {C.DIM}Commands:{C.RESET}  /help /save /load /cost /audit /think /auto /quit
@@ -68,7 +67,7 @@ def print_welcome():
   - Type 'a' during confirmation to auto-approve all actions
   - Create CIRCUIT.md for project-specific instructions
   - Use /think on to see agent's reasoning process
-{C.CYAN}{'─' * 60}{C.RESET}
+{C.CYAN}{"─" * 60}{C.RESET}
 """)
 
 
@@ -129,13 +128,16 @@ def print_help():
 """)
 
 
-def print_token_usage(prompt_tokens: int, completion_tokens: int,
-                      session_prompt: int, session_completion: int):
+def print_token_usage(
+    prompt_tokens: int, completion_tokens: int, session_prompt: int, session_completion: int
+):
     """Print token usage statistics."""
     total = prompt_tokens + completion_tokens
     session_total = session_prompt + session_completion
-    print(f"\n{C.DIM}Tokens: {prompt_tokens:,} in / {completion_tokens:,} out ({total:,}) | "
-          f"Session: {session_total:,} total{C.RESET}")
+    print(
+        f"\n{C.DIM}Tokens: {prompt_tokens:,} in / {completion_tokens:,} out ({total:,}) | "
+        f"Session: {session_total:,} total{C.RESET}"
+    )
 
 
 def show_diff(old_text: str, new_text: str, path: str, max_lines: int = 30) -> None:
@@ -144,31 +146,30 @@ def show_diff(old_text: str, new_text: str, path: str, max_lines: int = 30) -> N
     new_lines = new_text.splitlines(keepends=True)
 
     # Ensure lines end with newline for proper diff display
-    if old_lines and not old_lines[-1].endswith('\n'):
-        old_lines[-1] += '\n'
-    if new_lines and not new_lines[-1].endswith('\n'):
-        new_lines[-1] += '\n'
+    if old_lines and not old_lines[-1].endswith("\n"):
+        old_lines[-1] += "\n"
+    if new_lines and not new_lines[-1].endswith("\n"):
+        new_lines[-1] += "\n"
 
-    diff = list(difflib.unified_diff(
-        old_lines, new_lines,
-        fromfile=f"a/{path}",
-        tofile=f"b/{path}",
-        lineterm=''
-    ))
+    diff = list(
+        difflib.unified_diff(
+            old_lines, new_lines, fromfile=f"a/{path}", tofile=f"b/{path}", lineterm=""
+        )
+    )
 
     if not diff:
         print(f"{C.DIM}(no visible changes){C.RESET}")
         return
 
     for line in diff[:max_lines]:
-        line = line.rstrip('\n')
-        if line.startswith('+++') or line.startswith('---'):
+        line = line.rstrip("\n")
+        if line.startswith("+++") or line.startswith("---"):
             print(f"{C.BOLD}{line}{C.RESET}")
-        elif line.startswith('+'):
+        elif line.startswith("+"):
             print(f"{C.GREEN}{line}{C.RESET}")
-        elif line.startswith('-'):
+        elif line.startswith("-"):
             print(f"{C.RED}{line}{C.RESET}")
-        elif line.startswith('@@'):
+        elif line.startswith("@@"):
             print(f"{C.CYAN}{line}{C.RESET}")
         else:
             print(line)
@@ -215,12 +216,12 @@ def confirm(prompt: str, default: bool = False) -> bool:
 
     if not response:
         return default
-    return response in ('y', 'yes')
+    return response in ("y", "yes")
 
 
 def spinner_frame(frame: int) -> str:
     """Get a spinner frame for progress indication."""
-    frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+    frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     return frames[frame % len(frames)]
 
 
@@ -237,8 +238,8 @@ class StreamingMarkdownRenderer:
         """Process a chunk of streamed text."""
         self._buffer += chunk
 
-        while '\n' in self._buffer:
-            line, self._buffer = self._buffer.split('\n', 1)
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
             self._process_line(line)
 
     def flush(self):
@@ -257,7 +258,7 @@ class StreamingMarkdownRenderer:
     def _process_line(self, line: str):
         stripped = line.strip()
 
-        if stripped.startswith('```'):
+        if stripped.startswith("```"):
             if self._in_code_block:
                 self._render_code_block()
                 self._in_code_block = False
@@ -275,38 +276,38 @@ class StreamingMarkdownRenderer:
     def _format_line(self, line: str) -> str:
         stripped = line.strip()
 
-        if stripped.startswith('### '):
+        if stripped.startswith("### "):
             return f"{C.BOLD}{C.CYAN}{stripped[4:]}{C.RESET}"
-        if stripped.startswith('## '):
+        if stripped.startswith("## "):
             return f"{C.BOLD}{C.CYAN}{stripped[3:]}{C.RESET}"
-        if stripped.startswith('# '):
+        if stripped.startswith("# "):
             return f"{C.BOLD}{C.CYAN}{stripped[2:]}{C.RESET}"
 
-        if stripped.startswith('- ') or stripped.startswith('* '):
+        if stripped.startswith("- ") or stripped.startswith("* "):
             indent = len(line) - len(line.lstrip())
             content = self._format_inline(stripped[2:])
             return f"{' ' * indent}{C.CYAN}•{C.RESET} {content}"
 
-        match = re.match(r'^(\s*)(\d+)\.\s+(.+)', line)
+        match = re.match(r"^(\s*)(\d+)\.\s+(.+)", line)
         if match:
             return f"{match.group(1)}{C.CYAN}{match.group(2)}.{C.RESET} {self._format_inline(match.group(3))}"
 
-        if stripped.startswith('> '):
+        if stripped.startswith("> "):
             return f"{C.DIM}│ {self._format_inline(stripped[2:])}{C.RESET}"
 
-        if stripped in ('---', '***', '___'):
+        if stripped in ("---", "***", "___"):
             return f"{C.DIM}{'─' * 50}{C.RESET}"
 
         return self._format_inline(line)
 
     def _format_inline(self, text: str) -> str:
-        text = re.sub(r'`([^`]+)`', f'{C.YELLOW}\\1{C.RESET}', text)
-        text = re.sub(r'\*\*(.+?)\*\*', f'{C.BOLD}\\1{C.RESET}', text)
-        text = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', f'\033[3m\\1{C.RESET}', text)
+        text = re.sub(r"`([^`]+)`", f"{C.YELLOW}\\1{C.RESET}", text)
+        text = re.sub(r"\*\*(.+?)\*\*", f"{C.BOLD}\\1{C.RESET}", text)
+        text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", f"\033[3m\\1{C.RESET}", text)
         return text
 
     def _render_code_block(self):
-        code = '\n'.join(self._code_lines)
+        code = "\n".join(self._code_lines)
         highlighted = self._highlight_code(code, self._code_lang)
 
         lang_label = f" {self._code_lang} " if self._code_lang else ""
@@ -319,8 +320,8 @@ class StreamingMarkdownRenderer:
     def _highlight_code(self, code: str, lang: str) -> str:
         try:
             from pygments import highlight
-            from pygments.lexers import get_lexer_by_name, guess_lexer
             from pygments.formatters import Terminal256Formatter
+            from pygments.lexers import get_lexer_by_name, guess_lexer
 
             if lang:
                 try:
@@ -333,7 +334,7 @@ class StreamingMarkdownRenderer:
                 except Exception:
                     return code
 
-            return highlight(code, lexer, Terminal256Formatter(style='monokai')).rstrip()
+            return highlight(code, lexer, Terminal256Formatter(style="monokai")).rstrip()
         except Exception:
             return code
 
@@ -346,6 +347,6 @@ def render_markdown(text: str) -> str:
 
     buf = io.StringIO()
     with redirect_stdout(buf):
-        renderer.feed(text + '\n')
+        renderer.feed(text + "\n")
         renderer.flush()
-    return buf.getvalue().rstrip('\n')
+    return buf.getvalue().rstrip("\n")

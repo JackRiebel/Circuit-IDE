@@ -14,15 +14,29 @@ from typing import Optional
 
 from .agent import CircuitAgent
 from .config import (
-    MODELS, load_credentials, save_credentials, delete_credentials,
-    get_circuit_md_locations, get_config_summary, CONFIG_FILE
+    CONFIG_FILE,
+    MODELS,
+    delete_credentials,
+    get_circuit_md_locations,
+    get_config_summary,
+    load_credentials,
+    save_credentials,
 )
 from .ui import (
-    C, clear_screen, clear_line, print_header, print_welcome, print_help,
-    print_token_usage, print_error, print_success, print_warning, print_info,
-    StreamingMarkdownRenderer, render_markdown
+    C,
+    StreamingMarkdownRenderer,
+    clear_line,
+    clear_screen,
+    print_error,
+    print_header,
+    print_help,
+    print_info,
+    print_success,
+    print_token_usage,
+    print_warning,
+    print_welcome,
+    render_markdown,
 )
-from .memory import SessionManager
 
 
 async def run_cli(working_dir: Optional[str] = None):
@@ -77,8 +91,12 @@ async def run_cli(working_dir: Optional[str] = None):
         print_success("Authentication successful!")
 
         if needs_save_prompt:
-            save_response = input(f"\n  {C.CYAN}Save credentials for future sessions? [Y/n]:{C.RESET} ").strip().lower()
-            if save_response in ('', 'y', 'yes'):
+            save_response = (
+                input(f"\n  {C.CYAN}Save credentials for future sessions? [Y/n]:{C.RESET} ")
+                .strip()
+                .lower()
+            )
+            if save_response in ("", "y", "yes"):
                 if save_credentials(client_id, client_secret, app_key):
                     print_success(f"Credentials saved to {CONFIG_FILE}")
                 else:
@@ -115,7 +133,7 @@ async def chat_loop(agent: CircuitAgent, working_dir: str):
                 continue
 
             # Handle slash commands
-            if user_input.startswith('/'):
+            if user_input.startswith("/"):
                 cmd_result = handle_command(user_input, agent, working_dir)
                 if cmd_result == "quit":
                     break
@@ -130,12 +148,12 @@ async def chat_loop(agent: CircuitAgent, working_dir: str):
             first_chunk = [True]  # Use list to allow modification in closure
             md_renderer = StreamingMarkdownRenderer()
 
-            def on_content(chunk: str):
-                if first_chunk[0]:
+            def on_content(chunk: str, _first_chunk=first_chunk, _md_renderer=md_renderer):
+                if _first_chunk[0]:
                     clear_line()
                     print(f"\n{C.MAGENTA}Agent:{C.RESET}")
-                    first_chunk[0] = False
-                md_renderer.feed(chunk)
+                    _first_chunk[0] = False
+                _md_renderer.feed(chunk)
 
             response = await agent.chat(user_input, on_content=on_content)
             clear_line()
@@ -154,7 +172,7 @@ async def chat_loop(agent: CircuitAgent, working_dir: str):
                     stats["last_prompt"],
                     stats["last_completion"],
                     stats["session_prompt"],
-                    stats["session_completion"]
+                    stats["session_completion"],
                 )
 
         except KeyboardInterrupt:
@@ -175,35 +193,39 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
     args = parts[1:] if len(parts) > 1 else []
 
     # Quit commands
-    if cmd in ['/quit', '/exit', '/q']:
+    if cmd in ["/quit", "/exit", "/q"]:
         print(f"\n{C.CYAN}Goodbye!{C.RESET}\n")
         return "quit"
 
     # Clear history
-    elif cmd in ['/clear', '/c']:
+    elif cmd in ["/clear", "/c"]:
         agent.clear_history()
         print_success("Conversation cleared")
         return "continue"
 
     # Show history
-    elif cmd == '/history':
+    elif cmd == "/history":
         if not agent.history:
             print_info("No conversation history")
         else:
             print(f"\n{C.BOLD}Recent conversation:{C.RESET}")
             for msg in agent.history[-10:]:
-                role = msg.get('role', 'unknown').upper()
-                content = msg.get('content', '')
-                if role == 'USER':
-                    print(f"  {C.BLUE}[USER]{C.RESET} {content[:80]}{'...' if len(content) > 80 else ''}")
-                elif role == 'ASSISTANT':
-                    preview = content[:80].replace('\n', ' ')
-                    print(f"  {C.MAGENTA}[AGENT]{C.RESET} {preview}{'...' if len(content) > 80 else ''}")
+                role = msg.get("role", "unknown").upper()
+                content = msg.get("content", "")
+                if role == "USER":
+                    print(
+                        f"  {C.BLUE}[USER]{C.RESET} {content[:80]}{'...' if len(content) > 80 else ''}"
+                    )
+                elif role == "ASSISTANT":
+                    preview = content[:80].replace("\n", " ")
+                    print(
+                        f"  {C.MAGENTA}[AGENT]{C.RESET} {preview}{'...' if len(content) > 80 else ''}"
+                    )
         return "continue"
 
     # List files
-    elif cmd == '/files':
-        files = list(Path(working_dir).glob('*'))
+    elif cmd == "/files":
+        files = list(Path(working_dir).glob("*"))
         print(f"\n{C.DIM}Files in {working_dir}:{C.RESET}")
         for f in sorted(files)[:20]:
             icon = "📁" if f.is_dir() else "📄"
@@ -213,27 +235,31 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Change model
-    elif cmd == '/model':
+    elif cmd == "/model":
         print(f"\n{C.BOLD}Select a model:{C.RESET}")
         for k, (_, desc) in MODELS.items():
             marker = " ←" if MODELS[k][0] == agent.model else ""
             print(f"  {C.CYAN}{k}){C.RESET} {desc}{C.GREEN}{marker}{C.RESET}")
-        choice = input(f"\n  Choice: ").strip()
+        choice = input("\n  Choice: ").strip()
         if choice in MODELS:
             agent.model = MODELS[choice][0]
             print_success(f"Switched to {agent.model}")
         return "continue"
 
     # Token usage
-    elif cmd == '/tokens':
+    elif cmd == "/tokens":
         stats = agent.get_token_stats()
         print(f"\n{C.BOLD}Token Usage:{C.RESET}")
-        print(f"  Last request:  {stats['last_prompt']:,} in / {stats['last_completion']:,} out ({stats['last_total']:,} total)")
-        print(f"  Session total: {stats['session_prompt']:,} in / {stats['session_completion']:,} out ({stats['session_total']:,} total)")
+        print(
+            f"  Last request:  {stats['last_prompt']:,} in / {stats['last_completion']:,} out ({stats['last_total']:,} total)"
+        )
+        print(
+            f"  Session total: {stats['session_prompt']:,} in / {stats['session_completion']:,} out ({stats['session_total']:,} total)"
+        )
         return "continue"
 
     # Undo
-    elif cmd in ['/undo', '/u']:
+    elif cmd in ["/undo", "/u"]:
         backup_manager = agent.backup_manager
 
         # If path specified, undo that file
@@ -250,7 +276,7 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
             if last_modified:
                 print_info(f"Last modified: {last_modified}")
                 confirm = input(f"  {C.CYAN}Restore this file? [y/N]:{C.RESET} ").strip().lower()
-                if confirm in ('y', 'yes'):
+                if confirm in ("y", "yes"):
                     success, message = backup_manager.restore(last_modified)
                     if success:
                         print_success(message)
@@ -270,14 +296,14 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Configuration
-    elif cmd == '/config':
+    elif cmd == "/config":
         summary = get_config_summary()
         circuit_md = get_circuit_md_locations(working_dir)
 
         print(f"\n{C.BOLD}Configuration:{C.RESET}")
         print(f"  Config dir:  {summary['config_dir']}")
         print(f"  Credentials: {'Saved' if summary['credentials_saved'] else 'Not saved'}")
-        if summary['client_id_preview']:
+        if summary["client_id_preview"]:
             print(f"  Client ID:   {summary['client_id_preview']}")
 
         print(f"\n{C.BOLD}CIRCUIT.md:{C.RESET}")
@@ -294,7 +320,7 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Logout
-    elif cmd == '/logout':
+    elif cmd == "/logout":
         if delete_credentials():
             print_success("Saved credentials deleted")
             print_info("You'll need to re-enter credentials next time")
@@ -303,37 +329,40 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Help
-    elif cmd in ['/help', '/h']:
+    elif cmd in ["/help", "/h"]:
         print_help()
         return "continue"
 
     # Streaming toggle
-    elif cmd == '/stream':
+    elif cmd == "/stream":
         agent.stream_responses = not agent.stream_responses
         status = "enabled" if agent.stream_responses else "disabled"
         print_success(f"Streaming {status}")
         return "continue"
 
     # Auto-approve toggle
-    elif cmd == '/auto':
+    elif cmd == "/auto":
         agent.auto_approve = not agent.auto_approve
         if agent.auto_approve:
-            print_warning("Auto-approve ENABLED - all actions will be executed without confirmation")
+            print_warning(
+                "Auto-approve ENABLED - all actions will be executed without confirmation"
+            )
         else:
             print_success("Auto-approve disabled - confirmations required")
         return "continue"
 
     # Git status shortcut
-    elif cmd == '/git':
+    elif cmd == "/git":
         result = agent.git_tools.git_status({}, False)
         print(f"\n{result}")
         return "continue"
 
     # Session save
-    elif cmd == '/save':
+    elif cmd == "/save":
         if not args:
             # Generate name from timestamp
             from datetime import datetime
+
             name = datetime.now().strftime("%Y%m%d-%H%M%S")
         else:
             name = args[0]
@@ -346,7 +375,7 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Session load
-    elif cmd == '/load':
+    elif cmd == "/load":
         if not args:
             # Show available sessions
             sessions = agent.list_sessions()
@@ -356,7 +385,7 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
                 print(f"\n{C.BOLD}Saved sessions:{C.RESET}")
                 for i, s in enumerate(sessions[:10], 1):
                     print(f"  {i}. {s['name']} ({s['message_count']} msgs, {s['model']})")
-                print(f"\n  Use: /load <name>")
+                print("\n  Use: /load <name>")
         else:
             name = args[0]
             success, message = agent.load_session(name)
@@ -367,14 +396,14 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # List sessions
-    elif cmd == '/sessions':
+    elif cmd == "/sessions":
         sessions = agent.list_sessions()
         if not sessions:
             print_info("No saved sessions found")
         else:
             print(f"\n{C.BOLD}Saved sessions:{C.RESET}")
             for s in sessions[:15]:
-                created = s['created_at'][:10] if len(s['created_at']) > 10 else s['created_at']
+                created = s["created_at"][:10] if len(s["created_at"]) > 10 else s["created_at"]
                 print(f"  {C.CYAN}{s['name']}{C.RESET}")
                 print(f"    {created} | {s['message_count']} msgs | {s['model']}")
             if len(sessions) > 15:
@@ -382,18 +411,18 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # Context compaction
-    elif cmd == '/compact':
+    elif cmd == "/compact":
         stats = agent.get_compaction_stats()
         print(f"\n{C.BOLD}Context stats:{C.RESET}")
         print(f"  Messages: {stats['message_count']}")
         print(f"  Est. tokens: ~{stats['estimated_tokens']:,}")
 
-        if stats['needs_compaction']:
+        if stats["needs_compaction"]:
             print(f"\n  Would compact: {stats['would_compact']} msgs → summary")
             print(f"  Would keep: {stats['would_keep']} recent msgs")
 
             confirm = input(f"\n  {C.CYAN}Compact now? [y/N]:{C.RESET} ").strip().lower()
-            if confirm in ('y', 'yes'):
+            if confirm in ("y", "yes"):
                 success, message = agent.compact_history()
                 if success:
                     print_success(message)
@@ -404,13 +433,13 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         return "continue"
 
     # v4.0: Cost tracking
-    elif cmd == '/cost':
+    elif cmd == "/cost":
         print(f"\n{C.BOLD}Session Cost:{C.RESET}")
         print(f"  {agent.get_cost_summary()}")
         return "continue"
 
     # v4.0: Audit log
-    elif cmd == '/audit':
+    elif cmd == "/audit":
         stats = agent.get_audit_stats()
         if not stats.get("enabled"):
             print_info("Audit logging is disabled")
@@ -420,25 +449,25 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
             print(f"  Entries: {stats.get('entries', 0)}")
             print(f"  Log file: {stats.get('log_file', 'N/A')}")
 
-            action_counts = stats.get('action_counts', {})
+            action_counts = stats.get("action_counts", {})
             if action_counts:
                 print(f"\n  {C.BOLD}Actions:{C.RESET}")
                 for action, count in sorted(action_counts.items()):
                     print(f"    {action}: {count}")
 
-            if args and args[0] == 'recent':
+            if args and args[0] == "recent":
                 print(f"\n  {C.BOLD}Recent entries:{C.RESET}")
                 entries = agent.get_recent_audit_entries(5)
                 for entry in entries:
-                    ts = entry.get('timestamp', '')[:19]
-                    action = entry.get('action', 'unknown')
+                    ts = entry.get("timestamp", "")[:19]
+                    action = entry.get("action", "unknown")
                     print(f"    [{ts}] {action}")
         return "continue"
 
     # v4.0: Thinking mode toggle
-    elif cmd == '/think':
-        if args and args[0] in ('on', 'off'):
-            enabled = args[0] == 'on'
+    elif cmd == "/think":
+        if args and args[0] in ("on", "off"):
+            enabled = args[0] == "on"
             agent.set_thinking_mode(enabled)
             if enabled:
                 print_success("Thinking mode enabled - agent will show reasoning")
@@ -447,7 +476,7 @@ def handle_command(user_input: str, agent: CircuitAgent, working_dir: str) -> st
         else:
             current = "on" if agent.thinking_mode else "off"
             print(f"\n{C.BOLD}Thinking Mode:{C.RESET} {current}")
-            print(f"  Use: /think on  or  /think off")
+            print("  Use: /think on  or  /think off")
         return "continue"
 
     # Unknown command
@@ -462,7 +491,7 @@ async def run_headless(
     auto_approve: bool = False,
     output_format: str = "text",
     model: str = "gpt-4o",
-    max_iterations: int = 25
+    max_iterations: int = 25,
 ) -> int:
     """
     Run agent in headless/CI mode with a single prompt.
@@ -485,7 +514,10 @@ async def run_headless(
         if output_format == "json":
             print(json.dumps({"error": "Missing credentials", "success": False}))
         else:
-            print("Error: Missing credentials. Run in interactive mode first to set up.", file=sys.stderr)
+            print(
+                "Error: Missing credentials. Run in interactive mode first to set up.",
+                file=sys.stderr,
+            )
         return 1
 
     # Create agent
@@ -507,7 +539,9 @@ async def run_headless(
         await agent.get_token()
 
         # Run the prompt
-        response = await agent.chat(prompt, on_content=on_content if output_format == "text" else None)
+        response = await agent.chat(
+            prompt, on_content=on_content if output_format == "text" else None
+        )
 
         if output_format == "json":
             result = {
@@ -519,13 +553,18 @@ async def run_headless(
             print(json.dumps(result, indent=2))
         elif output_format == "markdown":
             print(f"# Agent Response\n\n{response}\n")
-            print(f"---\n*Tokens: {agent.get_token_stats()['session_total']:,} | Cost: ${agent.get_cost_stats()['estimated_cost_usd']:.4f}*")
+            print(
+                f"---\n*Tokens: {agent.get_token_stats()['session_total']:,} | Cost: ${agent.get_cost_stats()['estimated_cost_usd']:.4f}*"
+            )
         else:
             # Text format - already printed via on_content
             if not output_parts:
                 print()  # Newline after streamed content
             stats = agent.get_token_stats()
-            print(f"\n[Tokens: {stats['session_total']:,} | Cost: ${agent.get_cost_stats()['estimated_cost_usd']:.4f}]", file=sys.stderr)
+            print(
+                f"\n[Tokens: {stats['session_total']:,} | Cost: ${agent.get_cost_stats()['estimated_cost_usd']:.4f}]",
+                file=sys.stderr,
+            )
 
         return 0
 
@@ -559,52 +598,41 @@ Examples:
 
   # Specify working directory
   circuit-agent /path/to/project -p "Analyze the codebase"
-"""
+""",
     )
 
     parser.add_argument(
-        "directory",
-        nargs="?",
-        default=None,
-        help="Working directory (default: current directory)"
+        "directory", nargs="?", default=None, help="Working directory (default: current directory)"
     )
 
-    parser.add_argument(
-        "-p", "--prompt",
-        help="Single prompt to execute (enables headless mode)"
-    )
+    parser.add_argument("-p", "--prompt", help="Single prompt to execute (enables headless mode)")
+
+    parser.add_argument("--prompt-file", type=str, help="Read prompt from file")
 
     parser.add_argument(
-        "--prompt-file",
-        type=str,
-        help="Read prompt from file"
-    )
-
-    parser.add_argument(
-        "--auto-approve", "-y",
+        "--auto-approve",
+        "-y",
         action="store_true",
-        help="Auto-approve all actions (skip confirmations)"
+        help="Auto-approve all actions (skip confirmations)",
     )
 
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         choices=["text", "json", "markdown"],
         default="text",
-        help="Output format (default: text)"
+        help="Output format (default: text)",
     )
 
     parser.add_argument(
-        "--model", "-m",
+        "--model",
+        "-m",
         choices=["gpt-4o", "gpt-4o-mini", "gpt-4.1", "o4-mini"],
         default="gpt-4o",
-        help="Model to use (default: gpt-4o)"
+        help="Model to use (default: gpt-4o)",
     )
 
-    parser.add_argument(
-        "--version", "-v",
-        action="store_true",
-        help="Show version and exit"
-    )
+    parser.add_argument("--version", "-v", action="store_true", help="Show version and exit")
 
     return parser.parse_args()
 
@@ -616,6 +644,7 @@ def main():
     # Handle version flag
     if args.version:
         from . import __version__
+
         print(f"Circuit Agent v{__version__}")
         return
 
@@ -640,13 +669,15 @@ def main():
     try:
         if prompt:
             # Headless mode
-            exit_code = asyncio.run(run_headless(
-                prompt=prompt,
-                working_dir=working_dir,
-                auto_approve=args.auto_approve,
-                output_format=args.output,
-                model=args.model
-            ))
+            exit_code = asyncio.run(
+                run_headless(
+                    prompt=prompt,
+                    working_dir=working_dir,
+                    auto_approve=args.auto_approve,
+                    output_format=args.output,
+                    model=args.model,
+                )
+            )
             sys.exit(exit_code)
         else:
             # Interactive mode

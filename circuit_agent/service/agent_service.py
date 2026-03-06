@@ -14,17 +14,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from .events import EventEmitter, EventType, Event
+from .events import Event, EventEmitter, EventType
 from .state import (
     AgentState,
     ChatMessage,
-    ToolCallInfo,
     ConfirmationRequest,
     ConnectionStatus,
-    MessageRole,
-    ToolStatus,
-    TokenUsage,
     CostInfo,
+    MessageRole,
+    TokenUsage,
+    ToolCallInfo,
+    ToolStatus,
 )
 
 
@@ -182,10 +182,7 @@ class AgentService:
                 connection_status=ConnectionStatus.ERROR,
                 error=error_msg,
             )
-            await self._events.emit_async(
-                EventType.CONNECTION_ERROR,
-                {"error": error_msg}
-            )
+            await self._events.emit_async(EventType.CONNECTION_ERROR, {"error": error_msg})
             return False
 
     async def connect_with_saved_credentials(self) -> bool:
@@ -229,16 +226,12 @@ class AgentService:
             The agent's response, or None if error
         """
         if not self._agent:
-            await self._events.emit_async(
-                EventType.MESSAGE_ERROR,
-                {"error": "Not connected"}
-            )
+            await self._events.emit_async(EventType.MESSAGE_ERROR, {"error": "Not connected"})
             return None
 
         if self._state.is_processing:
             await self._events.emit_async(
-                EventType.MESSAGE_ERROR,
-                {"error": "Already processing a message"}
+                EventType.MESSAGE_ERROR, {"error": "Already processing a message"}
             )
             return None
 
@@ -253,10 +246,13 @@ class AgentService:
 
         # Start processing
         self._update_state(is_processing=True, is_thinking=True)
-        await self._events.emit_async(EventType.MESSAGE_STARTED, {
-            "message_id": user_msg_id,
-            "content": content,
-        })
+        await self._events.emit_async(
+            EventType.MESSAGE_STARTED,
+            {
+                "message_id": user_msg_id,
+                "content": content,
+            },
+        )
 
         # Create assistant message placeholder
         assistant_msg_id = str(uuid.uuid4())
@@ -267,11 +263,14 @@ class AgentService:
             def on_content(chunk: str):
                 nonlocal assistant_content
                 assistant_content += chunk
-                self._events.emit(EventType.MESSAGE_CHUNK, {
-                    "message_id": assistant_msg_id,
-                    "chunk": chunk,
-                    "content": assistant_content,
-                })
+                self._events.emit(
+                    EventType.MESSAGE_CHUNK,
+                    {
+                        "message_id": assistant_msg_id,
+                        "chunk": chunk,
+                        "content": assistant_content,
+                    },
+                )
 
             # Intercept confirmation requests
             original_confirm = self._agent._confirm_action
@@ -307,19 +306,16 @@ class AgentService:
                 event = asyncio.Event()
                 self._pending_confirmations[confirm_id] = event
 
-                await self._events.emit_async(
-                    EventType.CONFIRMATION_NEEDED,
-                    {"request": request}
-                )
+                await self._events.emit_async(EventType.CONFIRMATION_NEEDED, {"request": request})
 
                 # Wait for confirmation
                 try:
                     await asyncio.wait_for(event.wait(), timeout=request.timeout)
                     result = self._confirmation_results.get(confirm_id, False)
                 except asyncio.TimeoutError:
-                    await self._events.emit_async(EventType.CONFIRMATION_TIMEOUT, {
-                        "request": request
-                    })
+                    await self._events.emit_async(
+                        EventType.CONFIRMATION_TIMEOUT, {"request": request}
+                    )
                     result = False
 
                 # Clean up
@@ -327,10 +323,13 @@ class AgentService:
                 self._confirmation_results.pop(confirm_id, None)
                 self._update_state(pending_confirmation=None)
 
-                await self._events.emit_async(EventType.CONFIRMATION_RECEIVED, {
-                    "request": request,
-                    "approved": result,
-                })
+                await self._events.emit_async(
+                    EventType.CONFIRMATION_RECEIVED,
+                    {
+                        "request": request,
+                        "approved": result,
+                    },
+                )
 
                 return result
 
@@ -382,18 +381,24 @@ class AgentService:
             )
             await self._events.emit_async(EventType.COST_UPDATED, cost_stats)
 
-            await self._events.emit_async(EventType.MESSAGE_COMPLETED, {
-                "message_id": assistant_msg_id,
-                "content": response,
-            })
+            await self._events.emit_async(
+                EventType.MESSAGE_COMPLETED,
+                {
+                    "message_id": assistant_msg_id,
+                    "content": response,
+                },
+            )
 
             return response
 
         except Exception as e:
             error_msg = str(e)
-            await self._events.emit_async(EventType.MESSAGE_ERROR, {
-                "error": error_msg,
-            })
+            await self._events.emit_async(
+                EventType.MESSAGE_ERROR,
+                {
+                    "error": error_msg,
+                },
+            )
             self._update_state(error=error_msg)
             return None
 
@@ -528,9 +533,7 @@ class AgentService:
             started_at=datetime.now(),
         )
 
-        await self._events.emit_async(EventType.TOOL_CALL_STARTED, {
-            "tool_call": tool_call
-        })
+        await self._events.emit_async(EventType.TOOL_CALL_STARTED, {"tool_call": tool_call})
 
         try:
             confirmed = skip_confirmation or self._state.auto_approve
@@ -543,19 +546,25 @@ class AgentService:
                 return "Confirmation required", False
 
             updated_call = tool_call.with_status(ToolStatus.SUCCESS, result=str(result))
-            await self._events.emit_async(EventType.TOOL_CALL_COMPLETED, {
-                "tool_call": updated_call,
-                "result": result,
-            })
+            await self._events.emit_async(
+                EventType.TOOL_CALL_COMPLETED,
+                {
+                    "tool_call": updated_call,
+                    "result": result,
+                },
+            )
             return str(result), True
 
         except Exception as e:
             error_msg = str(e)
             updated_call = tool_call.with_status(ToolStatus.ERROR, error=error_msg)
-            await self._events.emit_async(EventType.TOOL_CALL_ERROR, {
-                "tool_call": updated_call,
-                "error": error_msg,
-            })
+            await self._events.emit_async(
+                EventType.TOOL_CALL_ERROR,
+                {
+                    "tool_call": updated_call,
+                    "error": error_msg,
+                },
+            )
             return error_msg, False
 
     # =========================================================================
@@ -574,7 +583,9 @@ class AgentService:
             thinking_mode=kwargs.get("thinking_mode", self._state.thinking_mode),
             stream_responses=kwargs.get("stream_responses", self._state.stream_responses),
             messages=kwargs.get("messages", self._state.messages),
-            pending_confirmation=kwargs.get("pending_confirmation", self._state.pending_confirmation),
+            pending_confirmation=kwargs.get(
+                "pending_confirmation", self._state.pending_confirmation
+            ),
             is_processing=kwargs.get("is_processing", self._state.is_processing),
             is_thinking=kwargs.get("is_thinking", self._state.is_thinking),
             current_tool_calls=kwargs.get("current_tool_calls", self._state.current_tool_calls),
@@ -633,26 +644,38 @@ class AgentService:
             results = self._agent.init_mcp(configs)
 
             for server_id in results.get("connected", []):
-                await self._events.emit_async(EventType.MCP_SERVER_CONNECTED, {
-                    "server_id": server_id,
-                })
+                await self._events.emit_async(
+                    EventType.MCP_SERVER_CONNECTED,
+                    {
+                        "server_id": server_id,
+                    },
+                )
 
             for failure in results.get("failed", []):
-                await self._events.emit_async(EventType.MCP_SERVER_ERROR, {
-                    "server_id": failure,
-                })
+                await self._events.emit_async(
+                    EventType.MCP_SERVER_ERROR,
+                    {
+                        "server_id": failure,
+                    },
+                )
 
-            await self._events.emit_async(EventType.MCP_TOOLS_UPDATED, {
-                "total_tools": results.get("total_tools", 0),
-            })
+            await self._events.emit_async(
+                EventType.MCP_TOOLS_UPDATED,
+                {
+                    "total_tools": results.get("total_tools", 0),
+                },
+            )
 
             return results
 
         except Exception as e:
             error_msg = str(e)
-            await self._events.emit_async(EventType.MCP_SERVER_ERROR, {
-                "error": error_msg,
-            })
+            await self._events.emit_async(
+                EventType.MCP_SERVER_ERROR,
+                {
+                    "error": error_msg,
+                },
+            )
             return {"error": error_msg, "connected": [], "failed": [], "total_tools": 0}
 
     async def init_github_mcp(self, pat: str, toolsets: List[str] = None) -> Dict[str, Any]:
@@ -671,9 +694,12 @@ class AgentService:
         if not self._agent:
             return {"error": "Not connected", "success": False, "tool_count": 0}
 
-        await self._events.emit_async(EventType.MCP_SERVER_CONNECTING, {
-            "server_id": "github",
-        })
+        await self._events.emit_async(
+            EventType.MCP_SERVER_CONNECTING,
+            {
+                "server_id": "github",
+            },
+        )
 
         try:
             config = GitHubMCPServer.get_remote_config(
@@ -688,29 +714,41 @@ class AgentService:
                 self._agent._mcp_tools_cache = self._agent.mcp_manager.list_tools()
                 tool_count = len(self._agent._mcp_tools_cache)
 
-                await self._events.emit_async(EventType.MCP_SERVER_CONNECTED, {
-                    "server_id": "github",
-                    "tool_count": tool_count,
-                })
+                await self._events.emit_async(
+                    EventType.MCP_SERVER_CONNECTED,
+                    {
+                        "server_id": "github",
+                        "tool_count": tool_count,
+                    },
+                )
 
-                await self._events.emit_async(EventType.MCP_TOOLS_UPDATED, {
-                    "total_tools": tool_count,
-                })
+                await self._events.emit_async(
+                    EventType.MCP_TOOLS_UPDATED,
+                    {
+                        "total_tools": tool_count,
+                    },
+                )
 
                 return {"success": True, "tool_count": tool_count}
             else:
-                await self._events.emit_async(EventType.MCP_SERVER_ERROR, {
-                    "server_id": "github",
-                    "error": "Connection failed",
-                })
+                await self._events.emit_async(
+                    EventType.MCP_SERVER_ERROR,
+                    {
+                        "server_id": "github",
+                        "error": "Connection failed",
+                    },
+                )
                 return {"success": False, "error": "Connection failed", "tool_count": 0}
 
         except Exception as e:
             error_msg = str(e)
-            await self._events.emit_async(EventType.MCP_SERVER_ERROR, {
-                "server_id": "github",
-                "error": error_msg,
-            })
+            await self._events.emit_async(
+                EventType.MCP_SERVER_ERROR,
+                {
+                    "server_id": "github",
+                    "error": error_msg,
+                },
+            )
             return {"success": False, "error": error_msg, "tool_count": 0}
 
     def disconnect_mcp(self, server_id: str = None) -> None:
@@ -725,19 +763,28 @@ class AgentService:
 
         if server_id:
             self._agent.mcp_manager.disconnect(server_id)
-            self._events.emit(EventType.MCP_SERVER_DISCONNECTED, {
-                "server_id": server_id,
-            })
+            self._events.emit(
+                EventType.MCP_SERVER_DISCONNECTED,
+                {
+                    "server_id": server_id,
+                },
+            )
         else:
             self._agent.mcp_manager.disconnect_all()
-            self._events.emit(EventType.MCP_SERVER_DISCONNECTED, {
-                "server_id": "all",
-            })
+            self._events.emit(
+                EventType.MCP_SERVER_DISCONNECTED,
+                {
+                    "server_id": "all",
+                },
+            )
 
         self._agent._mcp_tools_cache = self._agent.mcp_manager.list_tools()
-        self._events.emit(EventType.MCP_TOOLS_UPDATED, {
-            "total_tools": len(self._agent._mcp_tools_cache),
-        })
+        self._events.emit(
+            EventType.MCP_TOOLS_UPDATED,
+            {
+                "total_tools": len(self._agent._mcp_tools_cache),
+            },
+        )
 
     def get_mcp_status(self) -> Dict[str, Any]:
         """Get MCP connection status."""

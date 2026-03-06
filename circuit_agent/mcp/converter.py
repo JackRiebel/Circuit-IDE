@@ -5,7 +5,7 @@ MCP uses a slightly different schema format than OpenAI's function calling.
 This module handles bidirectional conversion.
 """
 
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 
 def mcp_to_openai(mcp_tool: Dict[str, Any]) -> Dict[str, Any]:
@@ -53,7 +53,7 @@ def mcp_to_openai(mcp_tool: Dict[str, Any]) -> Dict[str, Any]:
             "name": name,
             "description": description,
             "parameters": input_schema,
-        }
+        },
     }
 
 
@@ -117,8 +117,7 @@ def mcp_tools_to_openai(mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]
 
 
 def filter_tools_by_toolset(
-    tools: List[Dict[str, Any]],
-    enabled_toolsets: List[str]
+    tools: List[Dict[str, Any]], enabled_toolsets: List[str]
 ) -> List[Dict[str, Any]]:
     """
     Filter MCP tools by enabled toolsets.

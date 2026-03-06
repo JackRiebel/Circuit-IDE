@@ -6,8 +6,8 @@ Supports HTTP/SSE transport for remote MCP servers using JSON-RPC 2.0.
 
 import json
 import logging
-from typing import Any, Dict, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -16,11 +16,13 @@ logger = logging.getLogger(__name__)
 
 class MCPTransportError(Exception):
     """Error in MCP transport layer."""
+
     pass
 
 
 class MCPRPCError(Exception):
     """JSON-RPC error from MCP server."""
+
     def __init__(self, code: int, message: str, data: Any = None):
         self.code = code
         self.message = message
@@ -31,6 +33,7 @@ class MCPRPCError(Exception):
 @dataclass
 class MCPRequest:
     """JSON-RPC 2.0 request."""
+
     method: str
     params: Optional[Dict[str, Any]] = None
     id: Optional[int] = None
@@ -50,6 +53,7 @@ class MCPRequest:
 @dataclass
 class MCPResponse:
     """JSON-RPC 2.0 response."""
+
     id: Optional[int]
     result: Optional[Any] = None
     error: Optional[Dict[str, Any]] = None
@@ -125,17 +129,20 @@ class HTTPSSETransport:
             self._client = httpx.Client(timeout=self.timeout)
 
         # Send initialize request
-        result = await self.send("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "roots": {"listChanged": True},
-                "sampling": {},
+        result = await self.send(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "roots": {"listChanged": True},
+                    "sampling": {},
+                },
+                "clientInfo": {
+                    "name": "Circuit IDE",
+                    "version": "1.0.0",
+                },
             },
-            "clientInfo": {
-                "name": "Circuit IDE",
-                "version": "1.0.0",
-            }
-        })
+        )
 
         self._connected = True
         logger.info(f"Connected to MCP server: {self.url}")
@@ -145,11 +152,7 @@ class HTTPSSETransport:
 
         return result
 
-    async def send(
-        self,
-        method: str,
-        params: Optional[Dict[str, Any]] = None
-    ) -> Any:
+    async def send(self, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """
         Send a JSON-RPC request and wait for response.
 
@@ -198,11 +201,7 @@ class HTTPSSETransport:
         except json.JSONDecodeError as e:
             raise MCPTransportError(f"Invalid JSON response: {e}") from e
 
-    async def notify(
-        self,
-        method: str,
-        params: Optional[Dict[str, Any]] = None
-    ) -> None:
+    async def notify(self, method: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
         Send a JSON-RPC notification (no response expected).
         """
@@ -288,17 +287,20 @@ class SyncHTTPTransport:
             self._client = httpx.Client(timeout=self.timeout)
 
         # Send initialize request
-        result = self.send("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "roots": {"listChanged": True},
-                "sampling": {},
+        result = self.send(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {
+                    "roots": {"listChanged": True},
+                    "sampling": {},
+                },
+                "clientInfo": {
+                    "name": "Circuit IDE",
+                    "version": "1.0.0",
+                },
             },
-            "clientInfo": {
-                "name": "Circuit IDE",
-                "version": "1.0.0",
-            }
-        })
+        )
 
         self._server_info = result
         self._connected = True
@@ -309,11 +311,7 @@ class SyncHTTPTransport:
 
         return result
 
-    def send(
-        self,
-        method: str,
-        params: Optional[Dict[str, Any]] = None
-    ) -> Any:
+    def send(self, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
         """
         Send a JSON-RPC request and wait for response.
         """
@@ -351,11 +349,7 @@ class SyncHTTPTransport:
         except json.JSONDecodeError as e:
             raise MCPTransportError(f"Invalid JSON response: {e}") from e
 
-    def notify(
-        self,
-        method: str,
-        params: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def notify(self, method: str, params: Optional[Dict[str, Any]] = None) -> None:
         """
         Send a JSON-RPC notification (no response expected).
         """

@@ -3,7 +3,7 @@ Git operation tools for Circuit Agent.
 """
 
 import subprocess
-from typing import List, Tuple, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from ..errors import SmartError
@@ -16,12 +16,8 @@ GIT_TOOLS = [
         "function": {
             "name": "git_status",
             "description": "Show the working tree status. Returns staged, unstaged, and untracked files.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
     },
     {
         "type": "function",
@@ -33,21 +29,21 @@ GIT_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Optional: Limit diff to specific file or directory"
+                        "description": "Optional: Limit diff to specific file or directory",
                     },
                     "staged": {
                         "type": "boolean",
                         "description": "If true, show staged changes (--cached). Default false.",
-                        "default": False
+                        "default": False,
                     },
                     "commit": {
                         "type": "string",
-                        "description": "Optional: Compare against specific commit (e.g., 'HEAD~1', 'main')"
-                    }
+                        "description": "Optional: Compare against specific commit (e.g., 'HEAD~1', 'main')",
+                    },
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -60,21 +56,21 @@ GIT_TOOLS = [
                     "count": {
                         "type": "integer",
                         "description": "Number of commits to show (default 10, max 50)",
-                        "default": 10
+                        "default": 10,
                     },
                     "path": {
                         "type": "string",
-                        "description": "Optional: Show history for specific file"
+                        "description": "Optional: Show history for specific file",
                     },
                     "oneline": {
                         "type": "boolean",
                         "description": "If true, show condensed output. Default true.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -84,19 +80,16 @@ GIT_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "Commit message"
-                    },
+                    "message": {"type": "string", "description": "Commit message"},
                     "files": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional: Specific files to stage. If empty, stages all changes."
-                    }
+                        "description": "Optional: Specific files to stage. If empty, stages all changes.",
+                    },
                 },
-                "required": ["message"]
-            }
-        }
+                "required": ["message"],
+            },
+        },
     },
     {
         "type": "function",
@@ -110,24 +103,24 @@ GIT_TOOLS = [
                         "type": "string",
                         "enum": ["list", "create", "switch", "delete"],
                         "description": "Action to perform. Default 'list'.",
-                        "default": "list"
+                        "default": "list",
                     },
                     "name": {
                         "type": "string",
-                        "description": "Branch name (required for create/switch/delete)"
-                    }
+                        "description": "Branch name (required for create/switch/delete)",
+                    },
                 },
-                "required": []
-            }
-        }
-    }
+                "required": [],
+            },
+        },
+    },
 ]
 
 
 class GitTools:
     """Git operation tool implementations."""
 
-    def __init__(self, working_dir: str, smart_error: Optional['SmartError'] = None):
+    def __init__(self, working_dir: str, smart_error: Optional["SmartError"] = None):
         self.working_dir = working_dir
         self.smart_error = smart_error
 
@@ -139,7 +132,7 @@ class GitTools:
                 cwd=self.working_dir,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
             )
             output = result.stdout
             if result.stderr:

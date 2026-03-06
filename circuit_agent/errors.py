@@ -6,9 +6,8 @@ Provides helpful error messages with suggestions and context.
 
 import os
 import re
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
-from difflib import get_close_matches, SequenceMatcher
+from difflib import SequenceMatcher, get_close_matches
+from typing import List, Optional, Tuple
 
 
 class SmartError:
@@ -59,14 +58,9 @@ class SmartError:
             msg_parts.append("  - Use list_files to see available files")
             msg_parts.append("  - Check if the path is relative to the working directory")
 
-        return '\n'.join(msg_parts)
+        return "\n".join(msg_parts)
 
-    def text_not_found(
-        self,
-        path: str,
-        search_text: str,
-        file_content: str
-    ) -> str:
+    def text_not_found(self, path: str, search_text: str, file_content: str) -> str:
         """
         Generate helpful error for text not found in file.
 
@@ -106,15 +100,9 @@ class SmartError:
         msg_parts.append("  - Include more surrounding context for unique matching")
         msg_parts.append("  - Check for tabs vs spaces")
 
-        return '\n'.join(msg_parts)
+        return "\n".join(msg_parts)
 
-    def multiple_matches(
-        self,
-        path: str,
-        search_text: str,
-        file_content: str,
-        count: int
-    ) -> str:
+    def multiple_matches(self, path: str, search_text: str, file_content: str, count: int) -> str:
         """
         Generate helpful error for multiple text matches.
 
@@ -146,15 +134,9 @@ class SmartError:
         msg_parts.append("  - Add lines before or after the target text")
         msg_parts.append("  - Include function/class name if editing within one")
 
-        return '\n'.join(msg_parts)
+        return "\n".join(msg_parts)
 
-    def command_failed(
-        self,
-        command: str,
-        exit_code: int,
-        stdout: str,
-        stderr: str
-    ) -> str:
+    def command_failed(self, command: str, exit_code: int, stdout: str, stderr: str) -> str:
         """
         Generate helpful error for failed command.
 
@@ -175,7 +157,7 @@ class SmartError:
         suggestions = self._analyze_command_error(command, error_text)
 
         if stderr:
-            msg_parts.append(f"\nError output:")
+            msg_parts.append("\nError output:")
             # Truncate very long errors
             if len(stderr) > 500:
                 msg_parts.append(stderr[:500] + "\n[truncated]")
@@ -187,7 +169,7 @@ class SmartError:
             for s in suggestions:
                 msg_parts.append(f"  - {s}")
 
-        return '\n'.join(msg_parts)
+        return "\n".join(msg_parts)
 
     def git_error(self, operation: str, error_msg: str) -> str:
         """
@@ -229,7 +211,9 @@ class SmartError:
             suggestions.append("Choose a different name or delete the existing one first")
 
         if "detached HEAD" in error_msg.lower():
-            suggestions.append("Create a new branch to save your work: git checkout -b <branch-name>")
+            suggestions.append(
+                "Create a new branch to save your work: git checkout -b <branch-name>"
+            )
 
         msg_parts.append(f"\nError: {error_msg}")
 
@@ -238,19 +222,23 @@ class SmartError:
             for s in suggestions:
                 msg_parts.append(f"  - {s}")
 
-        return '\n'.join(msg_parts)
+        return "\n".join(msg_parts)
 
     def _find_similar_files(self, path: str, max_results: int = 5) -> List[str]:
         """Find files with similar names."""
         target_name = os.path.basename(path)
-        target_dir = os.path.dirname(path) or "."
+        os.path.dirname(path) or "."
 
         all_files = []
         try:
             for root, dirs, files in os.walk(self.working_dir):
                 # Skip hidden and common ignored directories
-                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in
-                          {'node_modules', '__pycache__', 'venv', '.venv', 'dist', 'build'}]
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in {"node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
+                ]
 
                 for f in files:
                     rel_path = os.path.relpath(os.path.join(root, f), self.working_dir)
@@ -276,13 +264,17 @@ class SmartError:
 
     def _find_similar_directories(self, dir_path: str, max_results: int = 3) -> List[str]:
         """Find directories with similar names."""
-        target_name = os.path.basename(dir_path.rstrip('/'))
+        target_name = os.path.basename(dir_path.rstrip("/"))
 
         all_dirs = []
         try:
             for root, dirs, _ in os.walk(self.working_dir):
-                dirs[:] = [d for d in dirs if not d.startswith('.') and d not in
-                          {'node_modules', '__pycache__', 'venv', '.venv'}]
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not d.startswith(".")
+                    and d not in {"node_modules", "__pycache__", "venv", ".venv"}
+                ]
                 for d in dirs:
                     rel_path = os.path.relpath(os.path.join(root, d), self.working_dir)
                     all_dirs.append(rel_path)
@@ -302,13 +294,10 @@ class SmartError:
         return results
 
     def _find_similar_text(
-        self,
-        search_text: str,
-        content: str,
-        max_results: int = 5
+        self, search_text: str, content: str, max_results: int = 5
     ) -> List[Tuple[int, str, float]]:
         """Find similar text in file content."""
-        search_lines = search_text.strip().split('\n')
+        search_lines = search_text.strip().split("\n")
         if not search_lines:
             return []
 
@@ -316,7 +305,7 @@ class SmartError:
         if not first_search_line:
             return []
 
-        content_lines = content.split('\n')
+        content_lines = content.split("\n")
         results = []
 
         for i, line in enumerate(content_lines, 1):
@@ -333,17 +322,13 @@ class SmartError:
         results.sort(key=lambda x: x[2], reverse=True)
         return results[:max_results]
 
-    def _find_all_match_locations(
-        self,
-        search_text: str,
-        content: str
-    ) -> List[Tuple[int, str]]:
+    def _find_all_match_locations(self, search_text: str, content: str) -> List[Tuple[int, str]]:
         """Find all locations where text matches."""
         results = []
-        lines = content.split('\n')
+        lines = content.split("\n")
 
         # Find the first line of search text
-        first_line = search_text.split('\n')[0].strip()
+        first_line = search_text.split("\n")[0].strip()
 
         for i, line in enumerate(lines, 1):
             if first_line in line:
@@ -356,30 +341,32 @@ class SmartError:
         issues = []
 
         # Check for whitespace issues
-        if '\t' in search_text and '\t' not in content:
+        if "\t" in search_text and "\t" not in content:
             issues.append("Search text contains tabs but file uses spaces")
-        elif ' ' * 4 in search_text and '\t' in content:
+        elif " " * 4 in search_text and "\t" in content:
             issues.append("Search text uses spaces but file uses tabs")
 
         # Check for line ending issues
-        if '\r\n' in search_text and '\r\n' not in content:
+        if "\r\n" in search_text and "\r\n" not in content:
             issues.append("Search text has Windows line endings (CRLF) but file uses Unix (LF)")
-        elif '\r\n' in content and '\r\n' not in search_text:
+        elif "\r\n" in content and "\r\n" not in search_text:
             issues.append("File has Windows line endings (CRLF) but search text uses Unix (LF)")
 
         # Check for trailing whitespace
-        search_lines = search_text.split('\n')
+        search_lines = search_text.split("\n")
         for i, line in enumerate(search_lines):
             if line != line.rstrip():
                 issues.append(f"Search text has trailing whitespace on line {i + 1}")
                 break
 
         # Check if search text might be outdated
-        keywords = re.findall(r'\b\w{4,}\b', search_text)
+        keywords = re.findall(r"\b\w{4,}\b", search_text)
         if keywords:
             found_any = any(kw in content for kw in keywords[:5])
             if not found_any:
-                issues.append("None of the key terms from search text found in file - file may have changed significantly")
+                issues.append(
+                    "None of the key terms from search text found in file - file may have changed significantly"
+                )
 
         return issues
 
@@ -435,7 +422,7 @@ def format_error_context(
     message: str,
     file_path: Optional[str] = None,
     line_number: Optional[int] = None,
-    suggestions: Optional[List[str]] = None
+    suggestions: Optional[List[str]] = None,
 ) -> str:
     """
     Format an error with full context.
@@ -463,4 +450,4 @@ def format_error_context(
         for s in suggestions:
             parts.append(f"  - {s}")
 
-    return '\n'.join(parts)
+    return "\n".join(parts)

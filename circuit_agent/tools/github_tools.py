@@ -5,8 +5,8 @@ Provides direct integration with GitHub's REST API for repository,
 issue, PR, and other GitHub operations.
 """
 
-import json
 from typing import Any, Dict, Optional
+
 import httpx
 
 from ..config import load_github_pat, ssl_config
@@ -52,10 +52,7 @@ class GitHubTools:
         url = f"{self.API_BASE}{endpoint}"
 
         try:
-            with httpx.Client(
-                verify=ssl_config.get_verify_param(),
-                timeout=30.0
-            ) as client:
+            with httpx.Client(verify=ssl_config.get_verify_param(), timeout=30.0) as client:
                 response = client.request(
                     method=method,
                     url=url,
@@ -71,7 +68,9 @@ class GitHubTools:
                 elif response.status_code == 404:
                     return {"error": "Resource not found on GitHub."}
                 elif response.status_code >= 400:
-                    return {"error": f"GitHub API error: {response.status_code} - {response.text[:200]}"}
+                    return {
+                        "error": f"GitHub API error: {response.status_code} - {response.text[:200]}"
+                    }
 
                 if response.status_code == 204:
                     return {"success": True}
@@ -112,11 +111,15 @@ class GitHubTools:
             # List repos for authenticated user
             endpoint = "/user/repos"
 
-        result = self._request("GET", endpoint, params={
-            "type": repo_type,
-            "sort": sort,
-            "per_page": per_page,
-        })
+        result = self._request(
+            "GET",
+            endpoint,
+            params={
+                "type": repo_type,
+                "sort": sort,
+                "per_page": per_page,
+            },
+        )
 
         # Handle error response (dict with "error" key)
         if isinstance(result, dict) and "error" in result:
@@ -196,10 +199,14 @@ class GitHubTools:
         if not owner or not repo:
             return "Error: owner and repo are required"
 
-        result = self._request("GET", f"/repos/{owner}/{repo}/issues", params={
-            "state": state,
-            "per_page": per_page,
-        })
+        result = self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/issues",
+            params={
+                "state": state,
+                "per_page": per_page,
+            },
+        )
 
         # Handle error response
         if isinstance(result, dict) and "error" in result:
@@ -214,7 +221,7 @@ class GitHubTools:
             # Skip pull requests (they show up in issues API)
             if "pull_request" in issue:
                 continue
-            labels = ", ".join([l["name"] for l in issue.get("labels", [])])
+            labels = ", ".join([lbl["name"] for lbl in issue.get("labels", [])])
             labels_str = f" [{labels}]" if labels else ""
             issues.append(f"#{issue['number']} {issue['title']}{labels_str}")
 
@@ -237,15 +244,15 @@ class GitHubTools:
         if "error" in result:
             return result["error"]
 
-        labels = ", ".join([l["name"] for l in result.get("labels", [])])
+        labels = ", ".join([lbl["name"] for lbl in result.get("labels", [])])
         info = [
             f"**#{result['number']}: {result['title']}**",
             f"State: {result['state']}",
             f"Author: @{result['user']['login']}",
             f"Labels: {labels or 'None'}",
             f"Created: {result['created_at']}",
-            f"",
-            result.get('body', 'No description')[:500],
+            "",
+            result.get("body", "No description")[:500],
         ]
         return "\n".join(info)
 
@@ -290,9 +297,7 @@ class GitHubTools:
             return "Error: owner, repo, and issue_number are required"
 
         result = self._request(
-            "PATCH",
-            f"/repos/{owner}/{repo}/issues/{issue_number}",
-            json_data={"state": "closed"}
+            "PATCH", f"/repos/{owner}/{repo}/issues/{issue_number}", json_data={"state": "closed"}
         )
 
         if "error" in result:
@@ -314,10 +319,14 @@ class GitHubTools:
         if not owner or not repo:
             return "Error: owner and repo are required"
 
-        result = self._request("GET", f"/repos/{owner}/{repo}/pulls", params={
-            "state": state,
-            "per_page": per_page,
-        })
+        result = self._request(
+            "GET",
+            f"/repos/{owner}/{repo}/pulls",
+            params={
+                "state": state,
+                "per_page": per_page,
+            },
+        )
 
         # Handle error response
         if isinstance(result, dict) and "error" in result:
@@ -355,8 +364,8 @@ class GitHubTools:
             f"Branch: {result['head']['ref']} → {result['base']['ref']}",
             f"Commits: {result.get('commits', 0)} | Changed files: {result.get('changed_files', 0)}",
             f"+{result.get('additions', 0)} -{result.get('deletions', 0)}",
-            f"",
-            result.get('body', 'No description')[:500],
+            "",
+            result.get("body", "No description")[:500],
         ]
         return "\n".join(info)
 
@@ -416,10 +425,14 @@ class GitHubTools:
         if not query:
             return "Error: query is required"
 
-        result = self._request("GET", "/search/repositories", params={
-            "q": query,
-            "per_page": per_page,
-        })
+        result = self._request(
+            "GET",
+            "/search/repositories",
+            params={
+                "q": query,
+                "per_page": per_page,
+            },
+        )
 
         # Handle error or unexpected response
         if not isinstance(result, dict):
@@ -434,7 +447,9 @@ class GitHubTools:
         repos = []
         for repo in items[:per_page]:
             stars = repo.get("stargazers_count", 0)
-            repos.append(f"⭐{stars} {repo['full_name']} - {repo.get('description', 'No description')[:50]}")
+            repos.append(
+                f"⭐{stars} {repo['full_name']} - {repo.get('description', 'No description')[:50]}"
+            )
 
         return f"Found {result.get('total_count', 0)} repositories:\n" + "\n".join(repos)
 
@@ -446,10 +461,14 @@ class GitHubTools:
         if not query:
             return "Error: query is required"
 
-        result = self._request("GET", "/search/issues", params={
-            "q": query,
-            "per_page": per_page,
-        })
+        result = self._request(
+            "GET",
+            "/search/issues",
+            params={
+                "q": query,
+                "per_page": per_page,
+            },
+        )
 
         # Handle error or unexpected response
         if not isinstance(result, dict):
@@ -464,7 +483,9 @@ class GitHubTools:
         issues = []
         for issue in items[:per_page]:
             type_icon = "🔀" if "pull_request" in issue else "🐛"
-            issues.append(f"{type_icon} {issue['repository_url'].split('/')[-2]}/{issue['repository_url'].split('/')[-1]}#{issue['number']} {issue['title'][:50]}")
+            issues.append(
+                f"{type_icon} {issue['repository_url'].split('/')[-2]}/{issue['repository_url'].split('/')[-1]}#{issue['number']} {issue['title'][:50]}"
+            )
 
         return f"Found {result.get('total_count', 0)} results:\n" + "\n".join(issues)
 
@@ -476,8 +497,8 @@ GITHUB_TOOLS = [
         "function": {
             "name": "github_whoami",
             "description": "Get information about the authenticated GitHub user",
-            "parameters": {"type": "object", "properties": {}, "required": []}
-        }
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
     },
     {
         "type": "function",
@@ -487,14 +508,25 @@ GITHUB_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "owner": {"type": "string", "description": "Username or organization (optional, defaults to authenticated user)"},
-                    "type": {"type": "string", "enum": ["all", "owner", "public", "private", "member"], "description": "Type of repos to list"},
-                    "sort": {"type": "string", "enum": ["created", "updated", "pushed", "full_name"], "description": "Sort order"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "owner": {
+                        "type": "string",
+                        "description": "Username or organization (optional, defaults to authenticated user)",
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": ["all", "owner", "public", "private", "member"],
+                        "description": "Type of repos to list",
+                    },
+                    "sort": {
+                        "type": "string",
+                        "enum": ["created", "updated", "pushed", "full_name"],
+                        "description": "Sort order",
+                    },
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -505,11 +537,11 @@ GITHUB_TOOLS = [
                 "type": "object",
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
-                    "repo": {"type": "string", "description": "Repository name"}
+                    "repo": {"type": "string", "description": "Repository name"},
                 },
-                "required": ["owner", "repo"]
-            }
-        }
+                "required": ["owner", "repo"],
+            },
+        },
     },
     {
         "type": "function",
@@ -522,11 +554,11 @@ GITHUB_TOOLS = [
                     "name": {"type": "string", "description": "Repository name"},
                     "description": {"type": "string", "description": "Repository description"},
                     "private": {"type": "boolean", "description": "Whether the repo is private"},
-                    "auto_init": {"type": "boolean", "description": "Initialize with README"}
+                    "auto_init": {"type": "boolean", "description": "Initialize with README"},
                 },
-                "required": ["name"]
-            }
-        }
+                "required": ["name"],
+            },
+        },
     },
     {
         "type": "function",
@@ -538,12 +570,16 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "state": {"type": "string", "enum": ["open", "closed", "all"], "description": "Issue state filter"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed", "all"],
+                        "description": "Issue state filter",
+                    },
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": ["owner", "repo"]
-            }
-        }
+                "required": ["owner", "repo"],
+            },
+        },
     },
     {
         "type": "function",
@@ -555,11 +591,11 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "issue_number": {"type": "integer", "description": "Issue number"}
+                    "issue_number": {"type": "integer", "description": "Issue number"},
                 },
-                "required": ["owner", "repo", "issue_number"]
-            }
-        }
+                "required": ["owner", "repo", "issue_number"],
+            },
+        },
     },
     {
         "type": "function",
@@ -573,12 +609,20 @@ GITHUB_TOOLS = [
                     "repo": {"type": "string", "description": "Repository name"},
                     "title": {"type": "string", "description": "Issue title"},
                     "body": {"type": "string", "description": "Issue body/description"},
-                    "labels": {"type": "array", "items": {"type": "string"}, "description": "Labels to add"},
-                    "assignees": {"type": "array", "items": {"type": "string"}, "description": "Users to assign"}
+                    "labels": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Labels to add",
+                    },
+                    "assignees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Users to assign",
+                    },
                 },
-                "required": ["owner", "repo", "title"]
-            }
-        }
+                "required": ["owner", "repo", "title"],
+            },
+        },
     },
     {
         "type": "function",
@@ -590,11 +634,11 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "issue_number": {"type": "integer", "description": "Issue number"}
+                    "issue_number": {"type": "integer", "description": "Issue number"},
                 },
-                "required": ["owner", "repo", "issue_number"]
-            }
-        }
+                "required": ["owner", "repo", "issue_number"],
+            },
+        },
     },
     {
         "type": "function",
@@ -606,12 +650,16 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "state": {"type": "string", "enum": ["open", "closed", "all"], "description": "PR state filter"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed", "all"],
+                        "description": "PR state filter",
+                    },
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": ["owner", "repo"]
-            }
-        }
+                "required": ["owner", "repo"],
+            },
+        },
     },
     {
         "type": "function",
@@ -623,11 +671,11 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "pr_number": {"type": "integer", "description": "Pull request number"}
+                    "pr_number": {"type": "integer", "description": "Pull request number"},
                 },
-                "required": ["owner", "repo", "pr_number"]
-            }
-        }
+                "required": ["owner", "repo", "pr_number"],
+            },
+        },
     },
     {
         "type": "function",
@@ -639,12 +687,16 @@ GITHUB_TOOLS = [
                 "properties": {
                     "owner": {"type": "string", "description": "Repository owner"},
                     "repo": {"type": "string", "description": "Repository name"},
-                    "status": {"type": "string", "enum": ["queued", "in_progress", "completed"], "description": "Filter by status"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "status": {
+                        "type": "string",
+                        "enum": ["queued", "in_progress", "completed"],
+                        "description": "Filter by status",
+                    },
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": ["owner", "repo"]
-            }
-        }
+                "required": ["owner", "repo"],
+            },
+        },
     },
     {
         "type": "function",
@@ -655,11 +707,11 @@ GITHUB_TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -669,11 +721,14 @@ GITHUB_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query (can include qualifiers like repo:owner/name, is:issue, is:pr)"},
-                    "per_page": {"type": "integer", "description": "Number of results (max 30)"}
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (can include qualifiers like repo:owner/name, is:issue, is:pr)",
+                    },
+                    "per_page": {"type": "integer", "description": "Number of results (max 30)"},
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
 ]

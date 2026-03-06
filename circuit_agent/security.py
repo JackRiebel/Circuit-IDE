@@ -7,13 +7,11 @@ Provides:
 - Security scanning for files
 """
 
-import os
-import re
 import json
-import hashlib
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class SecretDetector:
@@ -23,47 +21,67 @@ class SecretDetector:
     PATTERNS = [
         # API Keys and Tokens
         (r'(?i)(api[_-]?key|apikey)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?', "API Key", "high"),
-        (r'(?i)(secret[_-]?key|secretkey)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?', "Secret Key", "high"),
-        (r'(?i)(access[_-]?token|accesstoken)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?', "Access Token", "high"),
-
+        (
+            r'(?i)(secret[_-]?key|secretkey)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?',
+            "Secret Key",
+            "high",
+        ),
+        (
+            r'(?i)(access[_-]?token|accesstoken)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?',
+            "Access Token",
+            "high",
+        ),
         # Passwords
         (r'(?i)(password|passwd|pwd)\s*[:=]\s*["\']([^"\']{4,})["\']', "Password", "critical"),
         (r'(?i)(password|passwd|pwd)\s*[:=]\s*([^\s"\']{8,})', "Password", "critical"),
-
         # Cloud Provider Tokens
-        (r'AKIA[0-9A-Z]{16}', "AWS Access Key ID", "critical"),
-        (r'(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["\']?([a-zA-Z0-9/+=]{40})["\']?', "AWS Secret Key", "critical"),
-        (r'ghp_[a-zA-Z0-9]{36}', "GitHub Personal Access Token", "critical"),
-        (r'gho_[a-zA-Z0-9]{36}', "GitHub OAuth Token", "critical"),
-        (r'github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}', "GitHub Fine-Grained PAT", "critical"),
-        (r'sk-[a-zA-Z0-9]{48}', "OpenAI API Key", "critical"),
-        (r'sk-proj-[a-zA-Z0-9\-_]{48,}', "OpenAI Project API Key", "critical"),
-        (r'xox[baprs]-[a-zA-Z0-9\-]{10,}', "Slack Token", "high"),
-
+        (r"AKIA[0-9A-Z]{16}", "AWS Access Key ID", "critical"),
+        (
+            r'(?i)aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["\']?([a-zA-Z0-9/+=]{40})["\']?',
+            "AWS Secret Key",
+            "critical",
+        ),
+        (r"ghp_[a-zA-Z0-9]{36}", "GitHub Personal Access Token", "critical"),
+        (r"gho_[a-zA-Z0-9]{36}", "GitHub OAuth Token", "critical"),
+        (r"github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}", "GitHub Fine-Grained PAT", "critical"),
+        (r"sk-[a-zA-Z0-9]{48}", "OpenAI API Key", "critical"),
+        (r"sk-proj-[a-zA-Z0-9\-_]{48,}", "OpenAI Project API Key", "critical"),
+        (r"xox[baprs]-[a-zA-Z0-9\-]{10,}", "Slack Token", "high"),
         # Private Keys
-        (r'-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----', "Private Key", "critical"),
-        (r'-----BEGIN PGP PRIVATE KEY BLOCK-----', "PGP Private Key", "critical"),
-
+        (r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----", "Private Key", "critical"),
+        (r"-----BEGIN PGP PRIVATE KEY BLOCK-----", "PGP Private Key", "critical"),
         # Database URLs
-        (r'(?i)(mongodb|postgres|mysql|redis)://[^\s<>"\']+:[^\s<>"\']+@[^\s<>"\']+', "Database URL with Credentials", "critical"),
-
+        (
+            r'(?i)(mongodb|postgres|mysql|redis)://[^\s<>"\']+:[^\s<>"\']+@[^\s<>"\']+',
+            "Database URL with Credentials",
+            "critical",
+        ),
         # Bearer Tokens
-        (r'(?i)bearer\s+([a-zA-Z0-9\-_.]{20,})', "Bearer Token", "high"),
-        (r'(?i)authorization:\s*bearer\s+([a-zA-Z0-9\-_.]{20,})', "Authorization Header", "high"),
-
+        (r"(?i)bearer\s+([a-zA-Z0-9\-_.]{20,})", "Bearer Token", "high"),
+        (r"(?i)authorization:\s*bearer\s+([a-zA-Z0-9\-_.]{20,})", "Authorization Header", "high"),
         # Generic Secrets
-        (r'(?i)(client[_-]?secret|clientsecret)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{16,})["\']?', "Client Secret", "high"),
-        (r'(?i)(auth[_-]?token|authtoken)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?', "Auth Token", "high"),
-
+        (
+            r'(?i)(client[_-]?secret|clientsecret)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{16,})["\']?',
+            "Client Secret",
+            "high",
+        ),
+        (
+            r'(?i)(auth[_-]?token|authtoken)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{20,})["\']?',
+            "Auth Token",
+            "high",
+        ),
         # Cisco-specific
-        (r'(?i)circuit[_-]?client[_-]?(id|secret)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{16,})["\']?', "Circuit Credential", "high"),
+        (
+            r'(?i)circuit[_-]?client[_-]?(id|secret)\s*[:=]\s*["\']?([a-zA-Z0-9\-_]{16,})["\']?',
+            "Circuit Credential",
+            "high",
+        ),
     ]
 
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
         self._compiled_patterns = [
-            (re.compile(pattern), name, severity)
-            for pattern, name, severity in self.PATTERNS
+            (re.compile(pattern), name, severity) for pattern, name, severity in self.PATTERNS
         ]
 
     def scan(self, content: str) -> List[Dict[str, Any]]:
@@ -76,7 +94,7 @@ class SecretDetector:
             return []
 
         findings = []
-        lines = content.split('\n')
+        lines = content.split("\n")
 
         for line_num, line in enumerate(lines, 1):
             for pattern, secret_type, severity in self._compiled_patterns:
@@ -86,14 +104,16 @@ class SecretDetector:
                     secret = match.group(0)
                     preview = self._create_preview(secret)
 
-                    findings.append({
-                        "type": secret_type,
-                        "severity": severity,
-                        "line": line_num,
-                        "preview": preview,
-                        "match_start": match.start(),
-                        "match_end": match.end(),
-                    })
+                    findings.append(
+                        {
+                            "type": secret_type,
+                            "severity": severity,
+                            "line": line_num,
+                            "preview": preview,
+                            "match_start": match.start(),
+                            "match_end": match.end(),
+                        }
+                    )
 
         # Deduplicate by type and line
         seen = set()
@@ -157,7 +177,7 @@ class SecretDetector:
         if len(findings) > 10:
             output.append(f"\n  ... and {len(findings) - 10} more")
 
-        return '\n'.join(output)
+        return "\n".join(output)
 
 
 class AuditLogger:
@@ -189,7 +209,8 @@ class AuditLogger:
                 result[key] = self._redact_dict(value)
             elif isinstance(value, list):
                 result[key] = [
-                    self._redact_dict(item) if isinstance(item, dict)
+                    self._redact_dict(item)
+                    if isinstance(item, dict)
                     else (self._secret_detector.redact(item)[0] if isinstance(item, str) else item)
                     for item in value
                 ]
@@ -226,19 +247,26 @@ class AuditLogger:
         result_preview = result[:500] + "..." if len(result) > 500 else result
         result_preview, _ = self._secret_detector.redact(result_preview)
 
-        self.log("tool_call", {
-            "tool": tool_name,
-            "args": redacted_args,
-            "result_preview": result_preview,
-        }, success)
+        self.log(
+            "tool_call",
+            {
+                "tool": tool_name,
+                "args": redacted_args,
+                "result_preview": result_preview,
+            },
+            success,
+        )
 
     def log_api_call(self, model: str, prompt_tokens: int, completion_tokens: int):
         """Log an API call."""
-        self.log("api_call", {
-            "model": model,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-        })
+        self.log(
+            "api_call",
+            {
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            },
+        )
 
     def log_user_input(self, input_preview: str):
         """Log user input (truncated for privacy)."""
@@ -247,18 +275,26 @@ class AuditLogger:
 
     def log_file_operation(self, operation: str, path: str, success: bool = True):
         """Log a file operation."""
-        self.log("file_operation", {
-            "operation": operation,
-            "path": path,
-        }, success)
+        self.log(
+            "file_operation",
+            {
+                "operation": operation,
+                "path": path,
+            },
+            success,
+        )
 
     def log_error(self, error_type: str, message: str, context: Optional[Dict] = None):
         """Log an error."""
-        self.log("error", {
-            "error_type": error_type,
-            "message": message,
-            "context": context or {},
-        }, success=False)
+        self.log(
+            "error",
+            {
+                "error_type": error_type,
+                "message": message,
+                "context": context or {},
+            },
+            success=False,
+        )
 
     def get_session_stats(self) -> Dict[str, Any]:
         """Get statistics for current session."""
@@ -309,12 +345,14 @@ class AuditLogger:
         for log_file in sorted(self.log_dir.glob("session-*.jsonl"), reverse=True)[:limit]:
             try:
                 stat = log_file.stat()
-                sessions.append({
-                    "session_id": log_file.stem.replace("session-", ""),
-                    "file": str(log_file),
-                    "size_kb": stat.st_size / 1024,
-                    "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                })
+                sessions.append(
+                    {
+                        "session_id": log_file.stem.replace("session-", ""),
+                        "file": str(log_file),
+                        "size_kb": stat.st_size / 1024,
+                        "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    }
+                )
             except Exception:
                 pass
 
@@ -371,12 +409,9 @@ class CostTracker:
             "total_tokens": self.total_input_tokens + self.total_output_tokens,
             "estimated_cost_usd": round(self.get_cost(), 4),
             "by_model": {
-                model: {
-                    **tokens,
-                    "cost_usd": round(self.get_cost(model), 4)
-                }
+                model: {**tokens, "cost_usd": round(self.get_cost(model), 4)}
                 for model, tokens in self.calls_by_model.items()
-            }
+            },
         }
 
     def format_stats(self) -> str:
@@ -392,4 +427,4 @@ class CostTracker:
             for model, data in stats["by_model"].items():
                 lines.append(f"  {model}: {data['calls']} calls, ${data['cost_usd']:.4f}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)

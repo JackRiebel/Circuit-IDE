@@ -4,13 +4,12 @@ Status Widgets for Circuit IDE.
 Provides agent status display and status bar.
 """
 
-from typing import Optional, Dict, Any
-from datetime import datetime
+from typing import Dict, Optional
 
-from textual.widgets import Static
-from textual.containers import Vertical, Horizontal
-from textual.reactive import reactive
 from rich.text import Text
+from textual.containers import Horizontal, Vertical
+from textual.reactive import reactive
+from textual.widgets import Static
 
 
 class AgentStatusWidget(Vertical):
@@ -40,35 +39,39 @@ class AgentStatusWidget(Vertical):
         yield Horizontal(
             Static("Model:", classes="agent-stat-label"),
             Static(self.model, id="stat-model", classes="agent-stat-value"),
-            classes="agent-stat"
+            classes="agent-stat",
         )
 
         # Tokens
         yield Horizontal(
             Static("Tokens:", classes="agent-stat-label"),
             Static(self._format_tokens(), id="stat-tokens", classes="agent-stat-value"),
-            classes="agent-stat"
+            classes="agent-stat",
         )
 
         # Cost
         yield Horizontal(
             Static("Cost:", classes="agent-stat-label"),
             Static(self._format_cost(), id="stat-cost", classes="agent-stat-value"),
-            classes="agent-stat"
+            classes="agent-stat",
         )
 
         # Auto-approve
         yield Horizontal(
             Static("Auto:", classes="agent-stat-label"),
-            Static(self._format_bool(self.auto_approve), id="stat-auto", classes="agent-stat-value"),
-            classes="agent-stat"
+            Static(
+                self._format_bool(self.auto_approve), id="stat-auto", classes="agent-stat-value"
+            ),
+            classes="agent-stat",
         )
 
         # Thinking mode
         yield Horizontal(
             Static("Think:", classes="agent-stat-label"),
-            Static(self._format_bool(self.thinking_mode), id="stat-think", classes="agent-stat-value"),
-            classes="agent-stat"
+            Static(
+                self._format_bool(self.thinking_mode), id="stat-think", classes="agent-stat-value"
+            ),
+            classes="agent-stat",
         )
 
         # Thinking indicator

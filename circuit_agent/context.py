@@ -7,14 +7,15 @@ the utility of the available token window.
 
 import json
 import re
-from typing import Dict, List, Any, Optional, Set, Tuple
-from dataclasses import dataclass, field
 from collections import OrderedDict
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 @dataclass
 class ContextItem:
     """Represents an item in the context with priority scoring."""
+
     content: str
     item_type: str  # "message", "file", "tool_result", "summary"
     priority: int = 5  # 1-10, higher = more important
@@ -124,14 +125,14 @@ class SmartContextManager:
             # Keep first and last portions for file content
             half = max_length // 2
             return (
-                result[:half] +
-                f"\n\n... [{len(result) - max_length} chars truncated] ...\n\n" +
-                result[-half:]
+                result[:half]
+                + f"\n\n... [{len(result) - max_length} chars truncated] ...\n\n"
+                + result[-half:]
             )
 
         elif tool_name in ("search_files", "list_files"):
             # Keep first N results
-            lines = result.split('\n')
+            lines = result.split("\n")
             kept_lines = []
             current_length = 0
 
@@ -145,17 +146,17 @@ class SmartContextManager:
             if remaining > 0:
                 kept_lines.append(f"\n... [{remaining} more results truncated]")
 
-            return '\n'.join(kept_lines)
+            return "\n".join(kept_lines)
 
         elif tool_name == "run_command":
             # Prioritize error output
             if "[stderr]" in result:
                 # Keep stderr, truncate stdout
                 parts = result.split("[stderr]")
-                stdout = parts[0][:max_length // 3]
+                stdout = parts[0][: max_length // 3]
                 stderr = parts[1] if len(parts) > 1 else ""
                 if len(stderr) > max_length * 2 // 3:
-                    stderr = stderr[:max_length * 2 // 3] + "\n[truncated]"
+                    stderr = stderr[: max_length * 2 // 3] + "\n[truncated]"
                 return stdout + "[stderr]" + stderr
             else:
                 return result[:max_length] + "\n[truncated]"
@@ -170,7 +171,7 @@ class SmartContextManager:
 
     def compress_errors(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Compress repetitive error messages."""
-        error_pattern = re.compile(r'Error:|error:|Exception:|exception:', re.IGNORECASE)
+        error_pattern = re.compile(r"Error:|error:|Exception:|exception:", re.IGNORECASE)
         error_groups: Dict[str, List[int]] = {}  # error_signature -> message indices
 
         # Find error messages and group similar ones
@@ -178,8 +179,8 @@ class SmartContextManager:
             content = msg.get("content", "")
             if isinstance(content, str) and error_pattern.search(content):
                 # Create signature from first line of error
-                first_line = content.split('\n')[0][:100]
-                signature = re.sub(r'\d+', 'N', first_line)  # Normalize numbers
+                first_line = content.split("\n")[0][:100]
+                signature = re.sub(r"\d+", "N", first_line)  # Normalize numbers
 
                 if signature not in error_groups:
                     error_groups[signature] = []
@@ -189,11 +190,11 @@ class SmartContextManager:
         indices_to_remove = set()
         summaries_to_add = []
 
-        for signature, indices in error_groups.items():
+        for _signature, indices in error_groups.items():
             if len(indices) >= 3:
                 # Keep first and last, summarize middle
                 first_idx = indices[0]
-                last_idx = indices[-1]
+                indices[-1]
                 middle_count = len(indices) - 2
 
                 # Mark middle messages for removal
@@ -219,10 +220,7 @@ class SmartContextManager:
 
             # Add summaries
             while summary_idx < len(summaries_to_add) and summaries_to_add[summary_idx][0] == i + 1:
-                new_messages.append({
-                    "role": "system",
-                    "content": summaries_to_add[summary_idx][1]
-                })
+                new_messages.append({"role": "system", "content": summaries_to_add[summary_idx][1]})
                 summary_idx += 1
 
         return new_messages
@@ -238,7 +236,7 @@ class SmartContextManager:
                 # Check if this looks like a file read result
                 if isinstance(content, str):
                     # Look for line number pattern that indicates file content
-                    if re.match(r'\s*\d+\|', content) or content.startswith("[Lines"):
+                    if re.match(r"\s*\d+\|", content) or content.startswith("[Lines"):
                         # Try to extract file path from previous assistant message
                         for j in range(i - 1, max(0, i - 5), -1):
                             prev_msg = messages[j]
@@ -253,13 +251,13 @@ class SmartContextManager:
                                                 if path not in file_reads:
                                                     file_reads[path] = []
                                                 file_reads[path].append(i)
-                                        except:
+                                        except Exception:
                                             pass
                                 break
 
         # Mark old reads for summarization
         indices_to_summarize = set()
-        for path, indices in file_reads.items():
+        for _path, indices in file_reads.items():
             if len(indices) > 1:
                 # Keep only the last read, summarize earlier ones
                 for idx in indices[:-1]:
@@ -272,20 +270,20 @@ class SmartContextManager:
         new_messages = []
         for i, msg in enumerate(messages):
             if i in indices_to_summarize:
-                new_messages.append({
-                    "role": msg.get("role", "tool"),
-                    "tool_call_id": msg.get("tool_call_id"),
-                    "content": "[File content superseded by later read]"
-                })
+                new_messages.append(
+                    {
+                        "role": msg.get("role", "tool"),
+                        "tool_call_id": msg.get("tool_call_id"),
+                        "content": "[File content superseded by later read]",
+                    }
+                )
             else:
                 new_messages.append(msg)
 
         return new_messages
 
     def optimize_context(
-        self,
-        messages: List[Dict[str, Any]],
-        target_tokens: Optional[int] = None
+        self, messages: List[Dict[str, Any]], target_tokens: Optional[int] = None
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Optimize messages to fit within token budget.
@@ -321,10 +319,7 @@ class SmartContextManager:
                                     break
                             break
 
-                    messages[i] = {
-                        **msg,
-                        "content": self.compress_tool_result(tool_name, content)
-                    }
+                    messages[i] = {**msg, "content": self.compress_tool_result(tool_name, content)}
 
         # Step 4: If still over budget, truncate old messages
         current_tokens = sum(self.estimate_message_tokens(m) for m in messages)
@@ -343,10 +338,12 @@ class SmartContextManager:
                 messages = []
                 if system_msg:
                     messages.append(system_msg)
-                messages.append({
-                    "role": "system",
-                    "content": f"[Earlier conversation summary]\n{middle_summary}"
-                })
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": f"[Earlier conversation summary]\n{middle_summary}",
+                    }
+                )
                 messages.extend(recent)
 
         final_tokens = sum(self.estimate_message_tokens(m) for m in messages)
@@ -357,7 +354,9 @@ class SmartContextManager:
             "original_tokens": original_tokens,
             "final_tokens": final_tokens,
             "tokens_saved": original_tokens - final_tokens,
-            "compression_ratio": round(final_tokens / original_tokens, 2) if original_tokens > 0 else 1.0
+            "compression_ratio": round(final_tokens / original_tokens, 2)
+            if original_tokens > 0
+            else 1.0,
         }
 
         return messages, stats
@@ -384,17 +383,26 @@ class SmartContextManager:
                         args = json.loads(func.get("arguments", "{}"))
                         if "path" in args:
                             files_mentioned.add(args["path"])
-                    except:
+                    except Exception:
                         pass
 
             # Extract key actions
             if role == "assistant" and isinstance(content, str):
                 # Look for action verbs
-                action_words = ["created", "edited", "fixed", "added", "removed", "updated", "implemented", "refactored"]
+                action_words = [
+                    "created",
+                    "edited",
+                    "fixed",
+                    "added",
+                    "removed",
+                    "updated",
+                    "implemented",
+                    "refactored",
+                ]
                 for word in action_words:
                     if word in content.lower():
                         # Get first sentence containing this word
-                        for sentence in content.split('.'):
+                        for sentence in content.split("."):
                             if word in sentence.lower():
                                 key_points.append(sentence.strip()[:100])
                                 break

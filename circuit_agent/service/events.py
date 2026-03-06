@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from typing import Any, Callable, Dict, List, Optional, Union
-from weakref import WeakSet
 
 
 class EventType(Enum):
@@ -112,7 +111,7 @@ class EventEmitter:
         self,
         event_type: EventType,
         handler: Union[EventHandler, AsyncEventHandler],
-        is_async: bool = False
+        is_async: bool = False,
     ) -> None:
         """
         Subscribe to an event type.
@@ -137,7 +136,7 @@ class EventEmitter:
         self,
         event_type: EventType,
         handler: Union[EventHandler, AsyncEventHandler],
-        is_async: bool = False
+        is_async: bool = False,
     ) -> None:
         """Unsubscribe from an event type."""
         if is_async:
@@ -196,9 +195,7 @@ class EventEmitter:
         return event
 
     async def emit_async(
-        self,
-        event_type: EventType,
-        data: Optional[Dict[str, Any]] = None
+        self, event_type: EventType, data: Optional[Dict[str, Any]] = None
     ) -> Event:
         """
         Emit an event asynchronously.
@@ -264,9 +261,8 @@ class EventEmitter:
                 count += len(handlers)
             return count
         else:
-            return (
-                len(self._handlers.get(event_type, [])) +
-                len(self._async_handlers.get(event_type, []))
+            return len(self._handlers.get(event_type, [])) + len(
+                self._async_handlers.get(event_type, [])
             )
 
 

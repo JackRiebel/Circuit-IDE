@@ -11,31 +11,25 @@ KEYBINDINGS: Dict[str, Tuple[str, str]] = {
     "focus_editor": ("f3", "Focus editor"),
     "focus_chat": ("f4", "Focus chat"),
     "focus_terminal": ("f5", "Focus terminal"),
-
     # Panels
     "toggle_sidebar": ("ctrl+b", "Toggle sidebar"),
     "toggle_terminal": ("ctrl+`", "Toggle terminal"),
-
     # Commands
     "command_palette": ("ctrl+k", "Command palette"),
     "quick_open": ("ctrl+p", "Quick open file"),
-
     # Editor
     "save_file": ("ctrl+s", "Save file"),
     "goto_line": ("ctrl+g", "Go to line"),
     "find": ("ctrl+f", "Find in file"),
     "find_all": ("ctrl+shift+f", "Find in all files"),
-
     # Agent
     "new_chat": ("ctrl+n", "New chat"),
     "stop_agent": ("ctrl+c", "Stop agent"),
     "toggle_auto_approve": ("ctrl+a", "Toggle auto-approve"),
     "toggle_thinking": ("ctrl+t", "Toggle thinking mode"),
-
     # Session
     "save_session": ("ctrl+shift+s", "Save session"),
     "load_session": ("ctrl+shift+l", "Load session"),
-
     # Help
     "show_help": ("f1", "Show help"),
     "quit": ("f10", "Quit"),

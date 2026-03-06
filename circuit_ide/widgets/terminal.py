@@ -4,16 +4,15 @@ Terminal Widget for Circuit IDE.
 Provides embedded terminal functionality for command output.
 """
 
-from typing import Optional, List
-import subprocess
 import asyncio
+from typing import List, Optional
 
-from textual.widgets import RichLog, Static, Input
+from rich.text import Text
+from textual import work
 from textual.containers import Vertical
 from textual.message import Message
 from textual.reactive import reactive
-from textual import work
-from rich.text import Text
+from textual.widgets import Input, RichLog, Static
 
 
 class TerminalOutput(RichLog):
@@ -66,19 +65,15 @@ class TerminalWidget(Vertical):
 
     class CommandSubmitted(Message):
         """Message sent when a command is submitted."""
+
         def __init__(self, command: str) -> None:
             self.command = command
             super().__init__()
 
     class CommandCompleted(Message):
         """Message sent when a command completes."""
-        def __init__(
-            self,
-            command: str,
-            return_code: int,
-            stdout: str,
-            stderr: str
-        ) -> None:
+
+        def __init__(self, command: str, return_code: int, stdout: str, stderr: str) -> None:
             self.command = command
             self.return_code = return_code
             self.stdout = stdout
@@ -109,10 +104,7 @@ class TerminalWidget(Vertical):
         self._output = TerminalOutput(id="terminal-output")
         yield self._output
 
-        self._input = Input(
-            placeholder="Enter command...",
-            id="terminal-input"
-        )
+        self._input = Input(placeholder="Enter command...", id="terminal-input")
         yield self._input
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -142,10 +134,9 @@ class TerminalWidget(Vertical):
             if command.startswith("cd "):
                 path = command[3:].strip()
                 import os
+
                 try:
-                    new_path = os.path.abspath(
-                        os.path.join(self.working_directory, path)
-                    )
+                    new_path = os.path.abspath(os.path.join(self.working_directory, path))
                     if os.path.isdir(new_path):
                         self.working_directory = new_path
                         if self._output:
@@ -153,8 +144,7 @@ class TerminalWidget(Vertical):
                     else:
                         if self._output:
                             self._output.write_output(
-                                f"cd: no such directory: {path}",
-                                is_error=True
+                                f"cd: no such directory: {path}", is_error=True
                             )
                 except Exception as e:
                     if self._output:
@@ -182,18 +172,17 @@ class TerminalWidget(Vertical):
                     if process.returncode == 0:
                         self._output.write_status("Command completed")
                     else:
-                        self._output.write_status(
-                            f"Exit code: {process.returncode}",
-                            success=False
-                        )
+                        self._output.write_status(f"Exit code: {process.returncode}", success=False)
 
                 # Post completion message
-                self.post_message(self.CommandCompleted(
-                    command=command,
-                    return_code=process.returncode or 0,
-                    stdout=stdout_text,
-                    stderr=stderr_text,
-                ))
+                self.post_message(
+                    self.CommandCompleted(
+                        command=command,
+                        return_code=process.returncode or 0,
+                        stdout=stdout_text,
+                        stderr=stderr_text,
+                    )
+                )
 
         except Exception as e:
             if self._output:
@@ -203,11 +192,7 @@ class TerminalWidget(Vertical):
         finally:
             self.is_running = False
 
-    def run_agent_command(
-        self,
-        command: str,
-        show_output: bool = True
-    ) -> None:
+    def run_agent_command(self, command: str, show_output: bool = True) -> None:
         """Run a command initiated by the agent."""
         if show_output and self._output:
             text = Text()

@@ -6,12 +6,12 @@ interface for tool discovery and execution.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
-from .config import MCPServerConfig, MCPTransportType, MCPTool
-from .transport import SyncHTTPTransport, MCPTransportError, MCPRPCError
-from .converter import mcp_to_openai, openai_to_mcp_args, filter_tools_by_toolset
+from .config import MCPServerConfig, MCPTransportType
+from .converter import filter_tools_by_toolset, mcp_to_openai
+from .transport import MCPRPCError, MCPTransportError, SyncHTTPTransport
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MCPServerConnection:
     """Active connection to an MCP server."""
+
     config: MCPServerConfig
     transport: SyncHTTPTransport
     tools: List[Dict[str, Any]] = field(default_factory=list)
@@ -162,10 +163,7 @@ class MCPClientManager:
             logger.warning(f"Error closing transport: {e}")
 
         # Remove tool mappings
-        tools_to_remove = [
-            name for name, sid in self._tool_to_server.items()
-            if sid == server_id
-        ]
+        tools_to_remove = [name for name, sid in self._tool_to_server.items() if sid == server_id]
         for name in tools_to_remove:
             del self._tool_to_server[name]
 
@@ -225,11 +223,7 @@ class MCPClientManager:
         """Get the server ID that provides a tool."""
         return self._tool_to_server.get(tool_name)
 
-    def execute_tool(
-        self,
-        tool_name: str,
-        arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute a tool on the appropriate MCP server.
 
@@ -270,10 +264,13 @@ class MCPClientManager:
         # Execute the tool
         logger.info(f"Executing MCP tool {tool_name} on {server_id}")
 
-        result = connection.transport.send("tools/call", {
-            "name": tool_name,
-            "arguments": arguments,
-        })
+        result = connection.transport.send(
+            "tools/call",
+            {
+                "name": tool_name,
+                "arguments": arguments,
+            },
+        )
 
         return result
 
@@ -289,5 +286,5 @@ class MCPClientManager:
                     "tool_count": conn.tool_count,
                 }
                 for sid, conn in self._connections.items()
-            }
+            },
         }

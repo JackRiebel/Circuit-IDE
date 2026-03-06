@@ -3,12 +3,13 @@ MCP Server configuration dataclasses.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List
 from enum import Enum
+from typing import List, Optional
 
 
 class MCPTransportType(Enum):
     """Transport type for MCP server connection."""
+
     HTTP = "http"
     STDIO = "stdio"
     SSE = "sse"
@@ -111,4 +112,5 @@ class MCPTool:
     def to_openai_format(self) -> dict:
         """Convert to OpenAI function calling format."""
         from .converter import mcp_to_openai
+
         return mcp_to_openai(self.raw)

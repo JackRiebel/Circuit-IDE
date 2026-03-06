@@ -6,14 +6,15 @@ import os
 import re
 import shlex
 import subprocess
-from pathlib import Path
-from typing import List, Optional, TYPE_CHECKING
 from difflib import get_close_matches
+from pathlib import Path
+from typing import TYPE_CHECKING, List, Optional
 
 from ..config import DANGEROUS_PATTERNS
 
 # Shell metacharacters that require shell=True
-SHELL_METACHARACTERS = set('|;&$`><(){}[]!*?~')
+SHELL_METACHARACTERS = set("|;&$`><(){}[]!*?~")
+
 
 def _needs_shell(command: str) -> bool:
     """Check if command contains shell metacharacters requiring shell=True."""
@@ -23,18 +24,20 @@ def _needs_shell(command: str) -> bool:
             return True
     return False
 
+
 def _sanitize_command(command: str) -> str:
     """Sanitize command string to prevent injection attacks."""
     # Block command substitution patterns
     dangerous_subst = [
-        r'\$\([^)]+\)',      # $(command)
-        r'`[^`]+`',          # `command`
-        r'\$\{[^}]+\}',      # ${variable} expansion
+        r"\$\([^)]+\)",  # $(command)
+        r"`[^`]+`",  # `command`
+        r"\$\{[^}]+\}",  # ${variable} expansion
     ]
     for pattern in dangerous_subst:
         if re.search(pattern, command):
-            raise ValueError(f"Command substitution not allowed for security reasons")
+            raise ValueError("Command substitution not allowed for security reasons")
     return command
+
 
 if TYPE_CHECKING:
     from ..errors import SmartError
@@ -52,20 +55,20 @@ FILE_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "start_line": {
                         "type": "integer",
-                        "description": "Optional: Start reading from this line number (1-indexed)"
+                        "description": "Optional: Start reading from this line number (1-indexed)",
                     },
                     "end_line": {
                         "type": "integer",
-                        "description": "Optional: Stop reading at this line number (inclusive)"
-                    }
+                        "description": "Optional: Stop reading at this line number (inclusive)",
+                    },
                 },
-                "required": ["path"]
-            }
-        }
+                "required": ["path"],
+            },
+        },
     },
     {
         "type": "function",
@@ -77,16 +80,16 @@ FILE_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "content": {
                         "type": "string",
-                        "description": "The content to write to the file"
-                    }
+                        "description": "The content to write to the file",
+                    },
                 },
-                "required": ["path", "content"]
-            }
-        }
+                "required": ["path", "content"],
+            },
+        },
     },
     {
         "type": "function",
@@ -98,20 +101,17 @@ FILE_TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "old_text": {
                         "type": "string",
-                        "description": "The exact text to find and replace (must match exactly including whitespace)"
+                        "description": "The exact text to find and replace (must match exactly including whitespace)",
                     },
-                    "new_text": {
-                        "type": "string",
-                        "description": "The text to replace it with"
-                    }
+                    "new_text": {"type": "string", "description": "The text to replace it with"},
                 },
-                "required": ["path", "old_text", "new_text"]
-            }
-        }
+                "required": ["path", "old_text", "new_text"],
+            },
+        },
     },
     {
         "type": "function",
@@ -123,12 +123,12 @@ FILE_TOOLS = [
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Glob pattern (e.g., '**/*.py', 'src/**/*.ts', '*.json')"
+                        "description": "Glob pattern (e.g., '**/*.py', 'src/**/*.ts', '*.json')",
                     }
                 },
-                "required": ["pattern"]
-            }
-        }
+                "required": ["pattern"],
+            },
+        },
     },
     {
         "type": "function",
@@ -138,24 +138,21 @@ FILE_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "Regex pattern to search for"
-                    },
+                    "pattern": {"type": "string", "description": "Regex pattern to search for"},
                     "file_pattern": {
                         "type": "string",
                         "description": "Optional glob pattern to filter files (e.g., '**/*.py'). Defaults to all files.",
-                        "default": "**/*"
+                        "default": "**/*",
                     },
                     "case_sensitive": {
                         "type": "boolean",
                         "description": "Whether search is case-sensitive. Defaults to false.",
-                        "default": False
-                    }
+                        "default": False,
+                    },
                 },
-                "required": ["pattern"]
-            }
-        }
+                "required": ["pattern"],
+            },
+        },
     },
     {
         "type": "function",
@@ -165,19 +162,16 @@ FILE_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "The shell command to execute"
-                    },
+                    "command": {"type": "string", "description": "The shell command to execute"},
                     "timeout": {
                         "type": "integer",
                         "description": "Timeout in seconds (default 60, max 300)",
-                        "default": 60
-                    }
+                        "default": 60,
+                    },
                 },
-                "required": ["command"]
-            }
-        }
+                "required": ["command"],
+            },
+        },
     },
     {
         "type": "function",
@@ -189,24 +183,26 @@ FILE_TOOLS = [
                 "properties": {
                     "input_path": {
                         "type": "string",
-                        "description": "Path to the HTML file to convert"
+                        "description": "Path to the HTML file to convert",
                     },
                     "output_path": {
                         "type": "string",
-                        "description": "Path for the output markdown file (e.g., 'output.md')"
-                    }
+                        "description": "Path for the output markdown file (e.g., 'output.md')",
+                    },
                 },
-                "required": ["input_path", "output_path"]
-            }
-        }
-    }
+                "required": ["input_path", "output_path"],
+            },
+        },
+    },
 ]
 
 
 class FileTools:
     """File operation tool implementations."""
 
-    def __init__(self, working_dir: str, backup_manager=None, smart_error: Optional['SmartError'] = None):
+    def __init__(
+        self, working_dir: str, backup_manager=None, smart_error: Optional["SmartError"] = None
+    ):
         self.working_dir = os.path.realpath(os.path.abspath(working_dir))
         self.backup_manager = backup_manager
         self.smart_error = smart_error
@@ -228,8 +224,8 @@ class FileTools:
 
     def _find_similar_text(self, content: str, search_text: str, n: int = 3) -> List[str]:
         """Find similar lines to the search text for better error messages."""
-        content_lines = content.split('\n')
-        search_lines = search_text.strip().split('\n')
+        content_lines = content.split("\n")
+        search_lines = search_text.strip().split("\n")
 
         if not search_lines:
             return []
@@ -245,7 +241,7 @@ class FileTools:
         for match in matches:
             for i, stripped in enumerate(stripped_lines):
                 if stripped == match and content_lines[i] not in results:
-                    results.append(f"Line {i+1}: {content_lines[i][:80]}")
+                    results.append(f"Line {i + 1}: {content_lines[i][:80]}")
                     break
         return results
 
@@ -278,7 +274,7 @@ class FileTools:
             return f"Error: '{path}' is a directory, not a file. Use list_files to see contents."
 
         try:
-            with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
 
             total_lines = len(lines)
@@ -296,7 +292,7 @@ class FileTools:
                 else:
                     truncated = 0
 
-            content = ''.join(f"{i+start_num:4}| {line}" for i, line in enumerate(lines))
+            content = "".join(f"{i + start_num:4}| {line}" for i, line in enumerate(lines))
 
             if start_line is not None or end_line is not None:
                 header = f"[Lines {start_num}-{start_num + len(lines) - 1} of {total_lines}]\n"
@@ -331,10 +327,10 @@ class FileTools:
             if parent_dir:
                 os.makedirs(parent_dir, exist_ok=True)
 
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            lines = content.count('\n') + 1
+            lines = content.count("\n") + 1
             return f"Successfully wrote {lines} lines to {path}"
         except Exception as e:
             return f"Error writing file: {e}"
@@ -359,7 +355,7 @@ class FileTools:
             return f"Error: File not found: {path}\nTip: Use read_file first to verify the file exists and see its contents."
 
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
+            with open(full_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if old_text not in content:
@@ -388,7 +384,7 @@ class FileTools:
                 self.backup_manager.backup(path)
             new_content = content.replace(old_text, new_text, 1)
 
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
 
             return f"Successfully edited {path}"
@@ -403,13 +399,24 @@ class FileTools:
             matches = list(Path(self.working_dir).glob(pattern))
 
             filtered = []
-            skip_dirs = {'node_modules', '__pycache__', '.git', '.venv', 'venv', '.tox', 'dist', 'build', '.next', '.cache'}
+            skip_dirs = {
+                "node_modules",
+                "__pycache__",
+                ".git",
+                ".venv",
+                "venv",
+                ".tox",
+                "dist",
+                "build",
+                ".next",
+                ".cache",
+            }
 
             for m in matches:
                 rel_path = str(m.relative_to(self.working_dir))
                 parts = rel_path.split(os.sep)
 
-                if any(p.startswith('.') or p in skip_dirs for p in parts):
+                if any(p.startswith(".") or p in skip_dirs for p in parts):
                     continue
 
                 if m.is_file():
@@ -421,10 +428,10 @@ class FileTools:
                 return f"No files found matching pattern: {pattern}"
 
             if len(filtered) > 100:
-                result = '\n'.join(filtered[:100])
+                result = "\n".join(filtered[:100])
                 result += f"\n... ({len(filtered) - 100} more files)"
             else:
-                result = '\n'.join(filtered)
+                result = "\n".join(filtered)
 
             return f"Found {len(filtered)} files:\n{result}"
         except Exception as e:
@@ -444,7 +451,7 @@ class FileTools:
 
         results = []
         files_searched = 0
-        skip_dirs = {'node_modules', '__pycache__', '.git', '.venv', 'venv', '.next', '.cache'}
+        skip_dirs = {"node_modules", "__pycache__", ".git", ".venv", "venv", ".next", ".cache"}
 
         try:
             for file_path in Path(self.working_dir).glob(file_pattern):
@@ -454,11 +461,11 @@ class FileTools:
                 rel_path = str(file_path.relative_to(self.working_dir))
                 parts = rel_path.split(os.sep)
 
-                if any(p.startswith('.') or p in skip_dirs for p in parts):
+                if any(p.startswith(".") or p in skip_dirs for p in parts):
                     continue
 
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         files_searched += 1
                         for i, line in enumerate(f, 1):
                             if regex.search(line):
@@ -476,7 +483,7 @@ class FileTools:
             if not results:
                 return f"No matches found for '{pattern}' in {files_searched} files"
 
-            output = '\n'.join(results)
+            output = "\n".join(results)
             if len(results) >= 50:
                 output += "\n... (results truncated at 50 matches)"
 
@@ -508,7 +515,7 @@ class FileTools:
                     cwd=self.working_dir,
                     capture_output=True,
                     text=True,
-                    timeout=timeout
+                    timeout=timeout,
                 )
             else:
                 # Safe to use list form without shell
@@ -518,7 +525,7 @@ class FileTools:
                     cwd=self.working_dir,
                     capture_output=True,
                     text=True,
-                    timeout=timeout
+                    timeout=timeout,
                 )
 
             output = ""
@@ -565,69 +572,88 @@ class FileTools:
             return f"Error: File not found: {input_path}"
 
         try:
-            with open(full_input, 'r', encoding='utf-8', errors='replace') as f:
+            with open(full_input, "r", encoding="utf-8", errors="replace") as f:
                 html = f.read()
 
             # Remove script and style tags with content
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<head[^>]*>.*?</head>', '', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<head[^>]*>.*?</head>", "", html, flags=re.DOTALL | re.IGNORECASE)
 
             # Convert headers
-            html = re.sub(r'<h1[^>]*>(.*?)</h1>', r'\n# \1\n', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<h2[^>]*>(.*?)</h2>', r'\n## \1\n', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<h3[^>]*>(.*?)</h3>', r'\n### \1\n', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<h4[^>]*>(.*?)</h4>', r'\n#### \1\n', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(
+                r"<h1[^>]*>(.*?)</h1>", r"\n# \1\n", html, flags=re.DOTALL | re.IGNORECASE
+            )
+            html = re.sub(
+                r"<h2[^>]*>(.*?)</h2>", r"\n## \1\n", html, flags=re.DOTALL | re.IGNORECASE
+            )
+            html = re.sub(
+                r"<h3[^>]*>(.*?)</h3>", r"\n### \1\n", html, flags=re.DOTALL | re.IGNORECASE
+            )
+            html = re.sub(
+                r"<h4[^>]*>(.*?)</h4>", r"\n#### \1\n", html, flags=re.DOTALL | re.IGNORECASE
+            )
 
             # Convert paragraphs and breaks
-            html = re.sub(r'<p[^>]*>', '\n\n', html, flags=re.IGNORECASE)
-            html = re.sub(r'</p>', '', html, flags=re.IGNORECASE)
-            html = re.sub(r'<br[^>]*/?\s*>', '\n', html, flags=re.IGNORECASE)
-            html = re.sub(r'<div[^>]*>', '\n', html, flags=re.IGNORECASE)
-            html = re.sub(r'</div>', '\n', html, flags=re.IGNORECASE)
+            html = re.sub(r"<p[^>]*>", "\n\n", html, flags=re.IGNORECASE)
+            html = re.sub(r"</p>", "", html, flags=re.IGNORECASE)
+            html = re.sub(r"<br[^>]*/?\s*>", "\n", html, flags=re.IGNORECASE)
+            html = re.sub(r"<div[^>]*>", "\n", html, flags=re.IGNORECASE)
+            html = re.sub(r"</div>", "\n", html, flags=re.IGNORECASE)
 
             # Convert lists
-            html = re.sub(r'<li[^>]*>', '\n- ', html, flags=re.IGNORECASE)
-            html = re.sub(r'</li>', '', html, flags=re.IGNORECASE)
-            html = re.sub(r'<[ou]l[^>]*>', '\n', html, flags=re.IGNORECASE)
-            html = re.sub(r'</[ou]l>', '\n', html, flags=re.IGNORECASE)
+            html = re.sub(r"<li[^>]*>", "\n- ", html, flags=re.IGNORECASE)
+            html = re.sub(r"</li>", "", html, flags=re.IGNORECASE)
+            html = re.sub(r"<[ou]l[^>]*>", "\n", html, flags=re.IGNORECASE)
+            html = re.sub(r"</[ou]l>", "\n", html, flags=re.IGNORECASE)
 
             # Convert code blocks
-            html = re.sub(r'<pre[^>]*>(.*?)</pre>', r'\n```\n\1\n```\n', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(
+                r"<pre[^>]*>(.*?)</pre>", r"\n```\n\1\n```\n", html, flags=re.DOTALL | re.IGNORECASE
+            )
+            html = re.sub(
+                r"<code[^>]*>(.*?)</code>", r"`\1`", html, flags=re.DOTALL | re.IGNORECASE
+            )
 
             # Convert formatting
-            html = re.sub(r'<strong[^>]*>(.*?)</strong>', r'**\1**', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<b[^>]*>(.*?)</b>', r'**\1**', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', html, flags=re.DOTALL | re.IGNORECASE)
-            html = re.sub(r'<i[^>]*>(.*?)</i>', r'*\1*', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(
+                r"<strong[^>]*>(.*?)</strong>", r"**\1**", html, flags=re.DOTALL | re.IGNORECASE
+            )
+            html = re.sub(r"<b[^>]*>(.*?)</b>", r"**\1**", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<em[^>]*>(.*?)</em>", r"*\1*", html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(r"<i[^>]*>(.*?)</i>", r"*\1*", html, flags=re.DOTALL | re.IGNORECASE)
 
             # Convert links
-            html = re.sub(r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>', r'[\2](\1)', html, flags=re.DOTALL | re.IGNORECASE)
+            html = re.sub(
+                r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+                r"[\2](\1)",
+                html,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
 
             # Remove remaining HTML tags
-            html = re.sub(r'<[^>]+>', ' ', html)
+            html = re.sub(r"<[^>]+>", " ", html)
 
             # Clean up HTML entities
-            html = html.replace('&nbsp;', ' ')
-            html = html.replace('&amp;', '&')
-            html = html.replace('&lt;', '<')
-            html = html.replace('&gt;', '>')
-            html = html.replace('&quot;', '"')
-            html = html.replace('&#39;', "'")
+            html = html.replace("&nbsp;", " ")
+            html = html.replace("&amp;", "&")
+            html = html.replace("&lt;", "<")
+            html = html.replace("&gt;", ">")
+            html = html.replace("&quot;", '"')
+            html = html.replace("&#39;", "'")
 
             # Clean up whitespace
-            html = re.sub(r'[ \t]+', ' ', html)
-            html = re.sub(r'\n[ \t]+', '\n', html)
-            html = re.sub(r'[ \t]+\n', '\n', html)
-            html = re.sub(r'\n{3,}', '\n\n', html)
+            html = re.sub(r"[ \t]+", " ", html)
+            html = re.sub(r"\n[ \t]+", "\n", html)
+            html = re.sub(r"[ \t]+\n", "\n", html)
+            html = re.sub(r"\n{3,}", "\n\n", html)
             markdown = html.strip()
 
             # Write output
-            with open(full_output, 'w', encoding='utf-8') as f:
+            with open(full_output, "w", encoding="utf-8") as f:
                 f.write(markdown)
 
-            lines = markdown.count('\n') + 1
+            lines = markdown.count("\n") + 1
             return f"Successfully converted {input_path} to {output_path} ({lines} lines)"
 
         except Exception as e:

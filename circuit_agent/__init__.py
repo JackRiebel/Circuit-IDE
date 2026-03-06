@@ -23,17 +23,17 @@ __version__ = "5.0.0-alpha"
 __author__ = "Circuit Agent"
 
 from .agent import CircuitAgent
-from .tools import TOOLS, FileTools, GitTools, WebTools, BackupManager
-from .memory import SessionManager, ContextCompactor
-from .security import SecretDetector, AuditLogger, CostTracker
+from .cli import main, run_cli
 from .config import (
-    load_credentials,
-    save_credentials,
+    MODELS,
     delete_credentials,
     load_circuit_md,
-    MODELS,
+    load_credentials,
+    save_credentials,
 )
-from .cli import run_cli, main
+from .memory import ContextCompactor, SessionManager
+from .security import AuditLogger, CostTracker, SecretDetector
+from .tools import TOOLS, BackupManager, FileTools, GitTools, WebTools
 
 __all__ = [
     "CircuitAgent",

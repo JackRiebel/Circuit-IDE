@@ -5,13 +5,13 @@ Handles credentials, settings, and CIRCUIT.md loading.
 
 import json
 import os
-import ssl
 import warnings
-from typing import Tuple, Optional, Dict, Any
+from typing import Any, Dict, Optional, Tuple
 
 # Optional keyring support for secure credential storage
 try:
     import keyring
+
     KEYRING_AVAILABLE = True
 except ImportError:
     KEYRING_AVAILABLE = False
@@ -19,6 +19,7 @@ except ImportError:
 # Optional certifi for CA bundle
 try:
     import certifi
+
     CERTIFI_AVAILABLE = True
 except ImportError:
     CERTIFI_AVAILABLE = False
@@ -27,6 +28,7 @@ except ImportError:
 # Custom warning classes
 class SecurityWarning(UserWarning):
     """Warning for security-related issues."""
+
     pass
 
 
@@ -48,6 +50,7 @@ MODELS = {
     "3": ("gpt-4o-mini", "GPT-4o Mini - Quick & efficient (120K context)"),
     "4": ("o4-mini", "o4-mini - Large context (200K context)"),
 }
+
 
 # SSL/TLS Configuration
 class SSLConfig:
@@ -79,7 +82,8 @@ class SSLConfig:
             warnings.warn(
                 "SSL verification disabled! This is insecure and should only be used "
                 "for corporate proxies. Set CIRCUIT_SSL_VERIFY=true to re-enable.",
-                SecurityWarning
+                SecurityWarning,
+                stacklevel=2,
             )
 
     def enable_verification(self, ca_bundle: str = None) -> None:
@@ -90,6 +94,7 @@ class SSLConfig:
             self._verify = ca_bundle
         else:
             self._verify = True
+
 
 # Global SSL config instance
 ssl_config = SSLConfig()
@@ -110,7 +115,6 @@ DANGEROUS_PATTERNS = [
     r"mv\s+/\w",
     r">\s*/dev/sd",
     r">\s*/etc/",
-
     # Privileged operations
     r"sudo\s+rm",
     r"sudo\s+mv\s+/",
@@ -118,36 +122,31 @@ DANGEROUS_PATTERNS = [
     r"sudo\s+chown",
     r"chmod\s+-R\s+777\s+/",
     r"chown\s+-R.*\s+/",
-
     # System operations
     r"mkfs\.",
     r"dd\s+.*of=/dev/",
     r"shutdown",
     r"reboot",
     r":(){ :\|:& };:",  # Fork bomb
-
     # Git dangerous operations
     r"git\s+push.*--force",
     r"git\s+push.*-f\b",
     r"git\s+reset\s+--hard",
-
     # Remote code execution
     r"curl.*\|\s*(ba)?sh",
     r"wget.*\|\s*(ba)?sh",
-
     # Command injection patterns (additional protection)
-    r"\$\([^)]+\)",           # $(command) substitution
-    r"`[^`]+`",               # `command` substitution
-    r"\$\{[^}]+\}",           # ${var} expansion with commands
-    r";\s*rm\s",              # Command chaining with rm
-    r"&&\s*rm\s",             # Logical AND with rm
-    r"\|\|\s*rm\s",           # Logical OR with rm
+    r"\$\([^)]+\)",  # $(command) substitution
+    r"`[^`]+`",  # `command` substitution
+    r"\$\{[^}]+\}",  # ${var} expansion with commands
+    r";\s*rm\s",  # Command chaining with rm
+    r"&&\s*rm\s",  # Logical AND with rm
+    r"\|\|\s*rm\s",  # Logical OR with rm
     r">\s*/dev/null\s*2>&1\s*&",  # Background execution hiding output
-
     # Reverse shells and network exfiltration
-    r"nc\s+-[el]",            # netcat listener
+    r"nc\s+-[el]",  # netcat listener
     r"bash\s+-i\s+>&\s*/dev/tcp",  # bash reverse shell
-    r"/dev/tcp/",             # bash network device
+    r"/dev/tcp/",  # bash network device
     r"python.*socket.*connect",  # Python socket connections
     r"base64\s+-d.*\|\s*(ba)?sh",  # Base64 decode to shell
 ]
@@ -173,13 +172,9 @@ def _load_credentials_from_file() -> Tuple[Optional[str], Optional[str], Optiona
         return None, None, None
 
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-            return (
-                config.get('client_id'),
-                config.get('client_secret'),
-                config.get('app_key')
-            )
+            return (config.get("client_id"), config.get("client_secret"), config.get("app_key"))
     except (json.JSONDecodeError, IOError):
         return None, None, None
 
@@ -212,21 +207,18 @@ def load_credentials() -> Tuple[Optional[str], Optional[str], Optional[str]]:
         app_key = app_key or file_key
 
     # Environment variables override everything
-    if os.environ.get('CIRCUIT_CLIENT_ID'):
-        client_id = os.environ.get('CIRCUIT_CLIENT_ID')
-    if os.environ.get('CIRCUIT_CLIENT_SECRET'):
-        client_secret = os.environ.get('CIRCUIT_CLIENT_SECRET')
-    if os.environ.get('CIRCUIT_APP_KEY'):
-        app_key = os.environ.get('CIRCUIT_APP_KEY')
+    if os.environ.get("CIRCUIT_CLIENT_ID"):
+        client_id = os.environ.get("CIRCUIT_CLIENT_ID")
+    if os.environ.get("CIRCUIT_CLIENT_SECRET"):
+        client_secret = os.environ.get("CIRCUIT_CLIENT_SECRET")
+    if os.environ.get("CIRCUIT_APP_KEY"):
+        app_key = os.environ.get("CIRCUIT_APP_KEY")
 
     return client_id, client_secret, app_key
 
 
 def save_credentials(
-    client_id: str,
-    client_secret: str,
-    app_key: str,
-    use_keyring: bool = True
+    client_id: str, client_secret: str, app_key: str, use_keyring: bool = True
 ) -> Tuple[bool, str]:
     """
     Save credentials securely.
@@ -253,12 +245,8 @@ def save_credentials(
     # Fall back to config file
     try:
         os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
-        config = {
-            'client_id': client_id,
-            'client_secret': client_secret,
-            'app_key': app_key
-        }
-        with open(CONFIG_FILE, 'w') as f:
+        config = {"client_id": client_id, "client_secret": client_secret, "app_key": app_key}
+        with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         # Secure the file (readable only by owner)
         os.chmod(CONFIG_FILE, 0o600)
@@ -323,8 +311,8 @@ def load_anthropic_key() -> Optional[str]:
     3. Config file
     """
     # Environment variable first
-    if os.environ.get('ANTHROPIC_API_KEY'):
-        return os.environ.get('ANTHROPIC_API_KEY')
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return os.environ.get("ANTHROPIC_API_KEY")
 
     # Try keyring
     if KEYRING_AVAILABLE:
@@ -338,9 +326,9 @@ def load_anthropic_key() -> Optional[str]:
     # Fall back to config file
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 config = json.load(f)
-                return config.get('anthropic_api_key')
+                return config.get("anthropic_api_key")
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -370,14 +358,14 @@ def save_anthropic_key(api_key: str, use_keyring: bool = True) -> Tuple[bool, st
         config = {}
         if os.path.exists(CONFIG_FILE):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(CONFIG_FILE, "r") as f:
                     config = json.load(f)
             except (json.JSONDecodeError, IOError):
                 pass
 
-        config['anthropic_api_key'] = api_key
+        config["anthropic_api_key"] = api_key
 
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         os.chmod(CONFIG_FILE, 0o600)
         return True, "file"
@@ -388,19 +376,19 @@ def save_anthropic_key(api_key: str, use_keyring: bool = True) -> Tuple[bool, st
 def load_provider_preference() -> str:
     """Load the preferred AI provider (cisco or anthropic)."""
     # Check environment
-    if os.environ.get('CIRCUIT_PROVIDER'):
-        return os.environ.get('CIRCUIT_PROVIDER')
+    if os.environ.get("CIRCUIT_PROVIDER"):
+        return os.environ.get("CIRCUIT_PROVIDER")
 
     # Check config file
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 config = json.load(f)
-                return config.get('provider', 'cisco')
+                return config.get("provider", "cisco")
         except (json.JSONDecodeError, IOError):
             pass
 
-    return 'cisco'
+    return "cisco"
 
 
 def save_provider_preference(provider: str) -> bool:
@@ -411,14 +399,14 @@ def save_provider_preference(provider: str) -> bool:
         config = {}
         if os.path.exists(CONFIG_FILE):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(CONFIG_FILE, "r") as f:
                     config = json.load(f)
             except (json.JSONDecodeError, IOError):
                 pass
 
-        config['provider'] = provider
+        config["provider"] = provider
 
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         return True
     except IOError:
@@ -452,7 +440,7 @@ def load_circuit_md(working_dir: str) -> Optional[str]:
     project_circuit_md = os.path.join(working_dir, "CIRCUIT.md")
     if os.path.exists(project_circuit_md):
         try:
-            with open(project_circuit_md, 'r', encoding='utf-8') as f:
+            with open(project_circuit_md, "r", encoding="utf-8") as f:
                 return f.read()
         except IOError:
             pass
@@ -460,7 +448,7 @@ def load_circuit_md(working_dir: str) -> Optional[str]:
     # Fall back to global
     if os.path.exists(GLOBAL_CIRCUIT_MD):
         try:
-            with open(GLOBAL_CIRCUIT_MD, 'r', encoding='utf-8') as f:
+            with open(GLOBAL_CIRCUIT_MD, "r", encoding="utf-8") as f:
                 return f.read()
         except IOError:
             pass
@@ -539,12 +527,12 @@ def load_github_pat() -> Optional[str]:
     3. Config file
     """
     # Environment variable first
-    if os.environ.get('GITHUB_PERSONAL_ACCESS_TOKEN'):
-        return os.environ.get('GITHUB_PERSONAL_ACCESS_TOKEN')
+    if os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN"):
+        return os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN")
 
     # Also check GITHUB_TOKEN as alternative
-    if os.environ.get('GITHUB_TOKEN'):
-        return os.environ.get('GITHUB_TOKEN')
+    if os.environ.get("GITHUB_TOKEN"):
+        return os.environ.get("GITHUB_TOKEN")
 
     # Try keyring
     if KEYRING_AVAILABLE:
@@ -558,9 +546,9 @@ def load_github_pat() -> Optional[str]:
     # Fall back to config file
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 config = json.load(f)
-                return config.get('github_pat')
+                return config.get("github_pat")
         except (json.JSONDecodeError, IOError):
             pass
 
@@ -593,14 +581,14 @@ def save_github_pat(pat: str, use_keyring: bool = True) -> Tuple[bool, str]:
         config = {}
         if os.path.exists(CONFIG_FILE):
             try:
-                with open(CONFIG_FILE, 'r') as f:
+                with open(CONFIG_FILE, "r") as f:
                     config = json.load(f)
             except (json.JSONDecodeError, IOError):
                 pass
 
-        config['github_pat'] = pat
+        config["github_pat"] = pat
 
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         os.chmod(CONFIG_FILE, 0o600)
         return True, "file"
@@ -623,11 +611,11 @@ def delete_github_pat() -> bool:
     # Delete from config file
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, 'r') as f:
+            with open(CONFIG_FILE, "r") as f:
                 config = json.load(f)
-            if 'github_pat' in config:
-                del config['github_pat']
-                with open(CONFIG_FILE, 'w') as f:
+            if "github_pat" in config:
+                del config["github_pat"]
+                with open(CONFIG_FILE, "w") as f:
                     json.dump(config, f, indent=2)
                 deleted = True
         except (json.JSONDecodeError, IOError):
@@ -647,7 +635,7 @@ def load_mcp_servers() -> Dict[str, Any]:
         return {"servers": {}}
 
     try:
-        with open(MCP_CONFIG_FILE, 'r') as f:
+        with open(MCP_CONFIG_FILE, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, IOError):
         return {"servers": {}}
@@ -666,7 +654,7 @@ def save_mcp_servers(config: Dict[str, Any]) -> bool:
     try:
         os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
 
-        with open(MCP_CONFIG_FILE, 'w') as f:
+        with open(MCP_CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         os.chmod(MCP_CONFIG_FILE, 0o600)
         return True
@@ -682,18 +670,17 @@ def load_github_mcp_config() -> Dict[str, Any]:
         Dictionary with GitHub MCP settings
     """
     mcp_config = load_mcp_servers()
-    return mcp_config.get("servers", {}).get("github", {
-        "enabled": False,
-        "toolsets": ["repos", "issues", "pull_requests", "actions"],
-        "use_remote": True,
-    })
+    return mcp_config.get("servers", {}).get(
+        "github",
+        {
+            "enabled": False,
+            "toolsets": ["repos", "issues", "pull_requests", "actions"],
+            "use_remote": True,
+        },
+    )
 
 
-def save_github_mcp_config(
-    enabled: bool,
-    toolsets: list,
-    use_remote: bool = True
-) -> bool:
+def save_github_mcp_config(enabled: bool, toolsets: list, use_remote: bool = True) -> bool:
     """
     Save GitHub MCP server configuration.
 
@@ -754,7 +741,7 @@ def load_ui_settings() -> Dict[str, Any]:
 
     if os.path.exists(UI_SETTINGS_FILE):
         try:
-            with open(UI_SETTINGS_FILE, 'r') as f:
+            with open(UI_SETTINGS_FILE, "r") as f:
                 saved = json.load(f)
                 settings.update(saved)
         except (json.JSONDecodeError, IOError):
@@ -780,7 +767,7 @@ def save_ui_settings(settings: Dict[str, Any]) -> bool:
         existing = load_ui_settings()
         existing.update(settings)
 
-        with open(UI_SETTINGS_FILE, 'w') as f:
+        with open(UI_SETTINGS_FILE, "w") as f:
             json.dump(existing, f, indent=2)
         return True
     except IOError:

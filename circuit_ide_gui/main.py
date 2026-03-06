@@ -11,47 +11,86 @@ Features:
 - AI context awareness with token tracking
 """
 
-import sys
-import os
-import json
 import asyncio
-import subprocess
-import re
-import time
+import json
 import logging
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
+
+from PySide6.QtCore import (
+    QObject,
+    QPointF,
+    QProcess,
+    QRect,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QLinearGradient,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+    QShortcut,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextCursor,
+)
+from PySide6.QtWidgets import (
+    QApplication,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QFileSystemModel,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QStackedWidget,
+    QStyledItemDelegate,
+    QTabBar,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
+)
 
 # Configure logging for GUI
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger("circuit_ide")
-from typing import Optional, List, Dict, Any, Callable
-from datetime import datetime
-from enum import Enum
-import threading
-
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QSplitter, QTreeView, QPlainTextEdit, QTextEdit, QLineEdit,
-    QLabel, QStatusBar, QMenuBar, QMenu, QFileDialog,
-    QMessageBox, QFrame, QPushButton, QComboBox, QFileSystemModel,
-    QScrollArea, QStackedWidget, QListWidget, QListWidgetItem,
-    QCheckBox, QSpinBox, QTabWidget, QToolButton, QDialog,
-    QDialogButtonBox, QSizePolicy, QTextBrowser, QStyle, QGroupBox,
-    QProgressBar, QFormLayout, QRadioButton, QButtonGroup,
-    QTreeWidget, QTreeWidgetItem, QHeaderView, QGridLayout,
-    QStyledItemDelegate, QTabBar
-)
-from PySide6.QtCore import (
-    Qt, QDir, Signal, Slot, QThread, QObject, QSize, QTimer,
-    QMargins, QPropertyAnimation, QEasingCurve, Property, QPoint, QPointF,
-    QRect, QRectF, QProcess, QProcessEnvironment
-)
-from PySide6.QtGui import (
-    QFont, QTextCharFormat, QColor, QSyntaxHighlighter,
-    QAction, QKeySequence, QTextCursor, QIcon, QPainter,
-    QPixmap, QPen, QBrush, QPalette, QLinearGradient, QFontDatabase,
-    QPainterPath, QPolygonF, QShortcut
-)
 
 # Add parent to path for imports
 _parent = Path(__file__).parent.parent
@@ -91,8 +130,8 @@ THEMES = {
         "ERROR": "#f14c4c",
         "INFO": "#3794ff",
         # Provider-specific colors
-        "CLAUDE_COLOR": "#E8A87C",     # Light orange/coral for Claude
-        "CIRCUIT_COLOR": "#88CFFF",    # Light blue for Circuit/Cisco
+        "CLAUDE_COLOR": "#E8A87C",  # Light orange/coral for Claude
+        "CIRCUIT_COLOR": "#88CFFF",  # Light blue for Circuit/Cisco
         # Code block tokens
         "CODE_BLOCK_BG": "#1a1a1a",
         "CODE_BLOCK_BORDER": "#333333",
@@ -134,8 +173,8 @@ THEMES = {
         "ERROR": "#cd3131",
         "INFO": "#0066bf",
         # Provider-specific colors
-        "CLAUDE_COLOR": "#D4845C",     # Darker orange for light theme
-        "CIRCUIT_COLOR": "#4A90C2",    # Darker blue for light theme
+        "CLAUDE_COLOR": "#D4845C",  # Darker orange for light theme
+        "CIRCUIT_COLOR": "#4A90C2",  # Darker blue for light theme
         # Code block tokens
         "CODE_BLOCK_BG": "#f6f6f6",
         "CODE_BLOCK_BORDER": "#d4d4d4",
@@ -177,8 +216,8 @@ THEMES = {
         "ERROR": "#ff5050",
         "INFO": "#4080ff",
         # Provider-specific colors
-        "CLAUDE_COLOR": "#FFB080",     # Light orange for midnight
-        "CIRCUIT_COLOR": "#99DDFF",    # Light blue for midnight
+        "CLAUDE_COLOR": "#FFB080",  # Light orange for midnight
+        "CIRCUIT_COLOR": "#99DDFF",  # Light blue for midnight
         # Code block tokens
         "CODE_BLOCK_BG": "#0a0a10",
         "CODE_BLOCK_BORDER": "#2a2a4a",
@@ -220,8 +259,8 @@ THEMES = {
         "ERROR": "#d05050",
         "INFO": "#50a0d0",
         # Provider-specific colors
-        "CLAUDE_COLOR": "#E8A070",     # Light orange for forest
-        "CIRCUIT_COLOR": "#88CFFF",    # Light blue for forest
+        "CLAUDE_COLOR": "#E8A070",  # Light orange for forest
+        "CIRCUIT_COLOR": "#88CFFF",  # Light blue for forest
         # Code block tokens
         "CODE_BLOCK_BG": "#0c100c",
         "CODE_BLOCK_BORDER": "#2a3a28",
@@ -241,7 +280,7 @@ THEMES = {
 
 def _alpha_color(hex_color: str, alpha: float) -> str:
     """Convert hex color + alpha to rgba() string for Qt stylesheets."""
-    hex_color = hex_color.lstrip('#')
+    hex_color = hex_color.lstrip("#")
     r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
     return f"rgba({r}, {g}, {b}, {alpha})"
 
@@ -352,7 +391,7 @@ class RecentProjects:
         if RECENT_PROJECTS_FILE.exists():
             try:
                 data = json.loads(RECENT_PROJECTS_FILE.read_text())
-                return [p for p in data.get("projects", []) if Path(p).exists()][:cls.MAX_RECENT]
+                return [p for p in data.get("projects", []) if Path(p).exists()][: cls.MAX_RECENT]
             except Exception as e:
                 logger.warning(f"Failed to load recent projects: {e}")
         return []
@@ -364,7 +403,7 @@ class RecentProjects:
         if path in projects:
             projects.remove(path)
         projects.insert(0, path)
-        projects = projects[:cls.MAX_RECENT]
+        projects = projects[: cls.MAX_RECENT]
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         RECENT_PROJECTS_FILE.write_text(json.dumps({"projects": projects}, indent=2))
 
@@ -389,7 +428,7 @@ class SearchPermissions:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         data = {
             "allowed_directories": [str(p) for p in self.allowed_dirs],
-            "last_updated": datetime.now().isoformat()
+            "last_updated": datetime.now().isoformat(),
         }
         SEARCH_PERMISSIONS_FILE.write_text(json.dumps(data, indent=2))
 
@@ -449,6 +488,7 @@ class WorkspaceProfile:
 # Icon System - Vector Icons (No Emojis)
 # ============================================================================
 
+
 class Icons:
     """VS Code-style icons using official SVG paths with caching for performance."""
 
@@ -458,7 +498,9 @@ class Icons:
     # Official VS Code icon SVG paths (from microsoft/vscode-icons)
     SVG_CLOSE = '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.00004 8.70711L11.6465 12.3536L12.3536 11.6465L8.70714 8.00001L12.3536 4.35356L11.6465 3.64645L8.00004 7.2929L4.35359 3.64645L3.64648 4.35356L7.29293 8.00001L3.64648 11.6465L4.35359 12.3536L8.00004 8.70711Z" fill="{color}"/>'
     SVG_REFRESH = '<path fill-rule="evenodd" clip-rule="evenodd" d="M5.56253 2.51577C3.46348 3.4501 2 5.55414 2 7.99999C2 11.3137 4.68629 14 8 14C11.3137 14 14 11.3137 14 7.99999C14 5.32519 12.2497 3.05919 9.83199 2.28482L9.52968 3.23832C11.5429 3.88454 13 5.7721 13 7.99999C13 10.7614 10.7614 13 8 13C5.23858 13 3 10.7614 3 7.99999C3 6.31104 3.83742 4.81767 5.11969 3.91245L5.56253 2.51577Z" fill="{color}"/><path fill-rule="evenodd" clip-rule="evenodd" d="M5 3H2V2H5.5L6 2.5V6H5V3Z" fill="{color}"/>'
-    SVG_FILES = '<path d="M2 2H6L7 3V5H10V3L11 2H14V13H2V2ZM3 3V12H13V3H11V6H7V3H3Z" fill="{color}"/>'
+    SVG_FILES = (
+        '<path d="M2 2H6L7 3V5H10V3L11 2H14V13H2V2ZM3 3V12H13V3H11V6H7V3H3Z" fill="{color}"/>'
+    )
     SVG_SEARCH = '<path fill-rule="evenodd" clip-rule="evenodd" d="M10 4C10 6.20914 8.20914 8 6 8C3.79086 8 2 6.20914 2 4C2 1.79086 3.79086 0 6 0C8.20914 0 10 1.79086 10 4ZM9.17 8.58C8.23 9.15 7.14 9.5 6 9.5C2.96 9.5 0.5 7.04 0.5 4C0.5 0.96 2.96 -1.5 6 -1.5C9.04 -1.5 11.5 0.96 11.5 4C11.5 5.14 11.15 6.23 10.58 7.17L14.71 11.29L14 12L9.87 7.87L9.17 8.58Z" fill="{color}" transform="translate(0,2)"/>'
     SVG_SETTINGS = '<path d="M9.1 4.4L8.6 2H7.4L6.9 4.4L6.2 4.7L4.2 3.4L3.3 4.2L4.6 6.2L4.4 6.9L2 7.4V8.6L4.4 9.1L4.7 9.9L3.4 11.9L4.2 12.7L6.2 11.4L7 11.7L7.4 14H8.6L9.1 11.6L9.9 11.3L11.9 12.6L12.7 11.8L11.4 9.8L11.7 9L14 8.6V7.4L11.6 6.9L11.3 6.1L12.6 4.1L11.8 3.3L9.8 4.6L9.1 4.4ZM9.4 1L9.9 3.4L12 2.1L14 4.1L12.6 6.2L15 6.6V9.4L12.6 9.9L14 12L12 14L9.9 12.6L9.4 15H6.6L6.1 12.6L4 13.9L2 11.9L3.4 9.8L1 9.4V6.6L3.4 6.1L2.1 4L4.1 2L6.2 3.4L6.6 1H9.4ZM10 8C10 9.1 9.1 10 8 10C6.9 10 6 9.1 6 8C6 6.9 6.9 6 8 6C9.1 6 10 6.9 10 8ZM8 9C8.6 9 9 8.6 9 8C9 7.4 8.6 7 8 7C7.4 7 7 7.4 7 8C7 8.6 7.4 9 8 9Z" fill="{color}"/>'
     SVG_GIT = '<path d="M4 4C4 2.9 4.9 2 6 2C7.1 2 8 2.9 8 4C8 4.7 7.6 5.4 7 5.7V10.3C7.6 10.6 8 11.3 8 12C8 13.1 7.1 14 6 14C4.9 14 4 13.1 4 12C4 11.3 4.4 10.6 5 10.3V5.7C4.4 5.4 4 4.7 4 4ZM6 3C5.4 3 5 3.4 5 4C5 4.6 5.4 5 6 5C6.6 5 7 4.6 7 4C7 3.4 6.6 3 6 3ZM6 11C5.4 11 5 11.4 5 12C5 12.6 5.4 13 6 13C6.6 13 7 12.6 7 12C7 11.4 6.6 11 6 11ZM12 4C12 2.9 11.1 2 10 2C8.9 2 8 2.9 8 4H9C9 3.4 9.4 3 10 3C10.6 3 11 3.4 11 4C11 4.6 10.6 5 10 5H9V6H10C10.6 6 11 6.4 11 7L9 9H7V10H9.6L12 7.6V7C12 6.5 11.8 6.1 11.5 5.7C11.8 5.4 12 4.7 12 4Z" fill="{color}"/>'
@@ -475,7 +517,9 @@ class Icons:
     SVG_ERROR = '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.6 1C9.2 1 9.7 1.3 10 1.8L14.7 10.3C15 10.8 15 11.4 14.7 11.9C14.4 12.4 13.9 12.7 13.3 12.7H3.7C3.1 12.7 2.6 12.4 2.3 11.9C2 11.4 2 10.8 2.3 10.3L7 1.8C7.3 1.3 7.8 1 8.5 1H8.6ZM8.5 2.5C8.5 2.5 8.5 2.5 8.5 2.5L3.8 11C3.7 11.2 3.8 11.4 4 11.5H13C13.2 11.4 13.3 11.2 13.2 11L8.5 2.5ZM9 10H8V9H9V10ZM9 8H8V5H9V8Z" fill="{color}"/>'
     SVG_WARNING = '<path fill-rule="evenodd" clip-rule="evenodd" d="M7.56 1H8.44L14.98 13.5799L14.54 14.28H1.46L1.02 13.5799L7.56 1ZM8 2.28L2.28 13.28H13.72L8 2.28ZM8.5 12H7.5V11H8.5V12ZM7.5 10V6.5H8.5V10H7.5Z" fill="{color}"/>'
     SVG_INFO = '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.568 1.031C6.38 1.031 4.279 1.901 2.732 3.448C1.185 4.995 0.316 7.095 0.316 9.284C0.316 11.472 1.186 13.573 2.733 15.12C4.28 16.667 6.38 17.536 8.568 17.536C10.757 17.536 12.857 16.667 14.404 15.12C15.951 13.573 16.821 11.472 16.821 9.284C16.821 7.096 15.951 4.995 14.404 3.448C12.857 1.901 10.757 1.031 8.568 1.031ZM8.568 16.536C5.677 16.536 3.068 14.936 1.822 12.408C0.577 9.879 0.86 6.866 2.567 4.62C4.274 2.374 7.132 1.331 9.874 1.908C12.616 2.485 14.817 4.579 15.527 7.284C16.238 9.989 15.336 12.872 13.18 14.676C11.681 15.917 9.759 16.572 7.784 16.536L8.568 16.536ZM9.068 5.284H8.068V4.284H9.068V5.284ZM9.068 6.784V13.784H8.068V6.784H9.068Z" fill="{color}" transform="translate(0,-1) scale(0.9)"/>'
-    SVG_SEND = '<path d="M1 1.91L1.78 1.5L15 8L1.78 14.5L1 14.09V9.09L8 8L1 6.91V1.91Z" fill="{color}"/>'
+    SVG_SEND = (
+        '<path d="M1 1.91L1.78 1.5L15 8L1.78 14.5L1 14.09V9.09L8 8L1 6.91V1.91Z" fill="{color}"/>'
+    )
     SVG_EYE = '<path fill-rule="evenodd" clip-rule="evenodd" d="M16 8C16 8 13 3 8 3C3 3 0 8 0 8C0 8 3 13 8 13C13 13 16 8 16 8ZM1.173 8C1.654 7.38 2.3 6.64 3.085 5.925C4.64 4.5 6.343 3.5 8 3.5C9.657 3.5 11.36 4.5 12.915 5.925C13.7 6.64 14.346 7.38 14.827 8C14.346 8.62 13.7 9.36 12.915 10.075C11.36 11.5 9.657 12.5 8 12.5C6.343 12.5 4.64 11.5 3.085 10.075C2.3 9.36 1.654 8.62 1.173 8ZM8 10.5C9.38 10.5 10.5 9.38 10.5 8C10.5 6.62 9.38 5.5 8 5.5C6.62 5.5 5.5 6.62 5.5 8C5.5 9.38 6.62 10.5 8 10.5Z" fill="{color}"/>'
     SVG_CLEAR = '<path d="M8 2C8.55228 2 9 2.44772 9 3V4H13C13.5523 4 14 4.44772 14 5C14 5.55228 13.5523 6 13 6H12.9199L12.1504 13.166C12.0603 14.195 11.2006 15 10.167 15H5.83301C4.79943 15 3.93965 14.195 3.84962 13.166L3.0801 6H3C2.44772 6 2 5.55228 2 5C2 4.44772 2.44772 4 3 4H7V3C7 2.44772 7.44772 2 8 2ZM5.0918 6L5.8418 13.055C5.8618 13.276 6.0518 13.5 6.3418 13.5L9.6418 13.5C9.9318 13.5 10.1218 13.276 10.1418 13.055L10.9082 6H5.0918Z" fill="{color}"/>'
     SVG_TERMINAL = '<path d="M1 2.795L1.5 2H14.5L15 2.795V13.205L14.5 14H1.5L1 13.205V2.795ZM2 13H14V3H2V13ZM5.146 10.146L4.439 9.439L6.878 7L4.439 4.561L5.146 3.854L8.292 7L5.146 10.146ZM11 10H8V9H11V10Z" fill="{color}"/>'
@@ -483,8 +527,8 @@ class Icons:
     @classmethod
     def create_icon(cls, icon_name_or_func, size: int = 16, color: str = None) -> QIcon:
         """Create a QIcon from an SVG path or drawing function with caching."""
-        from PySide6.QtSvg import QSvgRenderer
         from PySide6.QtCore import QByteArray
+        from PySide6.QtSvg import QSvgRenderer
 
         # Resolve color for cache key
         resolved_color = color or Theme.TEXT_SECONDARY
@@ -654,6 +698,7 @@ ThemeManager.on_change(lambda t: Icons.clear_cache())
 # File Icon Provider
 # ============================================================================
 
+
 class FileTypeIconProvider:
     """Provides file type-specific icons for the file explorer using VS Code-style SVGs."""
 
@@ -672,69 +717,69 @@ class FileTypeIconProvider:
     # Map file extensions to SVG paths and colors
     EXTENSION_MAP = {
         # Python
-        '.py': ('python', None),
-        '.pyw': ('python', None),
-        '.pyi': ('python', None),
+        ".py": ("python", None),
+        ".pyw": ("python", None),
+        ".pyi": ("python", None),
         # JavaScript
-        '.js': ('javascript', None),
-        '.jsx': ('javascript', None),
-        '.mjs': ('javascript', None),
+        ".js": ("javascript", None),
+        ".jsx": ("javascript", None),
+        ".mjs": ("javascript", None),
         # TypeScript
-        '.ts': ('typescript', None),
-        '.tsx': ('typescript', None),
+        ".ts": ("typescript", None),
+        ".tsx": ("typescript", None),
         # JSON
-        '.json': ('json', None),
-        '.jsonc': ('json', None),
+        ".json": ("json", None),
+        ".jsonc": ("json", None),
         # Markdown
-        '.md': ('markdown', None),
-        '.markdown': ('markdown', None),
-        '.mdx': ('markdown', None),
+        ".md": ("markdown", None),
+        ".markdown": ("markdown", None),
+        ".mdx": ("markdown", None),
         # HTML
-        '.html': ('html', None),
-        '.htm': ('html', None),
-        '.xhtml': ('html', None),
+        ".html": ("html", None),
+        ".htm": ("html", None),
+        ".xhtml": ("html", None),
         # CSS
-        '.css': ('css', None),
-        '.scss': ('css', None),
-        '.sass': ('css', None),
-        '.less': ('css', None),
+        ".css": ("css", None),
+        ".scss": ("css", None),
+        ".sass": ("css", None),
+        ".less": ("css", None),
         # Config
-        '.yaml': ('config', '#CB171E'),
-        '.yml': ('config', '#CB171E'),
-        '.toml': ('config', '#9C4121'),
-        '.ini': ('config', '#6D8086'),
-        '.cfg': ('config', '#6D8086'),
-        '.conf': ('config', '#6D8086'),
-        '.env': ('config', '#ECD53F'),
+        ".yaml": ("config", "#CB171E"),
+        ".yml": ("config", "#CB171E"),
+        ".toml": ("config", "#9C4121"),
+        ".ini": ("config", "#6D8086"),
+        ".cfg": ("config", "#6D8086"),
+        ".conf": ("config", "#6D8086"),
+        ".env": ("config", "#ECD53F"),
         # Git
-        '.gitignore': ('git', None),
-        '.gitattributes': ('git', None),
-        '.gitmodules': ('git', None),
+        ".gitignore": ("git", None),
+        ".gitattributes": ("git", None),
+        ".gitmodules": ("git", None),
         # Images
-        '.png': ('image', '#A074C4'),
-        '.jpg': ('image', '#A074C4'),
-        '.jpeg': ('image', '#A074C4'),
-        '.gif': ('image', '#A074C4'),
-        '.svg': ('image', '#FFB13B'),
-        '.ico': ('image', '#A074C4'),
-        '.webp': ('image', '#A074C4'),
+        ".png": ("image", "#A074C4"),
+        ".jpg": ("image", "#A074C4"),
+        ".jpeg": ("image", "#A074C4"),
+        ".gif": ("image", "#A074C4"),
+        ".svg": ("image", "#FFB13B"),
+        ".ico": ("image", "#A074C4"),
+        ".webp": ("image", "#A074C4"),
     }
 
     # Special filenames
     FILENAME_MAP = {
-        'Dockerfile': ('config', '#2496ED'),
-        'docker-compose.yml': ('config', '#2496ED'),
-        'docker-compose.yaml': ('config', '#2496ED'),
-        'Makefile': ('config', '#6D8086'),
-        'README.md': ('markdown', None),
-        'LICENSE': ('file', '#D4AF37'),
-        'requirements.txt': ('python', None),
-        'setup.py': ('python', None),
-        'pyproject.toml': ('python', None),
-        'package.json': ('json', None),
-        'tsconfig.json': ('typescript', None),
-        '.eslintrc': ('config', '#4B32C3'),
-        '.prettierrc': ('config', '#F7B93E'),
+        "Dockerfile": ("config", "#2496ED"),
+        "docker-compose.yml": ("config", "#2496ED"),
+        "docker-compose.yaml": ("config", "#2496ED"),
+        "Makefile": ("config", "#6D8086"),
+        "README.md": ("markdown", None),
+        "LICENSE": ("file", "#D4AF37"),
+        "requirements.txt": ("python", None),
+        "setup.py": ("python", None),
+        "pyproject.toml": ("python", None),
+        "package.json": ("json", None),
+        "tsconfig.json": ("typescript", None),
+        ".eslintrc": ("config", "#4B32C3"),
+        ".prettierrc": ("config", "#F7B93E"),
     }
 
     _icon_cache: Dict[str, QIcon] = {}
@@ -772,27 +817,27 @@ class FileTypeIconProvider:
     @classmethod
     def _get_folder_icon(cls) -> QIcon:
         """Get folder icon."""
-        if 'folder' not in cls._icon_cache:
-            cls._icon_cache['folder'] = Icons.folder(16, "#DCB67A")
-        return cls._icon_cache['folder']
+        if "folder" not in cls._icon_cache:
+            cls._icon_cache["folder"] = Icons.folder(16, "#DCB67A")
+        return cls._icon_cache["folder"]
 
     @classmethod
     def _create_icon(cls, icon_type: str, color: str = None) -> QIcon:
         """Create an icon based on type using SVG paths."""
-        from PySide6.QtSvg import QSvgRenderer
         from PySide6.QtCore import QByteArray
+        from PySide6.QtSvg import QSvgRenderer
 
         svg_map = {
-            'python': cls.SVG_PYTHON,
-            'javascript': cls.SVG_JAVASCRIPT,
-            'typescript': cls.SVG_TYPESCRIPT,
-            'json': cls.SVG_JSON,
-            'markdown': cls.SVG_MARKDOWN,
-            'html': cls.SVG_HTML,
-            'css': cls.SVG_CSS,
-            'git': cls.SVG_GIT,
-            'config': cls.SVG_CONFIG,
-            'image': cls.SVG_IMAGE,
+            "python": cls.SVG_PYTHON,
+            "javascript": cls.SVG_JAVASCRIPT,
+            "typescript": cls.SVG_TYPESCRIPT,
+            "json": cls.SVG_JSON,
+            "markdown": cls.SVG_MARKDOWN,
+            "html": cls.SVG_HTML,
+            "css": cls.SVG_CSS,
+            "git": cls.SVG_GIT,
+            "config": cls.SVG_CONFIG,
+            "image": cls.SVG_IMAGE,
         }
 
         svg_path = svg_map.get(icon_type, Icons.SVG_FILE)
@@ -801,7 +846,7 @@ class FileTypeIconProvider:
         # Handle special replacements for config and image icons
         svg_formatted = svg_path.format(color=fill_color, bg=Theme.BG_DARK)
 
-        svg_content = f'''<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">{svg_formatted}</svg>'''
+        svg_content = f"""<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">{svg_formatted}</svg>"""
 
         pixmap = QPixmap(16, 16)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -832,6 +877,7 @@ class FileExplorerDelegate(QStyledItemDelegate):
 # ============================================================================
 # Compact UI Components
 # ============================================================================
+
 
 class CompactLineEdit(QLineEdit):
     """Compact styled line edit."""
@@ -1083,6 +1129,7 @@ class CollapsibleSection(QWidget):
 # Toast Notifications
 # ============================================================================
 
+
 class ToastNotification(QFrame):
     """Non-blocking toast notification that auto-dismisses."""
 
@@ -1094,9 +1141,15 @@ class ToastNotification(QFrame):
 
     _active_toasts: List["ToastNotification"] = []
 
-    def __init__(self, message: str, toast_type: Type = Type.INFO, duration: int = 3000, parent=None):
+    def __init__(
+        self, message: str, toast_type: Type = Type.INFO, duration: int = 3000, parent=None
+    ):
         super().__init__(parent)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
@@ -1176,7 +1229,9 @@ class ToastNotification(QFrame):
             parent_pos = self.parent().mapToGlobal(parent_rect.bottomRight())
             # Stack toasts
             offset = len(ToastNotification._active_toasts) * (self.height() + 8)
-            self.move(parent_pos.x() - self.width() - 20, parent_pos.y() - self.height() - 20 - offset)
+            self.move(
+                parent_pos.x() - self.width() - 20, parent_pos.y() - self.height() - 20 - offset
+            )
         ToastNotification._active_toasts.append(self)
         super().show()
 
@@ -1214,6 +1269,7 @@ class ToastNotification(QFrame):
 # Pulsing Status Indicator
 # ============================================================================
 
+
 class StatusDot(QWidget):
     """Simple status dot indicator."""
 
@@ -1242,9 +1298,9 @@ class StatusDot(QWidget):
 
 # Try to import Pygments for enhanced syntax highlighting
 try:
-    from pygments import highlight
-    from pygments.lexers import get_lexer_for_filename, get_lexer_by_name, guess_lexer, TextLexer
+    from pygments.lexers import TextLexer, get_lexer_by_name, get_lexer_for_filename, guess_lexer
     from pygments.token import Token
+
     PYGMENTS_AVAILABLE = True
 except ImportError:
     PYGMENTS_AVAILABLE = False
@@ -1314,12 +1370,16 @@ class PygmentsHighlighter(QSyntaxHighlighter):
             fmt = QTextCharFormat()
             fmt.setForeground(QColor(color))
             # Make keywords bold
-            if token_type in (Token.Keyword, Token.Keyword.Constant,
-                            Token.Keyword.Declaration, Token.Keyword.Namespace,
-                            Token.Keyword.Reserved):
+            if token_type in (
+                Token.Keyword,
+                Token.Keyword.Constant,
+                Token.Keyword.Declaration,
+                Token.Keyword.Namespace,
+                Token.Keyword.Reserved,
+            ):
                 fmt.setFontWeight(QFont.Weight.Bold)
             # Make comments italic
-            if str(token_type).startswith('Token.Comment'):
+            if str(token_type).startswith("Token.Comment"):
                 fmt.setFontItalic(True)
             self._formats[token_type] = fmt
 
@@ -1373,8 +1433,9 @@ class PygmentsHighlighter(QSyntaxHighlighter):
 
 def _pygments_highlight_html(code: str, lang: str) -> str:
     """Highlight code using Pygments and return HTML with inline styles matching Theme."""
+
     def _escape(text: str) -> str:
-        return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     if not PYGMENTS_AVAILABLE:
         return f'<span style="color: {Theme.TEXT_PRIMARY};">{_escape(code)}</span>'
@@ -1446,16 +1507,16 @@ def _pygments_highlight_html(code: str, lang: str) -> str:
             escaped = _escape(value)
             color = get_color(token_type)
             extra = ""
-            if str(token_type).startswith('Token.Keyword'):
+            if str(token_type).startswith("Token.Keyword"):
                 extra = " font-weight: bold;"
-            elif str(token_type).startswith('Token.Comment'):
+            elif str(token_type).startswith("Token.Comment"):
                 extra = " font-style: italic;"
             html_parts.append(f'<span style="color: {color};{extra}">{escaped}</span>')
 
         # Pygments always appends a trailing \n which shows as an
         # extra blank line inside <pre>; strip it.
-        result = ''.join(html_parts)
-        if result.endswith('\n'):
+        result = "".join(html_parts)
+        if result.endswith("\n"):
             result = result[:-1]
         return result
 
@@ -1475,18 +1536,19 @@ def _render_code_block_html(code: str, lang: str, block_id: int) -> str:
     lang_label = (
         f'<span style="color: {Theme.TEXT_SECONDARY}; font-size: {DT.FONT_SIZE_SM}px; '
         f'font-family: {DT.FONT_MONO};">{lang}</span>'
-        if lang else ''
+        if lang
+        else ""
     )
 
     # Styled action buttons — distinct colors, generous padding, clear spacing
     copy_btn = (
         f'<a href="copy://{block_id}" style="color: {Theme.ACCENT_BLUE}; text-decoration: none; '
-        f'font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_BLUE, 0.12)}; '
+        f"font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_BLUE, 0.12)}; "
         f'padding: 3px 12px; border-radius: {DT.RADIUS_SM}px;">Copy</a>'
     )
     insert_btn = (
         f'<a href="insert://{block_id}" style="color: {Theme.ACCENT_GREEN}; text-decoration: none; '
-        f'font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_GREEN, 0.12)}; '
+        f"font-size: {DT.FONT_SIZE_SM}px; background: {_alpha_color(Theme.ACCENT_GREEN, 0.12)}; "
         f'padding: 3px 12px; border-radius: {DT.RADIUS_SM}px;">Insert</a>'
     )
 
@@ -1495,12 +1557,12 @@ def _render_code_block_html(code: str, lang: str, block_id: int) -> str:
     header_html = (
         f'<table width="100%" cellpadding="0" cellspacing="0" style="background: {Theme.CODE_BLOCK_HEADER_BG}; '
         f'border-bottom: 1px solid {Theme.CODE_BLOCK_BORDER};">'
-        f'<tr>'
+        f"<tr>"
         f'<td style="padding: 6px {DT.SPACING_LG}px;">{lang_label}</td>'
         f'<td align="right" style="padding: 6px {DT.SPACING_LG}px;">'
-        f'{copy_btn}&nbsp;&nbsp;&nbsp;{insert_btn}'
-        f'</td>'
-        f'</tr></table>'
+        f"{copy_btn}&nbsp;&nbsp;&nbsp;{insert_btn}"
+        f"</td>"
+        f"</tr></table>"
     )
 
     # Code block with tight line-height; trailing reset <p> prevents
@@ -1508,12 +1570,12 @@ def _render_code_block_html(code: str, lang: str, block_id: int) -> str:
     return (
         f'<div style="background: {Theme.CODE_BLOCK_BG}; border: 1px solid {Theme.CODE_BLOCK_BORDER}; '
         f'border-radius: {DT.RADIUS_MD}px; margin: {DT.SPACING_MD}px 0; overflow: hidden;">'
-        f'{header_html}'
+        f"{header_html}"
         f'<pre style="margin: 0; padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; overflow-x: auto; '
-        f'white-space: pre; word-wrap: break-word; '
+        f"white-space: pre; word-wrap: break-word; "
         f'font-family: {DT.FONT_MONO}; font-size: {DT.FONT_SIZE_SM}px; line-height: 1.35;">'
-        f'{highlighted}</pre>'
-        f'</div>'
+        f"{highlighted}</pre>"
+        f"</div>"
         f'<p style="margin:0; padding:0; font-size:2px; line-height:1px;">&nbsp;</p>'
     )
 
@@ -1532,10 +1594,37 @@ class PythonHighlighter(QSyntaxHighlighter):
         keyword_fmt.setFontWeight(QFont.Weight.Bold)
 
         keywords = [
-            "and", "as", "assert", "async", "await", "break", "class",
-            "continue", "def", "del", "elif", "else", "except", "finally",
-            "for", "from", "global", "if", "import", "in", "is", "lambda",
-            "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"
+            "and",
+            "as",
+            "assert",
+            "async",
+            "await",
+            "break",
+            "class",
+            "continue",
+            "def",
+            "del",
+            "elif",
+            "else",
+            "except",
+            "finally",
+            "for",
+            "from",
+            "global",
+            "if",
+            "import",
+            "in",
+            "is",
+            "lambda",
+            "not",
+            "or",
+            "pass",
+            "raise",
+            "return",
+            "try",
+            "while",
+            "with",
+            "yield",
         ]
         for word in keywords:
             self._rules.append((re.compile(rf"\b{word}\b"), keyword_fmt))
@@ -1577,6 +1666,7 @@ class PythonHighlighter(QSyntaxHighlighter):
 # ============================================================================
 # Welcome Screen (VS Code Style)
 # ============================================================================
+
 
 class WelcomeScreen(QWidget):
     """Professional VS Code-style welcome screen with icons."""
@@ -1668,7 +1758,13 @@ class WelcomeScreen(QWidget):
         actions = [
             (Icons.new_file, "New File", self.new_file_requested, "Create a new file", "Ctrl+N"),
             (Icons.file, "Open File...", self.open_file_requested, "Open an existing file", ""),
-            (Icons.folder, "Open Folder...", self.open_folder_requested, "Open a folder as workspace", "Ctrl+O"),
+            (
+                Icons.folder,
+                "Open Folder...",
+                self.open_folder_requested,
+                "Open a folder as workspace",
+                "Ctrl+O",
+            ),
         ]
 
         for icon_method, text, signal, tooltip, shortcut in actions:
@@ -1855,6 +1951,7 @@ class WelcomeScreen(QWidget):
 # ============================================================================
 # File Explorer - VS Code Style
 # ============================================================================
+
 
 class FileExplorer(QWidget):
     """VS Code-style file explorer with full functionality."""
@@ -2046,10 +2143,14 @@ class FileExplorer(QWidget):
                     else:
                         self.tree.setExpanded(index, not self.tree.isExpanded(index))
                 return True
-            elif key == Qt.Key.Key_C and modifiers & Qt.KeyboardModifier.ControlModifier:  # Copy path
+            elif (
+                key == Qt.Key.Key_C and modifiers & Qt.KeyboardModifier.ControlModifier
+            ):  # Copy path
                 self._copy_path()
                 return True
-            elif key == Qt.Key.Key_N and modifiers & Qt.KeyboardModifier.ControlModifier:  # New file
+            elif (
+                key == Qt.Key.Key_N and modifiers & Qt.KeyboardModifier.ControlModifier
+            ):  # New file
                 self._new_file()
                 return True
 
@@ -2163,6 +2264,7 @@ class FileExplorer(QWidget):
 
         # Create file atomically to avoid TOCTOU race condition
         import os as _os
+
         base_name = "untitled"
         counter = 0
         new_path = None
@@ -2202,7 +2304,6 @@ class FileExplorer(QWidget):
             return
 
         # Create folder atomically to avoid TOCTOU race condition
-        import os as _os
         base_name = "new_folder"
         counter = 0
         new_path = None
@@ -2240,7 +2341,7 @@ class FileExplorer(QWidget):
             return
 
         # Get unique paths (each file has multiple column indexes)
-        paths = list(set(Path(self.model.filePath(idx)) for idx in indexes))
+        paths = list({Path(self.model.filePath(idx)) for idx in indexes})
 
         if len(paths) == 1:
             msg = f"Are you sure you want to delete '{paths[0].name}'?"
@@ -2248,8 +2349,10 @@ class FileExplorer(QWidget):
             msg = f"Are you sure you want to delete {len(paths)} items?"
 
         reply = QMessageBox.question(
-            self, "Confirm Delete", msg,
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            self,
+            "Confirm Delete",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:
@@ -2257,6 +2360,7 @@ class FileExplorer(QWidget):
                 try:
                     if path.is_dir():
                         import shutil
+
                         shutil.rmtree(path)
                     else:
                         path.unlink()
@@ -2321,6 +2425,7 @@ class FileExplorer(QWidget):
 # ============================================================================
 # Activity Bar
 # ============================================================================
+
 
 class ActivityBar(QWidget):
     """VS Code-style activity bar with enhanced visual feedback."""
@@ -2398,6 +2503,7 @@ class ActivityBar(QWidget):
 # ============================================================================
 # Command Palette (Ctrl+Shift+P)
 # ============================================================================
+
 
 class CommandPalette(QDialog):
     """VS Code-style command palette with fuzzy search."""
@@ -2516,7 +2622,7 @@ class CommandPalette(QDialog):
     def _populate_list(self):
         """Populate the command list."""
         self.command_list.clear()
-        for cmd_id, label, shortcut, callback in self._filtered_commands:
+        for _cmd_id, label, shortcut, callback in self._filtered_commands:
             item = QListWidgetItem()
             # Create custom widget for command item
             widget = QWidget()
@@ -2555,7 +2661,8 @@ class CommandPalette(QDialog):
         else:
             text_lower = text.lower()
             self._filtered_commands = [
-                cmd for cmd in self.commands
+                cmd
+                for cmd in self.commands
                 if text_lower in cmd[1].lower() or text_lower in cmd[0].lower()
             ]
         self._populate_list()
@@ -2608,15 +2715,13 @@ class CommandPalette(QDialog):
         # Center on parent
         if self.parent():
             parent_rect = self.parent().geometry()
-            self.move(
-                parent_rect.center().x() - self.width() // 2,
-                parent_rect.top() + 100
-            )
+            self.move(parent_rect.center().x() - self.width() // 2, parent_rect.top() + 100)
 
 
 # ============================================================================
 # Quick Open (Ctrl+P)
 # ============================================================================
+
 
 class QuickOpenDialog(QDialog):
     """VS Code-style quick file open with fuzzy search."""
@@ -2709,10 +2814,20 @@ class QuickOpenDialog(QDialog):
         self._files = []
         try:
             # Walk directory but limit depth and exclude common folders
-            exclude_dirs = {'.git', 'node_modules', '__pycache__', '.venv', 'venv', '.idea', '.vscode', 'dist', 'build'}
+            exclude_dirs = {
+                ".git",
+                "node_modules",
+                "__pycache__",
+                ".venv",
+                "venv",
+                ".idea",
+                ".vscode",
+                "dist",
+                "build",
+            }
             for root, dirs, files in os.walk(self.root_path):
                 # Filter out excluded directories
-                dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith('.')]
+                dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith(".")]
 
                 # Limit depth
                 depth = len(Path(root).relative_to(self.root_path).parts)
@@ -2720,7 +2835,7 @@ class QuickOpenDialog(QDialog):
                     continue
 
                 for f in files:
-                    if not f.startswith('.'):
+                    if not f.startswith("."):
                         self._files.append(Path(root) / f)
 
                 # Limit total files
@@ -2761,7 +2876,7 @@ class QuickOpenDialog(QDialog):
 
             # Relative path
             parent_path = str(rel_path.parent)
-            if parent_path != '.':
+            if parent_path != ".":
                 path_label = QLabel(parent_path)
                 path_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px;")
                 hlayout.addWidget(path_label)
@@ -2781,7 +2896,8 @@ class QuickOpenDialog(QDialog):
         else:
             text_lower = text.lower()
             self._filtered_files = [
-                f for f in self._files
+                f
+                for f in self._files
                 if text_lower in f.name.lower() or text_lower in str(f).lower()
             ][:100]
         self._populate_list()
@@ -2829,15 +2945,13 @@ class QuickOpenDialog(QDialog):
         # Center on parent
         if self.parent():
             parent_rect = self.parent().geometry()
-            self.move(
-                parent_rect.center().x() - self.width() // 2,
-                parent_rect.top() + 80
-            )
+            self.move(parent_rect.center().x() - self.width() // 2, parent_rect.top() + 80)
 
 
 # ============================================================================
 # Search Panel
 # ============================================================================
+
 
 class SearchPanel(QWidget):
     """Search panel with system-wide search."""
@@ -2995,11 +3109,11 @@ class SearchPanel(QWidget):
             try:
                 cmd = ["grep", "-rn", f"--include={file_filter}", query, str(search_dir)]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-                lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+                lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
 
                 for line in lines[:50]:
-                    if ':' in line:
-                        parts = line.split(':', 2)
+                    if ":" in line:
+                        parts = line.split(":", 2)
                         if len(parts) >= 3:
                             filepath, linenum, content = parts[0], parts[1], parts[2]
                             rel_path = Path(filepath)
@@ -3034,6 +3148,7 @@ class SearchPanel(QWidget):
 # ============================================================================
 # Git Panel
 # ============================================================================
+
 
 class DiffViewer(QDialog):
     """Diff viewer dialog."""
@@ -3190,7 +3305,9 @@ class AgentControlPanel(QWidget):
         # Header
         header = QWidget()
         header.setFixedHeight(40)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 0, 16, 0)
 
@@ -3199,7 +3316,9 @@ class AgentControlPanel(QWidget):
         header_layout.addWidget(header_icon)
 
         header_title = QLabel("Session")
-        header_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600;")
+        header_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600;"
+        )
         header_layout.addWidget(header_title)
         header_layout.addStretch()
 
@@ -3256,11 +3375,15 @@ class AgentControlPanel(QWidget):
         status_text = QVBoxLayout()
         status_text.setSpacing(2)
         self.status_label = QLabel("Not Connected")
-        self.status_label.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; border: none;")
+        self.status_label.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; border: none;"
+        )
         status_text.addWidget(self.status_label)
 
         self.project_label = QLabel("Open a project to connect")
-        self.project_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px; border: none;")
+        self.project_label.setStyleSheet(
+            f"color: {Theme.TEXT_MUTED}; font-size: 11px; border: none;"
+        )
         status_text.addWidget(self.project_label)
         banner_layout.addLayout(status_text, 1)
 
@@ -3291,7 +3414,9 @@ class AgentControlPanel(QWidget):
         model_row.addWidget(model_label)
 
         self.current_model_label = QLabel("Not selected")
-        self.current_model_label.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 11px; border: none;")
+        self.current_model_label.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 11px; border: none;"
+        )
         model_row.addWidget(self.current_model_label)
         model_row.addStretch()
 
@@ -3315,7 +3440,9 @@ class AgentControlPanel(QWidget):
         stats_layout.setSpacing(12)
 
         stats_title = QLabel("Statistics")
-        stats_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        stats_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         stats_layout.addWidget(stats_title)
 
         # Stats grid
@@ -3334,11 +3461,15 @@ class AgentControlPanel(QWidget):
         grid_layout.addWidget(cost_box, 0, 1)
 
         # Messages
-        messages_box, self.messages_label = self._create_stat_box("0", "Messages", Theme.ACCENT_PURPLE)
+        messages_box, self.messages_label = self._create_stat_box(
+            "0", "Messages", Theme.ACCENT_PURPLE
+        )
         grid_layout.addWidget(messages_box, 1, 0)
 
         # Duration
-        duration_box, self.duration_label = self._create_stat_box("0:00", "Duration", Theme.ACCENT_ORANGE)
+        duration_box, self.duration_label = self._create_stat_box(
+            "0:00", "Duration", Theme.ACCENT_ORANGE
+        )
         grid_layout.addWidget(duration_box, 1, 1)
 
         stats_layout.addWidget(stats_grid)
@@ -3360,7 +3491,9 @@ class AgentControlPanel(QWidget):
         actions_layout.setSpacing(12)
 
         actions_title = QLabel("Quick Actions")
-        actions_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        actions_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         actions_layout.addWidget(actions_title)
 
         # Action buttons
@@ -3370,11 +3503,15 @@ class AgentControlPanel(QWidget):
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setSpacing(8)
 
-        self.clear_btn = self._create_action_button("New Conversation", "Start fresh with a new conversation")
+        self.clear_btn = self._create_action_button(
+            "New Conversation", "Start fresh with a new conversation"
+        )
         self.clear_btn.clicked.connect(self.clear_chat_requested.emit)
         btn_layout.addWidget(self.clear_btn)
 
-        self.settings_btn = self._create_action_button("Open Settings", "Configure AI provider and preferences")
+        self.settings_btn = self._create_action_button(
+            "Open Settings", "Configure AI provider and preferences"
+        )
         btn_layout.addWidget(self.settings_btn)
 
         actions_layout.addWidget(btn_container)
@@ -3396,7 +3533,9 @@ class AgentControlPanel(QWidget):
         tips_layout.setSpacing(8)
 
         tips_title = QLabel("Tips")
-        tips_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        tips_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         tips_layout.addWidget(tips_title)
 
         tips = [
@@ -3449,7 +3588,9 @@ class AgentControlPanel(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         value_label = QLabel(value)
-        value_label.setStyleSheet(f"color: {color}; font-size: 18px; font-weight: 600; border: none;")
+        value_label.setStyleSheet(
+            f"color: {color}; font-size: 18px; font-weight: 600; border: none;"
+        )
         value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(value_label)
 
@@ -3492,7 +3633,9 @@ class AgentControlPanel(QWidget):
         """Update connection status display."""
         if connected:
             self.status_label.setText("Connected")
-            self.status_label.setStyleSheet(f"color: {Theme.SUCCESS}; font-size: 13px; font-weight: 600; border: none;")
+            self.status_label.setStyleSheet(
+                f"color: {Theme.SUCCESS}; font-size: 13px; font-weight: 600; border: none;"
+            )
             self.status_dot.set_color(Theme.SUCCESS)
             self.reconnect_btn.setText("Reconnect")
             self.status_banner.setStyleSheet(f"""
@@ -3508,7 +3651,9 @@ class AgentControlPanel(QWidget):
                 self._duration_timer.start(1000)
         else:
             self.status_label.setText("Not Connected")
-            self.status_label.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; border: none;")
+            self.status_label.setStyleSheet(
+                f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; border: none;"
+            )
             self.status_dot.set_color(Theme.TEXT_MUTED)
             self.reconnect_btn.setText("Connect")
             self.status_banner.setStyleSheet(f"""
@@ -3521,10 +3666,14 @@ class AgentControlPanel(QWidget):
 
         if project:
             self.project_label.setText(project)
-            self.project_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; border: none;")
+            self.project_label.setStyleSheet(
+                f"color: {Theme.TEXT_SECONDARY}; font-size: 11px; border: none;"
+            )
         else:
             self.project_label.setText("Open a project to connect")
-            self.project_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px; border: none;")
+            self.project_label.setStyleSheet(
+                f"color: {Theme.TEXT_MUTED}; font-size: 11px; border: none;"
+            )
 
     def set_model(self, model: str):
         """Update the current model display."""
@@ -3575,7 +3724,9 @@ class GitPanel(QWidget):
         # Header with branch selector and refresh
         header = QWidget()
         header.setFixedHeight(40)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 0, 12, 0)
 
@@ -3654,7 +3805,9 @@ class GitPanel(QWidget):
         commit_layout.setSpacing(10)
 
         commit_title = QLabel("Commit")
-        commit_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        commit_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         commit_layout.addWidget(commit_title)
 
         # Commit message input
@@ -3732,7 +3885,9 @@ class GitPanel(QWidget):
         sync_layout.setSpacing(10)
 
         sync_title = QLabel("Sync")
-        sync_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        sync_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         sync_layout.addWidget(sync_title)
 
         sync_btns = QHBoxLayout()
@@ -3783,7 +3938,9 @@ class GitPanel(QWidget):
 
         changes_header = QHBoxLayout()
         changes_title = QLabel("Changes")
-        changes_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        changes_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         changes_header.addWidget(changes_title)
 
         self.changes_count = QLabel("0")
@@ -3834,7 +3991,9 @@ class GitPanel(QWidget):
         history_layout.setSpacing(8)
 
         history_title = QLabel("Recent Commits")
-        history_title.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;")
+        history_title.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 600; border: none;"
+        )
         history_layout.addWidget(history_title)
 
         self.history_list = QListWidget()
@@ -3860,7 +4019,9 @@ class GitPanel(QWidget):
 
         # Status bar at bottom
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px; padding: 8px 0;")
+        self.status_label.setStyleSheet(
+            f"color: {Theme.TEXT_MUTED}; font-size: 11px; padding: 8px 0;"
+        )
         content_layout.addWidget(self.status_label)
 
         scroll.setWidget(content)
@@ -3873,11 +4034,7 @@ class GitPanel(QWidget):
     def _run_git(self, *args) -> tuple:
         try:
             result = subprocess.run(
-                ["git"] + list(args),
-                cwd=self.root_path,
-                capture_output=True,
-                text=True,
-                timeout=10
+                ["git"] + list(args), cwd=self.root_path, capture_output=True, text=True, timeout=10
             )
             return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
         except Exception as e:
@@ -3892,12 +4049,12 @@ class GitPanel(QWidget):
         ok, branches, _ = self._run_git("branch", "-a")
         if ok:
             current = ""
-            for line in branches.split('\n'):
+            for line in branches.split("\n"):
                 line = line.strip()
-                if line.startswith('* '):
+                if line.startswith("* "):
                     current = line[2:]
                     line = current
-                if line and not line.startswith('remotes/'):
+                if line and not line.startswith("remotes/"):
                     self.branch_combo.addItem(line)
             if current:
                 idx = self.branch_combo.findText(current)
@@ -3909,13 +4066,15 @@ class GitPanel(QWidget):
         change_count = 0
         ok, status, _ = self._run_git("status", "--porcelain")
         if ok and status:
-            for line in status.split('\n'):
+            for line in status.split("\n"):
                 if line:
                     change_count += 1
                     status_code = line[:2]
                     filename = line[3:]
-                    color = Theme.ACCENT_GREEN if 'A' in status_code else (
-                        Theme.ACCENT_RED if 'D' in status_code else Theme.ACCENT_ORANGE
+                    color = (
+                        Theme.ACCENT_GREEN
+                        if "A" in status_code
+                        else (Theme.ACCENT_RED if "D" in status_code else Theme.ACCENT_ORANGE)
                     )
                     item = QListWidgetItem(f"{status_code} {filename}")
                     item.setForeground(QColor(color))
@@ -3946,7 +4105,7 @@ class GitPanel(QWidget):
         self.history_list.clear()
         ok, log, _ = self._run_git("log", "--oneline", "-8")
         if ok and log:
-            for line in log.split('\n'):
+            for line in log.split("\n"):
                 if line:
                     self.history_list.addItem(QListWidgetItem(line))
 
@@ -4000,6 +4159,7 @@ class GitPanel(QWidget):
 # Settings Panel
 # ============================================================================
 
+
 class SettingsPanel(QWidget):
     """VS Code-style settings panel with comprehensive options."""
 
@@ -4008,14 +4168,19 @@ class SettingsPanel(QWidget):
     editor_settings_changed = Signal(dict)  # For editor-specific settings
 
     CISCO_MODELS = ["gpt-4.1", "gpt-4o", "gpt-4o-mini", "o4-mini", "o1"]
-    CLAUDE_MODELS = ["claude-sonnet-4-20250514", "claude-opus-4-20250514",
-                     "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
+    CLAUDE_MODELS = [
+        "claude-sonnet-4-20250514",
+        "claude-opus-4-20250514",
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-haiku-20241022",
+    ]
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         # Load saved settings, merge with defaults
         from circuit_agent.config import load_ui_settings
+
         saved = load_ui_settings()
 
         self.settings = {
@@ -4041,7 +4206,9 @@ class SettingsPanel(QWidget):
         # Search bar header
         search_container = QWidget()
         search_container.setFixedHeight(48)
-        search_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        search_container.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(16, 8, 16, 8)
 
@@ -4095,8 +4262,7 @@ class SettingsPanel(QWidget):
 
         # Provider selection
         provider_row = self._create_setting_row(
-            "Provider",
-            "Select the AI provider for code assistance"
+            "Provider", "Select the AI provider for code assistance"
         )
         self.provider_combo = QComboBox()
         self.provider_combo.addItem("Circuit AI (Cisco)", "cisco")
@@ -4108,10 +4274,7 @@ class SettingsPanel(QWidget):
         provider_layout.addWidget(provider_row)
 
         # Model selection
-        model_row = self._create_setting_row(
-            "Model",
-            "Select the AI model to use"
-        )
+        model_row = self._create_setting_row("Model", "Select the AI model to use")
         self.model_combo = QComboBox()
         self.model_combo.setFixedWidth(200)
         self.model_combo.setStyleSheet(self._combo_style())
@@ -4134,7 +4297,7 @@ class SettingsPanel(QWidget):
         # Auto-approve toggle
         auto_row = self._create_setting_row(
             "Auto-approve Safe Operations",
-            "Automatically approve file reads and non-destructive operations"
+            "Automatically approve file reads and non-destructive operations",
         )
         self.auto_approve_toggle = ToggleSwitch(False)
         self.auto_approve_toggle.toggled_signal.connect(self._on_auto_approve_changed)
@@ -4143,8 +4306,7 @@ class SettingsPanel(QWidget):
 
         # Extended thinking toggle
         thinking_row = self._create_setting_row(
-            "Extended Thinking",
-            "Enable deeper reasoning for complex problems (uses more tokens)"
+            "Extended Thinking", "Enable deeper reasoning for complex problems (uses more tokens)"
         )
         self.thinking_toggle = ToggleSwitch(False)
         self.thinking_toggle.toggled_signal.connect(self._on_thinking_changed)
@@ -4164,12 +4326,19 @@ class SettingsPanel(QWidget):
         editor_layout.setSpacing(12)
 
         # Font family
-        font_row = self._create_setting_row(
-            "Font Family",
-            "The font used in the code editor"
-        )
+        font_row = self._create_setting_row("Font Family", "The font used in the code editor")
         self.font_combo = QComboBox()
-        self.font_combo.addItems(["Menlo", "Monaco", "SF Mono", "Consolas", "Fira Code", "JetBrains Mono", "Source Code Pro"])
+        self.font_combo.addItems(
+            [
+                "Menlo",
+                "Monaco",
+                "SF Mono",
+                "Consolas",
+                "Fira Code",
+                "JetBrains Mono",
+                "Source Code Pro",
+            ]
+        )
         self.font_combo.setFixedWidth(160)
         self.font_combo.setStyleSheet(self._combo_style())
         self.font_combo.currentTextChanged.connect(self._on_font_changed)
@@ -4177,10 +4346,7 @@ class SettingsPanel(QWidget):
         editor_layout.addWidget(font_row)
 
         # Font size
-        size_row = self._create_setting_row(
-            "Font Size",
-            "The font size in pixels"
-        )
+        size_row = self._create_setting_row("Font Size", "The font size in pixels")
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 32)
         self.font_size_spin.setValue(self.settings.get("font_size", 13))
@@ -4191,10 +4357,7 @@ class SettingsPanel(QWidget):
         editor_layout.addWidget(size_row)
 
         # Tab size
-        tab_row = self._create_setting_row(
-            "Tab Size",
-            "The number of spaces per tab"
-        )
+        tab_row = self._create_setting_row("Tab Size", "The number of spaces per tab")
         self.tab_size_spin = QSpinBox()
         self.tab_size_spin.setRange(2, 8)
         self.tab_size_spin.setValue(self.settings.get("tab_size", 4))
@@ -4205,10 +4368,7 @@ class SettingsPanel(QWidget):
         editor_layout.addWidget(tab_row)
 
         # Word wrap toggle
-        wrap_row = self._create_setting_row(
-            "Word Wrap",
-            "Wrap long lines to fit the editor width"
-        )
+        wrap_row = self._create_setting_row("Word Wrap", "Wrap long lines to fit the editor width")
         self.word_wrap_toggle = ToggleSwitch(self.settings.get("word_wrap", False))
         self.word_wrap_toggle.toggled_signal.connect(self._on_word_wrap_changed)
         wrap_row.layout().addWidget(self.word_wrap_toggle)
@@ -4216,8 +4376,7 @@ class SettingsPanel(QWidget):
 
         # Line numbers toggle
         line_num_row = self._create_setting_row(
-            "Line Numbers",
-            "Show line numbers in the editor gutter"
+            "Line Numbers", "Show line numbers in the editor gutter"
         )
         self.line_numbers_toggle = ToggleSwitch(self.settings.get("line_numbers", True))
         self.line_numbers_toggle.toggled_signal.connect(self._on_line_numbers_changed)
@@ -4226,8 +4385,7 @@ class SettingsPanel(QWidget):
 
         # Minimap toggle
         minimap_row = self._create_setting_row(
-            "Minimap",
-            "Show a minimap of the code on the right side"
+            "Minimap", "Show a minimap of the code on the right side"
         )
         self.minimap_toggle = ToggleSwitch(self.settings.get("minimap", True))
         self.minimap_toggle.toggled_signal.connect(self._on_minimap_changed)
@@ -4236,8 +4394,7 @@ class SettingsPanel(QWidget):
 
         # Auto-save toggle
         autosave_row = self._create_setting_row(
-            "Auto Save",
-            "Automatically save files after changes"
+            "Auto Save", "Automatically save files after changes"
         )
         self.autosave_toggle = ToggleSwitch(self.settings.get("auto_save", False))
         self.autosave_toggle.toggled_signal.connect(self._on_autosave_changed)
@@ -4258,7 +4415,9 @@ class SettingsPanel(QWidget):
         cisco_layout.setSpacing(10)
 
         cisco_header = QLabel("Cisco AI")
-        cisco_header.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;")
+        cisco_header.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;"
+        )
         cisco_layout.addWidget(cisco_header)
 
         # Client ID
@@ -4266,11 +4425,15 @@ class SettingsPanel(QWidget):
         cisco_layout.addWidget(self.client_id_input)
 
         # Client Secret
-        self.client_secret_input = self._create_credential_input("Client Secret", "Enter Client Secret...", password=True)
+        self.client_secret_input = self._create_credential_input(
+            "Client Secret", "Enter Client Secret...", password=True
+        )
         cisco_layout.addWidget(self.client_secret_input)
 
         # App Key
-        self.app_key_input = self._create_credential_input("App Key", "Enter App Key...", password=True)
+        self.app_key_input = self._create_credential_input(
+            "App Key", "Enter App Key...", password=True
+        )
         cisco_layout.addWidget(self.app_key_input)
 
         # Cisco buttons
@@ -4298,11 +4461,15 @@ class SettingsPanel(QWidget):
         anthropic_layout.setSpacing(10)
 
         anthropic_header = QLabel("Anthropic (Claude)")
-        anthropic_header.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;")
+        anthropic_header.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;"
+        )
         anthropic_layout.addWidget(anthropic_header)
 
         # API Key
-        self.anthropic_key_input = self._create_credential_input("API Key", "sk-ant-...", password=True)
+        self.anthropic_key_input = self._create_credential_input(
+            "API Key", "sk-ant-...", password=True
+        )
         anthropic_layout.addWidget(self.anthropic_key_input)
 
         # Anthropic buttons
@@ -4336,7 +4503,9 @@ class SettingsPanel(QWidget):
         # GitHub MCP header with enable toggle
         github_header_row = QHBoxLayout()
         github_header = QLabel("GitHub Integration")
-        github_header.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;")
+        github_header.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;"
+        )
         github_header_row.addWidget(github_header)
         github_header_row.addStretch()
         self.github_mcp_toggle = ToggleSwitch(False)
@@ -4344,18 +4513,24 @@ class SettingsPanel(QWidget):
         github_header_row.addWidget(self.github_mcp_toggle)
         mcp_layout.addLayout(github_header_row)
 
-        github_desc = QLabel("Connect to GitHub MCP Server for repository, issues, PR, and Actions tools")
+        github_desc = QLabel(
+            "Connect to GitHub MCP Server for repository, issues, PR, and Actions tools"
+        )
         github_desc.setWordWrap(True)
         github_desc.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px;")
         mcp_layout.addWidget(github_desc)
 
         # GitHub PAT input
-        self.github_pat_input = self._create_credential_input("Personal Access Token", "ghp_...", password=True)
+        self.github_pat_input = self._create_credential_input(
+            "Personal Access Token", "ghp_...", password=True
+        )
         mcp_layout.addWidget(self.github_pat_input)
 
         # Toolsets selection
         toolsets_label = QLabel("Enabled Toolsets:")
-        toolsets_label.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 12px; margin-top: 8px;")
+        toolsets_label.setStyleSheet(
+            f"color: {Theme.TEXT_SECONDARY}; font-size: 12px; margin-top: 8px;"
+        )
         mcp_layout.addWidget(toolsets_label)
 
         toolsets_grid = QGridLayout()
@@ -4483,7 +4658,9 @@ class SettingsPanel(QWidget):
         version.setStyleSheet(f"color: {Theme.TEXT_SECONDARY}; font-size: 12px;")
         about_layout.addWidget(version)
 
-        desc = QLabel("Enterprise AI-powered code editor with integrated intelligent code assistance.")
+        desc = QLabel(
+            "Enterprise AI-powered code editor with integrated intelligent code assistance."
+        )
         desc.setWordWrap(True)
         desc.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 12px; margin-top: 8px;")
         about_layout.addWidget(desc)
@@ -4541,7 +4718,9 @@ class SettingsPanel(QWidget):
         text_container.setSpacing(2)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 500; border: none;")
+        title_label.setStyleSheet(
+            f"color: {Theme.TEXT_PRIMARY}; font-size: 12px; font-weight: 500; border: none;"
+        )
         text_container.addWidget(title_label)
 
         desc_label = QLabel(description)
@@ -4551,7 +4730,9 @@ class SettingsPanel(QWidget):
         layout.addLayout(text_container, 1)
         return row
 
-    def _create_credential_input(self, label: str, placeholder: str, password: bool = False) -> QWidget:
+    def _create_credential_input(
+        self, label: str, placeholder: str, password: bool = False
+    ) -> QWidget:
         """Create a labeled credential input field."""
         container = QWidget()
         container.setStyleSheet("background: transparent; border: none;")
@@ -4689,6 +4870,7 @@ class SettingsPanel(QWidget):
     def _save_setting(self, key: str, value):
         """Save a single setting to persistent storage."""
         from circuit_agent.config import update_ui_setting
+
         update_ui_setting(key, value)
 
     def _on_font_changed(self, font: str):
@@ -4746,6 +4928,7 @@ class SettingsPanel(QWidget):
         """Load saved credentials into the input fields."""
         try:
             from circuit_agent.config import load_credentials
+
             client_id, client_secret, app_key = load_credentials()
             if client_id:
                 self.client_id_input.input_field.setText(client_id)
@@ -4756,8 +4939,8 @@ class SettingsPanel(QWidget):
             if client_id and client_secret and app_key:
                 self.connection_status.setText("Credentials loaded")
                 self.connection_status.setStyleSheet(f"color: {Theme.SUCCESS}; font-size: 11px;")
-        except Exception as e:
-            self.connection_status.setText(f"Could not load credentials")
+        except Exception:
+            self.connection_status.setText("Could not load credentials")
             self.connection_status.setStyleSheet(f"color: {Theme.TEXT_MUTED}; font-size: 11px;")
 
     def _save_credentials(self):
@@ -4773,6 +4956,7 @@ class SettingsPanel(QWidget):
 
         try:
             from circuit_agent.config import save_credentials
+
             save_credentials(client_id, client_secret, app_key)
             self.connection_status.setText("Credentials saved successfully")
             self.connection_status.setStyleSheet(f"color: {Theme.SUCCESS}; font-size: 11px;")
@@ -4797,8 +4981,9 @@ class SettingsPanel(QWidget):
         # Run test in background thread
         def test_thread():
             try:
-                from circuit_agent.config import TOKEN_URL, ssl_config
                 import httpx
+
+                from circuit_agent.config import TOKEN_URL, ssl_config
 
                 # Try to get an OAuth token
                 token_data = {
@@ -4818,6 +5003,7 @@ class SettingsPanel(QWidget):
                 return False, f"Error: {str(e)[:50]}"
 
         import threading
+
         def run_test():
             success, message = test_thread()
             # Update UI on main thread
@@ -4842,6 +5028,7 @@ class SettingsPanel(QWidget):
         """Load Anthropic API key from storage."""
         try:
             from circuit_agent.config import load_anthropic_key
+
             key = load_anthropic_key()
             if key:
                 self.anthropic_key_input.input_field.setText(key)
@@ -4861,6 +5048,7 @@ class SettingsPanel(QWidget):
 
         try:
             from circuit_agent.config import save_anthropic_key
+
             success, method = save_anthropic_key(api_key)
             if success:
                 self.anthropic_status.setText(f"API key saved ({method})")
@@ -4894,7 +5082,7 @@ class SettingsPanel(QWidget):
                         headers={
                             "x-api-key": api_key,
                             "anthropic-version": "2023-06-01",
-                        }
+                        },
                     )
                     if response.status_code == 200:
                         return True, "Connection successful!"
@@ -4906,6 +5094,7 @@ class SettingsPanel(QWidget):
                 return False, f"Error: {str(e)[:40]}"
 
         import threading
+
         def run_test():
             success, message = test_thread()
             QTimer.singleShot(0, lambda: self._show_anthropic_result(success, message))
@@ -4928,7 +5117,7 @@ class SettingsPanel(QWidget):
     def _load_github_mcp_settings(self):
         """Load GitHub MCP settings from storage."""
         try:
-            from circuit_agent.config import load_github_pat, load_github_mcp_config
+            from circuit_agent.config import load_github_mcp_config, load_github_pat
 
             # Load PAT
             pat = load_github_pat()
@@ -4947,7 +5136,7 @@ class SettingsPanel(QWidget):
             if pat and config.get("enabled"):
                 self.mcp_status.setText("GitHub MCP configured")
                 self.mcp_status.setStyleSheet(f"color: {Theme.SUCCESS}; font-size: 11px;")
-        except Exception as e:
+        except Exception:
             pass
 
     def _on_github_mcp_toggled(self, enabled: bool):
@@ -4966,12 +5155,13 @@ class SettingsPanel(QWidget):
 
         # Get enabled toolsets
         toolsets = [
-            toolset_id for toolset_id, checkbox in self.github_toolset_checkboxes.items()
+            toolset_id
+            for toolset_id, checkbox in self.github_toolset_checkboxes.items()
             if checkbox.isChecked()
         ]
 
         try:
-            from circuit_agent.config import save_github_pat, save_github_mcp_config
+            from circuit_agent.config import save_github_mcp_config, save_github_pat
 
             # Save PAT if provided
             if pat:
@@ -5017,8 +5207,9 @@ class SettingsPanel(QWidget):
 
         def test_thread():
             try:
-                from circuit_agent.config import ssl_config
                 import httpx
+
+                from circuit_agent.config import ssl_config
 
                 # Test GitHub API with the PAT
                 with httpx.Client(verify=ssl_config.get_verify_param(), timeout=10.0) as client:
@@ -5027,7 +5218,7 @@ class SettingsPanel(QWidget):
                         headers={
                             "Authorization": f"Bearer {pat}",
                             "Accept": "application/vnd.github+json",
-                        }
+                        },
                     )
                     if response.status_code == 200:
                         user = response.json()
@@ -5045,6 +5236,7 @@ class SettingsPanel(QWidget):
                 return False, f"Error: {str(e)[:40]}"
 
         import threading
+
         def run_test():
             success, message = test_thread()
             QTimer.singleShot(0, lambda: self._show_mcp_result(success, message))
@@ -5068,6 +5260,7 @@ class SettingsPanel(QWidget):
         """Load saved provider preference."""
         try:
             from circuit_agent.config import load_provider_preference
+
             provider = load_provider_preference()
             index = 0 if provider == "cisco" else 1
             self.provider_combo.setCurrentIndex(index)
@@ -5084,6 +5277,7 @@ class SettingsPanel(QWidget):
         # Save preference
         try:
             from circuit_agent.config import save_provider_preference
+
             save_provider_preference(provider)
         except Exception:
             pass
@@ -5094,7 +5288,7 @@ class SettingsPanel(QWidget):
     def _update_model_list(self):
         """Update model dropdown based on selected provider."""
         # Guard against being called before UI is fully set up
-        if not hasattr(self, 'model_combo'):
+        if not hasattr(self, "model_combo"):
             return
 
         provider = self.settings.get("provider", "cisco")
@@ -5135,6 +5329,7 @@ class SettingsPanel(QWidget):
 # Excel Viewer/Editor
 # ============================================================================
 
+
 class ExcelViewer(QWidget):
     """Excel file viewer and editor using QTableWidget."""
 
@@ -5154,7 +5349,9 @@ class ExcelViewer(QWidget):
         # Toolbar
         toolbar = QWidget()
         toolbar.setFixedHeight(32)
-        toolbar.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        toolbar.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(8, 0, 8, 0)
         toolbar_layout.setSpacing(8)
@@ -5232,6 +5429,7 @@ class ExcelViewer(QWidget):
         self.current_file = path
         try:
             import openpyxl
+
             self._workbook = openpyxl.load_workbook(path)
 
             # Populate sheet selector
@@ -5326,8 +5524,9 @@ class ExcelViewer(QWidget):
         col_count = self.table.columnCount()
         self.table.insertColumn(col_count)
         # Update header
-        self.table.setHorizontalHeaderItem(col_count,
-            QTableWidgetItem(self._col_to_letter(col_count + 1)))
+        self.table.setHorizontalHeaderItem(
+            col_count, QTableWidgetItem(self._col_to_letter(col_count + 1))
+        )
         self._is_modified = True
         self.modification_changed.emit(True)
 
@@ -5360,6 +5559,7 @@ class ExcelViewer(QWidget):
 # ============================================================================
 # Code Editor
 # ============================================================================
+
 
 class FindReplaceWidget(QWidget):
     """Find and Replace widget for code editor."""
@@ -5522,7 +5722,7 @@ class FindReplaceWidget(QWidget):
 class LineNumberArea(QWidget):
     """Professional line number gutter with VS Code-style features."""
 
-    def __init__(self, editor: 'CodeEditor'):
+    def __init__(self, editor: "CodeEditor"):
         super().__init__(editor)
         self._editor = editor
         self._relative_numbers = False  # Can be toggled for vim-style relative numbers
@@ -5540,7 +5740,7 @@ class LineNumberArea(QWidget):
         """Calculate width needed for line numbers with extra space for indicators."""
         digits = len(str(max(1, self._editor.blockCount())))
         # Width: left padding (4) + git indicator (4) + number area + right padding (8)
-        number_width = self._editor.fontMetrics().horizontalAdvance('9') * digits
+        number_width = self._editor.fontMetrics().horizontalAdvance("9") * digits
         return 16 + number_width + 8
 
     def set_relative_numbers(self, enabled: bool):
@@ -5573,13 +5773,15 @@ class LineNumberArea(QWidget):
         # Right border separator
         border_color = QColor(Theme.BORDER)
         painter.setPen(QPen(border_color, 1))
-        painter.drawLine(self.width() - 1, event.rect().top(),
-                        self.width() - 1, event.rect().bottom())
+        painter.drawLine(
+            self.width() - 1, event.rect().top(), self.width() - 1, event.rect().bottom()
+        )
 
         block = self._editor.firstVisibleBlock()
         block_number = block.blockNumber()
-        top = int(self._editor.blockBoundingGeometry(block).translated(
-            self._editor.contentOffset()).top())
+        top = int(
+            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
+        )
         bottom = top + int(self._editor.blockBoundingRect(block).height())
 
         # Get current line for highlighting
@@ -5611,11 +5813,11 @@ class LineNumberArea(QWidget):
                 # Draw git change indicator (left edge)
                 if line_num in self._git_changes:
                     change_type = self._git_changes[line_num]
-                    if change_type == 'added':
+                    if change_type == "added":
                         indicator_color = QColor("#4EC9B0")  # Green
-                    elif change_type == 'modified':
+                    elif change_type == "modified":
                         indicator_color = QColor("#569CD6")  # Blue
-                    elif change_type == 'deleted':
+                    elif change_type == "deleted":
                         indicator_color = QColor("#F14C4C")  # Red
                     else:
                         indicator_color = QColor(Theme.TEXT_MUTED)
@@ -5645,10 +5847,14 @@ class LineNumberArea(QWidget):
                     painter.setFont(normal_font)
 
                 # Draw line number (right-aligned with padding)
-                painter.drawText(0, top, self.width() - 8,
-                               font_height,
-                               Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                               number)
+                painter.drawText(
+                    0,
+                    top,
+                    self.width() - 8,
+                    font_height,
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    number,
+                )
 
             block = block.next()
             top = bottom
@@ -5659,8 +5865,9 @@ class LineNumberArea(QWidget):
         """Track mouse for hover effects."""
         # Calculate which line is being hovered
         block = self._editor.firstVisibleBlock()
-        top = int(self._editor.blockBoundingGeometry(block).translated(
-            self._editor.contentOffset()).top())
+        top = int(
+            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
+        )
 
         while block.isValid():
             bottom = top + int(self._editor.blockBoundingRect(block).height())
@@ -5687,8 +5894,11 @@ class LineNumberArea(QWidget):
         if event.button() == Qt.MouseButton.LeftButton:
             # Calculate which line was clicked
             block = self._editor.firstVisibleBlock()
-            top = int(self._editor.blockBoundingGeometry(block).translated(
-                self._editor.contentOffset()).top())
+            top = int(
+                self._editor.blockBoundingGeometry(block)
+                .translated(self._editor.contentOffset())
+                .top()
+            )
 
             while block.isValid():
                 bottom = top + int(self._editor.blockBoundingRect(block).height())
@@ -5709,7 +5919,7 @@ class LineNumberArea(QWidget):
 class FoldingArea(QWidget):
     """Code folding margin showing fold markers for collapsible regions."""
 
-    def __init__(self, editor: 'CodeEditor'):
+    def __init__(self, editor: "CodeEditor"):
         super().__init__(editor)
         self._editor = editor
         self._fold_regions: Dict[int, int] = {}  # start_line -> end_line
@@ -5747,7 +5957,7 @@ class FoldingArea(QWidget):
 
                 # Check if this line starts a fold region (ends with : or { or has high indent)
                 stripped = text.rstrip()
-                if stripped.endswith(':') or stripped.endswith('{'):
+                if stripped.endswith(":") or stripped.endswith("{"):
                     stack.append((line_num, indent_level))
 
             block = block.next()
@@ -5775,8 +5985,9 @@ class FoldingArea(QWidget):
 
         block = self._editor.firstVisibleBlock()
         block_number = block.blockNumber()
-        top = int(self._editor.blockBoundingGeometry(block).translated(
-            self._editor.contentOffset()).top())
+        top = int(
+            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
+        )
         bottom = top + int(self._editor.blockBoundingRect(block).height())
 
         while block.isValid() and top <= event.rect().bottom():
@@ -5817,8 +6028,11 @@ class FoldingArea(QWidget):
             # Find which line was clicked
             y = event.position().y()
             block = self._editor.firstVisibleBlock()
-            top = int(self._editor.blockBoundingGeometry(block).translated(
-                self._editor.contentOffset()).top())
+            top = int(
+                self._editor.blockBoundingGeometry(block)
+                .translated(self._editor.contentOffset())
+                .top()
+            )
 
             while block.isValid():
                 height = int(self._editor.blockBoundingRect(block).height())
@@ -5887,7 +6101,7 @@ class FoldingArea(QWidget):
 class GitBlameGutter(QWidget):
     """Gutter widget showing git blame information for each line."""
 
-    def __init__(self, editor: 'CodeEditor'):
+    def __init__(self, editor: "CodeEditor"):
         super().__init__(editor)
         self._editor = editor
         self._blame_data: Dict[int, dict] = {}  # line -> {author, date, commit}
@@ -5924,7 +6138,7 @@ class GitBlameGutter(QWidget):
                 cwd=str(file_path.parent),
                 capture_output=True,
                 text=True,
-                timeout=10
+                timeout=10,
             )
 
             if result.returncode == 0:
@@ -5938,28 +6152,40 @@ class GitBlameGutter(QWidget):
 
     def _parse_blame(self, output: str):
         """Parse git blame --line-porcelain output."""
-        lines = output.split('\n')
+        lines = output.split("\n")
         current_line = 0
         current_data = {}
 
         for line in lines:
-            if line.startswith('\t'):
+            if line.startswith("\t"):
                 # Content line - save the data
                 current_line += 1
                 self._blame_data[current_line] = current_data.copy()
-            elif line.startswith('author '):
-                current_data['author'] = line[7:]
-            elif line.startswith('author-time '):
+            elif line.startswith("author "):
+                current_data["author"] = line[7:]
+            elif line.startswith("author-time "):
                 try:
                     timestamp = int(line[12:])
                     from datetime import datetime
+
                     dt = datetime.fromtimestamp(timestamp)
-                    current_data['date'] = dt.strftime('%Y-%m-%d')
+                    current_data["date"] = dt.strftime("%Y-%m-%d")
                 except (ValueError, OSError):
-                    current_data['date'] = ''
-            elif len(line) >= 40 and line[:40].replace('0', '').replace('a', '').replace('b', '').replace('c', '').replace('d', '').replace('e', '').replace('f', '') == '':
+                    current_data["date"] = ""
+            elif (
+                len(line) >= 40
+                and line[:40]
+                .replace("0", "")
+                .replace("a", "")
+                .replace("b", "")
+                .replace("c", "")
+                .replace("d", "")
+                .replace("e", "")
+                .replace("f", "")
+                == ""
+            ):
                 # Commit hash
-                current_data['commit'] = line[:8]
+                current_data["commit"] = line[:8]
 
     def _update_width(self, block_count=None):
         """Update gutter width based on content."""
@@ -5970,8 +6196,8 @@ class GitBlameGutter(QWidget):
         if self._blame_data:
             # Calculate width needed for blame info
             sample = next(iter(self._blame_data.values()), {})
-            author = sample.get('author', '')[:12]
-            date = sample.get('date', '')
+            author = sample.get("author", "")[:12]
+            date = sample.get("date", "")
             text = f"{author} {date}"
             width = self.fontMetrics().horizontalAdvance(text) + 20
             self.setFixedWidth(max(width, 150))
@@ -6005,8 +6231,9 @@ class GitBlameGutter(QWidget):
 
         block = self._editor.firstVisibleBlock()
         block_number = block.blockNumber()
-        top = int(self._editor.blockBoundingGeometry(block).translated(
-            self._editor.contentOffset()).top())
+        top = int(
+            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
+        )
         bottom = top + int(self._editor.blockBoundingRect(block).height())
 
         last_commit = None
@@ -6017,17 +6244,22 @@ class GitBlameGutter(QWidget):
                 data = self._blame_data.get(line_num, {})
 
                 if data:
-                    commit = data.get('commit', '')
-                    author = data.get('author', '')[:12]
-                    date = data.get('date', '')
+                    commit = data.get("commit", "")
+                    author = data.get("author", "")[:12]
+                    date = data.get("date", "")
 
                     # Only show if different from previous line (cleaner look)
                     if commit != last_commit:
                         painter.setPen(QColor(Theme.TEXT_MUTED))
                         text = f"{author:<12} {date}"
-                        painter.drawText(5, top, self.width() - 10,
-                                        self._editor.fontMetrics().height(),
-                                        Qt.AlignmentFlag.AlignLeft, text)
+                        painter.drawText(
+                            5,
+                            top,
+                            self.width() - 10,
+                            self._editor.fontMetrics().height(),
+                            Qt.AlignmentFlag.AlignLeft,
+                            text,
+                        )
                         last_commit = commit
 
             block = block.next()
@@ -6059,7 +6291,7 @@ class CodeEditor(QPlainTextEdit):
             }}
         """)
 
-        self.setTabStopDistance(self.fontMetrics().horizontalAdvance(' ') * 4)
+        self.setTabStopDistance(self.fontMetrics().horizontalAdvance(" ") * 4)
         self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
 
         # Use Pygments highlighter if available, otherwise fallback
@@ -6121,18 +6353,21 @@ class CodeEditor(QPlainTextEdit):
             size_mb = file_size / (1024 * 1024)
 
             if size_mb > 50:
-                self.setPlainText(f"File too large to open ({size_mb:.1f} MB)\n\nMaximum file size: 50 MB")
+                self.setPlainText(
+                    f"File too large to open ({size_mb:.1f} MB)\n\nMaximum file size: 50 MB"
+                )
                 return
 
             if size_mb > 5:
                 # Show warning for large files
                 from PySide6.QtWidgets import QMessageBox
+
                 reply = QMessageBox.warning(
                     self,
                     "Large File Warning",
                     f"This file is {size_mb:.1f} MB.\n\nLarge files may slow down the editor.\n\nDo you want to continue?",
                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No
+                    QMessageBox.StandardButton.No,
                 )
                 if reply != QMessageBox.StandardButton.Yes:
                     return
@@ -6142,7 +6377,7 @@ class CodeEditor(QPlainTextEdit):
             self.current_file = path
 
             # Update syntax highlighter for file type
-            if PYGMENTS_AVAILABLE and hasattr(self.highlighter, 'set_language_from_file'):
+            if PYGMENTS_AVAILABLE and hasattr(self.highlighter, "set_language_from_file"):
                 self.highlighter.set_language_from_file(str(path))
         except Exception as e:
             self.setPlainText(f"Error loading file: {e}")
@@ -6242,12 +6477,16 @@ class CodeEditor(QPlainTextEdit):
             self.setTextCursor(cursor)
             self.centerCursor()
 
-    def replace_current(self, find_text: str, replace_text: str, case_sensitive: bool = False) -> tuple:
+    def replace_current(
+        self, find_text: str, replace_text: str, case_sensitive: bool = False
+    ) -> tuple:
         """Replace current selection if it matches."""
         cursor = self.textCursor()
         if cursor.hasSelection():
             selected = cursor.selectedText()
-            match = selected == find_text if case_sensitive else selected.lower() == find_text.lower()
+            match = (
+                selected == find_text if case_sensitive else selected.lower() == find_text.lower()
+            )
             if match:
                 cursor.insertText(replace_text)
                 # Re-find to update matches
@@ -6281,28 +6520,28 @@ class Minimap(QWidget):
 
     # Syntax color mapping for minimap (simplified, based on token type)
     SYNTAX_COLORS = {
-        'keyword': '#569CD6',      # Blue - keywords
-        'string': '#CE9178',       # Orange - strings
-        'comment': '#6A9955',      # Green - comments
-        'number': '#B5CEA8',       # Light green - numbers
-        'function': '#DCDCAA',     # Yellow - functions
-        'class': '#4EC9B0',        # Cyan - classes
-        'operator': '#D4D4D4',     # White - operators
-        'default': '#9CDCFE',      # Light blue - default
+        "keyword": "#569CD6",  # Blue - keywords
+        "string": "#CE9178",  # Orange - strings
+        "comment": "#6A9955",  # Green - comments
+        "number": "#B5CEA8",  # Light green - numbers
+        "function": "#DCDCAA",  # Yellow - functions
+        "class": "#4EC9B0",  # Cyan - classes
+        "operator": "#D4D4D4",  # White - operators
+        "default": "#9CDCFE",  # Light blue - default
     }
 
     def __init__(self, editor: QPlainTextEdit, parent=None):
         super().__init__(parent)
         self._editor = editor
         self._char_width = 0.8  # Scale factor for character width
-        self._line_height = 2   # Height of each line in minimap
+        self._line_height = 2  # Height of each line in minimap
         self._viewport_top = 0
         self._viewport_bottom = 0
         self._dragging = False
         self._hover_line = -1
         self._search_highlights: List[int] = []  # Lines with search matches
-        self._git_changes: Dict[int, str] = {}   # line -> 'added'|'modified'|'deleted'
-        self._diagnostics: Dict[int, str] = {}   # line -> 'error'|'warning'|'info'
+        self._git_changes: Dict[int, str] = {}  # line -> 'added'|'modified'|'deleted'
+        self._diagnostics: Dict[int, str] = {}  # line -> 'error'|'warning'|'info'
         self._selection_start = -1
         self._selection_end = -1
         self._cached_pixmap = None
@@ -6364,14 +6603,18 @@ class Minimap(QWidget):
             self._viewport_top = 0
             self._viewport_bottom = self.height()
         else:
-            visible_lines = max(1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height()))
+            visible_lines = max(
+                1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height())
+            )
             first_visible = scrollbar.value()
 
             # Calculate viewport position in minimap coordinates
             max_y = self._get_content_height()
             if max_y > 0:
                 self._viewport_top = int((first_visible / max(total_lines, 1)) * max_y)
-                self._viewport_bottom = int(((first_visible + visible_lines) / max(total_lines, 1)) * max_y)
+                self._viewport_bottom = int(
+                    ((first_visible + visible_lines) / max(total_lines, 1)) * max_y
+                )
                 self._viewport_bottom = min(self._viewport_bottom, max_y)
             else:
                 self._viewport_top = 0
@@ -6389,50 +6632,82 @@ class Minimap(QWidget):
         in_string = False
         string_char = None
         for i, char in enumerate(text[:pos]):
-            if char in ('"', "'") and (i == 0 or text[i-1] != '\\'):
+            if char in ('"', "'") and (i == 0 or text[i - 1] != "\\"):
                 if not in_string:
                     in_string = True
                     string_char = char
                 elif char == string_char:
                     in_string = False
         if in_string:
-            return 'string'
+            return "string"
 
         # Check for comment
         stripped = text.lstrip()
-        if stripped.startswith('#') or stripped.startswith('//'):
-            return 'comment'
+        if stripped.startswith("#") or stripped.startswith("//"):
+            return "comment"
 
         # Extract the word at position
         start = pos
-        while start > 0 and (text[start-1].isalnum() or text[start-1] == '_'):
+        while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "_"):
             start -= 1
         end = pos
-        while end < len(text) and (text[end].isalnum() or text[end] == '_'):
+        while end < len(text) and (text[end].isalnum() or text[end] == "_"):
             end += 1
         word = text[start:end]
 
         # Python/JS keywords
-        keywords = {'def', 'class', 'if', 'else', 'elif', 'for', 'while', 'try', 'except',
-                   'finally', 'with', 'as', 'import', 'from', 'return', 'yield', 'raise',
-                   'break', 'continue', 'pass', 'lambda', 'and', 'or', 'not', 'in', 'is',
-                   'function', 'const', 'let', 'var', 'async', 'await', 'export', 'default'}
+        keywords = {
+            "def",
+            "class",
+            "if",
+            "else",
+            "elif",
+            "for",
+            "while",
+            "try",
+            "except",
+            "finally",
+            "with",
+            "as",
+            "import",
+            "from",
+            "return",
+            "yield",
+            "raise",
+            "break",
+            "continue",
+            "pass",
+            "lambda",
+            "and",
+            "or",
+            "not",
+            "in",
+            "is",
+            "function",
+            "const",
+            "let",
+            "var",
+            "async",
+            "await",
+            "export",
+            "default",
+        }
         if word in keywords:
-            return 'keyword'
+            return "keyword"
 
         # Check if it looks like a function call
-        if end < len(text) and text[end] == '(':
-            return 'function'
+        if end < len(text) and text[end] == "(":
+            return "function"
 
         # Check if it looks like a class name (starts with uppercase)
         if word and word[0].isupper():
-            return 'class'
+            return "class"
 
         # Check for numbers
-        if word.isdigit() or (word.startswith('0x') and len(word) > 2):
-            return 'number'
+        if word.isdigit() or (word.startswith("0x") and len(word) > 2):
+            return "number"
 
-        return 'default'
+        return "default"
 
     def paintEvent(self, event):
         """Paint the enhanced minimap."""
@@ -6456,7 +6731,7 @@ class Minimap(QWidget):
 
         # Calculate scale factor to fit content
         content_height = total_lines * (self._line_height + 1)
-        scale = min(1.0, (self.height() - 4) / max(content_height, 1))
+        min(1.0, (self.height() - 4) / max(content_height, 1))
 
         while block.isValid() and y < self.height():
             line_num = block.blockNumber()
@@ -6465,9 +6740,9 @@ class Minimap(QWidget):
             # Git change indicator on left edge
             if line_num + 1 in self._git_changes:
                 change_type = self._git_changes[line_num + 1]
-                if change_type == 'added':
+                if change_type == "added":
                     git_color = QColor("#4EC9B0")
-                elif change_type == 'modified':
+                elif change_type == "modified":
                     git_color = QColor("#569CD6")
                 else:
                     git_color = QColor("#F14C4C")
@@ -6476,9 +6751,9 @@ class Minimap(QWidget):
             # Diagnostic indicator on right edge (errors=red, warnings=yellow, info=blue)
             if line_num + 1 in self._diagnostics:
                 diag_type = self._diagnostics[line_num + 1]
-                if diag_type == 'error':
+                if diag_type == "error":
                     diag_color = QColor("#F14C4C")  # Red for errors
-                elif diag_type == 'warning':
+                elif diag_type == "warning":
                     diag_color = QColor("#CCA700")  # Yellow/orange for warnings
                 else:
                     diag_color = QColor("#3794FF")  # Blue for info/hints
@@ -6487,23 +6762,38 @@ class Minimap(QWidget):
 
             # Search highlight (full width yellow background)
             if line_num + 1 in self._search_highlights:
-                painter.fillRect(4, int(y), self.width() - 8, self._line_height,
-                               QColor(255, 200, 0, 60))
+                painter.fillRect(
+                    4, int(y), self.width() - 8, self._line_height, QColor(255, 200, 0, 60)
+                )
 
             # Selection highlight
-            if self._selection_start >= 0 and self._selection_start <= line_num <= self._selection_end:
-                painter.fillRect(4, int(y), self.width() - 8, self._line_height,
-                               QColor(Theme.ACCENT_BLUE).lighter(150))
+            if (
+                self._selection_start >= 0
+                and self._selection_start <= line_num <= self._selection_end
+            ):
+                painter.fillRect(
+                    4,
+                    int(y),
+                    self.width() - 8,
+                    self._line_height,
+                    QColor(Theme.ACCENT_BLUE).lighter(150),
+                )
 
             # Current line highlight
             if line_num == cursor_line:
-                painter.fillRect(4, int(y) - 1, self.width() - 8, self._line_height + 2,
-                               QColor(Theme.ACCENT_BLUE))
+                painter.fillRect(
+                    4,
+                    int(y) - 1,
+                    self.width() - 8,
+                    self._line_height + 2,
+                    QColor(Theme.ACCENT_BLUE),
+                )
 
             # Hover line highlight
             if line_num == self._hover_line and line_num != cursor_line:
-                painter.fillRect(4, int(y), self.width() - 8, self._line_height,
-                               QColor(255, 255, 255, 20))
+                painter.fillRect(
+                    4, int(y), self.width() - 8, self._line_height, QColor(255, 255, 255, 20)
+                )
 
             # Draw code with syntax coloring
             if text.strip():
@@ -6513,13 +6803,20 @@ class Minimap(QWidget):
                 # Analyze text and draw colored segments
                 segments = self._tokenize_line(text.strip())
                 for seg_text, token_type in segments:
-                    color = QColor(self.SYNTAX_COLORS.get(token_type, self.SYNTAX_COLORS['default']))
+                    color = QColor(
+                        self.SYNTAX_COLORS.get(token_type, self.SYNTAX_COLORS["default"])
+                    )
                     if line_num != cursor_line:
                         color.setAlpha(180)  # Slightly transparent for non-current lines
                     seg_width = int(len(seg_text) * self._char_width)
                     if seg_width > 0 and x < self.width() - 4:
-                        painter.fillRect(int(x), int(y), min(seg_width, self.width() - x - 4),
-                                       self._line_height, color)
+                        painter.fillRect(
+                            int(x),
+                            int(y),
+                            min(seg_width, self.width() - x - 4),
+                            self._line_height,
+                            color,
+                        )
                     x += seg_width
 
             y += self._line_height + 1
@@ -6529,7 +6826,9 @@ class Minimap(QWidget):
         max_y = y
         if total_lines > 0:
             scrollbar = self._editor.verticalScrollBar()
-            visible_lines = max(1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height()))
+            visible_lines = max(
+                1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height())
+            )
             first_visible = scrollbar.value()
 
             viewport_top = int((first_visible / max(total_lines, 1)) * max_y)
@@ -6563,8 +6862,8 @@ class Minimap(QWidget):
         segments = []
 
         # Check for full-line comment
-        if text.startswith('#') or text.startswith('//'):
-            return [(text, 'comment')]
+        if text.startswith("#") or text.startswith("//"):
+            return [(text, "comment")]
 
         # Simple tokenization
         i = 0
@@ -6583,17 +6882,17 @@ class Minimap(QWidget):
                 i += 1
                 while i < len(text):
                     string_content += text[i]
-                    if text[i] == quote and (len(string_content) < 2 or text[i-1] != '\\'):
+                    if text[i] == quote and (len(string_content) < 2 or text[i - 1] != "\\"):
                         i += 1
                         break
                     i += 1
-                segments.append((string_content, 'string'))
+                segments.append((string_content, "string"))
                 current_segment = ""
                 current_type = "default"
                 continue
 
             # Word characters
-            if char.isalnum() or char == '_':
+            if char.isalnum() or char == "_":
                 current_segment += char
             else:
                 if current_segment:
@@ -6604,7 +6903,7 @@ class Minimap(QWidget):
 
                 # Add the non-word character
                 if char.strip():
-                    segments.append((char, 'operator'))
+                    segments.append((char, "operator"))
 
             i += 1
 
@@ -6617,29 +6916,66 @@ class Minimap(QWidget):
 
     def _classify_word(self, word: str, line: str, pos: int) -> str:
         """Classify a word for syntax coloring."""
-        keywords = {'def', 'class', 'if', 'else', 'elif', 'for', 'while', 'try', 'except',
-                   'finally', 'with', 'as', 'import', 'from', 'return', 'yield', 'raise',
-                   'break', 'continue', 'pass', 'lambda', 'and', 'or', 'not', 'in', 'is',
-                   'True', 'False', 'None', 'self', 'function', 'const', 'let', 'var',
-                   'async', 'await', 'export', 'default', 'new', 'this'}
+        keywords = {
+            "def",
+            "class",
+            "if",
+            "else",
+            "elif",
+            "for",
+            "while",
+            "try",
+            "except",
+            "finally",
+            "with",
+            "as",
+            "import",
+            "from",
+            "return",
+            "yield",
+            "raise",
+            "break",
+            "continue",
+            "pass",
+            "lambda",
+            "and",
+            "or",
+            "not",
+            "in",
+            "is",
+            "True",
+            "False",
+            "None",
+            "self",
+            "function",
+            "const",
+            "let",
+            "var",
+            "async",
+            "await",
+            "export",
+            "default",
+            "new",
+            "this",
+        }
 
         if word in keywords:
-            return 'keyword'
+            return "keyword"
 
         # Check if followed by ( -> function
-        after_word = line[pos + len(word):].lstrip()
-        if after_word.startswith('('):
-            return 'function'
+        after_word = line[pos + len(word) :].lstrip()
+        if after_word.startswith("("):
+            return "function"
 
         # Check for class names (PascalCase)
         if word and word[0].isupper() and not word.isupper():
-            return 'class'
+            return "class"
 
         # Numbers
-        if word.isdigit() or word.replace('.', '').replace('e', '').replace('-', '').isdigit():
-            return 'number'
+        if word.isdigit() or word.replace(".", "").replace("e", "").replace("-", "").isdigit():
+            return "number"
 
-        return 'default'
+        return "default"
 
     def mousePressEvent(self, event):
         """Handle mouse press - start dragging or jump to position."""
@@ -6695,7 +7031,9 @@ class Minimap(QWidget):
         target_line = max(0, min(target_line, total_lines - 1))
 
         # Calculate how many lines are visible in the editor
-        visible_lines = max(1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height()))
+        visible_lines = max(
+            1, self._editor.viewport().height() // max(1, self._editor.fontMetrics().height())
+        )
 
         # Center the target line in the viewport
         scroll_target = max(0, target_line - visible_lines // 2)
@@ -6718,7 +7056,7 @@ class LinterWorker(QThread):
     diagnostics_ready = Signal(dict)  # line -> 'error'|'warning'|'info'
 
     # Linter preference order (pylint = most thorough but slower)
-    LINTERS = ['pylint', 'ruff', 'flake8']
+    LINTERS = ["pylint", "ruff", "flake8"]
 
     def __init__(self, file_path: str, content: str = None, parent=None):
         super().__init__(parent)
@@ -6729,6 +7067,7 @@ class LinterWorker(QThread):
     def _detect_linter(self) -> Optional[str]:
         """Detect available linter."""
         import shutil
+
         for linter in self.LINTERS:
             if shutil.which(linter):
                 return linter
@@ -6736,7 +7075,7 @@ class LinterWorker(QThread):
 
     def run(self):
         """Run linter and emit diagnostics."""
-        if not self._file_path.endswith('.py'):
+        if not self._file_path.endswith(".py"):
             self.diagnostics_ready.emit({})
             return
 
@@ -6749,11 +7088,11 @@ class LinterWorker(QThread):
         diagnostics = {}
 
         try:
-            if linter == 'ruff':
+            if linter == "ruff":
                 diagnostics = self._run_ruff()
-            elif linter == 'flake8':
+            elif linter == "flake8":
                 diagnostics = self._run_flake8()
-            elif linter == 'pylint':
+            elif linter == "pylint":
                 diagnostics = self._run_pylint()
         except Exception:
             pass
@@ -6763,26 +7102,29 @@ class LinterWorker(QThread):
     def _run_ruff(self) -> Dict[int, str]:
         """Run ruff linter (fastest, Rust-based)."""
         import subprocess
+
         diagnostics = {}
 
         try:
-            cmd = ['ruff', 'check', '--output-format', 'json', self._file_path]
+            cmd = ["ruff", "check", "--output-format", "json", self._file_path]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
 
             if result.stdout:
                 issues = json.loads(result.stdout)
                 for issue in issues:
-                    line = issue.get('location', {}).get('row', 0)
-                    code = issue.get('code', '')
+                    line = issue.get("location", {}).get("row", 0)
+                    code = issue.get("code", "")
                     # E/W prefix = error/warning, others = info
-                    if code.startswith('E') or code.startswith('F'):
-                        severity = 'error'
-                    elif code.startswith('W'):
-                        severity = 'warning'
+                    if code.startswith("E") or code.startswith("F"):
+                        severity = "error"
+                    elif code.startswith("W"):
+                        severity = "warning"
                     else:
-                        severity = 'info'
+                        severity = "info"
                     # Keep highest severity per line
-                    if line not in diagnostics or self._severity_rank(severity) > self._severity_rank(diagnostics[line]):
+                    if line not in diagnostics or self._severity_rank(
+                        severity
+                    ) > self._severity_rank(diagnostics[line]):
                         diagnostics[line] = severity
         except Exception:
             pass
@@ -6792,27 +7134,30 @@ class LinterWorker(QThread):
     def _run_flake8(self) -> Dict[int, str]:
         """Run flake8 linter."""
         import subprocess
+
         diagnostics = {}
 
         try:
-            cmd = ['flake8', '--format', '%(row)d:%(col)d:%(code)s:%(text)s', self._file_path]
+            cmd = ["flake8", "--format", "%(row)d:%(col)d:%(code)s:%(text)s", self._file_path]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
-            for line_text in result.stdout.strip().split('\n'):
-                if ':' in line_text:
-                    parts = line_text.split(':')
+            for line_text in result.stdout.strip().split("\n"):
+                if ":" in line_text:
+                    parts = line_text.split(":")
                     if len(parts) >= 3:
                         try:
                             line = int(parts[0])
-                            code = parts[2] if len(parts) > 2 else ''
+                            code = parts[2] if len(parts) > 2 else ""
                             # E = error, W = warning, C/F = convention/fatal
-                            if code.startswith('E') or code.startswith('F'):
-                                severity = 'error'
-                            elif code.startswith('W'):
-                                severity = 'warning'
+                            if code.startswith("E") or code.startswith("F"):
+                                severity = "error"
+                            elif code.startswith("W"):
+                                severity = "warning"
                             else:
-                                severity = 'info'
-                            if line not in diagnostics or self._severity_rank(severity) > self._severity_rank(diagnostics[line]):
+                                severity = "info"
+                            if line not in diagnostics or self._severity_rank(
+                                severity
+                            ) > self._severity_rank(diagnostics[line]):
                                 diagnostics[line] = severity
                         except ValueError:
                             pass
@@ -6824,26 +7169,29 @@ class LinterWorker(QThread):
     def _run_pylint(self) -> Dict[int, str]:
         """Run pylint linter."""
         import subprocess
+
         diagnostics = {}
 
         try:
-            cmd = ['pylint', '--output-format', 'json', '--score', 'n', self._file_path]
+            cmd = ["pylint", "--output-format", "json", "--score", "n", self._file_path]
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
             if result.stdout:
                 try:
                     issues = json.loads(result.stdout)
                     for issue in issues:
-                        line = issue.get('line', 0)
-                        msg_type = issue.get('type', '').lower()
+                        line = issue.get("line", 0)
+                        msg_type = issue.get("type", "").lower()
                         # Map pylint types to our severity
-                        if msg_type in ('error', 'fatal'):
-                            severity = 'error'
-                        elif msg_type == 'warning':
-                            severity = 'warning'
+                        if msg_type in ("error", "fatal"):
+                            severity = "error"
+                        elif msg_type == "warning":
+                            severity = "warning"
                         else:
-                            severity = 'info'
-                        if line not in diagnostics or self._severity_rank(severity) > self._severity_rank(diagnostics[line]):
+                            severity = "info"
+                        if line not in diagnostics or self._severity_rank(
+                            severity
+                        ) > self._severity_rank(diagnostics[line]):
                             diagnostics[line] = severity
                 except json.JSONDecodeError:
                     pass
@@ -6854,7 +7202,7 @@ class LinterWorker(QThread):
 
     def _severity_rank(self, severity: str) -> int:
         """Get numeric rank for severity (higher = more severe)."""
-        return {'info': 1, 'warning': 2, 'error': 3}.get(severity, 0)
+        return {"info": 1, "warning": 2, "error": 3}.get(severity, 0)
 
 
 class EditorWithFindReplace(QWidget):
@@ -6942,7 +7290,7 @@ class EditorWithFindReplace(QWidget):
 
     def _run_linter(self):
         """Run linter on current file."""
-        if not self.current_file or not str(self.current_file).endswith('.py'):
+        if not self.current_file or not str(self.current_file).endswith(".py"):
             return
 
         # Cancel any running linter
@@ -6963,7 +7311,7 @@ class EditorWithFindReplace(QWidget):
         self.minimap.set_diagnostics(diagnostics)
 
         # Also update line number area if it supports diagnostics
-        if hasattr(self.editor, 'line_number_area'):
+        if hasattr(self.editor, "line_number_area"):
             # Could extend LineNumberArea to show diagnostics too
             pass
 
@@ -6992,11 +7340,13 @@ class EditorWithFindReplace(QWidget):
             # F3 - Find Next
             if key == Qt.Key.Key_F3:
                 if modifiers == Qt.KeyboardModifier.ShiftModifier:
-                    self._on_find_prev(self.find_widget.find_input.text(),
-                                       self.find_widget.case_btn.isChecked())
+                    self._on_find_prev(
+                        self.find_widget.find_input.text(), self.find_widget.case_btn.isChecked()
+                    )
                 else:
-                    self._on_find_next(self.find_widget.find_input.text(),
-                                       self.find_widget.case_btn.isChecked())
+                    self._on_find_next(
+                        self.find_widget.find_input.text(), self.find_widget.case_btn.isChecked()
+                    )
                 return True
 
             # Escape - Close find widget
@@ -7086,6 +7436,7 @@ class EditorWithFindReplace(QWidget):
 # Editor Tabs
 # ============================================================================
 
+
 class EditorArea(QWidget):
     """Split editor area supporting horizontal/vertical splits."""
 
@@ -7124,14 +7475,14 @@ class EditorArea(QWidget):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-    def _add_pane(self, orientation: Qt.Orientation = None) -> 'EditorTabs':
+    def _add_pane(self, orientation: Qt.Orientation = None) -> "EditorTabs":
         """Add a new editor pane."""
         pane = EditorTabs()
         pane.currentChanged.connect(lambda: self._on_pane_activated(pane))
         pane.tabCloseRequested.connect(lambda idx: self._on_tab_close_requested(pane, idx))
 
         # Connect cursor position signal
-        if hasattr(pane, 'cursor_position_changed'):
+        if hasattr(pane, "cursor_position_changed"):
             pane.cursor_position_changed.connect(self.cursor_position_changed.emit)
 
         self._panes.append(pane)
@@ -7142,11 +7493,11 @@ class EditorArea(QWidget):
 
         return pane
 
-    def _on_pane_activated(self, pane: 'EditorTabs'):
+    def _on_pane_activated(self, pane: "EditorTabs"):
         """Handle pane activation."""
         self._active_pane = pane
 
-    def _on_tab_close_requested(self, pane: 'EditorTabs', index: int):
+    def _on_tab_close_requested(self, pane: "EditorTabs", index: int):
         """Handle tab close in a pane."""
         pane._on_close_requested(index)
 
@@ -7154,7 +7505,7 @@ class EditorArea(QWidget):
         if pane.count() == 0 and len(self._panes) > 1:
             self._remove_pane(pane)
 
-    def _remove_pane(self, pane: 'EditorTabs'):
+    def _remove_pane(self, pane: "EditorTabs"):
         """Remove an empty pane."""
         if pane in self._panes:
             self._panes.remove(pane)
@@ -7180,7 +7531,11 @@ class EditorArea(QWidget):
         """Balance split sizes equally."""
         count = len(self._panes)
         if count > 0:
-            size = self.splitter.width() if self.splitter.orientation() == Qt.Orientation.Horizontal else self.splitter.height()
+            size = (
+                self.splitter.width()
+                if self.splitter.orientation() == Qt.Orientation.Horizontal
+                else self.splitter.height()
+            )
             sizes = [size // count] * count
             self.splitter.setSizes(sizes)
 
@@ -7398,8 +7753,8 @@ class EditorTabs(QTabWidget):
         """)
 
         widget = self.widget(index)
-        file_path = getattr(widget, 'current_file', None)
-        file_name = self._original_names.get(index, 'File')
+        file_path = getattr(widget, "current_file", None)
+        file_name = self._original_names.get(index, "File")
 
         # Close actions
         close_action = menu.addAction("Close")
@@ -7457,6 +7812,7 @@ class EditorTabs(QTabWidget):
     def _reveal_in_explorer(self, path: Path):
         """Reveal file in system file explorer."""
         import subprocess
+
         if sys.platform == "darwin":
             subprocess.run(["open", "-R", str(path)])
         elif sys.platform == "win32":
@@ -7510,12 +7866,13 @@ class EditorTabs(QTabWidget):
         if isinstance(widget, (EditorWithFindReplace, ExcelViewer)) and widget.is_modified:
             # Show confirmation dialog
             reply = QMessageBox.question(
-                self, "Unsaved Changes",
+                self,
+                "Unsaved Changes",
                 f"'{self._original_names.get(index, 'File')}' has unsaved changes.\n\nDo you want to save before closing?",
-                QMessageBox.StandardButton.Save |
-                QMessageBox.StandardButton.Discard |
-                QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
             )
             if reply == QMessageBox.StandardButton.Save:
                 widget.save_file()
@@ -7592,7 +7949,7 @@ class EditorTabs(QTabWidget):
         # Check file extension to determine which viewer to use
         suffix = path.suffix.lower()
 
-        if suffix in ('.xlsx', '.xls', '.xlsm'):
+        if suffix in (".xlsx", ".xls", ".xlsm"):
             # Use Excel viewer for spreadsheet files
             viewer = ExcelViewer()
             viewer.load_file(path)
@@ -7637,33 +7994,47 @@ class EditorTabs(QTabWidget):
 # Terminal Panel
 # ============================================================================
 
+
 class AnsiColorParser:
     """Parse ANSI escape codes and convert to Qt formatting."""
 
     # ANSI color codes to Qt colors
     COLORS = {
-        30: "#1e1e1e", 31: "#f14c4c", 32: "#4ec9b0", 33: "#dcdcaa",
-        34: "#569cd6", 35: "#c586c0", 36: "#4fc1ff", 37: "#d4d4d4",
-        90: "#808080", 91: "#f14c4c", 92: "#4ec9b0", 93: "#dcdcaa",
-        94: "#569cd6", 95: "#c586c0", 96: "#4fc1ff", 97: "#ffffff",
+        30: "#1e1e1e",
+        31: "#f14c4c",
+        32: "#4ec9b0",
+        33: "#dcdcaa",
+        34: "#569cd6",
+        35: "#c586c0",
+        36: "#4fc1ff",
+        37: "#d4d4d4",
+        90: "#808080",
+        91: "#f14c4c",
+        92: "#4ec9b0",
+        93: "#dcdcaa",
+        94: "#569cd6",
+        95: "#c586c0",
+        96: "#4fc1ff",
+        97: "#ffffff",
     }
 
     @classmethod
     def parse(cls, text: str) -> List[tuple]:
         """Parse ANSI text into (text, color) tuples."""
         import re
+
         result = []
         current_color = None
-        pattern = re.compile(r'\x1b\[([0-9;]*)m')
+        pattern = re.compile(r"\x1b\[([0-9;]*)m")
 
         last_end = 0
         for match in pattern.finditer(text):
             # Add text before this escape sequence
             if match.start() > last_end:
-                result.append((text[last_end:match.start()], current_color))
+                result.append((text[last_end : match.start()], current_color))
 
             # Parse the escape code
-            codes = match.group(1).split(';') if match.group(1) else ['0']
+            codes = match.group(1).split(";") if match.group(1) else ["0"]
             for code in codes:
                 code_int = int(code) if code else 0
                 if code_int == 0:
@@ -7711,7 +8082,9 @@ class TerminalPanel(QWidget):
         # Terminal header with tabs
         header = QWidget()
         header.setFixedHeight(32)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 0, 8, 0)
         header_layout.setSpacing(4)
@@ -7764,30 +8137,32 @@ class TerminalPanel(QWidget):
         # Terminal output area - larger font, better styling
         self.output = QPlainTextEdit()
         self.output.setReadOnly(True)
-        self.output.setFont(QFont("Menlo", 12) if sys.platform == "darwin" else QFont("Consolas", 11))
-        self.output.setStyleSheet(f"""
-            QPlainTextEdit {{
+        self.output.setFont(
+            QFont("Menlo", 12) if sys.platform == "darwin" else QFont("Consolas", 11)
+        )
+        self.output.setStyleSheet("""
+            QPlainTextEdit {
                 background: #1a1a1a;
                 color: #f0f0f0;
                 border: none;
                 padding: 8px;
                 selection-background-color: #3a3a5a;
-            }}
-            QScrollBar:vertical {{
+            }
+            QScrollBar:vertical {
                 background: #1a1a1a;
                 width: 10px;
-            }}
-            QScrollBar::handle:vertical {{
+            }
+            QScrollBar::handle:vertical {
                 background: #3a3a3a;
                 border-radius: 5px;
                 min-height: 30px;
-            }}
-            QScrollBar::handle:vertical:hover {{
+            }
+            QScrollBar::handle:vertical:hover {
                 background: #4a4a4a;
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0;
-            }}
+            }
         """)
         # Allow clicking in output to focus input
         self.output.mousePressEvent = lambda e: self.input.setFocus()
@@ -7806,7 +8181,7 @@ class TerminalPanel(QWidget):
         self.prompt.setStyleSheet(f"""
             color: {Theme.ACCENT_GREEN};
             font-weight: bold;
-            font-family: {'Menlo' if sys.platform == 'darwin' else 'Consolas'};
+            font-family: {"Menlo" if sys.platform == "darwin" else "Consolas"};
             font-size: 12px;
         """)
         input_layout.addWidget(self.prompt)
@@ -7817,7 +8192,7 @@ class TerminalPanel(QWidget):
                 background: transparent;
                 border: none;
                 color: #f0f0f0;
-                font-family: {'Menlo' if sys.platform == 'darwin' else 'Consolas'};
+                font-family: {"Menlo" if sys.platform == "darwin" else "Consolas"};
                 font-size: 12px;
                 padding: 2px;
             }}
@@ -7865,7 +8240,7 @@ class TerminalPanel(QWidget):
         """Send interrupt signal to running process."""
         if self.shell.state() == QProcess.ProcessState.Running:
             # Send Ctrl+C (SIGINT) to the shell
-            self.shell.write(b'\x03')
+            self.shell.write(b"\x03")
             self._append_output("^C\n", Theme.ACCENT_RED)
 
     def eventFilter(self, obj, event):
@@ -7900,7 +8275,7 @@ class TerminalPanel(QWidget):
             return
 
         # Get the last word (potential path)
-        parts = text.rsplit(' ', 1)
+        parts = text.rsplit(" ", 1)
         prefix = parts[-1] if parts else ""
 
         if not prefix:
@@ -7908,29 +8283,32 @@ class TerminalPanel(QWidget):
 
         # Try to complete the path
         try:
-            if prefix.startswith('~'):
+            if prefix.startswith("~"):
                 base_path = Path.home()
-                prefix = prefix[1:].lstrip('/')
-            elif prefix.startswith('/'):
-                base_path = Path('/')
+                prefix = prefix[1:].lstrip("/")
+            elif prefix.startswith("/"):
+                base_path = Path("/")
                 prefix = prefix[1:]
             else:
                 base_path = self.working_dir
 
             # Find matching files/dirs
-            search_dir = base_path / Path(prefix).parent if '/' in prefix else base_path
-            search_prefix = Path(prefix).name if '/' in prefix else prefix
+            search_dir = base_path / Path(prefix).parent if "/" in prefix else base_path
+            search_prefix = Path(prefix).name if "/" in prefix else prefix
 
             if search_dir.exists():
-                matches = [p.name for p in search_dir.iterdir()
-                          if p.name.startswith(search_prefix)]
+                matches = [p.name for p in search_dir.iterdir() if p.name.startswith(search_prefix)]
 
                 if len(matches) == 1:
                     # Complete with the single match
                     completion = matches[0]
                     if (search_dir / completion).is_dir():
                         completion += "/"
-                    new_text = text[:-len(search_prefix)] + completion if search_prefix else text + completion
+                    new_text = (
+                        text[: -len(search_prefix)] + completion
+                        if search_prefix
+                        else text + completion
+                    )
                     self.input.setText(new_text)
                 elif len(matches) > 1:
                     # Show all matches
@@ -7962,7 +8340,7 @@ class TerminalPanel(QWidget):
 
         if not command.strip():
             # Just send newline for empty command
-            self.shell.write(b'\n')
+            self.shell.write(b"\n")
             return
 
         # Add to history
@@ -7976,7 +8354,7 @@ class TerminalPanel(QWidget):
             return
 
         # Send command to shell (with newline)
-        self.shell.write((command + '\n').encode('utf-8'))
+        self.shell.write((command + "\n").encode("utf-8"))
 
         # Update working directory if cd command
         if command.strip().startswith("cd "):
@@ -8005,7 +8383,7 @@ class TerminalPanel(QWidget):
     def _on_output(self):
         """Handle output from shell."""
         data = self.shell.readAllStandardOutput()
-        text = bytes(data).decode('utf-8', errors='replace')
+        text = bytes(data).decode("utf-8", errors="replace")
 
         if text:
             # Parse ANSI colors and append
@@ -8015,11 +8393,12 @@ class TerminalPanel(QWidget):
         """Append text with ANSI color support."""
         # Strip some control sequences that don't render well
         import re
+
         # Remove cursor movement, clear screen, etc.
-        text = re.sub(r'\x1b\[\?[0-9;]*[a-zA-Z]', '', text)
-        text = re.sub(r'\x1b\[[0-9;]*[ABCDJKH]', '', text)
-        text = re.sub(r'\x1b\]0;[^\x07]*\x07', '', text)  # Window title
-        text = re.sub(r'\x1b\[[\?]?[0-9;]*[hlm]', '', text)  # Mode changes
+        text = re.sub(r"\x1b\[\?[0-9;]*[a-zA-Z]", "", text)
+        text = re.sub(r"\x1b\[[0-9;]*[ABCDJKH]", "", text)
+        text = re.sub(r"\x1b\]0;[^\x07]*\x07", "", text)  # Window title
+        text = re.sub(r"\x1b\[[\?]?[0-9;]*[hlm]", "", text)  # Mode changes
 
         # Parse remaining ANSI colors
         segments = AnsiColorParser.parse(text)
@@ -8095,7 +8474,7 @@ class TerminalPanel(QWidget):
 
     def _show_welcome_banner(self):
         """Display a nice welcome banner."""
-        banner = f'''<span style="color: {Theme.ACCENT_BLUE};">
+        banner = f"""<span style="color: {Theme.ACCENT_BLUE};">
   ╭─────────────────────────────────────────╮
   │                                         │
   │   <span style="color: {Theme.ACCENT_GREEN};">Circuit IDE Terminal</span>                 │
@@ -8104,8 +8483,10 @@ class TerminalPanel(QWidget):
   │   <span style="color: {Theme.TEXT_MUTED};">Ctrl+L to clear • Ctrl+C to cancel</span>    │
   │                                         │
   ╰─────────────────────────────────────────╯
-</span>'''
-        self.output.appendHtml(f'<pre style="font-family: Menlo, Consolas, monospace; line-height: 1.4;">{banner}</pre>')
+</span>"""
+        self.output.appendHtml(
+            f'<pre style="font-family: Menlo, Consolas, monospace; line-height: 1.4;">{banner}</pre>'
+        )
 
     def set_working_dir(self, path: str):
         """Set the working directory and cd the shell to it."""
@@ -8114,7 +8495,7 @@ class TerminalPanel(QWidget):
 
         # CD the shell to the new directory
         if self.shell.state() == QProcess.ProcessState.Running:
-            self.shell.write(f'cd "{path}"\n'.encode('utf-8'))
+            self.shell.write(f'cd "{path}"\n'.encode("utf-8"))
             self.shell.setWorkingDirectory(path)
 
     def cleanup(self):
@@ -8132,6 +8513,7 @@ class TerminalPanel(QWidget):
 # ============================================================================
 # Chat Panel
 # ============================================================================
+
 
 class TokenTracker(QFrame):
     """Compact token usage display."""
@@ -8188,12 +8570,12 @@ class OutputEntry(QFrame):
         else:
             provider_color = Theme.CIRCUIT_COLOR
 
-        self.setStyleSheet(f"""
-            QFrame {{
+        self.setStyleSheet("""
+            QFrame {
                 background: transparent;
                 margin: 0;
                 padding: 0;
-            }}
+            }
         """)
 
         main_layout = QHBoxLayout(self)
@@ -8215,8 +8597,8 @@ class OutputEntry(QFrame):
         self.content_label = QLabel(content)
         self.content_label.setWordWrap(True)
         self.content_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse |
-            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self.content_label.setStyleSheet(f"""
             QLabel {{
@@ -8278,12 +8660,12 @@ class ToolInvocation(QFrame):
         self._result_text = ""
         self.params = params or {}
 
-        self.setStyleSheet(f"""
-            QFrame {{
+        self.setStyleSheet("""
+            QFrame {
                 background: transparent;
                 margin: 0;
                 padding: 0;
-            }}
+            }
         """)
 
         main_layout = QVBoxLayout(self)
@@ -8405,7 +8787,7 @@ class ToolInvocation(QFrame):
         self.status = status
 
         # Stop spinner if exists
-        if hasattr(self, 'spinner') and status != "running":
+        if hasattr(self, "spinner") and status != "running":
             self.spinner.stop()
             self.spinner.deleteLater()
 
@@ -8452,7 +8834,9 @@ class ChatPanel(QWidget):
         # Minimal header bar
         header = QWidget()
         header.setFixedHeight(32)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 0, 12, 0)
 
@@ -8499,7 +8883,9 @@ class ChatPanel(QWidget):
 
         # Input area - clean prompt style
         input_container = QWidget()
-        input_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
+        input_container.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         input_layout = QHBoxLayout(input_container)
         input_layout.setContentsMargins(12, 10, 12, 10)
         input_layout.setSpacing(10)
@@ -8548,7 +8934,9 @@ class ChatPanel(QWidget):
     def set_connected(self, connected: bool):
         if connected:
             self.status_label.setText("Connected")
-            self.status_label.setStyleSheet(f"color: {Theme.CIRCUIT_COLOR}; font-size: 11px; font-weight: bold;")
+            self.status_label.setStyleSheet(
+                f"color: {Theme.CIRCUIT_COLOR}; font-size: 11px; font-weight: bold;"
+            )
             self.status_dot.set_color(Theme.CIRCUIT_COLOR)
         else:
             self.status_label.setText("Disconnected")
@@ -8590,7 +8978,9 @@ class ChatPanel(QWidget):
         self._streaming_message = None
         self._streaming_content = ""
 
-    def add_tool_call(self, name: str, params: dict = None, status: str = "running", tool_id: str = None):
+    def add_tool_call(
+        self, name: str, params: dict = None, status: str = "running", tool_id: str = None
+    ):
         """Add a tool invocation to the output.
 
         Args:
@@ -8612,7 +9002,9 @@ class ChatPanel(QWidget):
         QTimer.singleShot(50, self._scroll_bottom)
         return tool
 
-    def update_tool_status(self, tool_id: str, status: str, result: str = None, lines_changed: int = None):
+    def update_tool_status(
+        self, tool_id: str, status: str, result: str = None, lines_changed: int = None
+    ):
         """Update an existing tool's status and optionally set result."""
         if tool_id in self._tool_widgets:
             tool = self._tool_widgets[tool_id]
@@ -8641,19 +9033,22 @@ class ChatPanel(QWidget):
 # Claude Code Panel - Headless Mode with Session Continuity
 # ============================================================================
 
+
 class ClaudeCodeWorker(QThread):
     """Worker thread for Claude Code CLI subprocess using headless mode."""
 
     # Signals for streaming output
-    text_output = Signal(str)       # assistant text content
-    tool_started = Signal(dict)     # tool_use_begin events
-    tool_input = Signal(dict)       # tool input with full details (for diffs)
-    tool_completed = Signal(dict)   # tool_result events
+    text_output = Signal(str)  # assistant text content
+    tool_started = Signal(dict)  # tool_use_begin events
+    tool_input = Signal(dict)  # tool input with full details (for diffs)
+    tool_completed = Signal(dict)  # tool_result events
     usage_updated = Signal(int, int)  # input_tokens, output_tokens
     finished = Signal(int, str, float)  # exit_code, session_id, cost_usd
     error = Signal(str)
 
-    def __init__(self, message: str, working_dir: str = None, continue_session: bool = True, parent=None):
+    def __init__(
+        self, message: str, working_dir: str = None, continue_session: bool = True, parent=None
+    ):
         super().__init__(parent)
         self._message = message
         self._working_dir = working_dir
@@ -8673,12 +9068,18 @@ class ClaudeCodeWorker(QThread):
             # Build command with streaming JSON output
             # Note: stream-json requires --verbose flag
             # Pre-approve common tools so Claude can work without interactive prompts
-            allowed_tools = "Read,Edit,Write,Bash,Glob,Grep,Task,TodoWrite,WebFetch,WebSearch,NotebookEdit"
+            allowed_tools = (
+                "Read,Edit,Write,Bash,Glob,Grep,Task,TodoWrite,WebFetch,WebSearch,NotebookEdit"
+            )
             cmd = [
-                "claude", "-p", self._message,
-                "--output-format", "stream-json",
+                "claude",
+                "-p",
+                self._message,
+                "--output-format",
+                "stream-json",
                 "--verbose",
-                "--allowedTools", allowed_tools
+                "--allowedTools",
+                allowed_tools,
             ]
             if self._continue:
                 cmd.append("--continue")
@@ -8689,11 +9090,11 @@ class ClaudeCodeWorker(QThread):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
             )
 
             # Parse streaming JSON line by line
-            for line in iter(self._process.stdout.readline, ''):
+            for line in iter(self._process.stdout.readline, ""):
                 if self._cancelled:
                     break
                 line = line.strip()
@@ -8710,7 +9111,9 @@ class ClaudeCodeWorker(QThread):
                 self.finished.emit(exit_code, self._session_id, self._total_cost)
 
         except FileNotFoundError:
-            self.error.emit("Claude Code CLI not found. Please install it: npm install -g @anthropic-ai/claude-code")
+            self.error.emit(
+                "Claude Code CLI not found. Please install it: npm install -g @anthropic-ai/claude-code"
+            )
         except Exception as e:
             self.error.emit(f"Error: {str(e)}")
 
@@ -8728,7 +9131,9 @@ class ClaudeCodeWorker(QThread):
             # Emit usage info
             usage = message.get("usage", {})
             if usage:
-                input_tokens = usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0)
+                input_tokens = usage.get("input_tokens", 0) + usage.get(
+                    "cache_read_input_tokens", 0
+                )
                 output_tokens = usage.get("output_tokens", 0)
                 self.usage_updated.emit(input_tokens, output_tokens)
         elif event_type == "content_block_start":
@@ -8738,10 +9143,9 @@ class ClaudeCodeWorker(QThread):
                 self._current_tool_id = content_block.get("id", "")
                 self._current_tool_name = content_block.get("name", "Unknown")
                 self._current_tool_input = ""
-                self.tool_started.emit({
-                    "tool_name": self._current_tool_name,
-                    "tool_id": self._current_tool_id
-                })
+                self.tool_started.emit(
+                    {"tool_name": self._current_tool_name, "tool_id": self._current_tool_id}
+                )
         elif event_type == "content_block_delta":
             # Streaming delta (text or tool input)
             delta = event.get("delta", {})
@@ -8754,14 +9158,18 @@ class ClaudeCodeWorker(QThread):
             # Content block finished - if it was a tool, emit the full input
             if self._current_tool_id and self._current_tool_name:
                 try:
-                    input_data = json.loads(self._current_tool_input) if self._current_tool_input else {}
+                    input_data = (
+                        json.loads(self._current_tool_input) if self._current_tool_input else {}
+                    )
                 except json.JSONDecodeError:
                     input_data = {}
-                self.tool_input.emit({
-                    "tool_name": self._current_tool_name,
-                    "tool_id": self._current_tool_id,
-                    "input": input_data
-                })
+                self.tool_input.emit(
+                    {
+                        "tool_name": self._current_tool_name,
+                        "tool_id": self._current_tool_id,
+                        "input": input_data,
+                    }
+                )
                 self._current_tool_id = None
                 self._current_tool_name = None
                 self._current_tool_input = ""
@@ -8821,7 +9229,9 @@ class ClaudeCodePanel(QWidget):
         # Header
         header = QWidget()
         header.setFixedHeight(36)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(DesignTokens.SPACING_XL, 0, DesignTokens.SPACING_LG, 0)
         header_layout.setSpacing(DesignTokens.SPACING_MD)
@@ -8830,7 +9240,9 @@ class ClaudeCodePanel(QWidget):
         header_layout.addWidget(self.status_dot)
 
         self.status_label = QLabel("Claude Code")
-        self.status_label.setStyleSheet(f"color: {Theme.CLAUDE_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;")
+        self.status_label.setStyleSheet(
+            f"color: {Theme.CLAUDE_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;"
+        )
         header_layout.addWidget(self.status_label)
 
         header_layout.addStretch()
@@ -8863,13 +9275,17 @@ class ClaudeCodePanel(QWidget):
         # Status bar (visible while processing)
         self.status_bar = QWidget()
         self.status_bar.setFixedHeight(28)
-        self.status_bar.setStyleSheet(f"background: {Theme.BG_TERTIARY}; border-top: 1px solid {Theme.BORDER};")
+        self.status_bar.setStyleSheet(
+            f"background: {Theme.BG_TERTIARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         status_layout = QHBoxLayout(self.status_bar)
         status_layout.setContentsMargins(12, 0, 12, 0)
         status_layout.setSpacing(8)
 
         self.spinner_label = QLabel("|")
-        self.spinner_label.setStyleSheet(f"color: {Theme.CLAUDE_COLOR}; font-size: 14px; font-family: monospace;")
+        self.spinner_label.setStyleSheet(
+            f"color: {Theme.CLAUDE_COLOR}; font-size: 14px; font-family: monospace;"
+        )
         self.spinner_label.setFixedWidth(16)
         status_layout.addWidget(self.spinner_label)
 
@@ -8892,9 +9308,16 @@ class ClaudeCodePanel(QWidget):
 
         # Input area
         input_container = QWidget()
-        input_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
+        input_container.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         input_layout = QHBoxLayout(input_container)
-        input_layout.setContentsMargins(DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG)
+        input_layout.setContentsMargins(
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+        )
         input_layout.setSpacing(DesignTokens.SPACING_MD)
 
         self.input_field = CompactLineEdit("")
@@ -8977,14 +9400,14 @@ class ClaudeCodePanel(QWidget):
         self.input_field.clear()
 
         # Show user message as styled card
-        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        escaped_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         DT = DesignTokens
         self._append_raw_html(
             f'<div style="background: {Theme.USER_MSG_BG}; border-radius: {DT.RADIUS_MD}px; '
             f'padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; margin: {DT.SPACING_MD}px 0 {DT.SPACING_MD}px 40px;">'
             f'<div style="color: {Theme.TEXT_MUTED}; font-size: {DT.FONT_SIZE_SM}px; margin-bottom: {DT.SPACING_SM}px;">You</div>'
             f'<div style="color: {Theme.TEXT_PRIMARY}; font-size: {DT.FONT_SIZE_MD}px;">{escaped_text}</div>'
-            f'</div><br>'
+            f"</div><br>"
         )
 
         # Update status
@@ -9012,7 +9435,7 @@ class ClaudeCodePanel(QWidget):
             message=text,
             working_dir=self._working_dir,
             continue_session=not self._is_first_message,
-            parent=self
+            parent=self,
         )
         self._worker.text_output.connect(self._on_text)
         self._worker.tool_started.connect(self._on_tool_start)
@@ -9031,22 +9454,24 @@ class ClaudeCodePanel(QWidget):
         self._text_buffer += text
 
         # Process complete lines from buffer
-        while '\n' in self._text_buffer:
-            line, self._text_buffer = self._text_buffer.split('\n', 1)
-            self._process_markdown_line(line + '\n')
+        while "\n" in self._text_buffer:
+            line, self._text_buffer = self._text_buffer.split("\n", 1)
+            self._process_markdown_line(line + "\n")
 
     def _process_markdown_line(self, line: str):
         """Process a single line with markdown formatting."""
-        stripped = line.rstrip('\n')
+        stripped = line.rstrip("\n")
 
         # Handle code block start/end
-        if stripped.startswith('```'):
+        if stripped.startswith("```"):
             if self._in_code_block:
                 # End code block - render with shared function
-                code = self._current_code_block.rstrip('\n')
+                code = self._current_code_block.rstrip("\n")
                 self._code_blocks.append(self._current_code_block)
                 code_block_id = len(self._code_blocks) - 1
-                self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+                self._append_raw_html(
+                    _render_code_block_html(code, self._code_block_lang, code_block_id)
+                )
                 self._current_code_block = ""
                 self._in_code_block = False
                 self._code_block_lang = ""
@@ -9065,39 +9490,39 @@ class ClaudeCodePanel(QWidget):
         # Format markdown elements
         html = self._format_markdown(stripped)
         if html:
-            self._append_raw_html(html + '<br>')
+            self._append_raw_html(html + "<br>")
 
     def _format_markdown(self, text: str) -> str:
         """Convert markdown text to HTML."""
         if not text:
-            return ''
+            return ""
 
         # Escape HTML first
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
         # Headers
-        if text.startswith('### '):
+        if text.startswith("### "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 14px; font-weight: bold;">{text[4:]}</span>'
-        if text.startswith('## '):
+        if text.startswith("## "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 15px; font-weight: bold;">{text[3:]}</span>'
-        if text.startswith('# '):
+        if text.startswith("# "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 16px; font-weight: bold;">{text[2:]}</span>'
 
         # Bullet points
-        if text.startswith('- ') or text.startswith('* '):
+        if text.startswith("- ") or text.startswith("* "):
             return f'<span style="color: {Theme.CLAUDE_COLOR};">-</span> {self._format_inline(text[2:])}'
-        if text.startswith('  - ') or text.startswith('  * '):
+        if text.startswith("  - ") or text.startswith("  * "):
             return f'&nbsp;&nbsp;<span style="color: {Theme.TEXT_MUTED};">-</span> {self._format_inline(text[4:])}'
 
         # Numbered lists (supports multi-digit numbers like 10, 11, etc.)
-        num_match = re.match(r'^(\d+)\.\s', text)
+        num_match = re.match(r"^(\d+)\.\s", text)
         if num_match:
             num = num_match.group(1)
-            rest = text[num_match.end():]
+            rest = text[num_match.end() :]
             return f'<span style="color: {Theme.ACCENT_BLUE};">{num}.</span> {self._format_inline(rest)}'
 
         # Blockquotes
-        if text.startswith('> '):
+        if text.startswith("> "):
             return f'<span style="color: {Theme.TEXT_MUTED}; border-left: 2px solid {Theme.CLAUDE_COLOR}; padding-left: 8px; display: inline-block;">{self._format_inline(text[2:])}</span>'
 
         # Regular text with inline formatting
@@ -9109,11 +9534,11 @@ class ClaudeCodePanel(QWidget):
         result = ""
         i = 0
         while i < len(text):
-            if text[i] == '`' and i + 1 < len(text):
+            if text[i] == "`" and i + 1 < len(text):
                 # Find closing backtick
-                end = text.find('`', i + 1)
+                end = text.find("`", i + 1)
                 if end != -1:
-                    code = text[i+1:end]
+                    code = text[i + 1 : end]
                     result += f'<span style="background: {Theme.BG_TERTIARY}; color: {Theme.ACCENT_ORANGE}; padding: 1px 4px; border-radius: 3px; font-family: Menlo, monospace; font-size: 11px;">{code}</span>'
                     i = end + 1
                     continue
@@ -9122,7 +9547,7 @@ class ClaudeCodePanel(QWidget):
         text = result
 
         # Bold **text**
-        parts = text.split('**')
+        parts = text.split("**")
         if len(parts) > 1:
             result = parts[0]
             for i, part in enumerate(parts[1:], 1):
@@ -9133,12 +9558,12 @@ class ClaudeCodePanel(QWidget):
             text = result
 
         # Italic *text* (but not **)
-        parts = re.split(r'(?<!\*)\*(?!\*)', text)
+        parts = re.split(r"(?<!\*)\*(?!\*)", text)
         if len(parts) > 1:
             result = parts[0]
             for i, part in enumerate(parts[1:], 1):
                 if i % 2 == 1:
-                    result += f'<i>{part}</i>'
+                    result += f"<i>{part}</i>"
                 else:
                     result += part
             text = result
@@ -9210,8 +9635,8 @@ class ClaudeCodePanel(QWidget):
         new_string = input_data.get("new_string", "")
 
         # Count lines changed
-        old_lines = old_string.split('\n') if old_string else []
-        new_lines = new_string.split('\n') if new_string else []
+        old_lines = old_string.split("\n") if old_string else []
+        new_lines = new_string.split("\n") if new_string else []
         removed = len(old_lines)
         added = len(new_lines)
 
@@ -9223,36 +9648,42 @@ class ClaudeCodePanel(QWidget):
         max_context_lines = 10
         if old_lines or new_lines:
             # Show removed lines (red with -)
-            for i, line in enumerate(old_lines[:max_context_lines]):
-                escaped = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            for _i, line in enumerate(old_lines[:max_context_lines]):
+                escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 self._append_output(f"    - {escaped}\n", Theme.ERROR)
             if len(old_lines) > max_context_lines:
-                self._append_output(f"    ... ({len(old_lines) - max_context_lines} more lines)\n", Theme.TEXT_MUTED)
+                self._append_output(
+                    f"    ... ({len(old_lines) - max_context_lines} more lines)\n", Theme.TEXT_MUTED
+                )
 
             # Show added lines (green with +)
-            for i, line in enumerate(new_lines[:max_context_lines]):
-                escaped = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            for _i, line in enumerate(new_lines[:max_context_lines]):
+                escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 self._append_output(f"    + {escaped}\n", Theme.SUCCESS)
             if len(new_lines) > max_context_lines:
-                self._append_output(f"    ... ({len(new_lines) - max_context_lines} more lines)\n", Theme.TEXT_MUTED)
+                self._append_output(
+                    f"    ... ({len(new_lines) - max_context_lines} more lines)\n", Theme.TEXT_MUTED
+                )
 
     def _display_write_info(self, input_data: dict):
         """Display info for Write tool."""
         file_path = input_data.get("file_path", "unknown")
         content = input_data.get("content", "")
-        lines = len(content.split('\n')) if content else 0
+        lines = len(content.split("\n")) if content else 0
 
         self._append_output(f"\n> Write({file_path})\n", Theme.CLAUDE_COLOR)
         self._append_output(f"  | Writing {lines} lines\n", Theme.TEXT_MUTED)
 
         # Show preview of content
         if content:
-            preview_lines = content.split('\n')[:5]
+            preview_lines = content.split("\n")[:5]
             for line in preview_lines:
-                escaped = line.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                escaped = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 self._append_output(f"    {escaped}\n", Theme.TEXT_MUTED)
-            if len(content.split('\n')) > 5:
-                self._append_output(f"    ... ({len(content.split(chr(10))) - 5} more lines)\n", Theme.TEXT_MUTED)
+            if len(content.split("\n")) > 5:
+                self._append_output(
+                    f"    ... ({len(content.split(chr(10))) - 5} more lines)\n", Theme.TEXT_MUTED
+                )
 
     def _display_read_info(self, input_data: dict):
         """Display info for Read tool."""
@@ -9273,7 +9704,7 @@ class ClaudeCodePanel(QWidget):
 
         # Show full command
         if command:
-            escaped = command.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            escaped = command.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             self._append_output(f"  | {escaped}\n", Theme.TEXT_MUTED)
 
     @Slot(dict)
@@ -9296,10 +9727,12 @@ class ClaudeCodePanel(QWidget):
             self._text_buffer = ""
         # Render any unclosed code block
         if self._in_code_block:
-            code = self._current_code_block.rstrip('\n')
+            code = self._current_code_block.rstrip("\n")
             self._code_blocks.append(self._current_code_block)
             code_block_id = len(self._code_blocks) - 1
-            self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+            self._append_raw_html(
+                _render_code_block_html(code, self._code_block_lang, code_block_id)
+            )
             self._current_code_block = ""
             self._in_code_block = False
             self._code_block_lang = ""
@@ -9375,11 +9808,11 @@ class ClaudeCodePanel(QWidget):
         cursor.movePosition(cursor.MoveOperation.End)
         if color:
             # Escape HTML and handle newlines
-            escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            escaped = escaped.replace('\n', '<br>')
+            escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            escaped = escaped.replace("\n", "<br>")
             cursor.insertHtml(f'<span style="color: {color};">{escaped}</span>')
         else:
-            cursor.insertHtml(text.replace('\n', '<br>'))
+            cursor.insertHtml(text.replace("\n", "<br>"))
         self.output.setTextCursor(cursor)
         self.output.ensureCursorVisible()
 
@@ -9404,6 +9837,7 @@ class ClaudeCodePanel(QWidget):
 # ============================================================================
 # Cisco Code Panel - Same UI as ClaudeCodePanel for Cisco AI
 # ============================================================================
+
 
 class CiscoCodePanel(QWidget):
     """Cisco AI panel with Claude Code-style terminal interface.
@@ -9445,7 +9879,9 @@ class CiscoCodePanel(QWidget):
         # Header
         header = QWidget()
         header.setFixedHeight(36)
-        header.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};")
+        header.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-bottom: 1px solid {Theme.BORDER};"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(DesignTokens.SPACING_XL, 0, DesignTokens.SPACING_LG, 0)
         header_layout.setSpacing(DesignTokens.SPACING_MD)
@@ -9454,7 +9890,9 @@ class CiscoCodePanel(QWidget):
         header_layout.addWidget(self.status_dot)
 
         self.status_label = QLabel("Circuit AI")
-        self.status_label.setStyleSheet(f"color: {Theme.CIRCUIT_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;")
+        self.status_label.setStyleSheet(
+            f"color: {Theme.CIRCUIT_COLOR}; font-size: {DesignTokens.FONT_SIZE_MD}px; font-weight: 600;"
+        )
         header_layout.addWidget(self.status_label)
 
         header_layout.addStretch()
@@ -9487,13 +9925,17 @@ class CiscoCodePanel(QWidget):
         # Status bar (visible while processing)
         self.status_bar = QWidget()
         self.status_bar.setFixedHeight(28)
-        self.status_bar.setStyleSheet(f"background: {Theme.BG_TERTIARY}; border-top: 1px solid {Theme.BORDER};")
+        self.status_bar.setStyleSheet(
+            f"background: {Theme.BG_TERTIARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         status_layout = QHBoxLayout(self.status_bar)
         status_layout.setContentsMargins(12, 0, 12, 0)
         status_layout.setSpacing(8)
 
         self.spinner_label = QLabel("|")
-        self.spinner_label.setStyleSheet(f"color: {Theme.ACCENT_BLUE}; font-size: 14px; font-family: monospace;")
+        self.spinner_label.setStyleSheet(
+            f"color: {Theme.ACCENT_BLUE}; font-size: 14px; font-family: monospace;"
+        )
         self.spinner_label.setFixedWidth(16)
         status_layout.addWidget(self.spinner_label)
 
@@ -9516,9 +9958,16 @@ class CiscoCodePanel(QWidget):
 
         # Input area
         input_container = QWidget()
-        input_container.setStyleSheet(f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};")
+        input_container.setStyleSheet(
+            f"background: {Theme.BG_SECONDARY}; border-top: 1px solid {Theme.BORDER};"
+        )
         input_layout = QHBoxLayout(input_container)
-        input_layout.setContentsMargins(DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG, DesignTokens.SPACING_LG)
+        input_layout.setContentsMargins(
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+            DesignTokens.SPACING_LG,
+        )
         input_layout.setSpacing(DesignTokens.SPACING_MD)
 
         self.input_field = CompactLineEdit("")
@@ -9566,7 +10015,9 @@ class CiscoCodePanel(QWidget):
         if connected:
             self.status_label.setText("Circuit AI - Ready")
             self.status_dot.set_color(Theme.SUCCESS)
-            self._append_output("Circuit AI connected and ready. Type a message to begin.\n", Theme.TEXT_MUTED)
+            self._append_output(
+                "Circuit AI connected and ready. Type a message to begin.\n", Theme.TEXT_MUTED
+            )
         else:
             self.status_label.setText("Circuit AI - Disconnected")
             self.status_dot.set_color(Theme.TEXT_MUTED)
@@ -9592,14 +10043,14 @@ class CiscoCodePanel(QWidget):
         self.input_field.clear()
 
         # Show user message as styled card
-        escaped_text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        escaped_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
         DT = DesignTokens
         self._append_raw_html(
             f'<div style="background: {Theme.USER_MSG_BG}; border-radius: {DT.RADIUS_MD}px; '
             f'padding: {DT.SPACING_LG}px {DT.SPACING_XL}px; margin: {DT.SPACING_MD}px 0 {DT.SPACING_MD}px 40px;">'
             f'<div style="color: {Theme.TEXT_MUTED}; font-size: {DT.FONT_SIZE_SM}px; margin-bottom: {DT.SPACING_SM}px;">You</div>'
             f'<div style="color: {Theme.TEXT_PRIMARY}; font-size: {DT.FONT_SIZE_MD}px;">{escaped_text}</div>'
-            f'</div><br>'
+            f"</div><br>"
         )
 
         # Update status
@@ -9630,9 +10081,9 @@ class CiscoCodePanel(QWidget):
         self._text_buffer += chunk
 
         # Process complete lines from buffer
-        while '\n' in self._text_buffer:
-            line, self._text_buffer = self._text_buffer.split('\n', 1)
-            self._process_markdown_line(line + '\n')
+        while "\n" in self._text_buffer:
+            line, self._text_buffer = self._text_buffer.split("\n", 1)
+            self._process_markdown_line(line + "\n")
 
     @Slot(str, str, str)
     def on_tool_call(self, name: str, detail: str, status: str):
@@ -9659,10 +10110,12 @@ class CiscoCodePanel(QWidget):
             self._text_buffer = ""
         # Render any unclosed code block
         if self._in_code_block:
-            code = self._current_code_block.rstrip('\n')
+            code = self._current_code_block.rstrip("\n")
             self._code_blocks.append(self._current_code_block)
             code_block_id = len(self._code_blocks) - 1
-            self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+            self._append_raw_html(
+                _render_code_block_html(code, self._code_block_lang, code_block_id)
+            )
             self._current_code_block = ""
             self._in_code_block = False
             self._code_block_lang = ""
@@ -9715,16 +10168,18 @@ class CiscoCodePanel(QWidget):
 
     def _process_markdown_line(self, line: str):
         """Process a single line with markdown formatting."""
-        stripped = line.rstrip('\n')
+        stripped = line.rstrip("\n")
 
         # Handle code block start/end
-        if stripped.startswith('```'):
+        if stripped.startswith("```"):
             if self._in_code_block:
                 # End code block - render with shared function
-                code = self._current_code_block.rstrip('\n')
+                code = self._current_code_block.rstrip("\n")
                 self._code_blocks.append(self._current_code_block)
                 code_block_id = len(self._code_blocks) - 1
-                self._append_raw_html(_render_code_block_html(code, self._code_block_lang, code_block_id))
+                self._append_raw_html(
+                    _render_code_block_html(code, self._code_block_lang, code_block_id)
+                )
                 self._current_code_block = ""
                 self._in_code_block = False
                 self._code_block_lang = ""
@@ -9743,39 +10198,39 @@ class CiscoCodePanel(QWidget):
         # Format markdown elements
         html = self._format_markdown(stripped)
         if html:
-            self._append_raw_html(html + '<br>')
+            self._append_raw_html(html + "<br>")
 
     def _format_markdown(self, text: str) -> str:
         """Convert markdown text to HTML."""
         if not text:
-            return ''
+            return ""
 
         # Escape HTML first
-        text = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+        text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
         # Headers
-        if text.startswith('### '):
+        if text.startswith("### "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 14px; font-weight: bold;">{text[4:]}</span>'
-        if text.startswith('## '):
+        if text.startswith("## "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 15px; font-weight: bold;">{text[3:]}</span>'
-        if text.startswith('# '):
+        if text.startswith("# "):
             return f'<span style="color: {Theme.TEXT_PRIMARY}; font-size: 16px; font-weight: bold;">{text[2:]}</span>'
 
         # Bullet points
-        if text.startswith('- ') or text.startswith('* '):
+        if text.startswith("- ") or text.startswith("* "):
             return f'<span style="color: {Theme.CIRCUIT_COLOR};">-</span> {self._format_inline(text[2:])}'
-        if text.startswith('  - ') or text.startswith('  * '):
+        if text.startswith("  - ") or text.startswith("  * "):
             return f'&nbsp;&nbsp;<span style="color: {Theme.TEXT_MUTED};">-</span> {self._format_inline(text[4:])}'
 
         # Numbered lists (supports multi-digit numbers like 10, 11, etc.)
-        num_match = re.match(r'^(\d+)\.\s', text)
+        num_match = re.match(r"^(\d+)\.\s", text)
         if num_match:
             num = num_match.group(1)
-            rest = text[num_match.end():]
+            rest = text[num_match.end() :]
             return f'<span style="color: {Theme.CIRCUIT_COLOR};">{num}.</span> {self._format_inline(rest)}'
 
         # Blockquotes
-        if text.startswith('> '):
+        if text.startswith("> "):
             return f'<span style="color: {Theme.TEXT_MUTED}; border-left: 2px solid {Theme.CIRCUIT_COLOR}; padding-left: 8px; display: inline-block;">{self._format_inline(text[2:])}</span>'
 
         # Regular text with inline formatting
@@ -9787,11 +10242,11 @@ class CiscoCodePanel(QWidget):
         result = ""
         i = 0
         while i < len(text):
-            if text[i] == '`' and i + 1 < len(text):
+            if text[i] == "`" and i + 1 < len(text):
                 # Find closing backtick
-                end = text.find('`', i + 1)
+                end = text.find("`", i + 1)
                 if end != -1:
-                    code = text[i+1:end]
+                    code = text[i + 1 : end]
                     result += f'<span style="background: {Theme.BG_TERTIARY}; color: {Theme.ACCENT_ORANGE}; padding: 1px 4px; border-radius: 3px; font-family: Menlo, monospace; font-size: 11px;">{code}</span>'
                     i = end + 1
                     continue
@@ -9800,7 +10255,7 @@ class CiscoCodePanel(QWidget):
         text = result
 
         # Bold **text**
-        parts = text.split('**')
+        parts = text.split("**")
         if len(parts) > 1:
             result = parts[0]
             for i, part in enumerate(parts[1:], 1):
@@ -9811,12 +10266,12 @@ class CiscoCodePanel(QWidget):
             text = result
 
         # Italic *text* (but not **)
-        parts = re.split(r'(?<!\*)\*(?!\*)', text)
+        parts = re.split(r"(?<!\*)\*(?!\*)", text)
         if len(parts) > 1:
             result = parts[0]
             for i, part in enumerate(parts[1:], 1):
                 if i % 2 == 1:
-                    result += f'<i>{part}</i>'
+                    result += f"<i>{part}</i>"
                 else:
                     result += part
             text = result
@@ -9879,11 +10334,11 @@ class CiscoCodePanel(QWidget):
         cursor.movePosition(cursor.MoveOperation.End)
         if color:
             # Escape HTML and handle newlines
-            escaped = text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            escaped = escaped.replace('\n', '<br>')
+            escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            escaped = escaped.replace("\n", "<br>")
             cursor.insertHtml(f'<span style="color: {color};">{escaped}</span>')
         else:
-            cursor.insertHtml(text.replace('\n', '<br>'))
+            cursor.insertHtml(text.replace("\n", "<br>"))
         self.output.setTextCursor(cursor)
         self.output.ensureCursorVisible()
 
@@ -9906,6 +10361,7 @@ class CiscoCodePanel(QWidget):
 # ============================================================================
 # Agent Worker
 # ============================================================================
+
 
 class AgentWorker(QObject):
     """Background worker for agent operations with persistent event loop.
@@ -9983,7 +10439,9 @@ class AgentWorker(QObject):
 
             self.service = AgentService(
                 working_dir=working_dir,
-                model=self.model if self.model in ["gpt-4.1", "gpt-4o", "gpt-4o-mini", "o4-mini", "o1"] else "gpt-4.1",
+                model=self.model
+                if self.model in ["gpt-4.1", "gpt-4o", "gpt-4o-mini", "o4-mini", "o1"]
+                else "gpt-4.1",
                 auto_approve=False,
             )
 
@@ -10017,9 +10475,12 @@ class AgentWorker(QObject):
             # Try to import anthropic
             try:
                 import anthropic
+
                 self.anthropic_client = anthropic.Anthropic(api_key=api_key)
             except ImportError:
-                self.service_ready.emit(False, "anthropic package not installed. Run: pip install anthropic")
+                self.service_ready.emit(
+                    False, "anthropic package not installed. Run: pip install anthropic"
+                )
                 return
 
             self._conversation_history = []
@@ -10087,8 +10548,7 @@ class AgentWorker(QObject):
         def do_connect():
             try:
                 future = asyncio.run_coroutine_threadsafe(
-                    self.service.connect_with_saved_credentials(),
-                    self._loop
+                    self.service.connect_with_saved_credentials(), self._loop
                 )
                 result = future.result(timeout=30)
 
@@ -10117,6 +10577,7 @@ class AgentWorker(QObject):
             try:
                 # Simple API call to verify key works
                 import httpx
+
                 from circuit_agent.config import load_anthropic_key
 
                 api_key = load_anthropic_key()
@@ -10126,7 +10587,7 @@ class AgentWorker(QObject):
                         headers={
                             "x-api-key": api_key,
                             "anthropic-version": "2023-06-01",
-                        }
+                        },
                     )
                     if response.status_code == 200:
                         self.connected.emit(True, "")
@@ -10144,7 +10605,7 @@ class AgentWorker(QObject):
 
         def do_reinit():
             try:
-                from circuit_agent.config import load_github_pat, load_github_mcp_config
+                from circuit_agent.config import load_github_mcp_config, load_github_pat
                 from circuit_agent.mcp.servers.github import GitHubMCPServer
 
                 # Get current config
@@ -10153,13 +10614,13 @@ class AgentWorker(QObject):
 
                 if not github_config.get("enabled") or not github_pat:
                     # Disconnect if disabled
-                    if self.service and hasattr(self.service, '_agent') and self.service._agent:
+                    if self.service and hasattr(self.service, "_agent") and self.service._agent:
                         self.service._agent.disconnect_mcp("github")
                     self.mcp_status.emit(False, "github", 0)
                     return
 
                 # Connect to GitHub MCP
-                if self.service and hasattr(self.service, '_agent') and self.service._agent:
+                if self.service and hasattr(self.service, "_agent") and self.service._agent:
                     agent = self.service._agent
                     toolsets = github_config.get("toolsets", [])
 
@@ -10168,9 +10629,7 @@ class AgentWorker(QObject):
 
                     # Create new config
                     config = GitHubMCPServer.get_remote_config(
-                        pat=github_pat,
-                        toolsets=toolsets,
-                        enabled=True
+                        pat=github_pat, toolsets=toolsets, enabled=True
                     )
 
                     # Connect
@@ -10182,7 +10641,7 @@ class AgentWorker(QObject):
                     else:
                         self.mcp_status.emit(False, "github", 0)
 
-            except Exception as e:
+            except Exception:
                 self.mcp_status.emit(False, "github", 0)
 
         threading.Thread(target=do_reinit, daemon=True).start()
@@ -10208,8 +10667,7 @@ class AgentWorker(QObject):
         def do_send():
             try:
                 future = asyncio.run_coroutine_threadsafe(
-                    self.service.send_message(text),
-                    self._loop
+                    self.service.send_message(text), self._loop
                 )
                 response = future.result(timeout=300)
 
@@ -10218,8 +10676,7 @@ class AgentWorker(QObject):
                     stats = self.service.get_token_stats()
                     costs = self.service.get_cost_stats()
                     self.stats_updated.emit(
-                        stats.get("session_total", 0),
-                        costs.get("total_cost_usd", 0)
+                        stats.get("session_total", 0), costs.get("total_cost_usd", 0)
                     )
                 else:
                     if self.service.state.error:
@@ -10243,10 +10700,7 @@ class AgentWorker(QObject):
         def do_send():
             try:
                 # Add user message to history
-                self._conversation_history.append({
-                    "role": "user",
-                    "content": text
-                })
+                self._conversation_history.append({"role": "user", "content": text})
 
                 # Create system prompt
                 system_prompt = f"""You are an AI coding assistant helping with a software project.
@@ -10271,10 +10725,7 @@ Be helpful, concise, and provide code examples when relevant."""
                 final_message = stream.get_final_message()
 
                 # Add assistant response to history
-                self._conversation_history.append({
-                    "role": "assistant",
-                    "content": full_response
-                })
+                self._conversation_history.append({"role": "assistant", "content": full_response})
 
                 # Calculate tokens and cost
                 input_tokens = final_message.usage.input_tokens
@@ -10317,13 +10768,12 @@ Be helpful, concise, and provide code examples when relevant."""
         """Respond to a tool confirmation request."""
         if self.service and self._loop and self._running:
             asyncio.run_coroutine_threadsafe(
-                self._do_respond_confirmation(confirm_id, approved),
-                self._loop
+                self._do_respond_confirmation(confirm_id, approved), self._loop
             )
 
     async def _do_respond_confirmation(self, confirm_id: str, approved: bool):
         """Actually respond to confirmation (runs in event loop)."""
-        if hasattr(self.service, 'respond_to_confirmation'):
+        if hasattr(self.service, "respond_to_confirmation"):
             await self.service.respond_to_confirmation(confirm_id, approved)
 
     def clear_conversation(self):
@@ -10336,6 +10786,7 @@ Be helpful, concise, and provide code examples when relevant."""
 # ============================================================================
 # Enhanced Status Bar
 # ============================================================================
+
 
 class StatusBarItem(QPushButton):
     """Clickable status bar item with hover effects."""
@@ -10526,6 +10977,7 @@ class EnhancedStatusBar(QWidget):
 # ============================================================================
 # Main Window
 # ============================================================================
+
 
 class CircuitIDEWindow(QMainWindow):
     """Main application window."""
@@ -10764,13 +11216,17 @@ class CircuitIDEWindow(QMainWindow):
 
         # Additional shortcuts
         QShortcut(QKeySequence("Ctrl+Shift+E"), self).activated.connect(
-            lambda: self._on_view_changed("files"))
+            lambda: self._on_view_changed("files")
+        )
         QShortcut(QKeySequence("Ctrl+Shift+F"), self).activated.connect(
-            lambda: self._on_view_changed("search"))
+            lambda: self._on_view_changed("search")
+        )
         QShortcut(QKeySequence("Ctrl+Shift+G"), self).activated.connect(
-            lambda: self._on_view_changed("git"))
+            lambda: self._on_view_changed("git")
+        )
         QShortcut(QKeySequence("Ctrl+,"), self).activated.connect(
-            lambda: self._on_view_changed("settings"))
+            lambda: self._on_view_changed("settings")
+        )
 
     def _show_command_palette(self):
         """Show the command palette."""
@@ -10825,7 +11281,7 @@ class CircuitIDEWindow(QMainWindow):
         """Save all open files."""
         for i in range(self.editor_tabs.count()):
             widget = self.editor_tabs.widget(i)
-            if hasattr(widget, 'save'):
+            if hasattr(widget, "save"):
                 widget.save()
 
     def _close_current_tab(self):
@@ -10837,35 +11293,35 @@ class CircuitIDEWindow(QMainWindow):
     def _undo(self):
         """Undo in current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'undo'):
+        if hasattr(current, "undo"):
             current.undo()
 
     def _redo(self):
         """Redo in current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'redo'):
+        if hasattr(current, "redo"):
             current.redo()
 
     def _show_find(self):
         """Show find dialog in current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'show_find'):
+        if hasattr(current, "show_find"):
             current.show_find()
 
     def _show_replace(self):
         """Show find and replace dialog."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'show_replace'):
+        if hasattr(current, "show_replace"):
             current.show_replace()
 
     def _clear_terminal(self):
         """Clear terminal output."""
-        if hasattr(self, 'terminal_panel'):
+        if hasattr(self, "terminal_panel"):
             self.terminal_panel._clear_terminal()
 
     def _restart_terminal(self):
         """Restart the terminal shell."""
-        if hasattr(self, 'terminal_panel'):
+        if hasattr(self, "terminal_panel"):
             self.terminal_panel._restart_shell()
 
     def _git_commit(self):
@@ -10874,13 +11330,13 @@ class CircuitIDEWindow(QMainWindow):
 
     def _git_push(self):
         """Git push."""
-        if hasattr(self, 'terminal_panel'):
-            self.terminal_panel.shell.write(b'git push\n')
+        if hasattr(self, "terminal_panel"):
+            self.terminal_panel.shell.write(b"git push\n")
 
     def _git_pull(self):
         """Git pull."""
-        if hasattr(self, 'terminal_panel'):
-            self.terminal_panel.shell.write(b'git pull\n')
+        if hasattr(self, "terminal_panel"):
+            self.terminal_panel.shell.write(b"git pull\n")
 
     def _split_editor_right(self):
         """Split editor horizontally (side by side)."""
@@ -10901,19 +11357,19 @@ class CircuitIDEWindow(QMainWindow):
     def _toggle_blame(self):
         """Toggle git blame view on the current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'toggle_blame'):
+        if hasattr(current, "toggle_blame"):
             current.toggle_blame()
 
     def _fold_all(self):
         """Fold all collapsible regions in the current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'fold_all'):
+        if hasattr(current, "fold_all"):
             current.fold_all()
 
     def _unfold_all(self):
         """Unfold all collapsed regions in the current editor."""
         current = self.editor_tabs.currentWidget()
-        if hasattr(current, 'unfold_all'):
+        if hasattr(current, "unfold_all"):
             current.unfold_all()
 
     def _open_folder(self):
@@ -10949,6 +11405,7 @@ class CircuitIDEWindow(QMainWindow):
         # Load provider preference and initialize appropriate agent
         try:
             from circuit_agent.config import load_provider_preference
+
             provider = load_provider_preference()
         except ImportError:
             provider = "cisco"
@@ -10977,7 +11434,7 @@ class CircuitIDEWindow(QMainWindow):
                 cwd=str(self.project_dir),
                 capture_output=True,
                 text=True,
-                timeout=2
+                timeout=2,
             )
             if result.returncode == 0:
                 branch = result.stdout.strip()
@@ -11020,6 +11477,7 @@ class CircuitIDEWindow(QMainWindow):
         if provider is None:
             try:
                 from circuit_agent.config import load_provider_preference
+
                 provider = load_provider_preference()
             except ImportError:
                 provider = "cisco"
@@ -11031,11 +11489,11 @@ class CircuitIDEWindow(QMainWindow):
                 self.send_message_signal.disconnect(self.worker.send_message)
             except (RuntimeError, TypeError):
                 pass
-            if hasattr(self.worker, 'stop_event_loop'):
+            if hasattr(self.worker, "stop_event_loop"):
                 self.worker.stop_event_loop()
             self.worker = None
 
-        if hasattr(self, 'worker_thread') and self.worker_thread:
+        if hasattr(self, "worker_thread") and self.worker_thread:
             try:
                 self.worker_thread.quit()
                 self.worker_thread.wait(1000)  # Wait up to 1 second
@@ -11071,7 +11529,9 @@ class CircuitIDEWindow(QMainWindow):
             self.enhanced_status.set_message("Connecting to agent...")
             QTimer.singleShot(100, self.worker.connect_agent)
         else:
-            self.cisco_code_panel._append_output(f"Service initialization failed: {error}\n", Theme.ERROR)
+            self.cisco_code_panel._append_output(
+                f"Service initialization failed: {error}\n", Theme.ERROR
+            )
             self.enhanced_status.set_message(f"Error: {error[:50]}")
             self.cisco_code_panel.set_connected(False)
             self.agent_panel.set_connected(False, None)
@@ -11108,9 +11568,9 @@ class CircuitIDEWindow(QMainWindow):
         """Display confirmation dialog for dangerous operations."""
         from PySide6.QtWidgets import QMessageBox
 
-        tool_name = request.tool_call.name if hasattr(request, 'tool_call') else "Unknown"
-        details = request.details if hasattr(request, 'details') else ""
-        is_dangerous = request.is_dangerous if hasattr(request, 'is_dangerous') else False
+        tool_name = request.tool_call.name if hasattr(request, "tool_call") else "Unknown"
+        details = request.details if hasattr(request, "details") else ""
+        is_dangerous = request.is_dangerous if hasattr(request, "is_dangerous") else False
 
         msg = QMessageBox(self)
         msg.setWindowTitle("Confirm Action")
@@ -11123,13 +11583,15 @@ class CircuitIDEWindow(QMainWindow):
             msg.setIcon(QMessageBox.Icon.Question)
 
         msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg.setDefaultButton(QMessageBox.StandardButton.No if is_dangerous else QMessageBox.StandardButton.Yes)
+        msg.setDefaultButton(
+            QMessageBox.StandardButton.No if is_dangerous else QMessageBox.StandardButton.Yes
+        )
 
         result = msg.exec()
         approved = result == QMessageBox.StandardButton.Yes
 
         # Send response back to worker
-        if self.worker and hasattr(request, 'id'):
+        if self.worker and hasattr(request, "id"):
             self.worker.respond_to_confirmation(request.id, approved)
 
     @Slot(str)
@@ -11223,7 +11685,7 @@ class CircuitIDEWindow(QMainWindow):
         for i in range(self.editor_tabs.count()):
             tab_widget = self.editor_tabs.widget(i)
             # Check if this is a container with our panel
-            if hasattr(tab_widget, 'panel_name') and tab_widget.panel_name == panel_name:
+            if hasattr(tab_widget, "panel_name") and tab_widget.panel_name == panel_name:
                 self.editor_tabs.setCurrentIndex(i)
                 if panel_name == "git" and self.project_dir:
                     try:
@@ -11301,13 +11763,13 @@ class CircuitIDEWindow(QMainWindow):
     def _on_tab_changed(self, index: int):
         """Handle tab change - update status bar with file info."""
         # Guard against being called before UI is fully set up
-        if not hasattr(self, 'enhanced_status'):
+        if not hasattr(self, "enhanced_status"):
             return
 
         widget = self.editor_tabs.widget(index)
 
         # Check if this is a panel tab (settings, git, agent)
-        if hasattr(widget, 'panel_name'):
+        if hasattr(widget, "panel_name"):
             panel_types = {
                 "settings": "Settings",
                 "git": "Source Control",
@@ -11350,7 +11812,7 @@ class CircuitIDEWindow(QMainWindow):
             # Connect cursor position signal for this editor
             try:
                 widget.cursor_position_changed.disconnect(self._on_cursor_position)
-            except:
+            except Exception:
                 pass
             widget.cursor_position_changed.connect(self._on_cursor_position)
 
@@ -11400,7 +11862,7 @@ class CircuitIDEWindow(QMainWindow):
                 # Stop the Cisco agent worker if running
                 if self.worker:
                     try:
-                        if hasattr(self.worker, 'stop_event_loop'):
+                        if hasattr(self.worker, "stop_event_loop"):
                             self.worker.stop_event_loop()
                     except Exception:
                         pass
@@ -11416,7 +11878,9 @@ class CircuitIDEWindow(QMainWindow):
                 # Update status
                 try:
                     self.enhanced_status.set_agent_status(True, "Claude Code")
-                    self.agent_panel.set_connected(True, str(self.project_dir) if self.project_dir else None)
+                    self.agent_panel.set_connected(
+                        True, str(self.project_dir) if self.project_dir else None
+                    )
                 except Exception:
                     pass
             else:
@@ -11435,7 +11899,9 @@ class CircuitIDEWindow(QMainWindow):
                     self.agent_panel.set_connected(False, None)
                     self.agent_panel.reset_session()  # Reset stats for new session
                     self.cisco_code_panel.clear()
-                    self.cisco_code_panel._append_output(f"Switching to {provider_name}...\n", Theme.TEXT_MUTED)
+                    self.cisco_code_panel._append_output(
+                        f"Switching to {provider_name}...\n", Theme.TEXT_MUTED
+                    )
                 except Exception:
                     pass
 
@@ -11459,16 +11925,22 @@ class CircuitIDEWindow(QMainWindow):
     def _on_cisco_message(self, text: str):
         """Handle message sent from CiscoCodePanel."""
         if not self.project_dir:
-            self.cisco_code_panel.on_error("Please open a project folder first to use the AI assistant.\n\nUse File > Open Folder or click 'Open Folder' on the welcome screen.")
+            self.cisco_code_panel.on_error(
+                "Please open a project folder first to use the AI assistant.\n\nUse File > Open Folder or click 'Open Folder' on the welcome screen."
+            )
             return
 
         # Check if worker is initialized (either Cisco service or Anthropic client)
         if not self.worker:
-            self.cisco_code_panel.on_error("AI agent not initialized. Please open a project folder first.")
+            self.cisco_code_panel.on_error(
+                "AI agent not initialized. Please open a project folder first."
+            )
             return
 
         if not self.worker.service and not self.worker.anthropic_client:
-            self.cisco_code_panel.on_error("AI agent not connected. Check your credentials in Settings.")
+            self.cisco_code_panel.on_error(
+                "AI agent not connected. Check your credentials in Settings."
+            )
             return
 
         self.enhanced_status.set_message("Processing...")
@@ -11478,7 +11950,7 @@ class CircuitIDEWindow(QMainWindow):
     def _insert_code_to_editor(self, code: str):
         """Insert code from a chat code block into the active editor at cursor."""
         widget = self.editor_tabs.currentWidget()
-        if widget and hasattr(widget, 'editor'):
+        if widget and hasattr(widget, "editor"):
             editor = widget.editor
             cursor = editor.textCursor()
             cursor.insertText(code)
@@ -11516,14 +11988,14 @@ class CircuitIDEWindow(QMainWindow):
 
     def closeEvent(self, event):
         # Cleanup all panels with resources
-        if hasattr(self, 'claude_code_panel'):
+        if hasattr(self, "claude_code_panel"):
             self.claude_code_panel.stop_claude()
             self.claude_code_panel.cleanup()
 
-        if hasattr(self, 'cisco_code_panel'):
+        if hasattr(self, "cisco_code_panel"):
             self.cisco_code_panel.cleanup()
 
-        if hasattr(self, 'terminal_panel'):
+        if hasattr(self, "terminal_panel"):
             self.terminal_panel.cleanup()
 
         # Stop the agent worker's event loop
@@ -11541,6 +12013,7 @@ class CircuitIDEWindow(QMainWindow):
 # ============================================================================
 # Main
 # ============================================================================
+
 
 def main():
     app = QApplication(sys.argv)

@@ -7,14 +7,15 @@ import re
 import shlex
 import subprocess
 import time
-from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
 from difflib import get_close_matches
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from .config import DANGEROUS_PATTERNS
 
 # Shell metacharacters that require shell=True
-SHELL_METACHARACTERS = set('|;&$`><(){}[]!*?~')
+SHELL_METACHARACTERS = set("|;&$`><(){}[]!*?~")
+
 
 def _needs_shell(command: str) -> bool:
     """Check if command contains shell metacharacters requiring shell=True."""
@@ -23,16 +24,17 @@ def _needs_shell(command: str) -> bool:
             return True
     return False
 
+
 def _sanitize_command(command: str) -> str:
     """Sanitize command string to prevent injection attacks."""
     dangerous_subst = [
-        r'\$\([^)]+\)',      # $(command)
-        r'`[^`]+`',          # `command`
-        r'\$\{[^}]+\}',      # ${variable} expansion
+        r"\$\([^)]+\)",  # $(command)
+        r"`[^`]+`",  # `command`
+        r"\$\{[^}]+\}",  # ${variable} expansion
     ]
     for pattern in dangerous_subst:
         if re.search(pattern, command):
-            raise ValueError(f"Command substitution not allowed for security reasons")
+            raise ValueError("Command substitution not allowed for security reasons")
     return command
 
 
@@ -48,20 +50,20 @@ TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "start_line": {
                         "type": "integer",
-                        "description": "Optional: Start reading from this line number (1-indexed)"
+                        "description": "Optional: Start reading from this line number (1-indexed)",
                     },
                     "end_line": {
                         "type": "integer",
-                        "description": "Optional: Stop reading at this line number (inclusive)"
-                    }
+                        "description": "Optional: Stop reading at this line number (inclusive)",
+                    },
                 },
-                "required": ["path"]
-            }
-        }
+                "required": ["path"],
+            },
+        },
     },
     {
         "type": "function",
@@ -73,16 +75,16 @@ TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "content": {
                         "type": "string",
-                        "description": "The content to write to the file"
-                    }
+                        "description": "The content to write to the file",
+                    },
                 },
-                "required": ["path", "content"]
-            }
-        }
+                "required": ["path", "content"],
+            },
+        },
     },
     {
         "type": "function",
@@ -94,20 +96,17 @@ TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "File path relative to the working directory"
+                        "description": "File path relative to the working directory",
                     },
                     "old_text": {
                         "type": "string",
-                        "description": "The exact text to find and replace (must match exactly including whitespace)"
+                        "description": "The exact text to find and replace (must match exactly including whitespace)",
                     },
-                    "new_text": {
-                        "type": "string",
-                        "description": "The text to replace it with"
-                    }
+                    "new_text": {"type": "string", "description": "The text to replace it with"},
                 },
-                "required": ["path", "old_text", "new_text"]
-            }
-        }
+                "required": ["path", "old_text", "new_text"],
+            },
+        },
     },
     {
         "type": "function",
@@ -119,12 +118,12 @@ TOOLS = [
                 "properties": {
                     "pattern": {
                         "type": "string",
-                        "description": "Glob pattern (e.g., '**/*.py', 'src/**/*.ts', '*.json')"
+                        "description": "Glob pattern (e.g., '**/*.py', 'src/**/*.ts', '*.json')",
                     }
                 },
-                "required": ["pattern"]
-            }
-        }
+                "required": ["pattern"],
+            },
+        },
     },
     {
         "type": "function",
@@ -134,24 +133,21 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "pattern": {
-                        "type": "string",
-                        "description": "Regex pattern to search for"
-                    },
+                    "pattern": {"type": "string", "description": "Regex pattern to search for"},
                     "file_pattern": {
                         "type": "string",
                         "description": "Optional glob pattern to filter files (e.g., '**/*.py'). Defaults to all files.",
-                        "default": "**/*"
+                        "default": "**/*",
                     },
                     "case_sensitive": {
                         "type": "boolean",
                         "description": "Whether search is case-sensitive. Defaults to false.",
-                        "default": False
-                    }
+                        "default": False,
+                    },
                 },
-                "required": ["pattern"]
-            }
-        }
+                "required": ["pattern"],
+            },
+        },
     },
     {
         "type": "function",
@@ -161,19 +157,16 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "command": {
-                        "type": "string",
-                        "description": "The shell command to execute"
-                    },
+                    "command": {"type": "string", "description": "The shell command to execute"},
                     "timeout": {
                         "type": "integer",
                         "description": "Timeout in seconds (default 60, max 300)",
-                        "default": 60
-                    }
+                        "default": 60,
+                    },
                 },
-                "required": ["command"]
-            }
-        }
+                "required": ["command"],
+            },
+        },
     },
     # Git-specific tools
     {
@@ -181,12 +174,8 @@ TOOLS = [
         "function": {
             "name": "git_status",
             "description": "Show the working tree status. Returns staged, unstaged, and untracked files.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
     },
     {
         "type": "function",
@@ -198,21 +187,21 @@ TOOLS = [
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Optional: Limit diff to specific file or directory"
+                        "description": "Optional: Limit diff to specific file or directory",
                     },
                     "staged": {
                         "type": "boolean",
                         "description": "If true, show staged changes (--cached). Default false.",
-                        "default": False
+                        "default": False,
                     },
                     "commit": {
                         "type": "string",
-                        "description": "Optional: Compare against specific commit (e.g., 'HEAD~1', 'main')"
-                    }
+                        "description": "Optional: Compare against specific commit (e.g., 'HEAD~1', 'main')",
+                    },
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -225,21 +214,21 @@ TOOLS = [
                     "count": {
                         "type": "integer",
                         "description": "Number of commits to show (default 10, max 50)",
-                        "default": 10
+                        "default": 10,
                     },
                     "path": {
                         "type": "string",
-                        "description": "Optional: Show history for specific file"
+                        "description": "Optional: Show history for specific file",
                     },
                     "oneline": {
                         "type": "boolean",
                         "description": "If true, show condensed output. Default true.",
-                        "default": True
-                    }
+                        "default": True,
+                    },
                 },
-                "required": []
-            }
-        }
+                "required": [],
+            },
+        },
     },
     {
         "type": "function",
@@ -249,19 +238,16 @@ TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "message": {
-                        "type": "string",
-                        "description": "Commit message"
-                    },
+                    "message": {"type": "string", "description": "Commit message"},
                     "files": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional: Specific files to stage. If empty, stages all changes."
-                    }
+                        "description": "Optional: Specific files to stage. If empty, stages all changes.",
+                    },
                 },
-                "required": ["message"]
-            }
-        }
+                "required": ["message"],
+            },
+        },
     },
     {
         "type": "function",
@@ -275,17 +261,17 @@ TOOLS = [
                         "type": "string",
                         "enum": ["list", "create", "switch", "delete"],
                         "description": "Action to perform. Default 'list'.",
-                        "default": "list"
+                        "default": "list",
                     },
                     "name": {
                         "type": "string",
-                        "description": "Branch name (required for create/switch/delete)"
-                    }
+                        "description": "Branch name (required for create/switch/delete)",
+                    },
                 },
-                "required": []
-            }
-        }
-    }
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -304,15 +290,17 @@ class BackupManager:
             # Track new files with empty backup
             if path not in self.backups:
                 self.backups[path] = []
-            self.backups[path].append({
-                'content': None,  # None means file didn't exist
-                'timestamp': time.time(),
-            })
+            self.backups[path].append(
+                {
+                    "content": None,  # None means file didn't exist
+                    "timestamp": time.time(),
+                }
+            )
             self.last_modified = path
             return True
 
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
+            with open(full_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if path not in self.backups:
@@ -321,10 +309,12 @@ class BackupManager:
             if len(self.backups[path]) >= 10:
                 self.backups[path].pop(0)
 
-            self.backups[path].append({
-                'content': content,
-                'timestamp': time.time(),
-            })
+            self.backups[path].append(
+                {
+                    "content": content,
+                    "timestamp": time.time(),
+                }
+            )
             self.last_modified = path
             return True
         except Exception:
@@ -333,7 +323,7 @@ class BackupManager:
     def get_backup(self, path: str) -> Optional[str]:
         """Get the most recent backup content for a file."""
         if path in self.backups and self.backups[path]:
-            return self.backups[path][-1]['content']
+            return self.backups[path][-1]["content"]
         return None
 
     def get_last_modified(self) -> Optional[str]:
@@ -349,7 +339,7 @@ class BackupManager:
         if path not in self.backups or not self.backups[path]:
             return False, f"No backup found for {path}"
 
-        backup_content = self.backups[path][-1]['content']
+        backup_content = self.backups[path][-1]["content"]
         full_path = os.path.join(self.working_dir, path)
 
         try:
@@ -360,7 +350,7 @@ class BackupManager:
                     self.backups[path].pop()
                     return True, f"Deleted {path} (file was newly created)"
             else:
-                with open(full_path, 'w', encoding='utf-8') as f:
+                with open(full_path, "w", encoding="utf-8") as f:
                     f.write(backup_content)
                 self.backups[path].pop()
                 return True, f"Restored {path} from backup"
@@ -398,7 +388,7 @@ class ToolExecutor:
                 cwd=self.working_dir,
                 capture_output=True,
                 text=True,
-                timeout=timeout
+                timeout=timeout,
             )
             output = result.stdout
             if result.stderr:
@@ -413,8 +403,8 @@ class ToolExecutor:
 
     def _find_similar_text(self, content: str, search_text: str, n: int = 3) -> List[str]:
         """Find similar lines to the search text for better error messages."""
-        content_lines = content.split('\n')
-        search_lines = search_text.strip().split('\n')
+        content_lines = content.split("\n")
+        search_lines = search_text.strip().split("\n")
 
         if not search_lines:
             return []
@@ -432,7 +422,7 @@ class ToolExecutor:
         for match in matches:
             for i, stripped in enumerate(stripped_lines):
                 if stripped == match and content_lines[i] not in results:
-                    results.append(f"Line {i+1}: {content_lines[i][:80]}")
+                    results.append(f"Line {i + 1}: {content_lines[i][:80]}")
                     break
         return results
 
@@ -458,7 +448,7 @@ class ToolExecutor:
             return f"Error: '{path}' is a directory, not a file. Use list_files to see contents."
 
         try:
-            with open(full_path, 'r', encoding='utf-8', errors='replace') as f:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as f:
                 lines = f.readlines()
 
             total_lines = len(lines)
@@ -478,7 +468,7 @@ class ToolExecutor:
                 else:
                     truncated = 0
 
-            content = ''.join(f"{i+start_num:4}| {line}" for i, line in enumerate(lines))
+            content = "".join(f"{i + start_num:4}| {line}" for i, line in enumerate(lines))
 
             if start_line is not None or end_line is not None:
                 header = f"[Lines {start_num}-{start_num + len(lines) - 1} of {total_lines}]\n"
@@ -509,10 +499,10 @@ class ToolExecutor:
             if parent_dir:
                 os.makedirs(parent_dir, exist_ok=True)
 
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            lines = content.count('\n') + 1
+            lines = content.count("\n") + 1
             return f"Successfully wrote {lines} lines to {path}"
         except Exception as e:
             return f"Error writing file: {e}"
@@ -531,7 +521,7 @@ class ToolExecutor:
             return f"Error: File not found: {path}\nTip: Use read_file first to verify the file exists and see its contents."
 
         try:
-            with open(full_path, 'r', encoding='utf-8') as f:
+            with open(full_path, "r", encoding="utf-8") as f:
                 content = f.read()
 
             if old_text not in content:
@@ -553,7 +543,7 @@ class ToolExecutor:
             self.backup_manager.backup(path)
             new_content = content.replace(old_text, new_text, 1)
 
-            with open(full_path, 'w', encoding='utf-8') as f:
+            with open(full_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
 
             return f"Successfully edited {path}"
@@ -566,13 +556,24 @@ class ToolExecutor:
             matches = list(Path(self.working_dir).glob(pattern))
 
             filtered = []
-            skip_dirs = {'node_modules', '__pycache__', '.git', '.venv', 'venv', '.tox', 'dist', 'build', '.next', '.cache'}
+            skip_dirs = {
+                "node_modules",
+                "__pycache__",
+                ".git",
+                ".venv",
+                "venv",
+                ".tox",
+                "dist",
+                "build",
+                ".next",
+                ".cache",
+            }
 
             for m in matches:
                 rel_path = str(m.relative_to(self.working_dir))
                 parts = rel_path.split(os.sep)
 
-                if any(p.startswith('.') or p in skip_dirs for p in parts):
+                if any(p.startswith(".") or p in skip_dirs for p in parts):
                     continue
 
                 if m.is_file():
@@ -584,16 +585,18 @@ class ToolExecutor:
                 return f"No files found matching pattern: {pattern}"
 
             if len(filtered) > 100:
-                result = '\n'.join(filtered[:100])
+                result = "\n".join(filtered[:100])
                 result += f"\n... ({len(filtered) - 100} more files)"
             else:
-                result = '\n'.join(filtered)
+                result = "\n".join(filtered)
 
             return f"Found {len(filtered)} files:\n{result}"
         except Exception as e:
             return f"Error listing files: {e}"
 
-    def search_files(self, pattern: str, file_pattern: str = "**/*", case_sensitive: bool = False) -> str:
+    def search_files(
+        self, pattern: str, file_pattern: str = "**/*", case_sensitive: bool = False
+    ) -> str:
         """Search for a regex pattern in files."""
         flags = 0 if case_sensitive else re.IGNORECASE
         try:
@@ -603,7 +606,7 @@ class ToolExecutor:
 
         results = []
         files_searched = 0
-        skip_dirs = {'node_modules', '__pycache__', '.git', '.venv', 'venv', '.next', '.cache'}
+        skip_dirs = {"node_modules", "__pycache__", ".git", ".venv", "venv", ".next", ".cache"}
 
         try:
             for file_path in Path(self.working_dir).glob(file_pattern):
@@ -613,11 +616,11 @@ class ToolExecutor:
                 rel_path = str(file_path.relative_to(self.working_dir))
                 parts = rel_path.split(os.sep)
 
-                if any(p.startswith('.') or p in skip_dirs for p in parts):
+                if any(p.startswith(".") or p in skip_dirs for p in parts):
                     continue
 
                 try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         files_searched += 1
                         for i, line in enumerate(f, 1):
                             if regex.search(line):
@@ -635,7 +638,7 @@ class ToolExecutor:
             if not results:
                 return f"No matches found for '{pattern}' in {files_searched} files"
 
-            output = '\n'.join(results)
+            output = "\n".join(results)
             if len(results) >= 50:
                 output += "\n... (results truncated at 50 matches)"
 
@@ -664,7 +667,7 @@ class ToolExecutor:
                     cwd=self.working_dir,
                     capture_output=True,
                     text=True,
-                    timeout=timeout
+                    timeout=timeout,
                 )
             else:
                 # Safe to use list form without shell
@@ -674,7 +677,7 @@ class ToolExecutor:
                     cwd=self.working_dir,
                     capture_output=True,
                     text=True,
-                    timeout=timeout
+                    timeout=timeout,
                 )
 
             output = ""
@@ -691,7 +694,9 @@ class ToolExecutor:
             if len(output) > 5000:
                 output = output[:5000] + "\n... (output truncated)"
 
-            status = "succeeded" if result.returncode == 0 else f"failed (exit code {result.returncode})"
+            status = (
+                "succeeded" if result.returncode == 0 else f"failed (exit code {result.returncode})"
+            )
             return f"Command {status}:\n{output}"
 
         except subprocess.TimeoutExpired:

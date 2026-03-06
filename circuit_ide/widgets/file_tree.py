@@ -4,16 +4,14 @@ File Tree Widget for Circuit IDE.
 Provides an interactive file browser with keyboard navigation.
 """
 
-import os
-from pathlib import Path
-from typing import Optional, Set, Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Set
 
-from textual.widgets import Tree, Static
-from textual.widgets.tree import TreeNode
 from textual.message import Message
 from textual.reactive import reactive
-
+from textual.widgets import Static, Tree
+from textual.widgets.tree import TreeNode
 
 # File type icons (emoji-based for terminal compatibility)
 FILE_ICONS = {
@@ -78,6 +76,7 @@ FILE_ICONS = {
 @dataclass
 class FileInfo:
     """Information about a file or directory."""
+
     path: Path
     name: str
     is_dir: bool
@@ -113,12 +112,14 @@ class FileTreeWidget(Tree):
     # Messages
     class FileSelected(Message):
         """Message sent when a file is selected."""
+
         def __init__(self, path: Path) -> None:
             self.path = path
             super().__init__()
 
     class DirectoryChanged(Message):
         """Message sent when navigating to a directory."""
+
         def __init__(self, path: Path) -> None:
             self.path = path
             super().__init__()
@@ -144,11 +145,23 @@ class FileTreeWidget(Tree):
             ignored_patterns: Patterns to ignore (e.g., ['__pycache__', '*.pyc'])
         """
         self.root_path = Path(root_path).resolve()
-        self.ignored_patterns = set(ignored_patterns or [
-            "__pycache__", "*.pyc", ".git", "node_modules",
-            ".venv", "venv", ".tox", "dist", "build",
-            ".next", ".cache", "*.egg-info",
-        ])
+        self.ignored_patterns = set(
+            ignored_patterns
+            or [
+                "__pycache__",
+                "*.pyc",
+                ".git",
+                "node_modules",
+                ".venv",
+                "venv",
+                ".tox",
+                "dist",
+                "build",
+                ".next",
+                ".cache",
+                "*.egg-info",
+            ]
+        )
 
         # Track expanded nodes
         self._expanded: Set[Path] = set()

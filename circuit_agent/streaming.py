@@ -5,7 +5,7 @@ Parses Server-Sent Events (SSE) from OpenAI-compatible APIs.
 
 import json
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any, AsyncIterator
+from typing import Any, Dict, List, Optional
 
 import httpx
 
@@ -13,6 +13,7 @@ import httpx
 @dataclass
 class StreamingToolCall:
     """Represents a tool call being streamed."""
+
     id: str = ""
     name: str = ""
     arguments: str = ""
@@ -21,6 +22,7 @@ class StreamingToolCall:
 @dataclass
 class StreamingResponse:
     """Accumulates streaming response data."""
+
     content: str = ""
     tool_calls: List[StreamingToolCall] = field(default_factory=list)
     finish_reason: Optional[str] = None
@@ -36,10 +38,7 @@ class StreamingResponse:
             {
                 "id": tc.id,
                 "type": "function",
-                "function": {
-                    "name": tc.name,
-                    "arguments": tc.arguments
-                }
+                "function": {"name": tc.name, "arguments": tc.arguments},
             }
             for tc in self.tool_calls
             if tc.id  # Only include complete tool calls
@@ -175,11 +174,13 @@ async def non_streaming_chat_completion(
         # Handle tool calls
         tool_calls = message.get("tool_calls", [])
         for tc in tool_calls:
-            response.tool_calls.append(StreamingToolCall(
-                id=tc.get("id", ""),
-                name=tc.get("function", {}).get("name", ""),
-                arguments=tc.get("function", {}).get("arguments", "")
-            ))
+            response.tool_calls.append(
+                StreamingToolCall(
+                    id=tc.get("id", ""),
+                    name=tc.get("function", {}).get("name", ""),
+                    arguments=tc.get("function", {}).get("arguments", ""),
+                )
+            )
 
     # Extract usage
     usage = data.get("usage", {})

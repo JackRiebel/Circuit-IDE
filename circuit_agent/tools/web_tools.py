@@ -2,21 +2,23 @@
 Web tools for Circuit Agent - fetch documentation and search the web.
 """
 
-import re
-import json
 import hashlib
+import json
+import re
 import time
 from typing import Dict, Optional, Tuple
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 
 try:
     import httpx
+
     HAS_HTTPX = True
 except ImportError:
     HAS_HTTPX = False
 
 try:
     from html2text import HTML2Text
+
     HAS_HTML2TEXT = True
 except ImportError:
     HAS_HTML2TEXT = False
@@ -32,18 +34,15 @@ WEB_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The URL to fetch"
-                    },
+                    "url": {"type": "string", "description": "The URL to fetch"},
                     "selector": {
                         "type": "string",
-                        "description": "Optional: CSS selector to extract specific content (e.g., 'article', 'main', '.content')"
-                    }
+                        "description": "Optional: CSS selector to extract specific content (e.g., 'article', 'main', '.content')",
+                    },
                 },
-                "required": ["url"]
-            }
-        }
+                "required": ["url"],
+            },
+        },
     },
     {
         "type": "function",
@@ -53,20 +52,17 @@ WEB_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query"
-                    },
+                    "query": {"type": "string", "description": "The search query"},
                     "num_results": {
                         "type": "integer",
                         "description": "Number of results to return (default 5, max 10)",
-                        "default": 5
-                    }
+                        "default": 5,
+                    },
                 },
-                "required": ["query"]
-            }
-        }
-    }
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 
@@ -96,10 +92,7 @@ class WebCache:
         # Cleanup old entries if cache gets too large
         if len(self.cache) > 100:
             now = time.time()
-            self.cache = {
-                k: v for k, v in self.cache.items()
-                if now - v[1] < self.max_age
-            }
+            self.cache = {k: v for k, v in self.cache.items() if now - v[1] < self.max_age}
 
 
 class WebTools:
@@ -127,30 +120,32 @@ class WebTools:
             return self.h2t.handle(html)
         else:
             # Basic fallback: strip tags
-            text = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-            text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-            text = re.sub(r'<[^>]+>', ' ', text)
-            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+            text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+            text = re.sub(r"<[^>]+>", " ", text)
+            text = re.sub(r"\s+", " ", text)
             return text.strip()
 
     def _extract_with_selector(self, html: str, selector: str) -> str:
         """Extract content matching a CSS selector (basic implementation)."""
         # Basic selector support: tag, .class, #id
-        if selector.startswith('.'):
+        if selector.startswith("."):
             # Class selector
             class_name = selector[1:]
-            pattern = rf'<[^>]+class=["\'][^"\']*\b{re.escape(class_name)}\b[^"\']*["\'][^>]*>(.*?)</\w+>'
-        elif selector.startswith('#'):
+            pattern = (
+                rf'<[^>]+class=["\'][^"\']*\b{re.escape(class_name)}\b[^"\']*["\'][^>]*>(.*?)</\w+>'
+            )
+        elif selector.startswith("#"):
             # ID selector
             id_name = selector[1:]
             pattern = rf'<[^>]+id=["\']?{re.escape(id_name)}["\']?[^>]*>(.*?)</\w+>'
         else:
             # Tag selector
-            pattern = rf'<{re.escape(selector)}[^>]*>(.*?)</{re.escape(selector)}>'
+            pattern = rf"<{re.escape(selector)}[^>]*>(.*?)</{re.escape(selector)}>"
 
         matches = re.findall(pattern, html, re.DOTALL | re.IGNORECASE)
         if matches:
-            return '\n'.join(matches)
+            return "\n".join(matches)
         return html
 
     def _truncate_content(self, content: str, max_chars: int = 15000) -> str:
@@ -176,7 +171,7 @@ class WebTools:
             if not parsed.scheme:
                 url = "https://" + url
                 parsed = urlparse(url)
-            if parsed.scheme not in ('http', 'https'):
+            if parsed.scheme not in ("http", "https"):
                 return f"Error: Invalid URL scheme: {parsed.scheme}"
             if not parsed.netloc:
                 return "Error: Invalid URL - no domain specified"
@@ -212,7 +207,7 @@ class WebTools:
                         data = response.json()
                         content = json.dumps(data, indent=2)
                         return f"Fetched JSON from: {url}\n\n```json\n{self._truncate_content(content)}\n```"
-                    except:
+                    except Exception:
                         content = response.text
 
                 elif "text/plain" in content_type:
@@ -269,11 +264,7 @@ class WebTools:
             }
 
             with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-                response = client.post(
-                    search_url,
-                    data={"q": query, "b": ""},
-                    headers=headers
-                )
+                response = client.post(search_url, data={"q": query, "b": ""}, headers=headers)
                 response.raise_for_status()
                 html = response.text
 
@@ -289,27 +280,24 @@ class WebTools:
 
             for i, (url, title) in enumerate(links[:num_results]):
                 # Clean up URL (DuckDuckGo uses redirect URLs)
-                if 'uddg=' in url:
+                if "uddg=" in url:
                     try:
-                        from urllib.parse import unquote, parse_qs
+                        from urllib.parse import parse_qs, unquote
+
                         params = parse_qs(urlparse(url).query)
-                        if 'uddg' in params:
-                            url = unquote(params['uddg'][0])
-                    except:
+                        if "uddg" in params:
+                            url = unquote(params["uddg"][0])
+                    except Exception:
                         pass
 
                 # Clean title and snippet
-                title = re.sub(r'<[^>]+>', '', title).strip()
+                title = re.sub(r"<[^>]+>", "", title).strip()
                 snippet = ""
                 if i < len(snippets):
-                    snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip()
-                    snippet = re.sub(r'\s+', ' ', snippet)[:200]
+                    snippet = re.sub(r"<[^>]+>", "", snippets[i]).strip()
+                    snippet = re.sub(r"\s+", " ", snippet)[:200]
 
-                results.append({
-                    "title": title,
-                    "url": url,
-                    "snippet": snippet
-                })
+                results.append({"title": title, "url": url, "snippet": snippet})
 
             if not results:
                 return f"No results found for: {query}\nTip: Try different keywords or a more general search."
@@ -319,11 +307,11 @@ class WebTools:
             for i, r in enumerate(results, 1):
                 output += f"{i}. **{r['title']}**\n"
                 output += f"   {r['url']}\n"
-                if r['snippet']:
+                if r["snippet"]:
                     output += f"   {r['snippet']}\n"
                 output += "\n"
 
-            output += f"Tip: Use web_fetch to read the full content of any result."
+            output += "Tip: Use web_fetch to read the full content of any result."
             return output
 
         except httpx.TimeoutException:
