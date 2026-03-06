@@ -22,22 +22,30 @@ A modern, VS Code-style AI-powered IDE built with Python and PySide6. Features d
 - pip (Python package manager)
 - Git (for version control features)
 
-### Installation
+### Windows (One-Click Install)
+
+1. **Download or clone** the repository
+2. **Double-click `install-windows.bat`** - it will:
+   - Check that Python is installed
+   - Install all dependencies automatically
+   - Create a `run-circuit-ide.bat` launcher
+   - Offer to launch Circuit IDE immediately
+3. **Next time**, just double-click `run-circuit-ide.bat` to start
+
+> **Note:** Make sure "Add Python to PATH" was checked when you installed Python.
+> Download Python from [python.org](https://www.python.org/downloads/) if needed.
+
+### macOS / Linux
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/circuit-ide.git
-   cd circuit-ide
+   git clone https://github.com/JackRiebel/Circuit-IDE.git
+   cd Circuit-IDE
    ```
 
 2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
-   ```
-
-   Or install manually:
-   ```bash
-   pip install PySide6 httpx pygments
    ```
 
 3. **Run the application:**
@@ -164,13 +172,18 @@ python -m pytest tests/
 ```
 
 ### Building for Distribution
-```bash
-# Install build tools
-pip install pyinstaller
 
-# Create standalone executable
+**Standalone executable (all platforms):**
+```bash
+pip install pyinstaller
 pyinstaller --onefile --windowed circuit_ide_gui/main.py
 ```
+
+**Flutter desktop app (Windows):**
+```
+Double-click build-windows.bat
+```
+Requires Flutter SDK and Visual Studio with C++ Desktop workload.
 
 ## License
 
