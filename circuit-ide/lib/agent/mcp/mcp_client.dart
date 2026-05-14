@@ -12,41 +12,47 @@ class McpClient {
 
   bool get hasConnections => _connections.isNotEmpty;
 
-  Future<void> connectServer(McpServerConfig config) async {
+  Future<int> connectServer(McpServerConfig config) async {
     if (_connections.containsKey(config.name)) {
       await disconnectServer(config.name);
     }
 
+    McpHttpTransport? transport;
     try {
-      final transport = McpHttpTransport(config: config);
+      transport = await McpHttpTransport.create(config);
 
       // Initialize the connection
       final initResponse = await transport.initialize();
       if (initResponse.isError) {
-        Logger.error(
-          'MCP init failed for ${config.name}: ${initResponse.error}',
-          null,
+        throw McpConnectionException(
+          'MCP init failed: ${_errorMessage(initResponse)}',
         );
-        transport.dispose();
-        return;
       }
 
       // List available tools
       final toolsResponse = await transport.listTools();
       final tools = <McpToolInfo>[];
 
-      if (!toolsResponse.isError && toolsResponse.result != null) {
+      if (toolsResponse.isError) {
+        throw McpConnectionException(
+          'MCP tools/list failed: ${_errorMessage(toolsResponse)}',
+        );
+      }
+
+      if (toolsResponse.result != null) {
         final toolsList =
             (toolsResponse.result as Map<String, dynamic>)['tools'] as List?;
         if (toolsList != null) {
           for (final tool in toolsList) {
             final t = tool as Map<String, dynamic>;
-            tools.add(McpToolInfo(
-              serverName: config.name,
-              name: t['name'] as String,
-              description: t['description'] as String? ?? '',
-              inputSchema: t['inputSchema'] as Map<String, dynamic>? ?? {},
-            ));
+            tools.add(
+              McpToolInfo(
+                serverName: config.name,
+                name: t['name'] as String,
+                description: t['description'] as String? ?? '',
+                inputSchema: t['inputSchema'] as Map<String, dynamic>? ?? {},
+              ),
+            );
           }
         }
       }
@@ -64,8 +70,11 @@ class McpClient {
         'Connected to MCP server ${config.name} with ${tools.length} tools',
         'McpClient',
       );
+      return tools.length;
     } catch (e) {
+      transport?.dispose();
       Logger.error('Failed to connect MCP server ${config.name}', e);
+      throw McpConnectionException(e.toString());
     }
   }
 
@@ -85,14 +94,18 @@ class McpClient {
 
   /// Call a tool on the appropriate MCP server
   Future<String> callTool(
-      String toolName, Map<String, dynamic> arguments) async {
+    String toolName,
+    Map<String, dynamic> arguments,
+  ) async {
     // Find which server has this tool
     for (final connection in _connections.values) {
       final hasTool = connection.tools.any((t) => t.name == toolName);
       if (hasTool) {
         try {
-          final response =
-              await connection.transport.callTool(toolName, arguments);
+          final response = await connection.transport.callTool(
+            toolName,
+            arguments,
+          );
 
           if (response.isError) {
             return 'MCP error: ${response.error?['message'] ?? 'Unknown error'}';
@@ -101,14 +114,17 @@ class McpClient {
           final result = response.result;
           if (result is Map<String, dynamic>) {
             final content = result['content'] as List?;
+            final isToolError = result['isError'] == true;
             if (content != null && content.isNotEmpty) {
-              return content
+              final text = content
                   .map((c) {
                     final item = c as Map<String, dynamic>;
                     return item['text'] as String? ?? item.toString();
                   })
                   .join('\n');
+              return isToolError ? 'MCP error: $text' : text;
             }
+            if (isToolError) return 'MCP error: ${result.toString()}';
           }
 
           return result?.toString() ?? 'No result';
@@ -151,6 +167,21 @@ class McpClient {
   }
 
   List<String> get connectedServers => _connections.keys.toList();
+
+  String _errorMessage(JsonRpcMessage response) {
+    final error = response.error;
+    if (error == null) return 'Unknown error';
+    return error['message'] as String? ?? error.toString();
+  }
+}
+
+class McpConnectionException implements Exception {
+  final String message;
+
+  const McpConnectionException(this.message);
+
+  @override
+  String toString() => message;
 }
 
 class _McpConnection {

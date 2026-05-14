@@ -4,11 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'state/theme_provider.dart';
 import 'state/command_palette_provider.dart';
+import 'state/layout_provider.dart';
 import 'state/settings_provider.dart';
 import 'state/terminal_provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_tokens.dart';
-import 'ui/layout/ide_scaffold.dart';
 import 'ui/screens/ide_screen.dart';
 
 class CircuitIDEApp extends ConsumerStatefulWidget {
@@ -45,21 +45,24 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
         backgroundColor: tokens.bgDark,
         body: CallbackShortcuts(
           bindings: {
-            const SingleActivator(LogicalKeyboardKey.keyP,
-                meta: true, shift: true): () =>
+            const SingleActivator(
+              LogicalKeyboardKey.keyP,
+              meta: true,
+              shift: true,
+            ): () =>
                 ref.read(commandPaletteProvider.notifier).toggle(),
             const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () =>
                 ref.read(sidePanelVisibleProvider.notifier).toggle(),
             const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): () =>
                 ref.read(terminalProvider.notifier).toggle(),
-            const SingleActivator(LogicalKeyboardKey.keyL,
-                meta: true, shift: true): () =>
+            const SingleActivator(
+              LogicalKeyboardKey.keyL,
+              meta: true,
+              shift: true,
+            ): () =>
                 ref.read(chatPanelVisibleProvider.notifier).toggle(),
           },
-          child: const Focus(
-            autofocus: true,
-            child: IDEScreen(),
-          ),
+          child: const Focus(autofocus: true, child: IDEScreen()),
         ),
       ),
     );

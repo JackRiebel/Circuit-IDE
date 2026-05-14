@@ -17,12 +17,27 @@ class TokenUsage {
     );
   }
 
+  bool get isEmpty => totalTokens == 0;
+  bool get isNotEmpty => !isEmpty;
+
+  String get formattedInputOutput {
+    return 'In ${formatCount(promptTokens)} / Out ${formatCount(completionTokens)}';
+  }
+
+  String get formattedWithBreakdown {
+    return '${formatCount(totalTokens)} · $formattedInputOutput';
+  }
+
   String get formatted {
-    if (totalTokens >= 1000000) {
-      return '${(totalTokens / 1000000).toStringAsFixed(1)}M';
-    } else if (totalTokens >= 1000) {
-      return '${(totalTokens / 1000).toStringAsFixed(1)}K';
+    return formatCount(totalTokens);
+  }
+
+  static String formatCount(int tokens) {
+    if (tokens >= 1000000) {
+      return '${(tokens / 1000000).toStringAsFixed(1)}M';
+    } else if (tokens >= 1000) {
+      return '${(tokens / 1000).toStringAsFixed(1)}K';
     }
-    return '$totalTokens';
+    return '$tokens';
   }
 }

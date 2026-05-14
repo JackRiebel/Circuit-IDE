@@ -3,6 +3,7 @@ import '../providers/provider_interface.dart';
 class ToolRegistry {
   static const readOnlyTools = {
     'read_file',
+    'lsdf_read_index',
     'list_files',
     'search_files',
     'git_status',
@@ -44,12 +45,13 @@ class ToolRegistry {
       confirmationRequired.contains(toolName);
 
   static List<ToolDefinition> get allTools => [
-        ..._fileTools,
-        ..._gitTools,
-        ..._webTools,
-        ..._githubTools,
-        ..._orchestrationTools,
-      ];
+    ..._fileTools,
+    ..._lsdfTools,
+    ..._gitTools,
+    ..._webTools,
+    ..._githubTools,
+    ..._orchestrationTools,
+  ];
 
   static final _fileTools = [
     const ToolDefinition(
@@ -85,10 +87,7 @@ class ToolRegistry {
             'type': 'string',
             'description': 'Relative path for the file',
           },
-          'content': {
-            'type': 'string',
-            'description': 'Content to write',
-          },
+          'content': {'type': 'string', 'description': 'Content to write'},
         },
         'required': ['path', 'content'],
       },
@@ -108,10 +107,7 @@ class ToolRegistry {
             'type': 'string',
             'description': 'Exact text to find and replace',
           },
-          'new_text': {
-            'type': 'string',
-            'description': 'Replacement text',
-          },
+          'new_text': {'type': 'string', 'description': 'Replacement text'},
         },
         'required': ['path', 'old_text', 'new_text'],
       },
@@ -173,14 +169,39 @@ class ToolRegistry {
     ),
   ];
 
+  static final _lsdfTools = [
+    const ToolDefinition(
+      name: 'lsdf_read_index',
+      description:
+          'Read compact L-SDF project or directory indexes for low-token codebase navigation before reading source files.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'directory': {
+            'type': 'string',
+            'description':
+                'Directory or file path whose nearest L-SDF index should be read. Defaults to project root.',
+          },
+          'detail': {
+            'type': 'boolean',
+            'description':
+                'Read INDEX.detail.lsdf instead of INDEX.lsdf for signatures and source paths.',
+          },
+          'include_project': {
+            'type': 'boolean',
+            'description':
+                'Also include project.lsdf from the repository root.',
+          },
+        },
+      },
+    ),
+  ];
+
   static final _gitTools = [
     const ToolDefinition(
       name: 'git_status',
       description: 'Show the working tree status.',
-      parameters: {
-        'type': 'object',
-        'properties': {},
-      },
+      parameters: {'type': 'object', 'properties': {}},
     ),
     const ToolDefinition(
       name: 'git_diff',
@@ -218,10 +239,7 @@ class ToolRegistry {
       parameters: {
         'type': 'object',
         'properties': {
-          'message': {
-            'type': 'string',
-            'description': 'Commit message',
-          },
+          'message': {'type': 'string', 'description': 'Commit message'},
           'files': {
             'type': 'array',
             'items': {'type': 'string'},
@@ -259,10 +277,7 @@ class ToolRegistry {
       parameters: {
         'type': 'object',
         'properties': {
-          'url': {
-            'type': 'string',
-            'description': 'URL to fetch',
-          },
+          'url': {'type': 'string', 'description': 'URL to fetch'},
           'selector': {
             'type': 'string',
             'description': 'Optional CSS selector to extract specific content',
@@ -277,10 +292,7 @@ class ToolRegistry {
       parameters: {
         'type': 'object',
         'properties': {
-          'query': {
-            'type': 'string',
-            'description': 'Search query',
-          },
+          'query': {'type': 'string', 'description': 'Search query'},
         },
         'required': ['query'],
       },
@@ -418,7 +430,8 @@ class ToolRegistry {
   static final _orchestrationTools = [
     const ToolDefinition(
       name: 'orchestrate',
-      description: 'Spawn a subagent to handle a specific task autonomously. '
+      description:
+          'Spawn a subagent to handle a specific task autonomously. '
           'The subagent has full tool access and will return its result. '
           'Use this for tasks that can run independently.',
       parameters: {

@@ -12,9 +12,13 @@ class TokenTracker extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final usage = ref.watch(tokenUsageProvider);
+    final lastUsage = ref.watch(lastTokenUsageProvider);
     final cost = ref.watch(costInfoProvider);
 
     if (usage.totalTokens == 0) return const SizedBox.shrink();
+    final tokenText = lastUsage.isNotEmpty
+        ? 'Last ${lastUsage.formattedInputOutput} · Session ${usage.formatted}'
+        : 'Session ${usage.formattedWithBreakdown}';
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -30,13 +34,17 @@ class TokenTracker extends ConsumerWidget {
         children: [
           Icon(Icons.data_usage_outlined, size: 11, color: tokens.textMuted),
           const SizedBox(width: 4),
-          Text(
-            usage.formatted,
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xxs,
-              fontFamily: 'JetBrains Mono',
-              letterSpacing: 0.2,
+          Expanded(
+            child: Text(
+              tokenText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                fontFamily: 'JetBrains Mono',
+                letterSpacing: 0.2,
+              ),
             ),
           ),
           Container(

@@ -38,15 +38,13 @@ class AgentService {
   AgentState get state => _state;
   AIProvider? get provider => _provider;
   CheckpointManager? get checkpointManager => _agent?.checkpointManager;
-  bool get isConnected =>
-      _state.connectionStatus == ConnectionStatus.connected;
+  bool get isConnected => _state.connectionStatus == ConnectionStatus.connected;
 
   /// Active confirmation requests pending user response
   final _pendingConfirmations = <String, ConfirmationRequest>{};
 
   /// Stream of state changes
-  Stream<AgentState> get stateStream =>
-      events.stream.map((_) => _state);
+  Stream<AgentState> get stateStream => events.stream.map((_) => _state);
 
   void _updateState(AgentState Function(AgentState) updater) {
     _state = updater(_state);
@@ -60,10 +58,12 @@ class AgentService {
     required String workingDir,
     String? model,
   }) async {
-    _updateState((s) => s.copyWith(
-          connectionStatus: ConnectionStatus.connecting,
-          workingDir: workingDir,
-        ));
+    _updateState(
+      (s) => s.copyWith(
+        connectionStatus: ConnectionStatus.connecting,
+        workingDir: workingDir,
+      ),
+    );
     events.emit(EventType.connecting);
 
     try {
@@ -76,8 +76,11 @@ class AgentService {
       await _provider!.connect(credentials);
 
       // Create agent
-      final selectedModel = model ??
-          (providerType == AIProviderType.cisco ? 'gpt-4.1' : 'claude-sonnet-4-20250514');
+      final selectedModel =
+          model ??
+          (providerType == AIProviderType.cisco
+              ? 'gpt-4.1'
+              : 'claude-sonnet-4-20250514');
 
       _agent = CircuitAgent(
         provider: _provider!,
@@ -95,22 +98,27 @@ class AgentService {
         _pendingConfirmations[request.id] = request;
       });
 
-      _updateState((s) => s.copyWith(
-            connectionStatus: ConnectionStatus.connected,
-            model: selectedModel,
-          ));
+      _updateState(
+        (s) => s.copyWith(
+          connectionStatus: ConnectionStatus.connected,
+          model: selectedModel,
+        ),
+      );
       events.emit(EventType.connected);
 
       Logger.info(
-          'Connected to ${providerType.displayName} with model $selectedModel',
-          'AgentService');
+        'Connected to ${providerType.displayName} with model $selectedModel',
+        'AgentService',
+      );
       return true;
     } catch (e) {
       Logger.error('Connection failed', e);
-      _updateState((s) => s.copyWith(
-            connectionStatus: ConnectionStatus.error,
-            error: e.toString(),
-          ));
+      _updateState(
+        (s) => s.copyWith(
+          connectionStatus: ConnectionStatus.error,
+          error: e.toString(),
+        ),
+      );
       events.emit(EventType.connectionError, {'error': e.toString()});
       return false;
     }
@@ -214,7 +222,9 @@ class AgentService {
   /// Send a message to the AI
   Future<String?> sendMessage(String content) async {
     if (_agent == null) {
-      _updateState((s) => s.copyWith(error: 'Agent not initialized — connect first'));
+      _updateState(
+        (s) => s.copyWith(error: 'Agent not initialized — connect first'),
+      );
       return null;
     }
 
@@ -223,7 +233,9 @@ class AgentService {
     // Apply model routing if enabled
     String? originalModel;
     _lastRoutedModel = null;
-    if (_routingConfig != null && _routingConfig!.enabled && activeProviderType != null) {
+    if (_routingConfig != null &&
+        _routingConfig!.enabled &&
+        activeProviderType != null) {
       final complexity = ModelRouter.classify(content);
       final routed = ModelRouter.selectModel(
         complexity,
@@ -234,7 +246,10 @@ class AgentService {
         originalModel = _agent!.model;
         _agent!.model = routed;
         _lastRoutedModel = routed;
-        Logger.info('Routed to $routed (complexity: ${complexity.name})', 'ModelRouter');
+        Logger.info(
+          'Routed to $routed (complexity: ${complexity.name})',
+          'ModelRouter',
+        );
 
         // Track savings
         final savings = ModelRouter.estimateSavings(
@@ -249,34 +264,38 @@ class AgentService {
     }
 
     try {
-      final response = await _agent!.chat(
-        content,
-        onContent: (chunk) {
-          // State updates happen via events already
-        },
-      ).timeout(const Duration(seconds: 120));
+      final response = await _agent!
+          .chat(
+            content,
+            onContent: (chunk) {
+              // State updates happen via events already
+            },
+          )
+          .timeout(const Duration(seconds: 120));
 
       // Update service state (token/cost tracking only — UI messages
       // are owned by ChatNotifier, not synced from agent history)
-      _updateState((s) => s.copyWith(
-            isProcessing: false,
-            tokenUsage: _agent!.costTracker.totalUsage,
-            costInfo: _agent!.costTracker.costInfo,
-          ));
+      _updateState(
+        (s) => s.copyWith(
+          isProcessing: false,
+          tokenUsage: _agent!.costTracker.totalUsage,
+          lastTokenUsage: _agent!.costTracker.lastUsage,
+          costInfo: _agent!.costTracker.costInfo,
+        ),
+      );
 
       return response;
     } on TimeoutException {
       _agent?.cancel();
-      _updateState((s) => s.copyWith(
-            isProcessing: false,
-            error: 'Request timed out after 120 seconds',
-          ));
+      _updateState(
+        (s) => s.copyWith(
+          isProcessing: false,
+          error: 'Request timed out after 120 seconds',
+        ),
+      );
       return null;
     } catch (e) {
-      _updateState((s) => s.copyWith(
-            isProcessing: false,
-            error: e.toString(),
-          ));
+      _updateState((s) => s.copyWith(isProcessing: false, error: e.toString()));
       return null;
     } finally {
       // Restore original model after routing

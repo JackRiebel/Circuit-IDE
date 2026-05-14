@@ -67,4 +67,9 @@ class StreamingResponse {
     promptTokens = prompt;
     completionTokens = completion;
   }
+
+  void updateUsage(int prompt, int completion) {
+    if (prompt > 0) promptTokens = prompt;
+    if (completion > 0) completionTokens = completion;
+  }
 }

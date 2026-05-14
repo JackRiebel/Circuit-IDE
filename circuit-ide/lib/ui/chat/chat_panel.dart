@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../state/chat_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/connection_provider.dart';
+import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
+import '../../state/terminal_provider.dart';
 import '../../enums/connection_status.dart';
 import 'chat_message_widget.dart';
 import 'chat_input.dart';
+import 'ai_workbench_panel.dart';
 import 'streaming_indicator.dart';
 import 'confirmation_dialog.dart';
 import 'provider_switcher.dart';
@@ -27,6 +31,7 @@ class ChatPanel extends ConsumerStatefulWidget {
 class _ChatPanelState extends ConsumerState<ChatPanel> {
   final _scrollController = ScrollController();
   bool _showHistory = false;
+  bool _showWorkbench = true;
 
   @override
   void dispose() {
@@ -40,7 +45,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         .set(ConnectionStatus.connecting);
 
     final service = ref.read(agentServiceProvider);
-    final workingDir = ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
+    final workingDir =
+        ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
     final provider = ref.read(settingsProvider).activeProvider;
 
     try {
@@ -49,16 +55,12 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
         preferredProvider: provider,
       );
       if (!mounted) return;
-      ref.read(connectionStatusProvider.notifier).set(
-            success
-                ? ConnectionStatus.connected
-                : ConnectionStatus.error,
-          );
-    } catch (_) {
-      if (!mounted) return;
       ref
           .read(connectionStatusProvider.notifier)
-          .set(ConnectionStatus.error);
+          .set(success ? ConnectionStatus.connected : ConnectionStatus.error);
+    } catch (_) {
+      if (!mounted) return;
+      ref.read(connectionStatusProvider.notifier).set(ConnectionStatus.error);
     }
   }
 
@@ -100,7 +102,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
             ),
             child: Row(
               children: [
-                Icon(Icons.auto_awesome, size: 13, color: tokens.accent.withValues(alpha: 0.7)),
+                Icon(
+                  Icons.auto_awesome,
+                  size: 13,
+                  color: tokens.accent.withValues(alpha: 0.7),
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'AI ASSISTANT',
@@ -120,15 +126,44 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                     color: connectionStatus == ConnectionStatus.connected
                         ? const Color(0xFF4ADE80)
                         : connectionStatus == ConnectionStatus.connecting
-                            ? tokens.warning
-                            : tokens.error,
+                        ? tokens.warning
+                        : tokens.error,
                     boxShadow: connectionStatus == ConnectionStatus.connected
-                        ? [BoxShadow(color: const Color(0xFF4ADE80).withValues(alpha: 0.4), blurRadius: 4)]
+                        ? [
+                            BoxShadow(
+                              color: const Color(
+                                0xFF4ADE80,
+                              ).withValues(alpha: 0.4),
+                              blurRadius: 4,
+                            ),
+                          ]
                         : null,
                   ),
                 ),
                 const Spacer(),
                 const ProviderSwitcher(),
+                Padding(
+                  padding: const EdgeInsets.only(left: Spacing.md),
+                  child: Tooltip(
+                    message: _showWorkbench
+                        ? 'Hide AI workbench'
+                        : 'Show AI workbench',
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () =>
+                            setState(() => _showWorkbench = !_showWorkbench),
+                        child: Icon(
+                          Icons.dashboard_customize_outlined,
+                          size: 14,
+                          color: _showWorkbench
+                              ? tokens.accent
+                              : tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 if (chatState.messages.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(left: Spacing.md),
@@ -138,7 +173,9 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
                           onTap: () async {
-                            final name = await ref.read(chatProvider.notifier).saveSession();
+                            final name = await ref
+                                .read(chatProvider.notifier)
+                                .saveSession();
                             if (name != null && context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -164,7 +201,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
                       child: GestureDetector(
-                        onTap: () => setState(() => _showHistory = !_showHistory),
+                        onTap: () =>
+                            setState(() => _showHistory = !_showHistory),
                         child: Icon(
                           Icons.history,
                           size: 14,
@@ -184,7 +222,8 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                       child: MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
-                          onTap: () => ref.read(chatProvider.notifier).clearHistory(),
+                          onTap: () =>
+                              ref.read(chatProvider.notifier).clearHistory(),
                           child: Icon(
                             Icons.delete_outline,
                             size: 14,
@@ -197,6 +236,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
               ],
             ),
           ),
+
+          if (_showWorkbench)
+            const AiWorkbenchPanel()
+          else
+            const _ChatContextStrip(),
 
           // Connection status
           if (connectionStatus != ConnectionStatus.connected)
@@ -296,11 +340,7 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 ),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 13,
-                      color: tokens.error,
-                    ),
+                    Icon(Icons.error_outline, size: 13, color: tokens.error),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -338,8 +378,11 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(vertical: Spacing.md),
-                    itemCount: chatState.messages.length +
-                        ((chatState.isProcessing || chatState.isStreaming) ? 1 : 0),
+                    itemCount:
+                        chatState.messages.length +
+                        ((chatState.isProcessing || chatState.isStreaming)
+                            ? 1
+                            : 0),
                     itemBuilder: (context, index) {
                       if (index < chatState.messages.length) {
                         return _FadeInMessage(
@@ -368,6 +411,127 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
           const TokenTracker(),
           const ChatInput(),
         ],
+      ),
+    );
+  }
+}
+
+class _ChatContextStrip extends ConsumerWidget {
+  const _ChatContextStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final rootPath = ref.watch(fileTreeProvider).rootPath;
+    final activeTab = ref.watch(editorProvider).activeTab;
+    final terminalState = ref.watch(terminalProvider);
+    final activeFile =
+        activeTab != null && !activeTab.filePath.startsWith('circuit://')
+        ? activeTab
+        : null;
+    final outputLines = terminalState.terminals.isEmpty
+        ? 0
+        : terminalState
+              .terminals[terminalState.activeTerminalIndex]
+              .outputBuffer
+              .length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.xl,
+        vertical: Spacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.bgMain,
+        border: Border(
+          bottom: BorderSide(color: tokens.border.withValues(alpha: 0.4)),
+        ),
+      ),
+      child: Wrap(
+        spacing: Spacing.sm,
+        runSpacing: Spacing.sm,
+        children: [
+          _ContextBadge(
+            icon: Icons.folder_open_outlined,
+            label: rootPath == null
+                ? 'Scratch workspace'
+                : p.basename(rootPath),
+            tooltip: rootPath ?? PlatformUtils.scratchDir,
+            muted: rootPath == null,
+          ),
+          _ContextBadge(
+            icon: Icons.description_outlined,
+            label: activeFile == null ? 'No active file' : activeFile.fileName,
+            tooltip: activeFile?.filePath,
+            muted: activeFile == null,
+          ),
+          _ContextBadge(
+            icon: Icons.terminal,
+            label: outputLines == 0
+                ? 'Terminal ready'
+                : '$outputLines terminal lines',
+            muted: outputLines == 0,
+          ),
+          const _ContextBadge(
+            icon: Icons.hub_outlined,
+            label: 'L-SDF index enabled',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextBadge extends ConsumerWidget {
+  final IconData icon;
+  final String label;
+  final String? tooltip;
+  final bool muted;
+
+  const _ContextBadge({
+    required this.icon,
+    required this.label,
+    this.tooltip,
+    this.muted = false,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = muted ? tokens.textMuted : tokens.textSecondary;
+
+    return Tooltip(
+      message: tooltip ?? label,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 180),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: Spacing.sm,
+        ),
+        decoration: BoxDecoration(
+          color: tokens.bgLight.withValues(alpha: 0.72),
+          borderRadius: BorderRadius.circular(Radii.md),
+          border: Border.all(color: tokens.border.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: Spacing.sm),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -402,10 +566,7 @@ class _FadeInMessageState extends State<_FadeInMessage>
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.05),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
     _controller.forward();
   }
 
@@ -419,10 +580,7 @@ class _FadeInMessageState extends State<_FadeInMessage>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _slideAnimation, child: widget.child),
     );
   }
 }
@@ -470,16 +628,47 @@ class _EmptyChat extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: Spacing.xxl),
-          Wrap(
-            spacing: Spacing.md,
-            runSpacing: Spacing.md,
-            alignment: WrapAlignment.center,
-            children: [
-              _QuickChip(label: 'Explain this codebase', tokens: tokens, ref: ref),
-              _QuickChip(label: 'Find bugs in open file', tokens: tokens, ref: ref),
-              _QuickChip(label: 'Write tests', tokens: tokens, ref: ref),
-              _QuickChip(label: 'Review recent git changes', tokens: tokens, ref: ref),
-            ],
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 330),
+            child: Wrap(
+              spacing: Spacing.md,
+              runSpacing: Spacing.md,
+              alignment: WrapAlignment.center,
+              children: [
+                _QuickChip(
+                  icon: Icons.hub_outlined,
+                  label: 'Map codebase',
+                  prompt:
+                      'Use the code index to summarize the project architecture, key entry points, and likely improvement areas.',
+                  tokens: tokens,
+                  ref: ref,
+                ),
+                _QuickChip(
+                  icon: Icons.manage_search,
+                  label: 'Review open file',
+                  prompt:
+                      'Review the active editor file for bugs, edge cases, and maintainability issues. Make fixes if appropriate.',
+                  tokens: tokens,
+                  ref: ref,
+                ),
+                _QuickChip(
+                  icon: Icons.terminal,
+                  label: 'Diagnose terminal',
+                  prompt:
+                      'Inspect the recent terminal output and explain any errors. Fix the code or suggest the correct command.',
+                  tokens: tokens,
+                  ref: ref,
+                ),
+                _QuickChip(
+                  icon: Icons.science_outlined,
+                  label: 'Add tests',
+                  prompt:
+                      'Find the best place to add tests for the active work and implement focused coverage.',
+                  tokens: tokens,
+                  ref: ref,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -488,12 +677,16 @@ class _EmptyChat extends ConsumerWidget {
 }
 
 class _QuickChip extends StatelessWidget {
+  final IconData icon;
   final String label;
+  final String prompt;
   final dynamic tokens;
   final WidgetRef ref;
 
   const _QuickChip({
+    required this.icon,
     required this.label,
+    required this.prompt,
     required this.tokens,
     required this.ref,
   });
@@ -503,7 +696,7 @@ class _QuickChip extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => ref.read(chatProvider.notifier).sendMessage(label),
+        onTap: () => ref.read(chatProvider.notifier).sendMessage(prompt),
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: Spacing.lg,
@@ -511,18 +704,23 @@ class _QuickChip extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(Radii.pill),
-            border: Border.all(
-              color: tokens.accent.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: tokens.accent.withValues(alpha: 0.3)),
             color: tokens.accent.withValues(alpha: 0.05),
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: tokens.accent,
-              fontSize: FontSizes.xs,
-              fontWeight: FontWeight.w500,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: tokens.accent),
+              const SizedBox(width: Spacing.sm),
+              Text(
+                label,
+                style: TextStyle(
+                  color: tokens.accent,
+                  fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

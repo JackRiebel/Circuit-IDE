@@ -8,6 +8,10 @@ final tokenUsageProvider = Provider<TokenUsage>((ref) {
   return ref.watch(chatProvider).tokenUsage;
 });
 
+final lastTokenUsageProvider = Provider<TokenUsage>((ref) {
+  return ref.watch(chatProvider).lastTokenUsage;
+});
+
 final costInfoProvider = Provider<CostInfo>((ref) {
   return ref.watch(chatProvider).costInfo;
 });

@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../state/editor_provider.dart';
+import '../../state/layout_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/terminal_provider.dart';
-import 'ide_scaffold.dart';
 
 enum ActivityBarItem {
   explorer(Icons.folder_outlined, Icons.folder, 'Explorer'),
@@ -39,8 +39,8 @@ class ActiveActivityItemNotifier extends Notifier<ActivityBarItem> {
 
 final activeActivityItemProvider =
     NotifierProvider<ActiveActivityItemNotifier, ActivityBarItem>(
-  ActiveActivityItemNotifier.new,
-);
+      ActiveActivityItemNotifier.new,
+    );
 
 class ActivityBar extends ConsumerWidget {
   const ActivityBar({super.key});
@@ -64,19 +64,21 @@ class ActivityBar extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: 4),
-          ...ActivityBarItem.values.map((item) => _ActivityBarButton(
-                    item: item,
-                    isActive: activeItem == item,
-                    onTap: () {
-                      final current = ref.read(activeActivityItemProvider);
-                      if (current == item) {
-                        ref.read(sidePanelVisibleProvider.notifier).toggle();
-                      } else {
-                        ref.read(activeActivityItemProvider.notifier).set(item);
-                        ref.read(sidePanelVisibleProvider.notifier).set(true);
-                      }
-                    },
-                  )),
+          ...ActivityBarItem.values.map(
+            (item) => _ActivityBarButton(
+              item: item,
+              isActive: activeItem == item,
+              onTap: () {
+                final current = ref.read(activeActivityItemProvider);
+                if (current == item) {
+                  ref.read(sidePanelVisibleProvider.notifier).toggle();
+                } else {
+                  ref.read(activeActivityItemProvider.notifier).set(item);
+                  ref.read(sidePanelVisibleProvider.notifier).set(true);
+                }
+              },
+            ),
+          ),
           const Spacer(),
           _SettingsButton(),
           _TerminalButton(),
@@ -99,8 +101,7 @@ class _ActivityBarButton extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_ActivityBarButton> createState() =>
-      _ActivityBarButtonState();
+  ConsumerState<_ActivityBarButton> createState() => _ActivityBarButtonState();
 }
 
 class _ActivityBarButtonState extends ConsumerState<_ActivityBarButton> {
@@ -140,16 +141,16 @@ class _ActivityBarButtonState extends ConsumerState<_ActivityBarButton> {
                   color: widget.isActive
                       ? tokens.accent.withValues(alpha: 0.1)
                       : _isHovered
-                          ? tokens.textMuted.withValues(alpha: 0.08)
-                          : Colors.transparent,
+                      ? tokens.textMuted.withValues(alpha: 0.08)
+                      : Colors.transparent,
                 ),
                 child: Icon(
                   widget.isActive ? widget.item.activeIcon : widget.item.icon,
                   color: widget.isActive
                       ? tokens.activityBarIconActive
                       : _isHovered
-                          ? tokens.textPrimary
-                          : tokens.activityBarIcon,
+                      ? tokens.textPrimary
+                      : tokens.activityBarIcon,
                   size: 20,
                 ),
               ),
@@ -244,16 +245,16 @@ class _TerminalButtonState extends ConsumerState<_TerminalButton> {
                 color: isVisible
                     ? tokens.accent.withValues(alpha: 0.1)
                     : _isHovered
-                        ? tokens.textMuted.withValues(alpha: 0.08)
-                        : Colors.transparent,
+                    ? tokens.textMuted.withValues(alpha: 0.08)
+                    : Colors.transparent,
               ),
               child: Icon(
                 Icons.terminal,
                 color: isVisible
                     ? tokens.activityBarIconActive
                     : _isHovered
-                        ? tokens.textPrimary
-                        : tokens.activityBarIcon,
+                    ? tokens.textPrimary
+                    : tokens.activityBarIcon,
                 size: 20,
               ),
             ),

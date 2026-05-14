@@ -1,0 +1,7 @@
+@hello.py
+ ~sys
+ @Greeter
+  !say_hello
+  !greet
+ !parse
+ !run

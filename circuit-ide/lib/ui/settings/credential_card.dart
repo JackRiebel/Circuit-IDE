@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,12 +28,17 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
   final _githubPatController = TextEditingController();
   bool _obscure = true;
   bool _isLoading = false;
+  bool _isHydrating = true;
+  Timer? _autosaveTimer;
   String? _errorMessage;
   String? _successMessage;
 
   @override
   void initState() {
     super.initState();
+    for (final controller in _credentialControllers) {
+      controller.addListener(_scheduleAutosave);
+    }
     _loadSavedCredentials();
   }
 
@@ -54,11 +61,17 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       if (config.githubPat != null) {
         _githubPatController.text = config.githubPat!;
       }
+      _isHydrating = false;
     });
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
+    for (final controller in _credentialControllers) {
+      controller.removeListener(_scheduleAutosave);
+    }
+    unawaited(_persistCredentialsOnly());
     _clientIdController.dispose();
     _clientSecretController.dispose();
     _appKeyController.dispose();
@@ -66,6 +79,14 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
     _githubPatController.dispose();
     super.dispose();
   }
+
+  List<TextEditingController> get _credentialControllers => [
+    _clientIdController,
+    _clientSecretController,
+    _appKeyController,
+    _anthropicKeyController,
+    _githubPatController,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -110,10 +131,7 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
           const SizedBox(height: Spacing.xl),
 
           // Divider
-          Container(
-            height: 1,
-            color: tokens.border.withValues(alpha: 0.3),
-          ),
+          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
           const SizedBox(height: Spacing.xl),
 
           // Anthropic section
@@ -131,10 +149,7 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
           const SizedBox(height: Spacing.xl),
 
           // Divider
-          Container(
-            height: 1,
-            color: tokens.border.withValues(alpha: 0.3),
-          ),
+          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
           const SizedBox(height: Spacing.xl),
 
           // GitHub section
@@ -276,13 +291,12 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
 
     final settings = ref.read(settingsProvider);
 
-    // Validate that at least one set of credentials is provided
-    final hasCisco = _clientIdController.text.isNotEmpty &&
-        _clientSecretController.text.isNotEmpty &&
-        _appKeyController.text.isNotEmpty;
-    final hasAnthropic = _anthropicKeyController.text.isNotEmpty;
+    final values = _credentialValues();
+    final hasCisco = values.hasCisco;
+    final hasAnthropic = values.hasAnthropic;
+    final hasAnySavedValue = values.hasAny;
 
-    if (!hasCisco && !hasAnthropic) {
+    if (!hasAnySavedValue) {
       setState(() {
         _isLoading = false;
         _errorMessage = 'Please enter credentials for at least one provider.';
@@ -290,43 +304,30 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       return;
     }
 
-    // Validate active provider has credentials
-    if (settings.activeProvider == AIProviderType.cisco && !hasCisco) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage =
-            'Cisco is selected but missing credentials. Fill all 3 fields.';
-      });
-      return;
-    }
-    if (settings.activeProvider == AIProviderType.anthropic && !hasAnthropic) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = 'Anthropic is selected but API key is empty.';
-      });
-      return;
-    }
-
     try {
-      // Save credentials
-      final config = AgentConfig(
-        ciscoClientId: _clientIdController.text.isEmpty
-            ? null
-            : _clientIdController.text,
-        ciscoClientSecret: _clientSecretController.text.isEmpty
-            ? null
-            : _clientSecretController.text,
-        ciscoAppKey:
-            _appKeyController.text.isEmpty ? null : _appKeyController.text,
-        anthropicApiKey: _anthropicKeyController.text.isEmpty
-            ? null
-            : _anthropicKeyController.text,
-        githubPat: _githubPatController.text.isEmpty
-            ? null
-            : _githubPatController.text,
-      );
+      await _persistCredentialsOnly(values);
 
-      await config.save();
+      if (settings.activeProvider == AIProviderType.cisco && !hasCisco) {
+        ref
+            .read(connectionStatusProvider.notifier)
+            .set(ConnectionStatus.disconnected);
+        setState(() {
+          _successMessage =
+              'Credentials saved. Fill all Cisco fields to connect.';
+        });
+        return;
+      }
+      if (settings.activeProvider == AIProviderType.anthropic &&
+          !hasAnthropic) {
+        ref
+            .read(connectionStatusProvider.notifier)
+            .set(ConnectionStatus.disconnected);
+        setState(() {
+          _successMessage =
+              'Credentials saved. Add an Anthropic API key to connect.';
+        });
+        return;
+      }
 
       // Update connection status to connecting
       ref
@@ -335,15 +336,16 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
 
       // Try to connect
       final service = ref.read(agentServiceProvider);
-      final workingDir = ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
+      final workingDir =
+          ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
 
       final credentials = settings.activeProvider == AIProviderType.cisco
           ? {
-              'client_id': _clientIdController.text,
-              'client_secret': _clientSecretController.text,
-              'app_key': _appKeyController.text,
+              'client_id': values.ciscoClientId!,
+              'client_secret': values.ciscoClientSecret!,
+              'app_key': values.ciscoAppKey!,
             }
-          : {'api_key': _anthropicKeyController.text};
+          : {'api_key': values.anthropicApiKey!};
 
       final success = await service.connect(
         providerType: settings.activeProvider,
@@ -378,6 +380,70 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       setState(() => _isLoading = false);
     }
   }
+
+  void _scheduleAutosave() {
+    if (_isHydrating) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 700), () {
+      unawaited(_persistCredentialsOnly());
+    });
+  }
+
+  Future<void> _persistCredentialsOnly([_CredentialValues? values]) async {
+    values ??= _credentialValues();
+    final config = AgentConfig(
+      ciscoClientId: values.ciscoClientId,
+      ciscoClientSecret: values.ciscoClientSecret,
+      ciscoAppKey: values.ciscoAppKey,
+      anthropicApiKey: values.anthropicApiKey,
+      githubPat: values.githubPat,
+    );
+    await config.save();
+  }
+
+  _CredentialValues _credentialValues() {
+    String? clean(String value) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    return _CredentialValues(
+      ciscoClientId: clean(_clientIdController.text),
+      ciscoClientSecret: clean(_clientSecretController.text),
+      ciscoAppKey: clean(_appKeyController.text),
+      anthropicApiKey: clean(_anthropicKeyController.text),
+      githubPat: clean(_githubPatController.text),
+    );
+  }
+}
+
+class _CredentialValues {
+  final String? ciscoClientId;
+  final String? ciscoClientSecret;
+  final String? ciscoAppKey;
+  final String? anthropicApiKey;
+  final String? githubPat;
+
+  const _CredentialValues({
+    required this.ciscoClientId,
+    required this.ciscoClientSecret,
+    required this.ciscoAppKey,
+    required this.anthropicApiKey,
+    required this.githubPat,
+  });
+
+  bool get hasCisco =>
+      ciscoClientId != null && ciscoClientSecret != null && ciscoAppKey != null;
+
+  bool get hasAnthropic => anthropicApiKey != null;
+
+  bool get hasAny =>
+      hasCisco ||
+      hasAnthropic ||
+      ciscoClientId != null ||
+      ciscoClientSecret != null ||
+      ciscoAppKey != null ||
+      githubPat != null;
 }
 
 class _SectionLabel extends ConsumerWidget {
@@ -491,8 +557,7 @@ class _CredentialField extends ConsumerWidget {
             color: tokens.textMuted,
             fontSize: FontSizes.xs,
           ),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: Spacing.md),
+          contentPadding: const EdgeInsets.symmetric(horizontal: Spacing.md),
         ),
       ),
     );

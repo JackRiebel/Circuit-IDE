@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../services/file_indexer.dart';
+import '../../state/ai_context_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_indexer_provider.dart';
+import '../../state/terminal_provider.dart';
 import '../../state/theme_provider.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
@@ -125,7 +127,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
   void _toggleFileContext() {
     final activeTab = ref.read(editorProvider).activeTab;
-    if (activeTab == null || activeTab.filePath.startsWith('circuit://')) return;
+    if (activeTab == null || activeTab.filePath.startsWith('circuit://')) {
+      return;
+    }
     setState(() => _fileContextAttached = !_fileContextAttached);
   }
 
@@ -149,6 +153,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     }
 
+    final globalContext = _buildPinnedContext();
+    if (globalContext.isNotEmpty) {
+      parts.add(globalContext);
+    }
+
     if (text.isNotEmpty) {
       parts.add(text);
     }
@@ -162,27 +171,62 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _removeMentionOverlay();
   }
 
+  String _buildPinnedContext() {
+    final contextState = ref.read(aiContextProvider);
+    final activeTab = ref.read(editorProvider).activeTab;
+    final terminalOutput = ref
+        .read(terminalProvider.notifier)
+        .getActiveTerminalOutput(lines: 60)
+        .trim();
+    final parts = <String>[];
+
+    if (contextState.includeLsdfIndex) {
+      parts.add(
+        '[Pinned context: use the L-SDF code index before loading broad file context.]',
+      );
+    }
+    if (contextState.includeActiveFile &&
+        activeTab != null &&
+        !activeTab.filePath.startsWith('circuit://') &&
+        !_fileContextAttached) {
+      parts.add('[Pinned active file: ${activeTab.filePath}]');
+    }
+    if (contextState.includeTerminalOutput && terminalOutput.isNotEmpty) {
+      parts.add('[Pinned terminal output]\n```\n$terminalOutput\n```');
+    }
+    if (contextState.includeGitDiff) {
+      parts.add(
+        '[Pinned git diff: inspect the current working tree diff before answering.]',
+      );
+    }
+
+    return parts.join('\n');
+  }
+
   bool _handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
 
     if (_showMentionPopup) {
-      final results = ref.read(fileIndexerProvider)
-              ?.search(_mentionQuery, limit: 8) ??
-          [];
+      final results =
+          ref.read(fileIndexerProvider)?.search(_mentionQuery, limit: 8) ?? [];
       if (results.isEmpty) return false;
 
       if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
         setState(() {
-          _selectedMentionIndex =
-              (_selectedMentionIndex + 1).clamp(0, results.length - 1);
+          _selectedMentionIndex = (_selectedMentionIndex + 1).clamp(
+            0,
+            results.length - 1,
+          );
         });
         _updateMentionOverlay();
         return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
         setState(() {
-          _selectedMentionIndex =
-              (_selectedMentionIndex - 1).clamp(0, results.length - 1);
+          _selectedMentionIndex = (_selectedMentionIndex - 1).clamp(
+            0,
+            results.length - 1,
+          );
         });
         _updateMentionOverlay();
         return true;
@@ -242,12 +286,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  ..._mentionedFiles.map((path) => _ContextChip(
-                        label: path.split('/').last,
-                        fullPath: path,
-                        icon: Icons.description_outlined,
-                        onRemove: () => _removeMention(path),
-                      )),
+                  ..._mentionedFiles.map(
+                    (path) => _ContextChip(
+                      label: path.split('/').last,
+                      fullPath: path,
+                      icon: Icons.description_outlined,
+                      onRemove: () => _removeMention(path),
+                    ),
+                  ),
                   if (_fileContextAttached && hasFile)
                     _ContextChip(
                       label: activeTab.fileName,
@@ -305,9 +351,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                                 color: _fileContextAttached
                                     ? tokens.accent
                                     : hasFile
-                                        ? tokens.textMuted
-                                        : tokens.textMuted
-                                            .withValues(alpha: 0.3),
+                                    ? tokens.textMuted
+                                    : tokens.textMuted.withValues(alpha: 0.3),
                               ),
                             ),
                           ),
@@ -385,7 +430,10 @@ class _ContextChip extends ConsumerWidget {
     return Tooltip(
       message: fullPath,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 2),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: 2,
+        ),
         decoration: BoxDecoration(
           color: tokens.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(Radii.sm),
@@ -409,8 +457,11 @@ class _ContextChip extends ConsumerWidget {
               onTap: onRemove,
               child: MouseRegion(
                 cursor: SystemMouseCursors.click,
-                child: Icon(Icons.close, size: 10,
-                    color: tokens.accent.withValues(alpha: 0.6)),
+                child: Icon(
+                  Icons.close,
+                  size: 10,
+                  color: tokens.accent.withValues(alpha: 0.6),
+                ),
               ),
             ),
           ],
@@ -462,10 +513,7 @@ class _MentionPopup extends ConsumerWidget {
             ),
             child: Text(
               'No files found',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ),
         ),
@@ -583,11 +631,7 @@ class _StopButton extends ConsumerWidget {
           onTap: () => ref.read(chatProvider.notifier).cancelOperation(),
           borderRadius: BorderRadius.circular(Radii.md),
           child: Center(
-            child: Icon(
-              Icons.stop_rounded,
-              size: 16,
-              color: tokens.error,
-            ),
+            child: Icon(Icons.stop_rounded, size: 16, color: tokens.error),
           ),
         ),
       ),
@@ -600,11 +644,7 @@ class _SendButton extends StatelessWidget {
   final bool hasText;
   final VoidCallback? onTap;
 
-  const _SendButton({
-    required this.tokens,
-    required this.hasText,
-    this.onTap,
-  });
+  const _SendButton({required this.tokens, required this.hasText, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -613,9 +653,7 @@ class _SendButton extends StatelessWidget {
       width: 28,
       height: 28,
       decoration: BoxDecoration(
-        color: hasText
-            ? tokens.accent
-            : tokens.accent.withValues(alpha: 0.3),
+        color: hasText ? tokens.accent : tokens.accent.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(Radii.md),
       ),
       child: Material(

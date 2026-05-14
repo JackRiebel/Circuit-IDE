@@ -9,6 +9,7 @@ import '../../core/utils/platform_utils.dart';
 import '../../core/utils/logger.dart';
 import '../context/flow_analyzer.dart';
 import '../context/flow_context_builder.dart';
+import '../context/lsdf_context_loader.dart';
 import '../context/memories_loader.dart';
 import '../context/rules_loader.dart';
 import '../context/smart_rules_matcher.dart';
@@ -49,23 +50,26 @@ class AgentConfig {
     final config = AgentConfig();
 
     // Try environment variables first
-    config.ciscoClientId =
-        Platform.environment['CIRCUIT_CLIENT_ID'];
-    config.ciscoClientSecret =
-        Platform.environment['CIRCUIT_CLIENT_SECRET'];
+    config.ciscoClientId = Platform.environment['CIRCUIT_CLIENT_ID'];
+    config.ciscoClientSecret = Platform.environment['CIRCUIT_CLIENT_SECRET'];
     config.ciscoAppKey = Platform.environment['CIRCUIT_APP_KEY'];
     config.anthropicApiKey = Platform.environment['ANTHROPIC_API_KEY'];
-    config.githubPat = Platform.environment['GITHUB_PERSONAL_ACCESS_TOKEN'] ??
+    config.githubPat =
+        Platform.environment['GITHUB_PERSONAL_ACCESS_TOKEN'] ??
         Platform.environment['GITHUB_TOKEN'];
 
     // Try secure storage
     try {
-      config.ciscoClientId ??= await _secureStorage.read(key: 'cisco_client_id');
-      config.ciscoClientSecret ??=
-          await _secureStorage.read(key: 'cisco_client_secret');
+      config.ciscoClientId ??= await _secureStorage.read(
+        key: 'cisco_client_id',
+      );
+      config.ciscoClientSecret ??= await _secureStorage.read(
+        key: 'cisco_client_secret',
+      );
       config.ciscoAppKey ??= await _secureStorage.read(key: 'cisco_app_key');
-      config.anthropicApiKey ??=
-          await _secureStorage.read(key: 'anthropic_api_key');
+      config.anthropicApiKey ??= await _secureStorage.read(
+        key: 'anthropic_api_key',
+      );
       config.githubPat ??= await _secureStorage.read(key: 'github_pat');
     } catch (e) {
       Logger.warning('Could not read secure storage: $e', 'Config');
@@ -95,29 +99,26 @@ class AgentConfig {
   /// Save credentials to secure storage
   Future<void> save() async {
     try {
-      if (ciscoClientId != null) {
-        await _secureStorage.write(
-            key: 'cisco_client_id', value: ciscoClientId);
-      }
-      if (ciscoClientSecret != null) {
-        await _secureStorage.write(
-            key: 'cisco_client_secret', value: ciscoClientSecret);
-      }
-      if (ciscoAppKey != null) {
-        await _secureStorage.write(key: 'cisco_app_key', value: ciscoAppKey);
-      }
-      if (anthropicApiKey != null) {
-        await _secureStorage.write(
-            key: 'anthropic_api_key', value: anthropicApiKey);
-      }
-      if (githubPat != null) {
-        await _secureStorage.write(key: 'github_pat', value: githubPat);
-      }
+      await _writeOrDeleteSecure('cisco_client_id', ciscoClientId);
+      await _writeOrDeleteSecure('cisco_client_secret', ciscoClientSecret);
+      await _writeOrDeleteSecure('cisco_app_key', ciscoAppKey);
+      await _writeOrDeleteSecure('anthropic_api_key', anthropicApiKey);
+      await _writeOrDeleteSecure('github_pat', githubPat);
+      await _saveToFile();
     } catch (e) {
       Logger.error('Could not save to secure storage', e);
       // Fall back to config file
       await _saveToFile();
     }
+  }
+
+  Future<void> _writeOrDeleteSecure(String key, String? value) async {
+    final normalized = value?.trim() ?? '';
+    if (normalized.isEmpty) {
+      await _secureStorage.delete(key: key);
+      return;
+    }
+    await _secureStorage.write(key: key, value: normalized);
   }
 
   Future<void> _saveToFile() async {
@@ -135,15 +136,11 @@ class AgentConfig {
       'model': model,
       'auto_approve': autoApprove,
     };
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(json),
-    );
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(json));
   }
 
   bool get hasCiscoCredentials =>
-      ciscoClientId != null &&
-      ciscoClientSecret != null &&
-      ciscoAppKey != null;
+      ciscoClientId != null && ciscoClientSecret != null && ciscoAppKey != null;
 
   bool get hasAnthropicCredentials => anthropicApiKey != null;
 
@@ -168,6 +165,19 @@ class AgentConfig {
 
     if (prompts.isEmpty) {
       prompts.add(_defaultSystemPrompt);
+    }
+
+    // Generate and inject compact L-SDF maps so the agent can navigate the
+    // workspace without repeatedly opening full source files.
+    if (workingDir != null) {
+      try {
+        final lsdfSection = await LsdfContextLoader.load(workingDir!);
+        if (lsdfSection.isNotEmpty) {
+          prompts.add(lsdfSection);
+        }
+      } catch (_) {
+        // L-SDF indexing is best-effort and should never block chat startup.
+      }
     }
 
     // Load project rules from .circuit/rules/ (filtered by active file patterns)
@@ -222,6 +232,7 @@ You have the following tools available as function calls. Always use them when t
 - **write_file** — Create or overwrite files. Use this to create new files.
 - **edit_file** — Edit existing files by replacing exact text matches.
 - **read_file** — Read file contents with line numbers.
+- **lsdf_read_index** — Read compact L-SDF indexes for low-token codebase navigation before reading source.
 - **list_files** — List files matching a glob pattern.
 - **search_files** — Search for regex patterns across files.
 - **run_command** — Execute shell commands (e.g., python, npm, git, etc.).

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../state/chat_provider.dart';
+import '../../state/layout_provider.dart';
 import '../../state/terminal_provider.dart';
 import '../../state/theme_provider.dart';
 
@@ -141,9 +142,16 @@ class _FixWithAIButtonState extends ConsumerState<_FixWithAIButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
+    final termState = ref.watch(terminalProvider);
+    final active = termState.terminals.isEmpty
+        ? null
+        : termState.terminals[termState.activeTerminalIndex];
+    final hasError = active?.hasRecentError ?? false;
 
     return Tooltip(
-      message: 'Send terminal output to AI for diagnosis',
+      message: hasError
+          ? 'Send the detected terminal failure to AI'
+          : 'Send terminal output to AI for diagnosis',
       child: MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
@@ -166,16 +174,12 @@ class _FixWithAIButtonState extends ConsumerState<_FixWithAIButton> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  Icons.auto_fix_high,
-                  size: 12,
-                  color: tokens.accent,
-                ),
+                Icon(Icons.auto_fix_high, size: 12, color: tokens.accent),
                 const SizedBox(width: 4),
                 Text(
                   'Fix with AI',
                   style: TextStyle(
-                    color: tokens.accent,
+                    color: hasError ? tokens.error : tokens.accent,
                     fontSize: FontSizes.xxs,
                     fontWeight: FontWeight.w600,
                   ),
@@ -192,13 +196,22 @@ class _FixWithAIButtonState extends ConsumerState<_FixWithAIButton> {
     final output = ref
         .read(terminalProvider.notifier)
         .getActiveTerminalOutput(lines: 50);
+    final termState = ref.read(terminalProvider);
+    final active = termState.terminals.isEmpty
+        ? null
+        : termState.terminals[termState.activeTerminalIndex];
 
     if (output.trim().isEmpty) return;
 
-    ref.read(chatProvider.notifier).sendMessage(
-      'The following is recent terminal output that may contain errors. '
-      'Analyze it, identify the problem, and fix the code or suggest the correct command.\n\n'
-      '```\n$output\n```',
-    );
+    ref.read(chatPanelVisibleProvider.notifier).set(true);
+    ref
+        .read(chatProvider.notifier)
+        .sendMessage(
+          'Analyze the recent terminal output. '
+          '${active?.lastCommand == null ? '' : 'The last command was `${active!.lastCommand}`. '}'
+          '${active?.lastErrorLine == null ? '' : 'The detected error line was `${active!.lastErrorLine}`. '}'
+          'Identify the problem and fix code or suggest the correct command.\n\n'
+          '```\n$output\n```',
+        );
   }
 }

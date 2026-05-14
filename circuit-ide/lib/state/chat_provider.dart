@@ -23,6 +23,7 @@ class ChatState {
   final bool isStreaming;
   final String streamingContent;
   final TokenUsage tokenUsage;
+  final TokenUsage lastTokenUsage;
   final CostInfo costInfo;
   final ConfirmationRequest? pendingConfirmation;
   final String? error;
@@ -33,6 +34,7 @@ class ChatState {
     this.isStreaming = false,
     this.streamingContent = '',
     this.tokenUsage = const TokenUsage(),
+    this.lastTokenUsage = const TokenUsage(),
     this.costInfo = const CostInfo(),
     this.pendingConfirmation,
     this.error,
@@ -44,6 +46,7 @@ class ChatState {
     bool? isStreaming,
     String? streamingContent,
     TokenUsage? tokenUsage,
+    TokenUsage? lastTokenUsage,
     CostInfo? costInfo,
     Object? pendingConfirmation = _sentinel,
     Object? error = _sentinel,
@@ -54,6 +57,7 @@ class ChatState {
       isStreaming: isStreaming ?? this.isStreaming,
       streamingContent: streamingContent ?? this.streamingContent,
       tokenUsage: tokenUsage ?? this.tokenUsage,
+      lastTokenUsage: lastTokenUsage ?? this.lastTokenUsage,
       costInfo: costInfo ?? this.costInfo,
       pendingConfirmation: identical(pendingConfirmation, _sentinel)
           ? this.pendingConfirmation
@@ -100,7 +104,7 @@ class ChatNotifier extends Notifier<ChatState> {
       final content = event.data['content'] as String? ?? '';
       final toolCalls =
           (event.data['toolCalls'] as List<dynamic>?)?.cast<ToolCallInfo>() ??
-              [];
+          [];
 
       // Only add an assistant message if there's actual content or tool calls
       if (content.isNotEmpty || toolCalls.isNotEmpty) {
@@ -149,14 +153,14 @@ class ChatNotifier extends Notifier<ChatState> {
     });
 
     service.events.on(EventType.confirmationReceived, (event) {
-      state = state.copyWith(
-        pendingConfirmation: null,
-      );
+      state = state.copyWith(pendingConfirmation: null);
     });
 
     service.events.on(EventType.tokensUpdated, (event) {
       state = state.copyWith(
         tokenUsage: event.data['usage'] as TokenUsage? ?? state.tokenUsage,
+        lastTokenUsage:
+            event.data['lastUsage'] as TokenUsage? ?? state.lastTokenUsage,
         costInfo: event.data['cost'] as CostInfo? ?? state.costInfo,
       );
     });
@@ -203,6 +207,7 @@ class ChatNotifier extends Notifier<ChatState> {
       // the messageCompleted event handler already added the assistant message)
       state = state.copyWith(
         tokenUsage: service.state.tokenUsage,
+        lastTokenUsage: service.state.lastTokenUsage,
         costInfo: service.state.costInfo,
       );
 
@@ -212,7 +217,9 @@ class ChatNotifier extends Notifier<ChatState> {
           isStreaming: false,
           isProcessing: false,
           streamingContent: '',
-          error: service.state.error ?? 'Request failed — check credentials and try again.',
+          error:
+              service.state.error ??
+              'Request failed — check credentials and try again.',
         );
       }
     } catch (e) {
@@ -312,5 +319,6 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 }
 
-final chatProvider =
-    NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
+final chatProvider = NotifierProvider<ChatNotifier, ChatState>(
+  ChatNotifier.new,
+);

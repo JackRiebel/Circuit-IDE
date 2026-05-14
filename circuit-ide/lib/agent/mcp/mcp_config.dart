@@ -4,6 +4,9 @@ class McpServerConfig {
   final McpTransportType transport;
   final Map<String, String> headers;
   final bool enabled;
+  final String? scriptPath;
+  final List<String> requiredEnvVars;
+  final int? port;
 
   const McpServerConfig({
     required this.name,
@@ -11,6 +14,9 @@ class McpServerConfig {
     this.transport = McpTransportType.http,
     this.headers = const {},
     this.enabled = true,
+    this.scriptPath,
+    this.requiredEnvVars = const [],
+    this.port,
   });
 
   factory McpServerConfig.fromJson(Map<String, dynamic> json) {
@@ -25,6 +31,12 @@ class McpServerConfig {
               ?.map((k, v) => MapEntry(k, v.toString())) ??
           {},
       enabled: json['enabled'] as bool? ?? true,
+      scriptPath: json['scriptPath'] as String?,
+      requiredEnvVars: (json['requiredEnvVars'] as List?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      port: json['port'] as int?,
     );
   }
 
@@ -34,6 +46,9 @@ class McpServerConfig {
         'transport': transport.name,
         'headers': headers,
         'enabled': enabled,
+        if (scriptPath != null) 'scriptPath': scriptPath,
+        if (requiredEnvVars.isNotEmpty) 'requiredEnvVars': requiredEnvVars,
+        if (port != null) 'port': port,
       };
 
   McpServerConfig copyWith({
@@ -42,6 +57,9 @@ class McpServerConfig {
     McpTransportType? transport,
     Map<String, String>? headers,
     bool? enabled,
+    String? scriptPath,
+    List<String>? requiredEnvVars,
+    int? port,
   }) {
     return McpServerConfig(
       name: name ?? this.name,
@@ -49,6 +67,9 @@ class McpServerConfig {
       transport: transport ?? this.transport,
       headers: headers ?? this.headers,
       enabled: enabled ?? this.enabled,
+      scriptPath: scriptPath ?? this.scriptPath,
+      requiredEnvVars: requiredEnvVars ?? this.requiredEnvVars,
+      port: port ?? this.port,
     );
   }
 }

@@ -113,7 +113,9 @@ class CircuitAgent {
 
     try {
       events.emit(EventType.messageStarted);
-      try { await _auditLogger.logUserInput(userMessage); } catch (_) {}
+      try {
+        await _auditLogger.logUserInput(userMessage);
+      } catch (_) {}
 
       // Begin a new checkpoint turn
       _toolExecutor.beginTurn();
@@ -131,9 +133,11 @@ class CircuitAgent {
       List<ToolCallInfo> allToolCalls = [];
 
       // Tool call loop (up to 25 iterations)
-      for (int iteration = 0;
-          iteration < AppConstants.maxToolCallIterations;
-          iteration++) {
+      for (
+        int iteration = 0;
+        iteration < AppConstants.maxToolCallIterations;
+        iteration++
+      ) {
         final optimized = _contextManager.optimizeContext(history);
         final response = StreamingResponse();
 
@@ -167,8 +171,8 @@ class CircuitAgent {
             );
           }
 
-          if (chunk.promptTokens > 0) {
-            response.setUsage(chunk.promptTokens, chunk.completionTokens);
+          if (chunk.promptTokens > 0 || chunk.completionTokens > 0) {
+            response.updateUsage(chunk.promptTokens, chunk.completionTokens);
           }
 
           if (chunk.finishReason != null) {
@@ -182,21 +186,30 @@ class CircuitAgent {
 
         // Track usage
         costTracker.addUsage(
-            model, response.promptTokens, response.completionTokens);
+          model,
+          response.promptTokens,
+          response.completionTokens,
+        );
         await _auditLogger.logApiCall(
-            model, response.promptTokens, response.completionTokens);
+          model,
+          response.promptTokens,
+          response.completionTokens,
+        );
         events.emit(EventType.tokensUpdated, {
           'usage': costTracker.totalUsage,
+          'lastUsage': costTracker.lastUsage,
           'cost': costTracker.costInfo,
         });
 
         // Add assistant message to history
         final toolCallInfos = response.toolCalls
-            .map((tc) => ToolCallInfo(
-                  id: tc.id,
-                  name: tc.name,
-                  arguments: tc.arguments,
-                ))
+            .map(
+              (tc) => ToolCallInfo(
+                id: tc.id,
+                name: tc.name,
+                arguments: tc.arguments,
+              ),
+            )
             .toList();
 
         final assistantMsg = ChatMessage(
@@ -216,8 +229,7 @@ class CircuitAgent {
 
         // Execute tool calls
         _toolExecutor.autoApprove = autoApprove;
-        final results =
-            await _toolExecutor.executeToolCalls(toolCallInfos);
+        final results = await _toolExecutor.executeToolCalls(toolCallInfos);
 
         // Add tool results to history
         for (final result in results) {
@@ -231,9 +243,7 @@ class CircuitAgent {
           history.add(toolMsg);
 
           await _auditLogger.logToolCall(
-            toolCallInfos
-                .firstWhere((tc) => tc.id == result.toolCallId)
-                .name,
+            toolCallInfos.firstWhere((tc) => tc.id == result.toolCallId).name,
             toolCallInfos
                 .firstWhere((tc) => tc.id == result.toolCallId)
                 .arguments,
@@ -244,7 +254,9 @@ class CircuitAgent {
 
         // Continue loop to get next response
         Logger.info(
-            'Tool calls completed, iteration ${iteration + 1}', 'Agent');
+          'Tool calls completed, iteration ${iteration + 1}',
+          'Agent',
+        );
       }
 
       // Commit checkpoint for this turn (if any files were modified)
@@ -258,9 +270,7 @@ class CircuitAgent {
             : 'Edited ${editedFiles.length} files';
         final checkpoint = _toolExecutor.commitTurn(desc);
         if (checkpoint != null) {
-          events.emit(EventType.checkpointCreated, {
-            'checkpoint': checkpoint,
-          });
+          events.emit(EventType.checkpointCreated, {'checkpoint': checkpoint});
           events.emit(EventType.vericodeTriggered, {
             'editedFiles': editedFiles.toList(),
           });
@@ -279,8 +289,7 @@ class CircuitAgent {
       } catch (_) {}
       events.emit(EventType.messageError, {'error': errorMsg});
       try {
-        await _auditLogger.logError(
-            'chat_error', errorMsg, {'model': model});
+        await _auditLogger.logError('chat_error', errorMsg, {'model': model});
       } catch (_) {}
       rethrow;
     } finally {
@@ -289,9 +298,7 @@ class CircuitAgent {
   }
 
   Future<bool> _handleConfirmation(ConfirmationRequest request) async {
-    events.emit(EventType.confirmationNeeded, {
-      'request': request,
-    });
+    events.emit(EventType.confirmationNeeded, {'request': request});
 
     final result = await request.response;
 
@@ -304,9 +311,7 @@ class CircuitAgent {
   }
 
   void _handleToolCallUpdate(ToolCallInfo toolCall) {
-    events.emit(EventType.toolCallStarted, {
-      'toolCall': toolCall,
-    });
+    events.emit(EventType.toolCallStarted, {'toolCall': toolCall});
   }
 
   void clearHistory() {

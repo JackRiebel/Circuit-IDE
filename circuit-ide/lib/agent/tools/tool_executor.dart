@@ -4,6 +4,7 @@ import '../../core/utils/logger.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/checkpoint.dart';
 import '../../models/confirmation_request.dart';
+import '../../services/lsdf_index_service.dart';
 import '../../enums/tool_status.dart';
 import '../checkpoint/checkpoint_manager.dart';
 import '../security/secret_detector.dart';
@@ -44,6 +45,7 @@ class ToolExecutor {
   late final CommandTools _commandTools;
   late final WebTools _webTools;
   late final GitHubTools _githubTools;
+  late final LsdfIndexService _lsdfIndexService;
   final _secretDetector = SecretDetector();
   McpClient? _mcpClient;
   OrchestrateToolExecutor? _orchestrateTool;
@@ -65,6 +67,7 @@ class ToolExecutor {
     _commandTools = CommandTools(workingDir: workingDir);
     _webTools = WebTools();
     _githubTools = GitHubTools();
+    _lsdfIndexService = LsdfIndexService(rootPath: workingDir);
     checkpointManager = CheckpointManager(workingDir: workingDir);
   }
 
@@ -155,10 +158,12 @@ class ToolExecutor {
 
           final approved = await onConfirmationNeeded!(request);
           if (!approved) {
-            onToolCallUpdate?.call(updated.copyWith(
-              status: ToolStatus.cancelled,
-              completedAt: DateTime.now(),
-            ));
+            onToolCallUpdate?.call(
+              updated.copyWith(
+                status: ToolStatus.cancelled,
+                completedAt: DateTime.now(),
+              ),
+            );
             return ToolExecutionResult(
               toolCallId: toolCall.id,
               result: 'Action cancelled by user.',
@@ -178,24 +183,26 @@ class ToolExecutor {
       }
 
       final result = await _dispatch(toolCall.name, toolCall.arguments);
+      await _refreshLsdfIndexIfNeeded(toolCall);
 
-      onToolCallUpdate?.call(updated.copyWith(
-        status: ToolStatus.success,
-        result: result,
-        completedAt: DateTime.now(),
-      ));
-
-      return ToolExecutionResult(
-        toolCallId: toolCall.id,
-        result: result,
+      onToolCallUpdate?.call(
+        updated.copyWith(
+          status: ToolStatus.success,
+          result: result,
+          completedAt: DateTime.now(),
+        ),
       );
+
+      return ToolExecutionResult(toolCallId: toolCall.id, result: result);
     } catch (e) {
       Logger.error('Tool execution error: ${toolCall.name}', e);
-      onToolCallUpdate?.call(updated.copyWith(
-        status: ToolStatus.error,
-        error: e.toString(),
-        completedAt: DateTime.now(),
-      ));
+      onToolCallUpdate?.call(
+        updated.copyWith(
+          status: ToolStatus.error,
+          error: e.toString(),
+          completedAt: DateTime.now(),
+        ),
+      );
 
       return ToolExecutionResult(
         toolCallId: toolCall.id,
@@ -210,6 +217,12 @@ class ToolExecutor {
       // File tools
       case 'read_file':
         return _fileTools.readFile(args);
+      case 'lsdf_read_index':
+        return _lsdfIndexService.readIndex(
+          directory: args['directory'] as String? ?? '.',
+          detail: args['detail'] as bool? ?? false,
+          includeProject: args['include_project'] as bool? ?? false,
+        );
       case 'write_file':
         return _fileTools.writeFile(args);
       case 'edit_file':
@@ -275,6 +288,19 @@ class ToolExecutor {
     }
   }
 
+  Future<void> _refreshLsdfIndexIfNeeded(ToolCallInfo toolCall) async {
+    if (toolCall.name != 'write_file' && toolCall.name != 'edit_file') {
+      return;
+    }
+    final path = toolCall.arguments['path'] as String?;
+    if (path == null || path.isEmpty) return;
+    try {
+      await _lsdfIndexService.refreshForPath(path);
+    } catch (e) {
+      Logger.warning('Failed to refresh L-SDF index for $path: $e', 'LSDF');
+    }
+  }
+
   String _generatePreview(ToolCallInfo toolCall) {
     final args = toolCall.arguments;
     switch (toolCall.name) {
@@ -307,12 +333,13 @@ class ToolExecutor {
 
     // Check for secrets in file content
     if (toolCall.name == 'write_file' || toolCall.name == 'edit_file') {
-      final content = args['content'] as String? ??
-          args['new_text'] as String? ??
-          '';
+      final content =
+          args['content'] as String? ?? args['new_text'] as String? ?? '';
       final secrets = _secretDetector.scan(content);
       for (final s in secrets) {
-        warnings.add('${s.severity.toUpperCase()}: Possible ${s.type} detected');
+        warnings.add(
+          '${s.severity.toUpperCase()}: Possible ${s.type} detected',
+        );
       }
     }
 

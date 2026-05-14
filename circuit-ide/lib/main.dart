@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -8,6 +10,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await windowManager.ensureInitialized();
+  if (Platform.isMacOS) {
+    await windowManager.setPreventClose(true);
+    windowManager.addListener(_MacWindowLifecycle());
+  }
 
   const windowOptions = WindowOptions(
     size: Size(1400, 900),
@@ -23,9 +29,15 @@ void main() async {
     await windowManager.focus();
   });
 
-  runApp(
-    const ProviderScope(
-      child: CircuitIDEApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: CircuitIDEApp()));
+}
+
+class _MacWindowLifecycle extends WindowListener {
+  @override
+  Future<void> onWindowClose() async {
+    if (!Platform.isMacOS) return;
+    if (await windowManager.isPreventClose()) {
+      await windowManager.hide();
+    }
+  }
 }

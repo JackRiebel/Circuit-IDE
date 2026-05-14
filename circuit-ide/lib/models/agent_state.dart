@@ -15,6 +15,7 @@ class AgentState {
   final List<ChatMessage> messages;
   final String? error;
   final TokenUsage tokenUsage;
+  final TokenUsage lastTokenUsage;
   final CostInfo costInfo;
 
   const AgentState({
@@ -29,6 +30,7 @@ class AgentState {
     this.messages = const [],
     this.error,
     this.tokenUsage = const TokenUsage(),
+    this.lastTokenUsage = const TokenUsage(),
     this.costInfo = const CostInfo(),
   });
 
@@ -44,6 +46,7 @@ class AgentState {
     List<ChatMessage>? messages,
     String? error,
     TokenUsage? tokenUsage,
+    TokenUsage? lastTokenUsage,
     CostInfo? costInfo,
   }) {
     return AgentState(
@@ -58,6 +61,7 @@ class AgentState {
       messages: messages ?? this.messages,
       error: error,
       tokenUsage: tokenUsage ?? this.tokenUsage,
+      lastTokenUsage: lastTokenUsage ?? this.lastTokenUsage,
       costInfo: costInfo ?? this.costInfo,
     );
   }

@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../core/utils/logger.dart';
 import 'mcp_config.dart';
+import 'mcp_token_storage.dart';
 
 /// JSON-RPC message for MCP protocol
 class JsonRpcMessage {
@@ -52,24 +53,58 @@ class McpHttpTransport {
   final Dio _dio;
   int _requestId = 0;
 
-  McpHttpTransport({required this.config})
-      : _dio = Dio(BaseOptions(
-          baseUrl: config.url,
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 30),
-          headers: {
-            'Content-Type': 'application/json',
-            ...config.headers,
-          },
-        ));
+  McpHttpTransport._({required this.config, required Dio dio}) : _dio = dio;
+
+  /// Creates a transport, loading tokens from secure storage when the config
+  /// has [requiredEnvVars] so that the Authorization header is built at runtime.
+  static Future<McpHttpTransport> create(McpServerConfig config) async {
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      ...config.headers,
+    };
+
+    // Load token from secure storage and inject Authorization header
+    if (config.requiredEnvVars.isNotEmpty) {
+      final tokenStorage = McpTokenStorage();
+      final tokens = await tokenStorage.loadTokens(
+        config.name,
+        config.requiredEnvVars,
+      );
+      final authEnvVar = config.requiredEnvVars.firstWhere(
+        _looksLikeAuthTokenName,
+        orElse: () => config.requiredEnvVars.first,
+      );
+      final authToken = tokens[authEnvVar];
+      if (authToken != null &&
+          authToken.isNotEmpty &&
+          !headers.containsKey('Authorization')) {
+        headers['Authorization'] = 'Bearer $authToken';
+      }
+    }
+
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: config.url,
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: headers,
+      ),
+    );
+
+    return McpHttpTransport._(config: config, dio: dio);
+  }
+
+  static bool _looksLikeAuthTokenName(String name) {
+    final upper = name.toUpperCase();
+    return upper.contains('TOKEN') ||
+        upper.contains('API_KEY') ||
+        upper.contains('ACCESS_KEY') ||
+        upper == 'PAT';
+  }
 
   Future<JsonRpcMessage> send(String method, [dynamic params]) async {
     final id = ++_requestId;
-    final request = JsonRpcMessage(
-      method: method,
-      params: params,
-      id: id,
-    );
+    final request = JsonRpcMessage(method: method, params: params, id: id);
 
     try {
       final response = await _dio.post<Map<String, dynamic>>(
@@ -101,10 +136,7 @@ class McpHttpTransport {
     return send('initialize', {
       'protocolVersion': '2024-11-05',
       'capabilities': {},
-      'clientInfo': {
-        'name': 'CircuitIDE',
-        'version': '1.0.0',
-      },
+      'clientInfo': {'name': 'CircuitIDE', 'version': '1.0.0'},
     });
   }
 
@@ -113,11 +145,10 @@ class McpHttpTransport {
   }
 
   Future<JsonRpcMessage> callTool(
-      String name, Map<String, dynamic> arguments) async {
-    return send('tools/call', {
-      'name': name,
-      'arguments': arguments,
-    });
+    String name,
+    Map<String, dynamic> arguments,
+  ) async {
+    return send('tools/call', {'name': name, 'arguments': arguments});
   }
 
   void dispose() {
