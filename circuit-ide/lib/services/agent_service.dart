@@ -220,7 +220,7 @@ class AgentService {
   }
 
   /// Send a message to the AI
-  Future<String?> sendMessage(String content) async {
+  Future<String?> sendMessage(String content, {String? requestId}) async {
     if (_agent == null) {
       _updateState(
         (s) => s.copyWith(error: 'Agent not initialized — connect first'),
@@ -267,6 +267,7 @@ class AgentService {
       final response = await _agent!
           .chat(
             content,
+            requestId: requestId,
             onContent: (chunk) {
               // State updates happen via events already
             },

@@ -39,6 +39,7 @@ class CircuitAgent {
   String? _systemPromptOverride;
   bool _isProcessing = false;
   bool _isCancelled = false;
+  String? _activeRequestId;
   List<ToolDefinition> _mcpTools = [];
 
   static const _uuid = Uuid();
@@ -103,6 +104,7 @@ class CircuitAgent {
   Future<String> chat(
     String userMessage, {
     void Function(String chunk)? onContent,
+    String? requestId,
   }) async {
     if (_isProcessing) {
       throw StateError('Agent is already processing a message');
@@ -110,9 +112,11 @@ class CircuitAgent {
 
     _isProcessing = true;
     _isCancelled = false;
+    _activeRequestId = requestId;
 
     try {
-      events.emit(EventType.messageStarted);
+      final eventData = requestId == null ? null : {'requestId': requestId};
+      events.emit(EventType.messageStarted, eventData);
       try {
         await _auditLogger.logUserInput(userMessage);
       } catch (_) {}
@@ -159,7 +163,10 @@ class CircuitAgent {
           if (chunk.content != null) {
             response.addContent(chunk.content!);
             onContent?.call(chunk.content!);
-            events.emit(EventType.messageChunk, {'content': chunk.content});
+            events.emit(EventType.messageChunk, {
+              'content': chunk.content,
+              'requestId': ?requestId,
+            });
           }
 
           if (chunk.toolCallIndex != null) {
@@ -199,6 +206,7 @@ class CircuitAgent {
           'usage': costTracker.totalUsage,
           'lastUsage': costTracker.lastUsage,
           'cost': costTracker.costInfo,
+          'requestId': ?requestId,
         });
 
         // Add assistant message to history
@@ -280,6 +288,7 @@ class CircuitAgent {
       events.emit(EventType.messageCompleted, {
         'content': fullResponse,
         'toolCalls': allToolCalls,
+        'requestId': ?requestId,
       });
       return fullResponse;
     } catch (e) {
@@ -287,12 +296,16 @@ class CircuitAgent {
       try {
         Logger.error('Chat error', e);
       } catch (_) {}
-      events.emit(EventType.messageError, {'error': errorMsg});
+      events.emit(EventType.messageError, {
+        'error': errorMsg,
+        'requestId': ?requestId,
+      });
       try {
         await _auditLogger.logError('chat_error', errorMsg, {'model': model});
       } catch (_) {}
       rethrow;
     } finally {
+      _activeRequestId = null;
       _isProcessing = false;
     }
   }
@@ -311,7 +324,10 @@ class CircuitAgent {
   }
 
   void _handleToolCallUpdate(ToolCallInfo toolCall) {
-    events.emit(EventType.toolCallStarted, {'toolCall': toolCall});
+    events.emit(EventType.toolCallStarted, {
+      'toolCall': toolCall,
+      if (_activeRequestId != null) 'requestId': _activeRequestId,
+    });
   }
 
   void clearHistory() {

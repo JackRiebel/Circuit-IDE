@@ -235,10 +235,7 @@ class _WorkspaceHealthButton extends ConsumerWidget {
     return Tooltip(
       message: 'Workspace health',
       child: InkWell(
-        onTap: () => showDialog<void>(
-          context: context,
-          builder: (_) => const _WorkspaceHealthDialog(),
-        ),
+        onTap: () => _showWorkspaceHealthPopover(context),
         borderRadius: BorderRadius.circular(Radii.sm),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -259,6 +256,32 @@ class _WorkspaceHealthButton extends ConsumerWidget {
       ),
     );
   }
+
+  void _showWorkspaceHealthPopover(BuildContext context) {
+    final box = context.findRenderObject() as RenderBox;
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<void>(
+      context: context,
+      position: position,
+      color: Colors.transparent,
+      elevation: 0,
+      items: const [
+        PopupMenuItem<void>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: _WorkspaceHealthDialog(),
+        ),
+      ],
+    );
+  }
 }
 
 class _WorkspaceHealthDialog extends ConsumerWidget {
@@ -269,20 +292,31 @@ class _WorkspaceHealthDialog extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final workspace = ref.watch(workspaceContextProvider);
     final aiContext = ref.watch(aiContextProvider);
+    final connection = ref.watch(connectionStatusProvider);
     final terminal = ref.watch(terminalProvider);
     final git = ref.watch(gitProvider);
     final terminalLines = terminal.terminals.isEmpty
         ? 0
         : terminal.terminals[terminal.activeTerminalIndex].outputBuffer.length;
 
-    return Dialog(
-      backgroundColor: tokens.surfaceOverlay,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Radii.lg),
-        side: BorderSide(color: tokens.outlineStrong),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
+    final aiState = switch (connection) {
+      ConnectionStatus.connected when workspace.error == null => 'AI-ready',
+      ConnectionStatus.connected => 'AI degraded',
+      ConnectionStatus.connecting => 'AI reconnecting',
+      ConnectionStatus.error => 'AI offline',
+      ConnectionStatus.disconnected => 'AI offline',
+    };
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 460,
+        decoration: BoxDecoration(
+          color: tokens.surfaceOverlay,
+          borderRadius: BorderRadius.circular(Radii.lg),
+          border: Border.all(color: tokens.outlineStrong),
+          boxShadow: Shadows.elevated,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(Spacing.xxl),
           child: Column(
@@ -313,6 +347,7 @@ class _WorkspaceHealthDialog extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: Spacing.lg),
+              _HealthLine(label: 'AI', value: aiState),
               _HealthLine(
                 label: 'Root',
                 value: workspace.rootPath ?? 'No workspace open',

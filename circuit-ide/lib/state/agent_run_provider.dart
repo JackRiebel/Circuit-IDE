@@ -1,8 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+import '../core/utils/platform_utils.dart';
 import '../enums/event_type.dart';
 import '../models/agent_run.dart';
+import '../models/context_attachment.dart';
 import '../models/token_usage.dart';
 import '../models/tool_call_info.dart';
 import 'connection_provider.dart';
@@ -35,28 +41,32 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
   @override
   AgentRunState build() {
     _listenToAgentEvents();
+    _loadRecentRuns();
     return const AgentRunState();
   }
 
   String startRun({
+    String? id,
     required AgentRunKind kind,
     required String model,
     String? message,
     String? title,
     String? inputPreview,
     String? retryPrompt,
+    List<ContextAttachment> retryAttachments = const [],
     int contextAttachmentCount = 0,
   }) {
-    final id = _uuid.v4();
+    final runId = id ?? _uuid.v4();
     final now = DateTime.now();
     final run = AgentRun(
-      id: id,
+      id: runId,
       kind: kind,
       status: AgentRunStatus.running,
       model: model,
       title: title,
       inputPreview: inputPreview,
       retryPrompt: retryPrompt,
+      retryAttachments: retryAttachments,
       contextAttachmentCount: contextAttachmentCount,
       startedAt: now,
       events: [
@@ -70,7 +80,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
     );
 
     state = state.copyWith(activeRuns: {...state.activeRuns, kind: run});
-    return id;
+    return runId;
   }
 
   void markStreaming(AgentRunKind kind) {
@@ -147,6 +157,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       activeRuns: active,
       recentRuns: [finished, ...state.recentRuns].take(20).toList(),
     );
+    _saveRecentRuns();
   }
 
   void _listenToAgentEvents() {
@@ -154,7 +165,8 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
     _listening = true;
     final service = ref.read(agentServiceProvider);
 
-    service.events.on(EventType.messageStarted, (_) {
+    service.events.on(EventType.messageStarted, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       addEvent(
         AgentRunKind.chat,
         AgentRunEventType.providerRequest,
@@ -162,6 +174,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       );
     });
     service.events.on(EventType.messageChunk, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       final content = event.data['content'] as String? ?? '';
       markStreaming(AgentRunKind.chat);
       if (content.isNotEmpty) {
@@ -173,15 +186,24 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       }
     });
     service.events.on(EventType.toolCallStarted, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       final tool = event.data['toolCall'] as ToolCallInfo?;
       if (tool != null) {
         addEvent(AgentRunKind.chat, AgentRunEventType.toolCall, tool.name);
       }
     });
     service.events.on(EventType.tokensUpdated, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       final usage = event.data['lastUsage'] as TokenUsage?;
       if (usage != null) updateUsage(AgentRunKind.chat, usage);
     });
+  }
+
+  bool _eventBelongsToActiveChat(Map<String, dynamic> data) {
+    final requestId = data['requestId'] as String?;
+    final active = state.activeChatRun;
+    if (requestId == null || active == null) return active != null;
+    return active.id == requestId;
   }
 
   void _updateActive(AgentRunKind kind, AgentRun Function(AgentRun) update) {
@@ -200,6 +222,38 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       AgentRunKind.backgroundTask => 'Background task',
     };
   }
+
+  Future<void> _loadRecentRuns() async {
+    try {
+      final file = File(_historyPath);
+      if (!await file.exists()) return;
+      final json = jsonDecode(await file.readAsString()) as List<dynamic>;
+      final runs = json
+          .whereType<Map<String, dynamic>>()
+          .map(AgentRun.fromJson)
+          .nonNulls
+          .take(20)
+          .toList();
+      if (!ref.mounted) return;
+      state = state.copyWith(recentRuns: runs);
+    } catch (_) {}
+  }
+
+  Future<void> _saveRecentRuns() async {
+    try {
+      final dir = Directory(PlatformUtils.configDir);
+      if (!await dir.exists()) await dir.create(recursive: true);
+      final file = File(_historyPath);
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(
+          state.recentRuns.take(20).map((run) => run.toJson()).toList(),
+        ),
+      );
+    } catch (_) {}
+  }
+
+  static String get _historyPath =>
+      p.join(PlatformUtils.configDir, 'agent_runs.json');
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

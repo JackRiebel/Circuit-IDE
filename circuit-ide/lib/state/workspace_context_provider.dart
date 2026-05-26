@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/workspace_context.dart';
+import '../models/agent_run.dart';
 import '../services/file_indexer.dart';
+import 'agent_run_provider.dart';
 import 'ai_context_provider.dart';
 import 'file_tree_provider.dart';
 
@@ -35,6 +37,16 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
       lsdfStatus: LsdfIndexStatus.checking,
       message: 'Preparing workspace context...',
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .startRun(
+          id: 'workspace:$generation',
+          kind: AgentRunKind.backgroundTask,
+          model: 'workspace',
+          title: 'Map Workspace',
+          inputPreview: normalized,
+          message: 'Workspace mapping started',
+        );
 
     try {
       await _indexFiles(normalized, generation);
@@ -49,6 +61,9 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
         refreshedAt: DateTime.now(),
         cancelRequested: false,
       );
+      ref
+          .read(agentRunProvider.notifier)
+          .finishRun(AgentRunKind.backgroundTask, outputPreview: state.message);
     } catch (e) {
       if (generation != _generation) return;
       state = state.copyWith(
@@ -57,6 +72,9 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
         error: e.toString(),
         refreshedAt: DateTime.now(),
       );
+      ref
+          .read(agentRunProvider.notifier)
+          .finishRun(AgentRunKind.backgroundTask, error: e.toString());
     }
   }
 
@@ -74,6 +92,12 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
       cancelRequested: true,
       refreshedAt: DateTime.now(),
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .requestCancel(AgentRunKind.backgroundTask);
+    ref
+        .read(agentRunProvider.notifier)
+        .finishRun(AgentRunKind.backgroundTask, cancelled: true);
   }
 
   Future<void> _indexFiles(String rootPath, int generation) async {
@@ -84,6 +108,13 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
         updatedAt: DateTime.now(),
       ),
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .addEvent(
+          AgentRunKind.backgroundTask,
+          AgentRunEventType.contextPrepared,
+          'Indexing files',
+        );
 
     final indexer = FileIndexer(workingDir: rootPath);
     await indexer.index();
@@ -97,6 +128,13 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
         updatedAt: DateTime.now(),
       ),
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .addEvent(
+          AgentRunKind.backgroundTask,
+          AgentRunEventType.contextPrepared,
+          'File index ready · ${indexer.files.length} entries',
+        );
   }
 
   Future<void> _buildLsdf(
@@ -111,6 +149,13 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
         updatedAt: DateTime.now(),
       ),
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .addEvent(
+          AgentRunKind.backgroundTask,
+          AgentRunEventType.contextPrepared,
+          'Building L-SDF map',
+        );
 
     final aiNotifier = ref.read(aiContextProvider.notifier);
     if (force) {
@@ -131,6 +176,13 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
       ),
       error: aiContext.lsdfError,
     );
+    ref
+        .read(agentRunProvider.notifier)
+        .addEvent(
+          AgentRunKind.backgroundTask,
+          AgentRunEventType.contextPrepared,
+          state.lsdfProgress?.label ?? 'L-SDF map ready',
+        );
   }
 }
 

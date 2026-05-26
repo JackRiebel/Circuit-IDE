@@ -1,11 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+import '../agent/config/config.dart';
+import '../agent/config/models_config.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
 import '../enums/message_role.dart';
+import '../enums/ai_provider.dart';
+import '../models/agent_preflight.dart';
 import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
 import '../models/context_attachment.dart';
@@ -16,6 +22,8 @@ import '../models/agent_run.dart';
 import 'agent_run_provider.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
+import 'settings_provider.dart';
+import 'workspace_context_provider.dart';
 
 // Sentinel for distinguishing "not passed" from "explicitly null" in copyWith
 const _sentinel = Object();
@@ -29,6 +37,7 @@ class ChatState {
   final TokenUsage lastTokenUsage;
   final CostInfo costInfo;
   final ConfirmationRequest? pendingConfirmation;
+  final AgentPreflightResult? preflight;
   final String? error;
 
   const ChatState({
@@ -40,6 +49,7 @@ class ChatState {
     this.lastTokenUsage = const TokenUsage(),
     this.costInfo = const CostInfo(),
     this.pendingConfirmation,
+    this.preflight,
     this.error,
   });
 
@@ -52,6 +62,7 @@ class ChatState {
     TokenUsage? lastTokenUsage,
     CostInfo? costInfo,
     Object? pendingConfirmation = _sentinel,
+    Object? preflight = _sentinel,
     Object? error = _sentinel,
   }) {
     return ChatState(
@@ -65,6 +76,9 @@ class ChatState {
       pendingConfirmation: identical(pendingConfirmation, _sentinel)
           ? this.pendingConfirmation
           : pendingConfirmation as ConfirmationRequest?,
+      preflight: identical(preflight, _sentinel)
+          ? this.preflight
+          : preflight as AgentPreflightResult?,
       error: identical(error, _sentinel) ? this.error : error as String?,
     );
   }
@@ -76,6 +90,7 @@ class ChatNotifier extends Notifier<ChatState> {
   bool _listening = false;
   Timer? _safetyTimer;
   bool _wasCancelled = false;
+  String? _activeRequestId;
 
   @override
   ChatState build() {
@@ -91,6 +106,7 @@ class ChatNotifier extends Notifier<ChatState> {
 
     // Streaming content chunks — accumulate for live preview
     service.events.on(EventType.messageChunk, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       final content = event.data['content'] as String? ?? '';
       state = state.copyWith(
         isStreaming: true,
@@ -101,6 +117,7 @@ class ChatNotifier extends Notifier<ChatState> {
     // Message completed — create assistant message from event data
     // ChatNotifier is the SOLE owner of the UI message list.
     service.events.on(EventType.messageCompleted, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       // Ignore stale completed events after cancel/timeout
       if (_wasCancelled) return;
 
@@ -136,10 +153,12 @@ class ChatNotifier extends Notifier<ChatState> {
         );
       }
       _cancelSafetyTimer();
+      _activeRequestId = null;
     });
 
     // Message error — add error info to chat
     service.events.on(EventType.messageError, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       final errorMsg = event.data['error'] as String? ?? 'Unknown error';
       state = state.copyWith(
         isStreaming: false,
@@ -148,6 +167,7 @@ class ChatNotifier extends Notifier<ChatState> {
         error: errorMsg,
       );
       _cancelSafetyTimer();
+      _activeRequestId = null;
     });
 
     service.events.on(EventType.confirmationNeeded, (event) {
@@ -160,6 +180,7 @@ class ChatNotifier extends Notifier<ChatState> {
     });
 
     service.events.on(EventType.tokensUpdated, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       state = state.copyWith(
         tokenUsage: event.data['usage'] as TokenUsage? ?? state.tokenUsage,
         lastTokenUsage:
@@ -177,10 +198,12 @@ class ChatNotifier extends Notifier<ChatState> {
     if (state.isProcessing) return;
 
     final service = ref.read(agentServiceProvider);
-    final connectionStatus = ref.read(connectionStatusProvider);
-    if (connectionStatus != ConnectionStatus.connected) {
+    final resolvedAttachments = await _resolveAttachments(attachments);
+    final preflight = await preflightMessage(content, resolvedAttachments);
+    state = state.copyWith(preflight: preflight);
+    if (!preflight.canSend) {
       state = state.copyWith(
-        error: 'Not connected — configure credentials in Settings.',
+        error: preflight.primaryIssue?.message ?? 'Request cannot be sent yet.',
       );
       return;
     }
@@ -198,20 +221,23 @@ class ChatNotifier extends Notifier<ChatState> {
 
     _wasCancelled = false;
     final runNotifier = ref.read(agentRunProvider.notifier);
-    runNotifier.startRun(
+    final requestId = runNotifier.startRun(
       kind: AgentRunKind.chat,
       model: service.state.model,
       message: 'User message sent',
       title: _preview(visibleContent),
       inputPreview: _preview(visibleContent),
       retryPrompt: visibleContent,
-      contextAttachmentCount: attachments.length,
+      retryAttachments: resolvedAttachments,
+      contextAttachmentCount: resolvedAttachments.length,
     );
+    _activeRequestId = requestId;
     state = state.copyWith(
       isProcessing: true,
       messages: [...state.messages, userMsg],
       streamingContent: '',
       error: null,
+      preflight: preflight,
     );
 
     // Start safety timer — only reset genuinely stuck requests.
@@ -220,9 +246,12 @@ class ChatNotifier extends Notifier<ChatState> {
     try {
       final finalContent = _buildMessageWithContext(
         visibleContent,
-        attachments,
+        resolvedAttachments,
       );
-      final result = await service.sendMessage(finalContent);
+      final result = await service.sendMessage(
+        finalContent,
+        requestId: requestId,
+      );
 
       _cancelSafetyTimer();
 
@@ -256,6 +285,7 @@ class ChatNotifier extends Notifier<ChatState> {
           AgentRunKind.chat,
           outputPreview: _preview(result),
         );
+        if (_activeRequestId == requestId) _activeRequestId = null;
       }
     } catch (e) {
       _cancelSafetyTimer();
@@ -271,6 +301,7 @@ class ChatNotifier extends Notifier<ChatState> {
         streamingContent: '',
         error: e.toString().replaceFirst('Exception: ', ''),
       );
+      _activeRequestId = null;
     } finally {
       _cancelSafetyTimer();
       // Only clear stuck flags, don't add spurious errors
@@ -293,6 +324,7 @@ class ChatNotifier extends Notifier<ChatState> {
         .read(agentRunProvider.notifier)
         .finishRun(AgentRunKind.chat, cancelled: true);
     _wasCancelled = true;
+    _activeRequestId = null;
     _cancelSafetyTimer();
     state = state.copyWith(
       isProcessing: false,
@@ -304,6 +336,10 @@ class ChatNotifier extends Notifier<ChatState> {
   /// Clear the current error
   void clearError() {
     state = state.copyWith(error: null);
+  }
+
+  void setPreflight(AgentPreflightResult? result) {
+    state = state.copyWith(preflight: result);
   }
 
   void approveConfirmation(String id) {
@@ -340,6 +376,7 @@ class ChatNotifier extends Notifier<ChatState> {
     }
     ref.read(agentServiceProvider).clearHistory();
     _wasCancelled = false;
+    _activeRequestId = null;
     _cancelSafetyTimer();
     state = const ChatState();
   }
@@ -362,8 +399,122 @@ class ChatNotifier extends Notifier<ChatState> {
           error:
               'The AI request is still running after 4 minutes. Please try again or check the provider connection.',
         );
+        _activeRequestId = null;
       }
     });
+  }
+
+  Future<AgentPreflightResult> preflightMessage(
+    String content,
+    List<ContextAttachment> attachments,
+  ) async {
+    final issues = <AgentPreflightIssue>[];
+    final settings = ref.read(settingsProvider);
+    final service = ref.read(agentServiceProvider);
+    final connectionStatus = ref.read(connectionStatusProvider);
+    final workspace = ref.read(workspaceContextProvider);
+    final selectedModel = settings.activeProvider == service.activeProviderType
+        ? service.state.model
+        : settings.activeProvider == AIProviderType.cisco
+        ? settings.ciscoModel
+        : settings.anthropicModel;
+    final modelInfo = ModelsConfig.getModel(selectedModel);
+    final contextWindow = modelInfo?.contextWindow ?? 120000;
+    final estimatedTokens = _estimateTokens(
+      _buildMessageWithContext(content, attachments),
+    );
+
+    if (state.isProcessing) {
+      issues.add(
+        const AgentPreflightIssue(
+          severity: AgentPreflightSeverity.blocking,
+          message: 'A chat request is already running.',
+          recoveryAction: AgentPreflightRecoveryAction.waitForRequest,
+        ),
+      );
+    }
+
+    if (connectionStatus != ConnectionStatus.connected) {
+      final config = await AgentConfig.load();
+      final hasCredentials = settings.activeProvider == AIProviderType.cisco
+          ? config.hasCiscoCredentials
+          : config.hasAnthropicCredentials;
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.blocking,
+          message: hasCredentials
+              ? 'AI is not connected. Reconnect before sending.'
+              : 'Provider credentials are missing. Add credentials in Settings.',
+          recoveryAction: hasCredentials
+              ? AgentPreflightRecoveryAction.reconnect
+              : AgentPreflightRecoveryAction.openSettings,
+        ),
+      );
+    }
+
+    final modelAvailable = ModelsConfig.modelsForProvider(
+      settings.activeProvider,
+    ).any((model) => model.id == selectedModel);
+    if (!modelAvailable) {
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.blocking,
+          message: '$selectedModel is not available for this provider.',
+          recoveryAction: AgentPreflightRecoveryAction.openSettings,
+        ),
+      );
+    }
+
+    if (workspace.isBusy) {
+      issues.add(
+        const AgentPreflightIssue(
+          severity: AgentPreflightSeverity.warning,
+          message: 'Workspace context is still refreshing.',
+          recoveryAction: AgentPreflightRecoveryAction.waitForWorkspace,
+        ),
+      );
+    } else if (workspace.error != null) {
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.warning,
+          message: 'Workspace context is degraded: ${workspace.error}',
+          recoveryAction: AgentPreflightRecoveryAction.waitForWorkspace,
+        ),
+      );
+    }
+
+    if (estimatedTokens > contextWindow * 0.95) {
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.blocking,
+          message:
+              'Context is too large (${TokenUsage.formatCount(estimatedTokens)} of ${TokenUsage.formatCount(contextWindow)} tokens).',
+          recoveryAction: AgentPreflightRecoveryAction.reduceContext,
+        ),
+      );
+    } else if (estimatedTokens > contextWindow * 0.75) {
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.warning,
+          message:
+              'Context is large (${TokenUsage.formatCount(estimatedTokens)} of ${TokenUsage.formatCount(contextWindow)} tokens).',
+          recoveryAction: AgentPreflightRecoveryAction.reduceContext,
+        ),
+      );
+    }
+
+    return AgentPreflightResult(
+      issues: issues,
+      estimatedTokens: estimatedTokens,
+      contextWindow: contextWindow,
+      checkedAt: DateTime.now(),
+    );
+  }
+
+  bool _eventBelongsToActiveRequest(Map<String, dynamic> data) {
+    final requestId = data['requestId'] as String?;
+    if (_activeRequestId == null) return true;
+    return requestId == _activeRequestId;
   }
 
   void _cancelSafetyTimer() {
@@ -385,6 +536,78 @@ class ChatNotifier extends Notifier<ChatState> {
     }
     parts.add(content);
     return parts.join('\n\n');
+  }
+
+  Future<List<ContextAttachment>> _resolveAttachments(
+    List<ContextAttachment> attachments,
+  ) async {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    final resolved = <ContextAttachment>[];
+    for (final attachment in attachments) {
+      if (attachment.type != ContextAttachmentType.file ||
+          attachment.path == null ||
+          attachment.content?.startsWith('```') == true) {
+        resolved.add(
+          attachment.copyWith(
+            resolutionStatus: ContextAttachmentResolutionStatus.resolved,
+            estimatedTokens: _estimateTokens(attachment.toPromptBlock()),
+          ),
+        );
+        continue;
+      }
+
+      final filePath = p.isAbsolute(attachment.path!)
+          ? attachment.path!
+          : rootPath == null
+          ? null
+          : p.normalize(p.join(rootPath, attachment.path!));
+      if (filePath == null ||
+          rootPath != null && !p.isWithin(rootPath, filePath)) {
+        resolved.add(
+          attachment.copyWith(
+            resolutionStatus: ContextAttachmentResolutionStatus.missing,
+            content: 'File could not be resolved inside the open workspace.',
+            estimatedTokens: 20,
+          ),
+        );
+        continue;
+      }
+      final file = File(filePath);
+      if (!await file.exists()) {
+        resolved.add(
+          attachment.copyWith(
+            resolutionStatus: ContextAttachmentResolutionStatus.missing,
+            content: 'File was not found at send time.',
+            estimatedTokens: 20,
+          ),
+        );
+        continue;
+      }
+
+      final raw = await file.readAsString();
+      const maxChars = 16000;
+      final truncated = raw.length > maxChars;
+      final body = truncated ? raw.substring(0, maxChars) : raw;
+      resolved.add(
+        attachment.copyWith(
+          path: filePath,
+          content: '```\n$body\n```',
+          resolutionStatus: truncated
+              ? ContextAttachmentResolutionStatus.tooLarge
+              : ContextAttachmentResolutionStatus.resolved,
+          estimatedTokens: _estimateTokens(body),
+          truncationMessage: truncated
+              ? '[Context truncated from ${raw.length} to $maxChars characters.]'
+              : null,
+        ),
+      );
+    }
+    return resolved;
+  }
+
+  int _estimateTokens(String value) {
+    if (value.trim().isEmpty) return 0;
+    return (value.length / 4).ceil();
   }
 
   String _preview(String value) {

@@ -9,6 +9,7 @@ import '../../enums/connection_status.dart';
 import '../../enums/tool_status.dart';
 import '../../models/editor_state.dart';
 import '../../models/agent_run.dart';
+import '../../models/run_diagnostics_summary.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/workspace_context.dart';
 import '../../state/agent_run_provider.dart';
@@ -25,6 +26,8 @@ import '../../theme/theme_tokens.dart';
 
 enum WorkbenchTab { context, activity }
 
+enum RunConsoleFilter { active, recent, failed }
+
 class AiWorkbenchTabNotifier extends Notifier<WorkbenchTab> {
   @override
   WorkbenchTab build() => WorkbenchTab.context;
@@ -36,6 +39,18 @@ final aiWorkbenchTabProvider =
     NotifierProvider<AiWorkbenchTabNotifier, WorkbenchTab>(
       AiWorkbenchTabNotifier.new,
     );
+
+final runConsoleFilterProvider =
+    NotifierProvider<RunConsoleFilterNotifier, RunConsoleFilter>(
+      RunConsoleFilterNotifier.new,
+    );
+
+class RunConsoleFilterNotifier extends Notifier<RunConsoleFilter> {
+  @override
+  RunConsoleFilter build() => RunConsoleFilter.active;
+
+  void set(RunConsoleFilter filter) => state = filter;
+}
 
 class AiWorkbenchPanel extends ConsumerWidget {
   const AiWorkbenchPanel({super.key});
@@ -481,31 +496,110 @@ class _RunTimeline extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final visibleRuns = [
-      ...runs.activeRuns.values,
-      ...runs.recentRuns,
-    ].take(4).toList();
+    final filter = ref.watch(runConsoleFilterProvider);
+    final visibleRuns = [...runs.activeRuns.values, ...runs.recentRuns]
+        .where((run) {
+          return switch (filter) {
+            RunConsoleFilter.active =>
+              run.status == AgentRunStatus.running ||
+                  run.status == AgentRunStatus.streaming ||
+                  run.status == AgentRunStatus.waitingForApproval,
+            RunConsoleFilter.recent => true,
+            RunConsoleFilter.failed => run.status == AgentRunStatus.failed,
+          };
+        })
+        .take(8)
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Recent AI runs',
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xxs,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.8,
-          ),
+        Row(
+          children: [
+            Text(
+              'Run console',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const Spacer(),
+            for (final item in RunConsoleFilter.values) ...[
+              _RunFilterChip(
+                label: item.name,
+                selected: filter == item,
+                onTap: () =>
+                    ref.read(runConsoleFilterProvider.notifier).set(item),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ],
         ),
         const SizedBox(height: Spacing.sm),
-        ...visibleRuns.map(
-          (run) => Padding(
-            padding: const EdgeInsets.only(bottom: Spacing.sm),
-            child: _RunTimelineRow(run: run),
+        if (visibleRuns.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(Spacing.md),
+            decoration: BoxDecoration(
+              color: tokens.surfaceRaised,
+              borderRadius: BorderRadius.circular(Radii.sm),
+              border: Border.all(color: tokens.outlineSubtle),
+            ),
+            child: Text(
+              'No ${filter.name} runs yet.',
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
+            ),
+          )
+        else
+          ...visibleRuns.map(
+            (run) => Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.sm),
+              child: _RunTimelineRow(run: run),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _RunFilterChip extends ConsumerWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _RunFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: selected ? tokens.surfaceSelected : Colors.transparent,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(
+            color: selected
+                ? tokens.accent.withValues(alpha: 0.35)
+                : tokens.outlineSubtle,
           ),
         ),
-      ],
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? tokens.accent : tokens.textMuted,
+            fontSize: FontSizes.xxs,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -599,10 +693,11 @@ class _RunTimelineRow extends ConsumerWidget {
             Row(
               children: [
                 _RunAction(
-                  icon: Icons.copy,
-                  label: 'Copy',
-                  onTap: () =>
-                      Clipboard.setData(ClipboardData(text: _summary(run))),
+                  icon: Icons.assignment_outlined,
+                  label: 'Copy diagnostics',
+                  onTap: () => Clipboard.setData(
+                    ClipboardData(text: RunDiagnosticsSummary(run).serialize()),
+                  ),
                 ),
                 const SizedBox(width: Spacing.sm),
                 if (run.error != null)
@@ -620,7 +715,10 @@ class _RunTimelineRow extends ConsumerWidget {
                     label: 'Retry',
                     onTap: () => ref
                         .read(chatProvider.notifier)
-                        .sendMessage(run.retryPrompt!),
+                        .sendMessage(
+                          run.retryPrompt!,
+                          attachments: run.retryAttachments,
+                        ),
                   ),
                 ],
                 if (run.status == AgentRunStatus.running ||
@@ -639,19 +737,6 @@ class _RunTimelineRow extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  static String _summary(AgentRun run) {
-    return [
-      '${_kindLabel(run.kind)} run',
-      'Status: ${run.status.name}',
-      'Model: ${run.model}',
-      if (run.inputPreview != null) 'Input: ${run.inputPreview}',
-      if (run.outputPreview != null) 'Output: ${run.outputPreview}',
-      if (run.error != null) 'Error: ${run.error}',
-      if (run.tokenUsage.isNotEmpty)
-        'Tokens: ${run.tokenUsage.formattedInputOutput}',
-    ].join('\n');
   }
 
   static String _kindLabel(AgentRunKind kind) {

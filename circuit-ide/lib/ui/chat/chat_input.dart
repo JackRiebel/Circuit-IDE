@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/agent_preflight.dart';
 import '../../models/context_attachment.dart';
 import '../../services/file_indexer.dart';
 import '../../state/chat_provider.dart';
@@ -200,6 +201,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
     final attachments = ref.read(chatContextDraftProvider).attachments;
     if (slashResult.message.isEmpty && attachments.isEmpty) return;
+    final preflight = await ref
+        .read(chatProvider.notifier)
+        .preflightMessage(slashResult.message, attachments);
+    ref.read(chatProvider.notifier).setPreflight(preflight);
+    if (!preflight.canSend) return;
     unawaited(
       ref
           .read(chatProvider.notifier)
@@ -312,6 +318,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         activeTab != null && !activeTab.filePath.startsWith('circuit://');
     final draft = ref.watch(chatContextDraftProvider);
     final attachments = draft.attachments;
+    final preflight = chatState.preflight;
+    final hasDraft = _hasText || attachments.isNotEmpty;
 
     // Ensure indexer is alive
     ref.watch(fileIndexerProvider);
@@ -337,6 +345,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 children: [
                   ...attachments.map(
                     (attachment) => _ContextChip(
+                      attachment: attachment,
                       label: attachment.label,
                       fullPath: attachment.path ?? attachment.promptHeader,
                       icon: _attachmentIcon(attachment.type),
@@ -350,6 +359,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   ),
                 ],
               ),
+            ),
+          if (preflight?.primaryIssue != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.sm),
+              child: _PreflightBanner(result: preflight!),
             ),
 
           // Input row
@@ -421,7 +435,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         decoration: InputDecoration(
                           hintText: chatState.isProcessing
                               ? 'Waiting for response...'
-                              : 'Message CircuitCode... (type @ to mention files)',
+                              : 'Message CircuitCode... (type @ or / for context)',
                           filled: false,
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
@@ -439,8 +453,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                           ? _StopButton(tokens: tokens)
                           : _SendButton(
                               tokens: tokens,
-                              hasText: _hasText,
-                              onTap: _hasText ? () => unawaited(_send()) : null,
+                              hasText: hasDraft,
+                              onTap: hasDraft ? () => unawaited(_send()) : null,
                             ),
                     ),
                   ],
@@ -471,6 +485,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 // ------ Context chip widget ------
 
 class _ContextChip extends ConsumerWidget {
+  final ContextAttachment attachment;
   final String label;
   final String fullPath;
   final IconData icon;
@@ -478,6 +493,7 @@ class _ContextChip extends ConsumerWidget {
   final bool muted;
 
   const _ContextChip({
+    required this.attachment,
     required this.label,
     required this.fullPath,
     required this.icon,
@@ -490,53 +506,210 @@ class _ContextChip extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
 
     return Tooltip(
-      message: fullPath,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: 2,
+      message: 'Click to preview context',
+      child: InkWell(
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => _ContextPreviewDialog(attachment: attachment),
         ),
-        decoration: BoxDecoration(
-          color: muted
-              ? tokens.surfaceRaised
-              : tokens.accent.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(Radii.sm),
-          border: Border.all(
-            color: muted
-                ? tokens.outlineSubtle
-                : tokens.accent.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md,
+            vertical: 2,
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 11,
-              color: muted ? tokens.textMuted : tokens.accent,
+          decoration: BoxDecoration(
+            color: muted
+                ? tokens.surfaceRaised
+                : tokens.accent.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(Radii.sm),
+            border: Border.all(
+              color: muted
+                  ? tokens.outlineSubtle
+                  : tokens.accent.withValues(alpha: 0.25),
             ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: muted ? tokens.textSecondary : tokens.accent,
-                fontSize: FontSizes.xxs,
-                fontWeight: FontWeight.w500,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 11,
+                color: muted ? tokens.textMuted : tokens.accent,
               ),
-            ),
-            const SizedBox(width: 4),
-            GestureDetector(
-              onTap: onRemove,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Icon(
-                  Icons.close,
-                  size: 10,
-                  color: tokens.accent.withValues(alpha: 0.6),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  color: muted ? tokens.textSecondary : tokens.accent,
+                  fontSize: FontSizes.xxs,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: onRemove,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Icon(
+                    Icons.close,
+                    size: 10,
+                    color: tokens.accent.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PreflightBanner extends ConsumerWidget {
+  final AgentPreflightResult result;
+
+  const _PreflightBanner({required this.result});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final issue = result.primaryIssue;
+    if (issue == null) return const SizedBox.shrink();
+    final isBlocking = issue.severity == AgentPreflightSeverity.blocking;
+    final color = isBlocking ? tokens.error : tokens.warning;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isBlocking ? Icons.block_outlined : Icons.info_outline,
+            size: 14,
+            color: color,
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              '${result.statusLabel} · ${issue.message}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontSize: FontSizes.xs,
+              ),
             ),
-          ],
+          ),
+          const SizedBox(width: Spacing.sm),
+          Text(
+            '${result.estimatedTokens}/${result.contextWindow}',
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextPreviewDialog extends ConsumerWidget {
+  final ContextAttachment attachment;
+
+  const _ContextPreviewDialog({required this.attachment});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final preview = attachment.toPromptBlock();
+    final status = attachment.resolutionStatus.name;
+
+    return Dialog(
+      backgroundColor: tokens.surfaceOverlay,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.md),
+        side: BorderSide(color: tokens.outlineStrong),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620, maxHeight: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.xl),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.attachment_outlined,
+                    size: 16,
+                    color: tokens.accent,
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: Text(
+                      attachment.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textPrimary,
+                        fontSize: FontSizes.md,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close, size: 16, color: tokens.textMuted),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                [
+                  'Source: ${attachment.path ?? attachment.promptHeader}',
+                  'Status: $status',
+                  'Estimated tokens: ${attachment.estimatedTokens}',
+                  if (attachment.truncationMessage != null)
+                    attachment.truncationMessage!,
+                ].join(' · '),
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(Spacing.md),
+                  decoration: BoxDecoration(
+                    color: tokens.bgMain,
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    border: Border.all(color: tokens.outlineSubtle),
+                  ),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      preview,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xs,
+                        height: 1.45,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

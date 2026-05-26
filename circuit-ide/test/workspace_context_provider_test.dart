@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:circuit_ide/models/workspace_context.dart';
+import 'package:circuit_ide/models/agent_run.dart';
+import 'package:circuit_ide/state/agent_run_provider.dart';
 import 'package:circuit_ide/state/workspace_context_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +35,13 @@ void main() {
       expect(state.fileIndexProgress?.files, 1);
       expect(state.lsdfProgress?.files, 1);
       expect(await File(p.join(root.path, 'project.lsdf')).exists(), isTrue);
+      expect(
+        container
+            .read(agentRunProvider)
+            .recentRuns
+            .any((run) => run.kind == AgentRunKind.backgroundTask),
+        isTrue,
+      );
     },
   );
 

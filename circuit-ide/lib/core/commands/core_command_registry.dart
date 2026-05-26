@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../enums/connection_status.dart';
 import '../../models/command_descriptor.dart';
+import '../../models/run_diagnostics_summary.dart';
 import '../../state/agent_run_provider.dart';
 import '../../state/ai_context_provider.dart';
 import '../../state/chat_context_draft_provider.dart';
@@ -80,18 +81,7 @@ class CoreCommandRegistry {
           final run = ref.read(agentRunProvider).latestRun;
           if (run == null) return;
           Clipboard.setData(
-            ClipboardData(
-              text: [
-                '${run.kind.name} run',
-                'Status: ${run.status.name}',
-                'Model: ${run.model}',
-                if (run.inputPreview != null) 'Input: ${run.inputPreview}',
-                if (run.outputPreview != null) 'Output: ${run.outputPreview}',
-                if (run.error != null) 'Error: ${run.error}',
-                if (run.tokenUsage.isNotEmpty)
-                  'Tokens: ${run.tokenUsage.formattedInputOutput}',
-              ].join('\n'),
-            ),
+            ClipboardData(text: RunDiagnosticsSummary(run).serialize()),
           );
           ref.read(chatPanelVisibleProvider.notifier).set(true);
           ref.read(aiWorkbenchTabProvider.notifier).set(WorkbenchTab.activity);
