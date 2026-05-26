@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,13 +11,16 @@ import '../../models/run_diagnostics_summary.dart';
 import '../../state/agent_run_provider.dart';
 import '../../state/ai_context_provider.dart';
 import '../../state/chat_context_draft_provider.dart';
+import '../../state/chat_provider.dart';
 import '../../state/command_palette_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/layout_provider.dart';
+import '../../state/project_profile_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/terminal_provider.dart';
+import '../../state/work_item_provider.dart';
 import '../../state/workspace_context_provider.dart';
 import '../../ui/chat/ai_workbench_panel.dart';
 import '../../ui/layout/activity_bar.dart';
@@ -23,6 +28,116 @@ import '../../ui/layout/activity_bar.dart';
 class CoreCommandRegistry {
   static void register(WidgetRef ref) {
     ref.read(commandPaletteProvider.notifier).registerCommands([
+      CommandDescriptor(
+        id: 'project.openCockpit',
+        title: 'Open Project Cockpit',
+        description:
+            'Show stack, readiness, recommended checks, and guided work.',
+        category: 'Project',
+        icon: Icons.space_dashboard_outlined,
+        surface: 'cockpit',
+        priority: 100,
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          unawaited(ref.read(projectProfileProvider.notifier).refresh());
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.startWorkItem',
+        title: 'Start Work Item',
+        description: 'Create a guided task with steps, checks, and handoff.',
+        category: 'Project',
+        icon: Icons.add_task_outlined,
+        surface: 'cockpit',
+        priority: 90,
+        recommendedWhen: 'A workspace is open and the next action is unclear.',
+        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          ref
+              .read(workItemProvider.notifier)
+              .start(
+                'Review this project and suggest the safest next improvement',
+              );
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.runRecommendedChecks',
+        title: 'Run Recommended Checks',
+        description:
+            'Run detected lint, test, or build checks for this project.',
+        category: 'Project',
+        icon: Icons.playlist_add_check_outlined,
+        surface: 'cockpit',
+        priority: 85,
+        isEnabled: () =>
+            ref.read(projectProfileProvider).commands.any((c) => c.enabled),
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          ref.read(workItemProvider.notifier).start('Run recommended checks');
+          unawaited(ref.read(workItemProvider.notifier).runVerification());
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.explain',
+        title: 'Explain Project',
+        description:
+            'Ask AI to explain stack, architecture, and safe next steps.',
+        category: 'Project',
+        icon: Icons.psychology_outlined,
+        surface: 'cockpit',
+        priority: 80,
+        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
+        run: () {
+          ref.read(chatPanelVisibleProvider.notifier).set(true);
+          unawaited(
+            ref
+                .read(chatProvider.notifier)
+                .sendMessage(
+                  'Explain this project using the project profile and L-SDF map. '
+                  'Cover stack, entrypoints, architecture, and safest next steps.',
+                ),
+          );
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.summarizeChanges',
+        title: 'Summarize Current Changes',
+        description: 'Create a concise handoff from the current working tree.',
+        category: 'Project',
+        icon: Icons.summarize_outlined,
+        surface: 'cockpit',
+        priority: 75,
+        isEnabled: () => ref.read(projectProfileProvider).changedFiles > 0,
+        run: () {
+          ref.read(chatPanelVisibleProvider.notifier).set(true);
+          unawaited(
+            ref
+                .read(chatProvider.notifier)
+                .sendMessage(
+                  'Summarize the current working tree changes as a handoff. '
+                  'Include files changed, risk, tests run, and next steps.',
+                ),
+          );
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.copyHandoff',
+        title: 'Create Handoff Summary',
+        description: 'Copy the active guided work item handoff.',
+        category: 'Project',
+        icon: Icons.copy_all_outlined,
+        surface: 'cockpit',
+        priority: 70,
+        run: () {
+          Clipboard.setData(
+            ClipboardData(
+              text: ref.read(workItemProvider.notifier).handoffSummary(),
+            ),
+          );
+          _showSidePanel(ref, ActivityBarItem.tools);
+        },
+      ),
       CommandDescriptor(
         id: 'workspace.refreshContext',
         title: 'Refresh Workspace',

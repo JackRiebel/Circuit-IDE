@@ -6,6 +6,7 @@ import 'core/commands/core_command_registry.dart';
 import 'state/theme_provider.dart';
 import 'state/command_palette_provider.dart';
 import 'state/layout_provider.dart';
+import 'state/project_profile_provider.dart';
 import 'state/settings_provider.dart';
 import 'state/terminal_provider.dart';
 import 'state/workspace_context_provider.dart';
@@ -33,6 +34,7 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     ref.watch(workspaceContextProvider);
+    ref.watch(projectProfileProvider);
     final theme = AppTheme.fromTokens(tokens);
 
     // Restore theme from persisted settings once

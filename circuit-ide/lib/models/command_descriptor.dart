@@ -7,6 +7,9 @@ class CommandDescriptor {
   final String? shortcut;
   final String category;
   final IconData icon;
+  final String? surface;
+  final int priority;
+  final String? recommendedWhen;
   final bool Function()? isEnabled;
   final void Function() run;
 
@@ -17,6 +20,9 @@ class CommandDescriptor {
     this.shortcut,
     required this.category,
     required this.icon,
+    this.surface,
+    this.priority = 0,
+    this.recommendedWhen,
     this.isEnabled,
     required this.run,
   });

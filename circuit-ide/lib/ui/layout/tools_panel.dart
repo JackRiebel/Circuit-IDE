@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../state/theme_provider.dart';
 import '../common/circuit_primitives.dart';
+import '../project/project_cockpit_panel.dart';
 import 'activity_bar.dart';
 
 class ToolsPanel extends ConsumerWidget {
@@ -79,6 +80,8 @@ class ToolsPanel extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(Spacing.lg),
       children: [
+        const ProjectCockpitPanel(),
+        const SizedBox(height: Spacing.lg),
         for (final group in _groups)
           Padding(
             padding: const EdgeInsets.only(bottom: Spacing.sm),
