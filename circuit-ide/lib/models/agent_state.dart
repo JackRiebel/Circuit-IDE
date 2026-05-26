@@ -20,7 +20,7 @@ class AgentState {
 
   const AgentState({
     this.connectionStatus = ConnectionStatus.disconnected,
-    this.model = 'gpt-4.1',
+    this.model = 'gpt-5-nano',
     this.workingDir = '',
     this.autoApprove = false,
     this.thinkingMode = false,

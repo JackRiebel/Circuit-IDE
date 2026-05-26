@@ -1,3 +1,6 @@
+import '../../enums/ai_provider.dart';
+import '../config/models_config.dart';
+
 enum BotAgentState { stopped, starting, running, error }
 
 /// Configuration model for the Webex bot agent.
@@ -14,7 +17,7 @@ class BotAgentConfig {
   const BotAgentConfig({
     this.scriptPath,
     this.port = 8090,
-    this.model = 'gpt-4o',
+    this.model = ModelsConfig.defaultCiscoModel,
     this.systemPrompt,
     this.roomIds = const [],
     this.mcpServerUrls = const [],
@@ -24,27 +27,28 @@ class BotAgentConfig {
     return BotAgentConfig(
       scriptPath: json['scriptPath'] as String?,
       port: json['port'] as int? ?? 8090,
-      model: json['model'] as String? ?? 'gpt-4o',
+      model: ModelsConfig.coerceModelForProvider(
+        AIProviderType.cisco,
+        json['model'] as String?,
+      ),
       systemPrompt: json['systemPrompt'] as String?,
-      roomIds: (json['roomIds'] as List?)
-              ?.map((e) => e as String)
-              .toList() ??
+      roomIds:
+          (json['roomIds'] as List?)?.map((e) => e as String).toList() ??
           const [],
-      mcpServerUrls: (json['mcpServerUrls'] as List?)
-              ?.map((e) => e as String)
-              .toList() ??
+      mcpServerUrls:
+          (json['mcpServerUrls'] as List?)?.map((e) => e as String).toList() ??
           const [],
     );
   }
 
   Map<String, dynamic> toJson() => {
-        if (scriptPath != null) 'scriptPath': scriptPath,
-        'port': port,
-        'model': model,
-        if (systemPrompt != null) 'systemPrompt': systemPrompt,
-        if (roomIds.isNotEmpty) 'roomIds': roomIds,
-        if (mcpServerUrls.isNotEmpty) 'mcpServerUrls': mcpServerUrls,
-      };
+    if (scriptPath != null) 'scriptPath': scriptPath,
+    'port': port,
+    'model': model,
+    if (systemPrompt != null) 'systemPrompt': systemPrompt,
+    if (roomIds.isNotEmpty) 'roomIds': roomIds,
+    if (mcpServerUrls.isNotEmpty) 'mcpServerUrls': mcpServerUrls,
+  };
 
   BotAgentConfig copyWith({
     String? scriptPath,

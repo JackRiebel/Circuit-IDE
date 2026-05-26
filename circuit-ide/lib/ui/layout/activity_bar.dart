@@ -11,6 +11,9 @@ enum ActivityBarItem {
   explorer(Icons.folder_outlined, Icons.folder, 'Explorer'),
   search(Icons.search, Icons.search, 'Search'),
   git(Icons.account_tree_outlined, Icons.account_tree, 'Source Control'),
+  ai(Icons.auto_awesome_outlined, Icons.auto_awesome, 'AI Assistant'),
+  runTest(Icons.play_circle_outline, Icons.play_circle, 'Run & Test'),
+  tools(Icons.widgets_outlined, Icons.widgets, 'Tools'),
   codebaseMap(Icons.hub_outlined, Icons.hub, 'Codebase Map'),
   notebook(Icons.science_outlined, Icons.science, 'Notebooks'),
   testing(Icons.bug_report_outlined, Icons.bug_report, 'Test Generation'),
@@ -26,6 +29,8 @@ enum ActivityBarItem {
   final IconData icon;
   final IconData activeIcon;
   final String tooltip;
+
+  static const primary = [explorer, search, git, ai, runTest, tools];
 }
 
 class ActiveActivityItemNotifier extends Notifier<ActivityBarItem> {
@@ -64,16 +69,24 @@ class ActivityBar extends ConsumerWidget {
       child: Column(
         children: [
           const SizedBox(height: 4),
-          ...ActivityBarItem.values.map(
+          ...ActivityBarItem.primary.map(
             (item) => _ActivityBarButton(
               item: item,
-              isActive: activeItem == item,
+              isActive:
+                  activeItem == item || _isPrimaryActive(item, activeItem),
               onTap: () {
+                if (item == ActivityBarItem.ai) {
+                  ref.read(chatPanelVisibleProvider.notifier).toggle();
+                  return;
+                }
+                final target = item == ActivityBarItem.runTest
+                    ? ActivityBarItem.testing
+                    : item;
                 final current = ref.read(activeActivityItemProvider);
-                if (current == item) {
+                if (current == target) {
                   ref.read(sidePanelVisibleProvider.notifier).toggle();
                 } else {
-                  ref.read(activeActivityItemProvider.notifier).set(item);
+                  ref.read(activeActivityItemProvider.notifier).set(target);
                   ref.read(sidePanelVisibleProvider.notifier).set(true);
                 }
               },
@@ -86,6 +99,25 @@ class ActivityBar extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  static bool _isPrimaryActive(ActivityBarItem item, ActivityBarItem active) {
+    if (item == ActivityBarItem.runTest) {
+      return active == ActivityBarItem.testing ||
+          active == ActivityBarItem.security ||
+          active == ActivityBarItem.vericoding;
+    }
+    if (item == ActivityBarItem.tools) {
+      return active == ActivityBarItem.tools ||
+          active == ActivityBarItem.codebaseMap ||
+          active == ActivityBarItem.notebook ||
+          active == ActivityBarItem.mcp ||
+          active == ActivityBarItem.memories ||
+          active == ActivityBarItem.checkpoints ||
+          active == ActivityBarItem.rules ||
+          active == ActivityBarItem.agents;
+    }
+    return false;
   }
 }
 

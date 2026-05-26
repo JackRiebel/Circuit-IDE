@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/utils/logger.dart';
+import '../models/agent_run.dart';
 import '../models/edit_prediction.dart';
+import 'agent_run_provider.dart';
 import 'connection_provider.dart';
 import 'editor_provider.dart';
 
@@ -13,10 +15,7 @@ class EditPredictionState {
   final EditPrediction? prediction;
   final bool isLoading;
 
-  const EditPredictionState({
-    this.prediction,
-    this.isLoading = false,
-  });
+  const EditPredictionState({this.prediction, this.isLoading = false});
 
   EditPredictionState copyWith({
     EditPrediction? prediction,
@@ -70,11 +69,16 @@ class EditPredictionNotifier extends Notifier<EditPredictionState> {
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected || service.state.isProcessing) return;
 
-    final requestId =
-        '${filePath}_${DateTime.now().millisecondsSinceEpoch}';
+    final requestId = '${filePath}_${DateTime.now().millisecondsSinceEpoch}';
     _lastRequestId = requestId;
 
     state = state.copyWith(isLoading: true);
+    final runNotifier = ref.read(agentRunProvider.notifier);
+    runNotifier.startRun(
+      kind: AgentRunKind.editPrediction,
+      model: service.state.model,
+      message: 'Predicting next edit',
+    );
 
     try {
       // Build a simple diff description
@@ -104,7 +108,8 @@ class EditPredictionNotifier extends Notifier<EditPredictionState> {
           .take(10)
           .join(', ');
 
-      final prompt = '''Based on this code edit, predict where the user will likely need to edit next.
+      final prompt =
+          '''Based on this code edit, predict where the user will likely need to edit next.
 
 File: ${p.basename(filePath)} ($language)
 
@@ -146,6 +151,7 @@ If no clear prediction, respond with: {"confidence": 0.0}''';
             );
 
             state = EditPredictionState(prediction: prediction);
+            runNotifier.finishRun(AgentRunKind.editPrediction);
 
             // Auto-dismiss after 30 seconds
             _dismissTimer?.cancel();
@@ -158,8 +164,10 @@ If no clear prediction, respond with: {"confidence": 0.0}''';
       }
 
       state = state.copyWith(isLoading: false, clearPrediction: true);
+      runNotifier.finishRun(AgentRunKind.editPrediction);
     } catch (e) {
       Logger.warning('Edit prediction error: $e', 'EditPrediction');
+      runNotifier.finishRun(AgentRunKind.editPrediction, error: e.toString());
       if (_lastRequestId == requestId) {
         state = state.copyWith(isLoading: false, clearPrediction: true);
       }
@@ -186,5 +194,5 @@ If no clear prediction, respond with: {"confidence": 0.0}''';
 
 final editPredictionProvider =
     NotifierProvider<EditPredictionNotifier, EditPredictionState>(
-  EditPredictionNotifier.new,
-);
+      EditPredictionNotifier.new,
+    );

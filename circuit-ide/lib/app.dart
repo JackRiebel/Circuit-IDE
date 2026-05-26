@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/commands/core_command_registry.dart';
 import 'state/theme_provider.dart';
 import 'state/command_palette_provider.dart';
 import 'state/layout_provider.dart';
 import 'state/settings_provider.dart';
 import 'state/terminal_provider.dart';
+import 'state/workspace_context_provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_tokens.dart';
 import 'ui/screens/ide_screen.dart';
@@ -22,8 +24,15 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
   bool _themeRestored = false;
 
   @override
+  void initState() {
+    super.initState();
+    CoreCommandRegistry.register(ref);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
+    ref.watch(workspaceContextProvider);
     final theme = AppTheme.fromTokens(tokens);
 
     // Restore theme from persisted settings once
@@ -61,6 +70,13 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
               shift: true,
             ): () =>
                 ref.read(chatPanelVisibleProvider.notifier).toggle(),
+            const SingleActivator(
+              LogicalKeyboardKey.keyM,
+              meta: true,
+              shift: true,
+            ): () => ref
+                .read(workspaceContextProvider.notifier)
+                .refresh(forceLsdf: true),
           },
           child: const Focus(autofocus: true, child: IDEScreen()),
         ),

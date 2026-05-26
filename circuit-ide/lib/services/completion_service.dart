@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../agent/config/models_config.dart';
 import '../agent/providers/provider_interface.dart';
 import '../core/utils/debouncer.dart';
 import '../core/utils/logger.dart';
@@ -8,8 +9,9 @@ import '../models/chat_message.dart';
 
 class CompletionService {
   final AIProvider provider;
-  final Debouncer _debouncer =
-      Debouncer(delay: const Duration(milliseconds: 300));
+  final Debouncer _debouncer = Debouncer(
+    delay: const Duration(milliseconds: 300),
+  );
 
   CompletionService({required this.provider});
 
@@ -24,8 +26,7 @@ class CompletionService {
     try {
       final lines = fileContent.split('\n');
       final beforeCursor = lines.sublist(0, cursorLine).join('\n');
-      final afterCursor =
-          lines.sublist(cursorLine).join('\n');
+      final afterCursor = lines.sublist(cursorLine).join('\n');
 
       final prompt =
           'Complete the following $language code. Only provide the completion text, nothing else.\n\n'
@@ -41,7 +42,7 @@ class CompletionService {
             timestamp: DateTime.now(),
           ),
         ],
-        model: model ?? 'gpt-4o-mini',
+        model: model ?? ModelsConfig.defaultCiscoModel,
         tools: [],
         maxTokens: 256,
         temperature: 0.3,

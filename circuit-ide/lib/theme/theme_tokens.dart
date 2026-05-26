@@ -68,6 +68,16 @@ class ThemeTokens {
   final Color terminalBg;
   final Color terminalText;
 
+  // Modern surface aliases. These keep older call sites compatible while
+  // giving new UI a clearer hierarchy than bgDark/bgMain/bgLight.
+  Color get surfaceBase => bgMain;
+  Color get surfaceRaised => bgLight.withValues(alpha: 0.72);
+  Color get surfaceOverlay => bgLighter.withValues(alpha: 0.9);
+  Color get surfaceHover => textMuted.withValues(alpha: 0.08);
+  Color get surfaceSelected => accent.withValues(alpha: 0.12);
+  Color get outlineSubtle => border.withValues(alpha: 0.45);
+  Color get outlineStrong => borderLight.withValues(alpha: 0.78);
+
   const ThemeTokens({
     required this.name,
     required this.displayName,
@@ -365,9 +375,6 @@ class ThemeTokens {
   static const allThemes = [dark, light, midnight, forest, solarized];
 
   static ThemeTokens fromName(String name) {
-    return allThemes.firstWhere(
-      (t) => t.name == name,
-      orElse: () => dark,
-    );
+    return allThemes.firstWhere((t) => t.name == name, orElse: () => dark);
   }
 }

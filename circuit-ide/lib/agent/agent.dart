@@ -47,7 +47,7 @@ class CircuitAgent {
     required this.provider,
     required this.workingDir,
     required this.events,
-    this.model = 'gpt-4.1',
+    this.model = 'gpt-5-nano',
     this.autoApprove = false,
     this.streamResponses = true,
   }) {

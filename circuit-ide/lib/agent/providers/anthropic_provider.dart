@@ -17,11 +17,13 @@ class AnthropicProvider implements AIProvider {
   bool _connected = false;
 
   AnthropicProvider() {
-    _dio = Dio(BaseOptions(
-      baseUrl: AppConstants.anthropicBaseUrl,
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 120),
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: AppConstants.anthropicBaseUrl,
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 4),
+      ),
+    );
   }
 
   @override
@@ -48,12 +50,10 @@ class AnthropicProvider implements AIProvider {
           'model': 'claude-3-5-haiku-20241022',
           'max_tokens': 1,
           'messages': [
-            {'role': 'user', 'content': 'hi'}
+            {'role': 'user', 'content': 'hi'},
           ],
         }),
-        options: Options(
-          headers: _headers,
-        ),
+        options: Options(headers: _headers),
       );
       _connected = true;
       Logger.info('Connected to Anthropic API', 'AnthropicProvider');
@@ -64,7 +64,9 @@ class AnthropicProvider implements AIProvider {
       // Other errors might be fine (rate limit etc.)
       _connected = true;
       Logger.info(
-          'Connected to Anthropic API (verification skipped)', 'AnthropicProvider');
+        'Connected to Anthropic API (verification skipped)',
+        'AnthropicProvider',
+      );
     }
   }
 
@@ -76,10 +78,10 @@ class AnthropicProvider implements AIProvider {
   }
 
   Map<String, String> get _headers => {
-        'x-api-key': _apiKey ?? '',
-        'anthropic-version': AppConstants.anthropicApiVersion,
-        'content-type': 'application/json',
-      };
+    'x-api-key': _apiKey ?? '',
+    'anthropic-version': AppConstants.anthropicApiVersion,
+    'content-type': 'application/json',
+  };
 
   @override
   Stream<ChatChunk> chat(
@@ -108,7 +110,8 @@ class AnthropicProvider implements AIProvider {
             },
           ],
         });
-      } else if (msg.role == MessageRole.assistant && msg.toolCalls.isNotEmpty) {
+      } else if (msg.role == MessageRole.assistant &&
+          msg.toolCalls.isNotEmpty) {
         // Assistant message with tool use
         final content = <Map<String, dynamic>>[];
         if (msg.content.isNotEmpty) {
@@ -124,10 +127,7 @@ class AnthropicProvider implements AIProvider {
         }
         apiMessages.add({'role': 'assistant', 'content': content});
       } else {
-        apiMessages.add({
-          'role': msg.role.value,
-          'content': msg.content,
-        });
+        apiMessages.add({'role': msg.role.value, 'content': msg.content});
       }
     }
 
@@ -155,10 +155,7 @@ class AnthropicProvider implements AIProvider {
       final response = await _dio.post<ResponseBody>(
         '/v1/messages',
         data: jsonEncode(body),
-        options: Options(
-          headers: _headers,
-          responseType: ResponseType.stream,
-        ),
+        options: Options(headers: _headers, responseType: ResponseType.stream),
       );
 
       final sseParser = SSEParser();
@@ -166,7 +163,9 @@ class AnthropicProvider implements AIProvider {
       String currentToolName = '';
       int toolIndex = -1;
 
-      final stream = response.data!.stream.cast<List<int>>().transform(utf8.decoder);
+      final stream = response.data!.stream.cast<List<int>>().transform(
+        utf8.decoder,
+      );
 
       // Process SSE stream inline
       String buffer = '';
@@ -217,8 +216,7 @@ class AnthropicProvider implements AIProvider {
                 } else if (deltaType == 'input_json_delta') {
                   yield ChatChunk(
                     toolCallIndex: toolIndex,
-                    toolCallArguments:
-                        delta['partial_json'] as String?,
+                    toolCallArguments: delta['partial_json'] as String?,
                   );
                 }
                 break;
@@ -228,8 +226,7 @@ class AnthropicProvider implements AIProvider {
                 final usage = parsed['usage'] as Map<String, dynamic>?;
                 yield ChatChunk(
                   finishReason: delta?['stop_reason'] as String?,
-                  completionTokens:
-                      usage?['output_tokens'] as int? ?? 0,
+                  completionTokens: usage?['output_tokens'] as int? ?? 0,
                 );
                 break;
 
@@ -238,8 +235,7 @@ class AnthropicProvider implements AIProvider {
                 final usage = message?['usage'] as Map<String, dynamic>?;
                 if (usage != null) {
                   yield ChatChunk(
-                    promptTokens:
-                        usage['input_tokens'] as int? ?? 0,
+                    promptTokens: usage['input_tokens'] as int? ?? 0,
                   );
                 }
                 break;
@@ -256,8 +252,7 @@ class AnthropicProvider implements AIProvider {
     } on DioException catch (e) {
       final statusCode = e.response?.statusCode;
       final responseData = e.response?.data;
-      throw Exception(
-          'Anthropic API error $statusCode: $responseData');
+      throw Exception('Anthropic API error $statusCode: $responseData');
     }
   }
 }

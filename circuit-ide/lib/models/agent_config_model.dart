@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../agent/config/models_config.dart';
+import '../enums/ai_provider.dart';
 import 'agent_trigger.dart';
 
 class AgentConfigModel {
@@ -19,7 +21,7 @@ class AgentConfigModel {
     this.description = '',
     this.systemPrompt = '',
     this.allowedTools = const {},
-    this.model = 'gpt-4.1',
+    this.model = ModelsConfig.defaultCiscoModel,
     this.autoApprove = false,
     required this.createdAt,
     this.triggers = const [],
@@ -50,16 +52,16 @@ class AgentConfigModel {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'system_prompt': systemPrompt,
-        'allowed_tools': allowedTools.toList(),
-        'model': model,
-        'auto_approve': autoApprove,
-        'created_at': createdAt.toIso8601String(),
-        'triggers': triggers.map((t) => t.toJson()).toList(),
-      };
+    'id': id,
+    'name': name,
+    'description': description,
+    'system_prompt': systemPrompt,
+    'allowed_tools': allowedTools.toList(),
+    'model': model,
+    'auto_approve': autoApprove,
+    'created_at': createdAt.toIso8601String(),
+    'triggers': triggers.map((t) => t.toJson()).toList(),
+  };
 
   factory AgentConfigModel.fromJson(Map<String, dynamic> json) {
     return AgentConfigModel(
@@ -67,14 +69,17 @@ class AgentConfigModel {
       name: json['name'] as String,
       description: json['description'] as String? ?? '',
       systemPrompt: json['system_prompt'] as String? ?? '',
-      allowedTools: (json['allowed_tools'] as List<dynamic>?)
-              ?.cast<String>()
-              .toSet() ??
+      allowedTools:
+          (json['allowed_tools'] as List<dynamic>?)?.cast<String>().toSet() ??
           {},
-      model: json['model'] as String? ?? 'gpt-4o',
+      model: ModelsConfig.coerceModelForProvider(
+        AIProviderType.cisco,
+        json['model'] as String?,
+      ),
       autoApprove: json['auto_approve'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
-      triggers: (json['triggers'] as List<dynamic>?)
+      triggers:
+          (json['triggers'] as List<dynamic>?)
               ?.map((t) => AgentTrigger.fromJson(t as Map<String, dynamic>))
               .toList() ??
           [],

@@ -67,30 +67,34 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       onKeyEvent: (event) {
                         if (event is KeyDownEvent) {
                           if (event.logicalKey == LogicalKeyboardKey.escape) {
-                            ref
-                                .read(commandPaletteProvider.notifier)
-                                .close();
+                            ref.read(commandPaletteProvider.notifier).close();
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.arrowDown) {
+                            if (paletteState.filteredCommands.isEmpty) return;
                             setState(() {
                               _selectedIndex = (_selectedIndex + 1).clamp(
-                                  0,
-                                  paletteState.filteredCommands.length - 1);
+                                0,
+                                paletteState.filteredCommands.length - 1,
+                              );
                             });
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.arrowUp) {
+                            if (paletteState.filteredCommands.isEmpty) return;
                             setState(() {
                               _selectedIndex = (_selectedIndex - 1).clamp(
-                                  0,
-                                  paletteState.filteredCommands.length - 1);
+                                0,
+                                paletteState.filteredCommands.length - 1,
+                              );
                             });
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.enter) {
                             if (paletteState.filteredCommands.isNotEmpty) {
                               ref
                                   .read(commandPaletteProvider.notifier)
-                                  .execute(paletteState
-                                      .filteredCommands[_selectedIndex]);
+                                  .execute(
+                                    paletteState
+                                        .filteredCommands[_selectedIndex],
+                                  );
                             }
                           }
                         }
@@ -130,7 +134,10 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       ),
                     ),
                   ),
-                  Divider(color: tokens.border.withValues(alpha: 0.5), height: 1),
+                  Divider(
+                    color: tokens.border.withValues(alpha: 0.5),
+                    height: 1,
+                  ),
 
                   // Commands list
                   Flexible(
@@ -141,8 +148,12 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       itemBuilder: (context, index) {
                         final command = paletteState.filteredCommands[index];
                         final isSelected = index == _selectedIndex;
+                        final enabled = command.enabled;
 
                         return InkWell(
+                          mouseCursor: enabled
+                              ? SystemMouseCursors.click
+                              : SystemMouseCursors.basic,
                           onTap: () => ref
                               .read(commandPaletteProvider.notifier)
                               .execute(command),
@@ -162,15 +173,49 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                             ),
                             child: Row(
                               children: [
+                                Icon(
+                                  command.icon,
+                                  size: 16,
+                                  color: !enabled
+                                      ? tokens.textDisabled
+                                      : isSelected
+                                      ? tokens.accent
+                                      : tokens.textMuted,
+                                ),
+                                const SizedBox(width: Spacing.md),
                                 Expanded(
-                                  child: Text(
-                                    command.label,
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? tokens.textPrimary
-                                          : tokens.textSecondary,
-                                      fontSize: FontSizes.md,
-                                    ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${command.category}: ${command.title}',
+                                        style: TextStyle(
+                                          color: !enabled
+                                              ? tokens.textDisabled
+                                              : isSelected
+                                              ? tokens.textPrimary
+                                              : tokens.textSecondary,
+                                          fontSize: FontSizes.md,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (command.description != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 2,
+                                          ),
+                                          child: Text(
+                                            command.description!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: tokens.textMuted,
+                                              fontSize: FontSizes.xs,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                                 if (command.shortcut != null)
@@ -181,10 +226,13 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                                     ),
                                     decoration: BoxDecoration(
                                       color: tokens.bgDark,
-                                      borderRadius:
-                                          BorderRadius.circular(Radii.xs),
+                                      borderRadius: BorderRadius.circular(
+                                        Radii.xs,
+                                      ),
                                       border: Border.all(
-                                        color: tokens.border.withValues(alpha: 0.5),
+                                        color: tokens.border.withValues(
+                                          alpha: 0.5,
+                                        ),
                                       ),
                                     ),
                                     child: Text(

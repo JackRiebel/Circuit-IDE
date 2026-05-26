@@ -16,7 +16,7 @@ class SettingsModel {
 
   const SettingsModel({
     this.activeProvider = AIProviderType.cisco,
-    this.ciscoModel = 'gpt-4.1',
+    this.ciscoModel = 'gpt-5-nano',
     this.anthropicModel = 'claude-sonnet-4-20250514',
     this.themeName = 'dark',
     this.editorFontSize = 14.0,

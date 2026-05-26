@@ -1,20 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class Command {
-  final String id;
-  final String label;
-  final String? shortcut;
-  final String category;
-  final void Function() action;
+import '../models/command_descriptor.dart';
 
-  const Command({
-    required this.id,
-    required this.label,
-    this.shortcut,
-    this.category = 'General',
-    required this.action,
-  });
-}
+typedef Command = CommandDescriptor;
 
 class CommandPaletteState {
   final bool isOpen;
@@ -49,10 +37,7 @@ class CommandPaletteNotifier extends Notifier<CommandPaletteState> {
   CommandPaletteState build() => const CommandPaletteState();
 
   void registerCommands(List<Command> commands) {
-    state = state.copyWith(
-      allCommands: commands,
-      filteredCommands: commands,
-    );
+    state = state.copyWith(allCommands: commands, filteredCommands: commands);
   }
 
   void toggle() {
@@ -77,29 +62,40 @@ class CommandPaletteNotifier extends Notifier<CommandPaletteState> {
 
   void filter(String query) {
     if (query.isEmpty) {
-      state = state.copyWith(
-        query: query,
-        filteredCommands: state.allCommands,
-      );
+      state = state.copyWith(query: query, filteredCommands: state.allCommands);
       return;
     }
 
-    final lower = query.toLowerCase();
-    final filtered = state.allCommands.where((cmd) {
-      return cmd.label.toLowerCase().contains(lower) ||
-          cmd.category.toLowerCase().contains(lower);
-    }).toList();
+    final lower = _normalize(query);
+    final filtered =
+        state.allCommands.where((cmd) {
+          return _normalize(cmd.title).contains(lower) ||
+              _normalize(cmd.category).contains(lower) ||
+              (cmd.description == null
+                  ? false
+                  : _normalize(cmd.description!).contains(lower));
+        }).toList()..sort((a, b) {
+          final aTitle = _normalize(a.title).startsWith(lower) ? 0 : 1;
+          final bTitle = _normalize(b.title).startsWith(lower) ? 0 : 1;
+          if (aTitle != bTitle) return aTitle.compareTo(bTitle);
+          return a.title.compareTo(b.title);
+        });
 
     state = state.copyWith(query: query, filteredCommands: filtered);
   }
 
   void execute(Command command) {
+    if (!command.enabled) return;
     close();
-    command.action();
+    command.run();
+  }
+
+  String _normalize(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
   }
 }
 
 final commandPaletteProvider =
     NotifierProvider<CommandPaletteNotifier, CommandPaletteState>(
-  CommandPaletteNotifier.new,
-);
+      CommandPaletteNotifier.new,
+    );

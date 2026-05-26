@@ -3,27 +3,23 @@ import '../../models/routing_models.dart';
 import '../providers/provider_interface.dart';
 
 class ModelsConfig {
+  static const defaultCiscoModel = 'gpt-5-nano';
+  static const defaultAnthropicModel = 'claude-sonnet-4-20250514';
+
   static const ciscoModels = [
     ModelInfo(
-      id: 'gpt-4.1',
-      displayName: 'GPT-4.1 - Complex reasoning (1M context)',
-      contextWindow: 1000000,
-      inputCostPer1k: 0.002,
-      outputCostPer1k: 0.008,
+      id: 'gpt-5-nano',
+      displayName: 'GPT-5-nano - Free tier (120K context)',
+      contextWindow: 120000,
+      inputCostPer1k: 0,
+      outputCostPer1k: 0,
     ),
     ModelInfo(
-      id: 'gpt-4.1-mini',
-      displayName: 'GPT-4.1 Mini - Fast & efficient (1M context)',
-      contextWindow: 1000000,
-      inputCostPer1k: 0.0004,
-      outputCostPer1k: 0.0016,
-    ),
-    ModelInfo(
-      id: 'gpt-4.1-nano',
-      displayName: 'GPT-4.1 Nano - Ultra fast (1M context)',
-      contextWindow: 1000000,
-      inputCostPer1k: 0.0001,
-      outputCostPer1k: 0.0004,
+      id: 'gemini-3.1-flash-lite',
+      displayName: 'Gemini 3.1 Flash Lite - Free tier (120K context)',
+      contextWindow: 120000,
+      inputCostPer1k: 0,
+      outputCostPer1k: 0,
     ),
   ];
 
@@ -60,9 +56,9 @@ class ModelsConfig {
 
   /// Tier mappings for each provider.
   static const _ciscoTierMap = {
-    ModelTier.fast: 'gpt-4.1-nano',
-    ModelTier.balanced: 'gpt-4.1-mini',
-    ModelTier.powerful: 'gpt-4.1',
+    ModelTier.fast: 'gemini-3.1-flash-lite',
+    ModelTier.balanced: defaultCiscoModel,
+    ModelTier.powerful: defaultCiscoModel,
   };
 
   static const _anthropicTierMap = {
@@ -76,6 +72,28 @@ class ModelsConfig {
       if (m.id == id) return m;
     }
     return null;
+  }
+
+  static List<ModelInfo> modelsForProvider(AIProviderType provider) {
+    return switch (provider) {
+      AIProviderType.cisco => ciscoModels,
+      AIProviderType.anthropic => anthropicModels,
+    };
+  }
+
+  static String defaultModelForProvider(AIProviderType provider) {
+    return switch (provider) {
+      AIProviderType.cisco => defaultCiscoModel,
+      AIProviderType.anthropic => defaultAnthropicModel,
+    };
+  }
+
+  static String coerceModelForProvider(AIProviderType provider, String? model) {
+    final models = modelsForProvider(provider);
+    if (model != null && models.any((m) => m.id == model)) {
+      return model;
+    }
+    return defaultModelForProvider(provider);
   }
 
   /// Get the model ID for a given provider and tier.

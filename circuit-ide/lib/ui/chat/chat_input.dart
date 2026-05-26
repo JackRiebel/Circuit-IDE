@@ -1,14 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/context_attachment.dart';
 import '../../services/file_indexer.dart';
-import '../../state/ai_context_provider.dart';
 import '../../state/chat_provider.dart';
+import '../../state/chat_context_draft_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_indexer_provider.dart';
-import '../../state/terminal_provider.dart';
 import '../../state/theme_provider.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
@@ -26,11 +28,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _fileContextAttached = false;
 
   // @-mention state
-  final List<String> _mentionedFiles = [];
   bool _showMentionPopup = false;
+  bool _showSlashPopup = false;
   String _mentionQuery = '';
+  String _slashQuery = '';
   int _mentionStartIndex = -1;
   int _selectedMentionIndex = 0;
+  int _selectedSlashIndex = 0;
   OverlayEntry? _overlayEntry;
 
   @override
@@ -73,8 +77,29 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     }
 
+    final slashIndex = beforeCursor.lastIndexOf('/');
+    if (slashIndex >= 0) {
+      final query = beforeCursor.substring(slashIndex);
+      final startsCommand =
+          slashIndex == 0 ||
+          beforeCursor.substring(0, slashIndex).endsWith('\n') ||
+          beforeCursor.substring(0, slashIndex).endsWith(' ');
+      if (startsCommand && !query.contains('\n')) {
+        _mentionStartIndex = slashIndex;
+        _slashQuery = query;
+        _selectedSlashIndex = 0;
+        _showSlashPopup = true;
+        _updateSlashOverlay();
+        return;
+      }
+    }
+
     if (_showMentionPopup) {
       _showMentionPopup = false;
+      _removeMentionOverlay();
+    }
+    if (_showSlashPopup) {
+      _showSlashPopup = false;
       _removeMentionOverlay();
     }
   }
@@ -90,17 +115,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _controller.text = '$before$after';
     _controller.selection = TextSelection.collapsed(offset: before.length);
 
-    if (!_mentionedFiles.contains(file.relativePath)) {
-      setState(() => _mentionedFiles.add(file.relativePath));
-    }
+    ref.read(chatContextDraftProvider.notifier).addMention(file);
 
     _showMentionPopup = false;
     _removeMentionOverlay();
     _focusNode.requestFocus();
-  }
-
-  void _removeMention(String path) {
-    setState(() => _mentionedFiles.remove(path));
   }
 
   void _updateMentionOverlay() {
@@ -120,91 +139,118 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     Overlay.of(context).insert(_overlayEntry!);
   }
 
+  void _updateSlashOverlay() {
+    _removeMentionOverlay();
+    _overlayEntry = OverlayEntry(
+      builder: (context) => _SlashPopup(
+        layerLink: _layerLink,
+        query: _slashQuery,
+        selectedIndex: _selectedSlashIndex,
+        onSelect: _selectSlashCommand,
+      ),
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _selectSlashCommand(SlashCommandSpec spec) {
+    final text = _controller.text;
+    final before = text.substring(0, _mentionStartIndex);
+    final after = _controller.selection.baseOffset < text.length
+        ? text.substring(_controller.selection.baseOffset)
+        : '';
+    final suffix = spec.command == '/file' ? ' ' : '\n';
+
+    _controller.text = '$before${spec.command}$suffix$after';
+    _controller.selection = TextSelection.collapsed(
+      offset: before.length + spec.command.length + suffix.length,
+    );
+    _showSlashPopup = false;
+    _removeMentionOverlay();
+    _focusNode.requestFocus();
+  }
+
+  List<SlashCommandSpec> _slashResults() {
+    final query = _slashQuery.toLowerCase();
+    return ChatContextDraftNotifier.slashCommands
+        .where(
+          (spec) =>
+              spec.command.startsWith(query) ||
+              spec.label.toLowerCase().contains(query.replaceFirst('/', '')),
+        )
+        .take(8)
+        .toList();
+  }
+
   void _removeMentionOverlay() {
     _overlayEntry?.remove();
     _overlayEntry = null;
   }
 
   void _toggleFileContext() {
-    final activeTab = ref.read(editorProvider).activeTab;
-    if (activeTab == null || activeTab.filePath.startsWith('circuit://')) {
-      return;
-    }
+    ref.read(chatContextDraftProvider.notifier).toggleActiveFileAttachment();
     setState(() => _fileContextAttached = !_fileContextAttached);
   }
 
-  void _send() {
+  Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty && _mentionedFiles.isEmpty) return;
-
-    final parts = <String>[];
-
-    // Add @-mentioned files as context
-    if (_mentionedFiles.isNotEmpty) {
-      final files = _mentionedFiles.join(', ');
-      parts.add('[Context files: $files — read these files for context]');
+    final draftNotifier = ref.read(chatContextDraftProvider.notifier);
+    final slashResult = await draftNotifier.parseSlashCommands(text);
+    for (final attachment in slashResult.attachments) {
+      draftNotifier.addAttachment(attachment);
     }
-
-    // Add active file context
-    if (_fileContextAttached) {
-      final activeTab = ref.read(editorProvider).activeTab;
-      if (activeTab != null && !activeTab.filePath.startsWith('circuit://')) {
-        parts.add('[Regarding: ${activeTab.fileName}]');
-      }
-    }
-
-    final globalContext = _buildPinnedContext();
-    if (globalContext.isNotEmpty) {
-      parts.add(globalContext);
-    }
-
-    if (text.isNotEmpty) {
-      parts.add(text);
-    }
-
-    ref.read(chatProvider.notifier).sendMessage(parts.join('\n'));
+    final attachments = ref.read(chatContextDraftProvider).attachments;
+    if (slashResult.message.isEmpty && attachments.isEmpty) return;
+    unawaited(
+      ref
+          .read(chatProvider.notifier)
+          .sendMessage(slashResult.message, attachments: attachments),
+    );
     _controller.clear();
     setState(() {
       _fileContextAttached = false;
-      _mentionedFiles.clear();
     });
+    draftNotifier.clearAfterSend();
     _removeMentionOverlay();
-  }
-
-  String _buildPinnedContext() {
-    final contextState = ref.read(aiContextProvider);
-    final activeTab = ref.read(editorProvider).activeTab;
-    final terminalOutput = ref
-        .read(terminalProvider.notifier)
-        .getActiveTerminalOutput(lines: 60)
-        .trim();
-    final parts = <String>[];
-
-    if (contextState.includeLsdfIndex) {
-      parts.add(
-        '[Pinned context: use the L-SDF code index before loading broad file context.]',
-      );
-    }
-    if (contextState.includeActiveFile &&
-        activeTab != null &&
-        !activeTab.filePath.startsWith('circuit://') &&
-        !_fileContextAttached) {
-      parts.add('[Pinned active file: ${activeTab.filePath}]');
-    }
-    if (contextState.includeTerminalOutput && terminalOutput.isNotEmpty) {
-      parts.add('[Pinned terminal output]\n```\n$terminalOutput\n```');
-    }
-    if (contextState.includeGitDiff) {
-      parts.add(
-        '[Pinned git diff: inspect the current working tree diff before answering.]',
-      );
-    }
-
-    return parts.join('\n');
   }
 
   bool _handleKeyEvent(KeyEvent event) {
     if (event is! KeyDownEvent) return false;
+
+    if (_showSlashPopup) {
+      final results = _slashResults();
+      if (results.isEmpty) return false;
+
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        setState(() {
+          _selectedSlashIndex = (_selectedSlashIndex + 1).clamp(
+            0,
+            results.length - 1,
+          );
+        });
+        _updateSlashOverlay();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        setState(() {
+          _selectedSlashIndex = (_selectedSlashIndex - 1).clamp(
+            0,
+            results.length - 1,
+          );
+        });
+        _updateSlashOverlay();
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.tab) {
+        _selectSlashCommand(results[_selectedSlashIndex]);
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _showSlashPopup = false;
+        _removeMentionOverlay();
+        return true;
+      }
+    }
 
     if (_showMentionPopup) {
       final results =
@@ -248,8 +294,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     // Normal enter to send
     if (event.logicalKey == LogicalKeyboardKey.enter &&
         !HardwareKeyboard.instance.isShiftPressed &&
-        !_showMentionPopup) {
-      _send();
+        !_showMentionPopup &&
+        !_showSlashPopup) {
+      unawaited(_send());
       return true;
     }
 
@@ -263,6 +310,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final activeTab = ref.watch(editorProvider).activeTab;
     final hasFile =
         activeTab != null && !activeTab.filePath.startsWith('circuit://');
+    final draft = ref.watch(chatContextDraftProvider);
+    final attachments = draft.attachments;
 
     // Ensure indexer is alive
     ref.watch(fileIndexerProvider);
@@ -279,29 +328,26 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         mainAxisSize: MainAxisSize.min,
         children: [
           // Context chips row
-          if (_mentionedFiles.isNotEmpty || (_fileContextAttached && hasFile))
+          if (attachments.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: Spacing.sm),
               child: Wrap(
                 spacing: 6,
                 runSpacing: 4,
                 children: [
-                  ..._mentionedFiles.map(
-                    (path) => _ContextChip(
-                      label: path.split('/').last,
-                      fullPath: path,
-                      icon: Icons.description_outlined,
-                      onRemove: () => _removeMention(path),
+                  ...attachments.map(
+                    (attachment) => _ContextChip(
+                      label: attachment.label,
+                      fullPath: attachment.path ?? attachment.promptHeader,
+                      icon: _attachmentIcon(attachment.type),
+                      muted: draft.pinnedAttachments.any(
+                        (pinned) => pinned.id == attachment.id,
+                      ),
+                      onRemove: () => ref
+                          .read(chatContextDraftProvider.notifier)
+                          .removeAttachment(attachment.id),
                     ),
                   ),
-                  if (_fileContextAttached && hasFile)
-                    _ContextChip(
-                      label: activeTab.fileName,
-                      fullPath: activeTab.filePath,
-                      icon: Icons.edit_document,
-                      onRemove: () =>
-                          setState(() => _fileContextAttached = false),
-                    ),
                 ],
               ),
             ),
@@ -394,7 +440,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                           : _SendButton(
                               tokens: tokens,
                               hasText: _hasText,
-                              onTap: _hasText ? _send : null,
+                              onTap: _hasText ? () => unawaited(_send()) : null,
                             ),
                     ),
                   ],
@@ -406,6 +452,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       ),
     );
   }
+
+  IconData _attachmentIcon(ContextAttachmentType type) {
+    return switch (type) {
+      ContextAttachmentType.lsdfIndex => Icons.hub_outlined,
+      ContextAttachmentType.file => Icons.description_outlined,
+      ContextAttachmentType.selection => Icons.select_all,
+      ContextAttachmentType.terminal => Icons.terminal,
+      ContextAttachmentType.gitDiff => Icons.account_tree_outlined,
+      ContextAttachmentType.diagnostics => Icons.error_outline,
+      ContextAttachmentType.symbols => Icons.data_object,
+      ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.note => Icons.notes,
+    };
+  }
 }
 
 // ------ Context chip widget ------
@@ -415,12 +475,14 @@ class _ContextChip extends ConsumerWidget {
   final String fullPath;
   final IconData icon;
   final VoidCallback onRemove;
+  final bool muted;
 
   const _ContextChip({
     required this.label,
     required this.fullPath,
     required this.icon,
     required this.onRemove,
+    this.muted = false,
   });
 
   @override
@@ -435,19 +497,29 @@ class _ContextChip extends ConsumerWidget {
           vertical: 2,
         ),
         decoration: BoxDecoration(
-          color: tokens.accent.withValues(alpha: 0.1),
+          color: muted
+              ? tokens.surfaceRaised
+              : tokens.accent.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(Radii.sm),
-          border: Border.all(color: tokens.accent.withValues(alpha: 0.25)),
+          border: Border.all(
+            color: muted
+                ? tokens.outlineSubtle
+                : tokens.accent.withValues(alpha: 0.25),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 11, color: tokens.accent),
+            Icon(
+              icon,
+              size: 11,
+              color: muted ? tokens.textMuted : tokens.accent,
+            ),
             const SizedBox(width: 4),
             Text(
               label,
               style: TextStyle(
-                color: tokens.accent,
+                color: muted ? tokens.textSecondary : tokens.accent,
                 fontSize: FontSizes.xxs,
                 fontWeight: FontWeight.w500,
               ),
@@ -604,6 +676,128 @@ class _MentionPopup extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+class _SlashPopup extends ConsumerWidget {
+  final LayerLink layerLink;
+  final String query;
+  final int selectedIndex;
+  final void Function(SlashCommandSpec) onSelect;
+
+  const _SlashPopup({
+    required this.layerLink,
+    required this.query,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final normalized = query.toLowerCase();
+    final results = ChatContextDraftNotifier.slashCommands
+        .where(
+          (spec) =>
+              spec.command.startsWith(normalized) ||
+              spec.label.toLowerCase().contains(
+                normalized.replaceFirst('/', ''),
+              ),
+        )
+        .take(8)
+        .toList();
+
+    return CompositedTransformFollower(
+      link: layerLink,
+      targetAnchor: Alignment.topLeft,
+      followerAnchor: Alignment.bottomLeft,
+      offset: const Offset(0, -4),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          width: 340,
+          constraints: const BoxConstraints(maxHeight: 260),
+          decoration: BoxDecoration(
+            color: tokens.surfaceOverlay,
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(color: tokens.outlineStrong),
+            boxShadow: Shadows.medium,
+          ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
+            itemCount: results.length,
+            itemBuilder: (context, index) {
+              final spec = results[index];
+              final selected = index == selectedIndex;
+              return InkWell(
+                onTap: () => onSelect(spec),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.md,
+                    vertical: Spacing.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: selected ? tokens.surfaceSelected : null,
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _iconForType(spec.type),
+                        size: 14,
+                        color: selected ? tokens.accent : tokens.textMuted,
+                      ),
+                      const SizedBox(width: Spacing.md),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${spec.command} · ${spec.label}',
+                              style: TextStyle(
+                                color: tokens.textPrimary,
+                                fontSize: FontSizes.xs,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              spec.description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: tokens.textMuted,
+                                fontSize: FontSizes.xxs,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  static IconData _iconForType(ContextAttachmentType type) {
+    return switch (type) {
+      ContextAttachmentType.lsdfIndex => Icons.hub_outlined,
+      ContextAttachmentType.file => Icons.description_outlined,
+      ContextAttachmentType.selection => Icons.select_all,
+      ContextAttachmentType.terminal => Icons.terminal,
+      ContextAttachmentType.gitDiff => Icons.account_tree_outlined,
+      ContextAttachmentType.diagnostics => Icons.error_outline,
+      ContextAttachmentType.symbols => Icons.data_object,
+      ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.note => Icons.notes,
+    };
   }
 }
 

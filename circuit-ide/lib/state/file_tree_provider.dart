@@ -38,8 +38,17 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
   FileTreeState build() => const FileTreeState();
 
   static const _ignoredDirs = {
-    '.git', '.dart_tool', 'build', 'node_modules', '__pycache__',
-    '.venv', 'venv', '.idea', '.vscode', 'target', '.gradle',
+    '.git',
+    '.dart_tool',
+    'build',
+    'node_modules',
+    '__pycache__',
+    '.venv',
+    'venv',
+    '.idea',
+    '.vscode',
+    'target',
+    '.gradle',
   };
 
   Future<void> openDirectory(String path) async {
@@ -63,7 +72,8 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
       final aIsDir = a is Directory;
       final bIsDir = b is Directory;
       if (aIsDir != bIsDir) return aIsDir ? -1 : 1;
-      return p.basename(a.path)
+      return p
+          .basename(a.path)
           .toLowerCase()
           .compareTo(p.basename(b.path).toLowerCase());
     });
@@ -74,13 +84,15 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
       if (name.startsWith('.') && name != '.gitignore') continue;
       if (entity is Directory && _ignoredDirs.contains(name)) continue;
 
-      nodes.add(FileNode(
-        name: name,
-        path: entity.path,
-        isDirectory: entity is Directory,
-        depth: depth,
-        isHidden: name.startsWith('.'),
-      ));
+      nodes.add(
+        FileNode(
+          name: name,
+          path: entity.path,
+          isDirectory: entity is Directory,
+          depth: depth,
+          isHidden: name.startsWith('.'),
+        ),
+      );
     }
     return nodes;
   }
@@ -153,5 +165,6 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
   }
 }
 
-final fileTreeProvider =
-    NotifierProvider<FileTreeNotifier, FileTreeState>(FileTreeNotifier.new);
+final fileTreeProvider = NotifierProvider<FileTreeNotifier, FileTreeState>(
+  FileTreeNotifier.new,
+);

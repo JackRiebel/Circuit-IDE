@@ -23,10 +23,12 @@ class CiscoProvider implements AIProvider {
   static const Duration _baseRetryDelay = Duration(seconds: 1);
 
   CiscoProvider() {
-    _dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 180),
-    ));
+    _dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(minutes: 4),
+      ),
+    );
   }
 
   @override
@@ -62,8 +64,7 @@ class CiscoProvider implements AIProvider {
   }
 
   Future<void> _refreshToken() async {
-    final credentials =
-        base64Encode(utf8.encode('$_clientId:$_clientSecret'));
+    final credentials = base64Encode(utf8.encode('$_clientId:$_clientSecret'));
 
     Exception? lastError;
     for (int attempt = 0; attempt < _maxRetries; attempt++) {
@@ -83,26 +84,28 @@ class CiscoProvider implements AIProvider {
         _accessToken = data['access_token'] as String;
         final expiresIn = data['expires_in'] as int;
         // Refresh 5 minutes before expiry
-        _tokenExpiry = DateTime.now().add(
-          Duration(seconds: expiresIn - 300),
-        );
+        _tokenExpiry = DateTime.now().add(Duration(seconds: expiresIn - 300));
 
-        Logger.info('OAuth token refreshed, expires in ${expiresIn}s',
-            'CiscoProvider');
+        Logger.info(
+          'OAuth token refreshed, expires in ${expiresIn}s',
+          'CiscoProvider',
+        );
         return;
       } catch (e) {
         lastError = e is Exception ? e : Exception(e.toString());
         if (attempt < _maxRetries - 1) {
           final delay = _baseRetryDelay * (1 << attempt);
           Logger.warning(
-              'Token refresh failed, retrying in ${delay.inSeconds}s...',
-              'CiscoProvider');
+            'Token refresh failed, retrying in ${delay.inSeconds}s...',
+            'CiscoProvider',
+          );
           await Future.delayed(delay);
         }
       }
     }
     throw Exception(
-        'Failed to obtain OAuth token after $_maxRetries attempts: $lastError');
+      'Failed to obtain OAuth token after $_maxRetries attempts: $lastError',
+    );
   }
 
   Future<String> _getToken() async {
@@ -149,8 +152,9 @@ class CiscoProvider implements AIProvider {
     }
 
     Logger.info(
-        'Sending chat request to $url (model: $model, messages: ${apiMessages.length})',
-        'CiscoProvider');
+      'Sending chat request to $url (model: $model, messages: ${apiMessages.length})',
+      'CiscoProvider',
+    );
 
     Response<ResponseBody> response;
     try {
@@ -158,10 +162,7 @@ class CiscoProvider implements AIProvider {
         url,
         data: jsonEncode(body),
         options: Options(
-          headers: {
-            'api-key': token,
-            'Content-Type': 'application/json',
-          },
+          headers: {'api-key': token, 'Content-Type': 'application/json'},
           responseType: ResponseType.stream,
         ),
       );
@@ -169,12 +170,14 @@ class CiscoProvider implements AIProvider {
       final status = e.response?.statusCode;
       if (status == 401) {
         await _refreshToken();
-        yield* chat(messages,
-            model: model,
-            tools: tools,
-            systemPrompt: systemPrompt,
-            temperature: temperature,
-            maxTokens: maxTokens);
+        yield* chat(
+          messages,
+          model: model,
+          tools: tools,
+          systemPrompt: systemPrompt,
+          temperature: temperature,
+          maxTokens: maxTokens,
+        );
         return;
       }
       String errorMsg = 'Cisco API error $status';
@@ -184,7 +187,8 @@ class CiscoProvider implements AIProvider {
           if (errBody.isNotEmpty) {
             final errData = jsonDecode(errBody) as Map<String, dynamic>;
             final inner = errData['error'] as Map<String, dynamic>?;
-            errorMsg = inner?['message'] as String? ??
+            errorMsg =
+                inner?['message'] as String? ??
                 errData['message'] as String? ??
                 errorMsg;
           }
@@ -247,8 +251,7 @@ class CiscoProvider implements AIProvider {
 
           final choice = choices[0] as Map<String, dynamic>;
           final delta = choice['delta'] as Map<String, dynamic>? ?? {};
-          finishReason =
-              choice['finish_reason'] as String? ?? finishReason;
+          finishReason = choice['finish_reason'] as String? ?? finishReason;
 
           final content = delta['content'] as String?;
           if (content != null && content.isNotEmpty) {
@@ -261,8 +264,7 @@ class CiscoProvider implements AIProvider {
             yieldedAny = true;
             for (final tc in toolCalls) {
               final tcMap = tc as Map<String, dynamic>;
-              final function =
-                  tcMap['function'] as Map<String, dynamic>? ?? {};
+              final function = tcMap['function'] as Map<String, dynamic>? ?? {};
               yield ChatChunk(
                 toolCallIndex: tcMap['index'] as int?,
                 toolCallId: tcMap['id'] as String?,
@@ -279,8 +281,9 @@ class CiscoProvider implements AIProvider {
     // a plain JSON response. Try to parse the buffer as JSON.
     if (!yieldedAny && buffer.trim().isNotEmpty) {
       Logger.info(
-          'No SSE events found, attempting JSON fallback parse',
-          'CiscoProvider');
+        'No SSE events found, attempting JSON fallback parse',
+        'CiscoProvider',
+      );
       yield* _parseJsonResponse(buffer.trim());
       return;
     }

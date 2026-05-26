@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
@@ -7,7 +8,10 @@ import '../../core/utils/platform_utils.dart';
 import '../../enums/connection_status.dart';
 import '../../enums/tool_status.dart';
 import '../../models/editor_state.dart';
+import '../../models/agent_run.dart';
 import '../../models/tool_call_info.dart';
+import '../../models/workspace_context.dart';
+import '../../state/agent_run_provider.dart';
 import '../../state/ai_context_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/connection_provider.dart';
@@ -16,23 +20,30 @@ import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/terminal_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../state/workspace_context_provider.dart';
 import '../../theme/theme_tokens.dart';
 
-enum _WorkbenchTab { context, activity }
+enum WorkbenchTab { context, activity }
 
-class AiWorkbenchPanel extends ConsumerStatefulWidget {
+class AiWorkbenchTabNotifier extends Notifier<WorkbenchTab> {
+  @override
+  WorkbenchTab build() => WorkbenchTab.context;
+
+  void set(WorkbenchTab tab) => state = tab;
+}
+
+final aiWorkbenchTabProvider =
+    NotifierProvider<AiWorkbenchTabNotifier, WorkbenchTab>(
+      AiWorkbenchTabNotifier.new,
+    );
+
+class AiWorkbenchPanel extends ConsumerWidget {
   const AiWorkbenchPanel({super.key});
 
   @override
-  ConsumerState<AiWorkbenchPanel> createState() => _AiWorkbenchPanelState();
-}
-
-class _AiWorkbenchPanelState extends ConsumerState<AiWorkbenchPanel> {
-  _WorkbenchTab _tab = _WorkbenchTab.context;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final tab = ref.watch(aiWorkbenchTabProvider);
 
     return Container(
       decoration: BoxDecoration(
@@ -66,21 +77,25 @@ class _AiWorkbenchPanelState extends ConsumerState<AiWorkbenchPanel> {
                 const Spacer(),
                 _SegmentButton(
                   label: 'Context',
-                  selected: _tab == _WorkbenchTab.context,
-                  onTap: () => setState(() => _tab = _WorkbenchTab.context),
+                  selected: tab == WorkbenchTab.context,
+                  onTap: () => ref
+                      .read(aiWorkbenchTabProvider.notifier)
+                      .set(WorkbenchTab.context),
                 ),
                 const SizedBox(width: Spacing.sm),
                 _SegmentButton(
                   label: 'Activity',
-                  selected: _tab == _WorkbenchTab.activity,
-                  onTap: () => setState(() => _tab = _WorkbenchTab.activity),
+                  selected: tab == WorkbenchTab.activity,
+                  onTap: () => ref
+                      .read(aiWorkbenchTabProvider.notifier)
+                      .set(WorkbenchTab.activity),
                 ),
               ],
             ),
           ),
           AnimatedSwitcher(
             duration: AnimationDurations.smooth,
-            child: _tab == _WorkbenchTab.context
+            child: tab == WorkbenchTab.context
                 ? const _ContextWorkbench(key: ValueKey('context'))
                 : const _ActivityWorkbench(key: ValueKey('activity')),
           ),
@@ -102,6 +117,7 @@ class _ContextWorkbench extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final connectionStatus = ref.watch(connectionStatusProvider);
     final contextState = ref.watch(aiContextProvider);
+    final workspaceState = ref.watch(workspaceContextProvider);
     final activeFile = _activeFile(activeTab);
     final terminalOutput = ref
         .read(terminalProvider.notifier)
@@ -146,10 +162,10 @@ class _ContextWorkbench extends ConsumerWidget {
               const SizedBox(width: Spacing.sm),
               Expanded(
                 child: _ContextTile(
-                  icon: Icons.memory_outlined,
-                  title: 'Token mode',
-                  subtitle: 'L-SDF index + targeted files',
-                  statusColor: tokens.accent,
+                  icon: _lsdfIcon(contextState.lsdfStatus),
+                  title: _lsdfTitle(contextState),
+                  subtitle: _lsdfSubtitle(contextState),
+                  statusColor: _lsdfColor(contextState.lsdfStatus, tokens),
                 ),
               ),
             ],
@@ -186,6 +202,10 @@ class _ContextWorkbench extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: Spacing.md),
+          if (workspaceState.isBusy || workspaceState.error != null) ...[
+            _WorkspaceProgressRow(state: workspaceState),
+            const SizedBox(height: Spacing.md),
+          ],
           Row(
             children: [
               _ContextPill(
@@ -196,104 +216,9 @@ class _ContextWorkbench extends ConsumerWidget {
               ),
               const SizedBox(width: Spacing.sm),
               _ContextPill(
-                icon: Icons.auto_awesome,
-                label: 'Tools can edit, read, and run',
-                color: tokens.accent,
-              ),
-            ],
-          ),
-          const SizedBox(height: Spacing.md),
-          Wrap(
-            spacing: Spacing.sm,
-            runSpacing: Spacing.sm,
-            children: [
-              _ContextToggle(
                 icon: Icons.hub_outlined,
-                label: 'L-SDF',
-                value: contextState.includeLsdfIndex,
-                tokenHint: '~300',
-                onTap: () =>
-                    ref.read(aiContextProvider.notifier).toggleLsdfIndex(),
-              ),
-              _ContextToggle(
-                icon: Icons.description_outlined,
-                label: 'Active file',
-                value: contextState.includeActiveFile,
-                enabled: activeFile != null,
-                tokenHint: activeFile == null
-                    ? '0'
-                    : '~${_estimateTokens(activeFile.content)}',
-                onTap: () =>
-                    ref.read(aiContextProvider.notifier).toggleActiveFile(),
-              ),
-              _ContextToggle(
-                icon: Icons.terminal,
-                label: 'Terminal',
-                value: contextState.includeTerminalOutput,
-                enabled: terminalOutput.isNotEmpty,
-                tokenHint: '~${_estimateTokens(terminalOutput)}',
-                onTap: () =>
-                    ref.read(aiContextProvider.notifier).toggleTerminalOutput(),
-              ),
-              _ContextToggle(
-                icon: Icons.account_tree_outlined,
-                label: 'Git diff',
-                value: contextState.includeGitDiff,
-                tokenHint: 'scan',
-                onTap: () =>
-                    ref.read(aiContextProvider.notifier).toggleGitDiff(),
-              ),
-            ],
-          ),
-          const SizedBox(height: Spacing.md),
-          Wrap(
-            spacing: Spacing.sm,
-            runSpacing: Spacing.sm,
-            children: [
-              _WorkbenchAction(
-                icon: Icons.hub_outlined,
-                label: 'Map Project',
-                onTap: () => _send(
-                  ref,
-                  'Use the L-SDF code index to map this project. Summarize architecture, key entry points, and the safest next improvements.',
-                ),
-              ),
-              _WorkbenchAction(
-                icon: Icons.manage_search,
-                label: 'Review File',
-                enabled: activeFile != null,
-                onTap: () => _sendFilePrompt(
-                  ref,
-                  activeFile,
-                  'Review this file for bugs, edge cases, and maintainability issues. Make focused fixes when appropriate.',
-                ),
-              ),
-              _WorkbenchAction(
-                icon: Icons.science_outlined,
-                label: 'Test File',
-                enabled: activeFile != null,
-                onTap: () => _sendFilePrompt(
-                  ref,
-                  activeFile,
-                  'Add or update focused tests for this file. Use existing test patterns in the repo.',
-                ),
-              ),
-              _WorkbenchAction(
-                icon: Icons.terminal,
-                label: 'Use Terminal',
-                enabled: terminalOutput.isNotEmpty,
-                onTap: () => _send(
-                  ref,
-                  'Analyze the recent terminal output below. Identify the issue and fix code or suggest the right command.\n\n```\n$terminalOutput\n```',
-                ),
-              ),
-              _WorkbenchAction(
-                icon: Icons.account_tree_outlined,
-                label: 'Review Diff',
-                onTap: () => _send(
-                  ref,
-                  'Review the current git diff. Prioritize bugs, regressions, missing tests, and risky UI behavior.',
-                ),
+                label: workspaceState.message ?? _lsdfPillLabel(contextState),
+                color: _lsdfColor(contextState.lsdfStatus, tokens),
               ),
             ],
           ),
@@ -305,12 +230,6 @@ class _ContextWorkbench extends ConsumerWidget {
   static EditorTab? _activeFile(EditorTab? tab) {
     if (tab == null || tab.filePath.startsWith('circuit://')) return null;
     return tab;
-  }
-
-  static String _estimateTokens(String value) {
-    final estimate = (value.length / 4).ceil();
-    if (estimate >= 1000) return '${(estimate / 1000).toStringAsFixed(1)}k';
-    return '$estimate';
   }
 
   static IconData _connectionIcon(ConnectionStatus status) {
@@ -340,49 +259,59 @@ class _ContextWorkbench extends ConsumerWidget {
     };
   }
 
-  static void _sendFilePrompt(WidgetRef ref, EditorTab? tab, String task) {
-    if (tab == null) return;
-    _send(
-      ref,
-      '[Active file: ${tab.filePath}]\n'
-      '$task\n\n'
-      'Use the current editor contents and the project index before making changes.',
-    );
+  static IconData _lsdfIcon(LsdfIndexStatus status) {
+    return switch (status) {
+      LsdfIndexStatus.idle => Icons.hub_outlined,
+      LsdfIndexStatus.checking => Icons.sync,
+      LsdfIndexStatus.building => Icons.sync,
+      LsdfIndexStatus.ready => Icons.check_circle_outline,
+      LsdfIndexStatus.error => Icons.error_outline,
+    };
   }
 
-  static void _send(WidgetRef ref, String prompt) {
-    ref
-        .read(chatProvider.notifier)
-        .sendMessage(_withPinnedContext(ref, prompt));
+  static Color _lsdfColor(LsdfIndexStatus status, ThemeTokens tokens) {
+    return switch (status) {
+      LsdfIndexStatus.idle => tokens.textMuted,
+      LsdfIndexStatus.checking => tokens.warning,
+      LsdfIndexStatus.building => tokens.warning,
+      LsdfIndexStatus.ready => tokens.success,
+      LsdfIndexStatus.error => tokens.error,
+    };
   }
 
-  static String _withPinnedContext(WidgetRef ref, String prompt) {
-    final contextState = ref.read(aiContextProvider);
-    final activeFile = _activeFile(ref.read(editorProvider).activeTab);
-    final terminalOutput = ref
-        .read(terminalProvider.notifier)
-        .getActiveTerminalOutput(lines: 60)
-        .trim();
-    final parts = <String>[];
+  static String _lsdfTitle(AiContextState state) {
+    return switch (state.lsdfStatus) {
+      LsdfIndexStatus.idle => 'L-SDF ready',
+      LsdfIndexStatus.checking => 'Checking map',
+      LsdfIndexStatus.building => 'Building map',
+      LsdfIndexStatus.ready => 'L-SDF map ready',
+      LsdfIndexStatus.error => 'Map needs attention',
+    };
+  }
 
-    if (contextState.includeLsdfIndex) {
-      parts.add(
-        '[Pinned context: use the L-SDF code index before loading broad file context.]',
-      );
-    }
-    if (contextState.includeActiveFile && activeFile != null) {
-      parts.add('[Pinned active file: ${activeFile.filePath}]');
-    }
-    if (contextState.includeTerminalOutput && terminalOutput.isNotEmpty) {
-      parts.add('[Pinned terminal output]\n```\n$terminalOutput\n```');
-    }
-    if (contextState.includeGitDiff) {
-      parts.add(
-        '[Pinned git diff: inspect the current working tree diff before answering.]',
-      );
-    }
-    parts.add(prompt);
-    return parts.join('\n\n');
+  static String _lsdfSubtitle(AiContextState state) {
+    return switch (state.lsdfStatus) {
+      LsdfIndexStatus.idle => 'Open a project to build the index',
+      LsdfIndexStatus.checking => 'Looking for project.lsdf and INDEX.lsdf',
+      LsdfIndexStatus.building =>
+        '${state.lsdfMessage ?? "Creating directory maps"} · ${state.lsdfFilesIndexed} files',
+      LsdfIndexStatus.ready =>
+        state.lsdfFilesIndexed > 0
+            ? '${state.lsdfFilesIndexed} files indexed'
+            : 'Code index + targeted files',
+      LsdfIndexStatus.error => state.lsdfError ?? 'Could not build index',
+    };
+  }
+
+  static String _lsdfPillLabel(AiContextState state) {
+    return switch (state.lsdfStatus) {
+      LsdfIndexStatus.idle => 'L-SDF auto-map idle',
+      LsdfIndexStatus.checking => 'Checking L-SDF map',
+      LsdfIndexStatus.building =>
+        'Building L-SDF map · ${state.lsdfFilesIndexed} files',
+      LsdfIndexStatus.ready => 'L-SDF map active',
+      LsdfIndexStatus.error => 'L-SDF map failed',
+    };
   }
 }
 
@@ -393,6 +322,7 @@ class _ActivityWorkbench extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final chatState = ref.watch(chatProvider);
+    final runs = ref.watch(agentRunProvider);
     final toolCalls = chatState.messages
         .expand((message) => message.toolCalls)
         .toList()
@@ -470,7 +400,384 @@ class _ActivityWorkbench extends ConsumerWidget {
                   )
                   .toList(),
             ),
+          if (runs.activeRuns.isNotEmpty || runs.recentRuns.isNotEmpty) ...[
+            const SizedBox(height: Spacing.md),
+            _RunTimeline(runs: runs),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceProgressRow extends ConsumerWidget {
+  final WorkspaceContextState state;
+
+  const _WorkspaceProgressRow({required this.state});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final isError = state.error != null;
+    final progress = state.lsdfProgress ?? state.fileIndexProgress;
+    final files = progress?.files ?? 0;
+    final directories = progress?.directories ?? 0;
+
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: isError
+            ? tokens.error.withValues(alpha: 0.08)
+            : tokens.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(
+          color: isError
+              ? tokens.error.withValues(alpha: 0.18)
+              : tokens.warning.withValues(alpha: 0.18),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.sync,
+            size: 14,
+            color: isError ? tokens.error : tokens.warning,
+          ),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Text(
+              isError
+                  ? state.error!
+                  : '${progress?.label ?? state.message ?? "Preparing workspace"} · $files files · $directories dirs',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isError ? tokens.error : tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.35,
+              ),
+            ),
+          ),
+          if (!isError)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: tokens.warning,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RunTimeline extends ConsumerWidget {
+  final AgentRunState runs;
+
+  const _RunTimeline({required this.runs});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final visibleRuns = [
+      ...runs.activeRuns.values,
+      ...runs.recentRuns,
+    ].take(4).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Recent AI runs',
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xxs,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: Spacing.sm),
+        ...visibleRuns.map(
+          (run) => Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _RunTimelineRow(run: run),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RunTimelineRow extends ConsumerWidget {
+  final AgentRun run;
+
+  const _RunTimelineRow({required this.run});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = switch (run.status) {
+      AgentRunStatus.succeeded => tokens.success,
+      AgentRunStatus.failed => tokens.error,
+      AgentRunStatus.cancelled => tokens.textMuted,
+      AgentRunStatus.streaming => tokens.accent,
+      AgentRunStatus.waitingForApproval => tokens.warning,
+      AgentRunStatus.queued || AgentRunStatus.running => tokens.warning,
+    };
+    final latestEvent = run.events.isEmpty ? null : run.events.last.message;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSubtle),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            0,
+            Spacing.md,
+            Spacing.md,
+          ),
+          leading: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          title: Text(
+            run.title?.isNotEmpty == true
+                ? run.title!
+                : '${_kindLabel(run.kind)} · ${run.model}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          subtitle: Text(
+            [
+              _kindLabel(run.kind),
+              run.model,
+              if (run.contextAttachmentCount > 0)
+                '${run.contextAttachmentCount} context',
+              if (run.tokenUsage.isNotEmpty)
+                run.tokenUsage.formattedInputOutput,
+              ?latestEvent,
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
+          ),
+          iconColor: tokens.textMuted,
+          collapsedIconColor: tokens.textMuted,
+          children: [
+            _RunDetailLine(label: 'Status', value: run.status.name),
+            if (run.inputPreview?.isNotEmpty == true)
+              _RunDetailLine(label: 'Input', value: run.inputPreview!),
+            if (run.outputPreview?.isNotEmpty == true)
+              _RunDetailLine(label: 'Output', value: run.outputPreview!),
+            if (run.error?.isNotEmpty == true)
+              _RunDetailLine(
+                label: 'Error',
+                value: run.error!,
+                color: tokens.error,
+              ),
+            if (run.events.isNotEmpty) ...[
+              const SizedBox(height: Spacing.sm),
+              ...run.events.reversed
+                  .take(5)
+                  .map((event) => _RunEventRow(event: event)),
+            ],
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                _RunAction(
+                  icon: Icons.copy,
+                  label: 'Copy',
+                  onTap: () =>
+                      Clipboard.setData(ClipboardData(text: _summary(run))),
+                ),
+                const SizedBox(width: Spacing.sm),
+                if (run.error != null)
+                  _RunAction(
+                    icon: Icons.error_outline,
+                    label: 'Copy error',
+                    onTap: () =>
+                        Clipboard.setData(ClipboardData(text: run.error ?? '')),
+                  ),
+                if (run.retryPrompt != null &&
+                    run.kind == AgentRunKind.chat) ...[
+                  const SizedBox(width: Spacing.sm),
+                  _RunAction(
+                    icon: Icons.refresh,
+                    label: 'Retry',
+                    onTap: () => ref
+                        .read(chatProvider.notifier)
+                        .sendMessage(run.retryPrompt!),
+                  ),
+                ],
+                if (run.status == AgentRunStatus.running ||
+                    run.status == AgentRunStatus.streaming) ...[
+                  const SizedBox(width: Spacing.sm),
+                  _RunAction(
+                    icon: Icons.stop_circle_outlined,
+                    label: 'Cancel',
+                    onTap: () =>
+                        ref.read(chatProvider.notifier).cancelOperation(),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _summary(AgentRun run) {
+    return [
+      '${_kindLabel(run.kind)} run',
+      'Status: ${run.status.name}',
+      'Model: ${run.model}',
+      if (run.inputPreview != null) 'Input: ${run.inputPreview}',
+      if (run.outputPreview != null) 'Output: ${run.outputPreview}',
+      if (run.error != null) 'Error: ${run.error}',
+      if (run.tokenUsage.isNotEmpty)
+        'Tokens: ${run.tokenUsage.formattedInputOutput}',
+    ].join('\n');
+  }
+
+  static String _kindLabel(AgentRunKind kind) {
+    return switch (kind) {
+      AgentRunKind.chat => 'Chat',
+      AgentRunKind.inlineCompletion => 'Inline',
+      AgentRunKind.editPrediction => 'Predict',
+      AgentRunKind.backgroundTask => 'Task',
+    };
+  }
+}
+
+class _RunDetailLine extends ConsumerWidget {
+  final String label;
+  final String value;
+  final Color? color;
+
+  const _RunDetailLine({required this.label, required this.value, this.color});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color ?? tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RunEventRow extends ConsumerWidget {
+  final AgentRunEvent event;
+
+  const _RunEventRow({required this.event});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Row(
+        children: [
+          Icon(Icons.fiber_manual_record, size: 6, color: tokens.textMuted),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              event.message,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RunAction extends ConsumerWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _RunAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Container(
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+        decoration: BoxDecoration(
+          color: tokens.surfaceHover,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(color: tokens.outlineSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: tokens.textSecondary),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xxs,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -635,174 +942,6 @@ class _ContextPill extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ContextToggle extends ConsumerStatefulWidget {
-  final IconData icon;
-  final String label;
-  final bool value;
-  final bool enabled;
-  final String tokenHint;
-  final VoidCallback onTap;
-
-  const _ContextToggle({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.tokenHint,
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  @override
-  ConsumerState<_ContextToggle> createState() => _ContextToggleState();
-}
-
-class _ContextToggleState extends ConsumerState<_ContextToggle> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = ref.watch(themeProvider);
-    final selected = widget.value && widget.enabled;
-    final color = !widget.enabled
-        ? tokens.textDisabled
-        : selected
-        ? tokens.accent
-        : tokens.textSecondary;
-
-    return Tooltip(
-      message: widget.enabled
-          ? '${widget.label} context · ${widget.tokenHint} tokens'
-          : '${widget.label} context unavailable',
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        cursor: widget.enabled
-            ? SystemMouseCursors.click
-            : SystemMouseCursors.basic,
-        child: GestureDetector(
-          onTap: widget.enabled ? widget.onTap : null,
-          child: AnimatedContainer(
-            duration: AnimationDurations.fast,
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-            decoration: BoxDecoration(
-              color: selected
-                  ? tokens.accent.withValues(alpha: 0.12)
-                  : _hovered && widget.enabled
-                  ? tokens.bgLighter.withValues(alpha: 0.7)
-                  : tokens.bgLight.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(Radii.pill),
-              border: Border.all(
-                color: selected
-                    ? tokens.accent.withValues(alpha: 0.28)
-                    : tokens.border.withValues(alpha: 0.45),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(widget.icon, size: 12, color: color),
-                const SizedBox(width: Spacing.sm),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: FontSizes.xs,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Text(
-                  widget.tokenHint,
-                  style: TextStyle(
-                    color: color.withValues(alpha: 0.75),
-                    fontSize: FontSizes.xxs,
-                    fontFamily: 'JetBrains Mono',
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WorkbenchAction extends ConsumerStatefulWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool enabled;
-
-  const _WorkbenchAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.enabled = true,
-  });
-
-  @override
-  ConsumerState<_WorkbenchAction> createState() => _WorkbenchActionState();
-}
-
-class _WorkbenchActionState extends ConsumerState<_WorkbenchAction> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = ref.watch(themeProvider);
-    final color = widget.enabled
-        ? (_hovered ? tokens.accent : tokens.textSecondary)
-        : tokens.textDisabled;
-
-    return Tooltip(
-      message: widget.enabled ? widget.label : 'Context unavailable',
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        cursor: widget.enabled
-            ? SystemMouseCursors.click
-            : SystemMouseCursors.basic,
-        child: GestureDetector(
-          onTap: widget.enabled ? widget.onTap : null,
-          child: AnimatedContainer(
-            duration: AnimationDurations.fast,
-            height: 28,
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-            decoration: BoxDecoration(
-              color: widget.enabled && _hovered
-                  ? tokens.accent.withValues(alpha: 0.1)
-                  : tokens.bgLight.withValues(alpha: 0.55),
-              borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(
-                color: widget.enabled && _hovered
-                    ? tokens.accent.withValues(alpha: 0.28)
-                    : tokens.border.withValues(alpha: 0.45),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(widget.icon, size: 13, color: color),
-                const SizedBox(width: Spacing.sm),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: color,
-                    fontSize: FontSizes.xs,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

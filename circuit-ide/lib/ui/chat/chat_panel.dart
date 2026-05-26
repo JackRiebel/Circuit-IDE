@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
 import '../../core/utils/platform_utils.dart';
+import '../../state/ai_context_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/connection_provider.dart';
@@ -423,6 +424,7 @@ class _ChatContextStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final rootPath = ref.watch(fileTreeProvider).rootPath;
+    final contextState = ref.watch(aiContextProvider);
     final activeTab = ref.watch(editorProvider).activeTab;
     final terminalState = ref.watch(terminalProvider);
     final activeFile =
@@ -472,13 +474,39 @@ class _ChatContextStrip extends ConsumerWidget {
                 : '$outputLines terminal lines',
             muted: outputLines == 0,
           ),
-          const _ContextBadge(
-            icon: Icons.hub_outlined,
-            label: 'L-SDF index enabled',
+          _ContextBadge(
+            icon: _lsdfBadgeIcon(contextState.lsdfStatus),
+            label: _lsdfBadgeLabel(contextState),
+            tooltip: contextState.lsdfError ?? contextState.lsdfMessage,
+            muted: contextState.lsdfStatus == LsdfIndexStatus.idle,
           ),
         ],
       ),
     );
+  }
+
+  static IconData _lsdfBadgeIcon(LsdfIndexStatus status) {
+    return switch (status) {
+      LsdfIndexStatus.idle => Icons.hub_outlined,
+      LsdfIndexStatus.checking => Icons.sync,
+      LsdfIndexStatus.building => Icons.sync,
+      LsdfIndexStatus.ready => Icons.check_circle_outline,
+      LsdfIndexStatus.error => Icons.error_outline,
+    };
+  }
+
+  static String _lsdfBadgeLabel(AiContextState state) {
+    return switch (state.lsdfStatus) {
+      LsdfIndexStatus.idle => 'L-SDF auto-map',
+      LsdfIndexStatus.checking => 'L-SDF checking',
+      LsdfIndexStatus.building =>
+        'L-SDF building · ${state.lsdfFilesIndexed} files',
+      LsdfIndexStatus.ready =>
+        state.lsdfFilesIndexed > 0
+            ? 'L-SDF ready · ${state.lsdfFilesIndexed} files'
+            : 'L-SDF map ready',
+      LsdfIndexStatus.error => 'L-SDF map failed',
+    };
   }
 }
 
@@ -637,9 +665,15 @@ class _EmptyChat extends ConsumerWidget {
               children: [
                 _QuickChip(
                   icon: Icons.hub_outlined,
-                  label: 'Map codebase',
-                  prompt:
-                      'Use the code index to summarize the project architecture, key entry points, and likely improvement areas.',
+                  label: 'Refresh code map',
+                  onTap: () {
+                    final rootPath =
+                        ref.read(fileTreeProvider).rootPath ??
+                        PlatformUtils.scratchDir;
+                    ref
+                        .read(aiContextProvider.notifier)
+                        .rebuildLsdfIndex(rootPath);
+                  },
                   tokens: tokens,
                   ref: ref,
                 ),
@@ -679,14 +713,16 @@ class _EmptyChat extends ConsumerWidget {
 class _QuickChip extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String prompt;
+  final String? prompt;
+  final VoidCallback? onTap;
   final dynamic tokens;
   final WidgetRef ref;
 
   const _QuickChip({
     required this.icon,
     required this.label,
-    required this.prompt,
+    this.prompt,
+    this.onTap,
     required this.tokens,
     required this.ref,
   });
@@ -696,7 +732,13 @@ class _QuickChip extends StatelessWidget {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => ref.read(chatProvider.notifier).sendMessage(prompt),
+        onTap:
+            onTap ??
+            () {
+              final prompt = this.prompt;
+              if (prompt == null || prompt.isEmpty) return;
+              ref.read(chatProvider.notifier).sendMessage(prompt);
+            },
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: Spacing.lg,

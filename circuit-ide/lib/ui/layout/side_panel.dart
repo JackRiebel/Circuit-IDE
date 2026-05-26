@@ -17,6 +17,7 @@ import '../mcp/mcp_hub_panel.dart';
 import '../security/security_scan_panel.dart';
 import '../testing/test_generation_panel.dart';
 import '../vericoding/vericoding_panel.dart';
+import 'tools_panel.dart';
 
 class SidePanel extends ConsumerWidget {
   const SidePanel({super.key});
@@ -30,9 +31,7 @@ class SidePanel extends ConsumerWidget {
       decoration: BoxDecoration(
         color: tokens.bgMain,
         border: Border(
-          right: BorderSide(
-            color: tokens.border.withValues(alpha: 0.5),
-          ),
+          right: BorderSide(color: tokens.border.withValues(alpha: 0.5)),
         ),
       ),
       child: Column(
@@ -44,9 +43,7 @@ class SidePanel extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
             decoration: BoxDecoration(
               border: Border(
-                bottom: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.3),
-                ),
+                bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
               ),
             ),
             alignment: Alignment.centerLeft,
@@ -67,6 +64,9 @@ class SidePanel extends ConsumerWidget {
               ActivityBarItem.explorer => const FileExplorer(),
               ActivityBarItem.search => const SearchPanel(),
               ActivityBarItem.git => const GitPanel(),
+              ActivityBarItem.ai => const ToolsPanel(),
+              ActivityBarItem.runTest => const TestGenerationPanel(),
+              ActivityBarItem.tools => const ToolsPanel(),
               ActivityBarItem.codebaseMap => const CodebaseMapPanel(),
               ActivityBarItem.notebook => const NotebookPanel(),
               ActivityBarItem.testing => const TestGenerationPanel(),

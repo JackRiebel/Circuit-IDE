@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/utils/logger.dart';
+import '../models/agent_run.dart';
+import 'agent_run_provider.dart';
 import 'connection_provider.dart';
 
 class InlineCompletionState {
@@ -91,13 +93,20 @@ class InlineCompletionNotifier extends Notifier<InlineCompletionState> {
     // Don't interfere with active chat
     if (service.state.isProcessing) return;
 
-    final requestId = '${line}_${column}_${DateTime.now().millisecondsSinceEpoch}';
+    final requestId =
+        '${line}_${column}_${DateTime.now().millisecondsSinceEpoch}';
     _lastRequestId = requestId;
 
     state = state.copyWith(
       isLoading: true,
       cursorLine: line,
       cursorColumn: column,
+    );
+    final runNotifier = ref.read(agentRunProvider.notifier);
+    runNotifier.startRun(
+      kind: AgentRunKind.inlineCompletion,
+      model: service.state.model,
+      message: 'Inline completion requested',
     );
 
     try {
@@ -106,10 +115,12 @@ class InlineCompletionNotifier extends Notifier<InlineCompletionState> {
       final startLine = (line - 50).clamp(0, lines.length);
       final endLine = (line + 10).clamp(0, lines.length);
       final contextBefore = lines.sublist(startLine, line).join('\n');
-      final currentLine =
-          line < lines.length ? lines[line].substring(0, column.clamp(0, lines[line].length)) : '';
-      final contextAfter =
-          line + 1 < endLine ? lines.sublist(line + 1, endLine).join('\n') : '';
+      final currentLine = line < lines.length
+          ? lines[line].substring(0, column.clamp(0, lines[line].length))
+          : '';
+      final contextAfter = line + 1 < endLine
+          ? lines.sublist(line + 1, endLine).join('\n')
+          : '';
 
       // Build a focused completion prompt
       final prompt =
@@ -121,7 +132,7 @@ class InlineCompletionNotifier extends Notifier<InlineCompletionState> {
           '\nComplete from the cursor position:';
 
       // Use a lightweight approach — send as a message but don't add to chat history
-      final response = await service.sendMessage(prompt);
+      final response = await service.sendOneShot(prompt);
 
       // Check if this request is still current
       if (_lastRequestId != requestId) return;
@@ -149,13 +160,16 @@ class InlineCompletionNotifier extends Notifier<InlineCompletionState> {
             isLoading: false,
             isVisible: true,
           );
+          runNotifier.finishRun(AgentRunKind.inlineCompletion);
           return;
         }
       }
 
       state = state.copyWith(isLoading: false);
+      runNotifier.finishRun(AgentRunKind.inlineCompletion);
     } catch (e) {
       Logger.warning('Inline completion error: $e', 'InlineCompletion');
+      runNotifier.finishRun(AgentRunKind.inlineCompletion, error: e.toString());
       if (_lastRequestId == requestId) {
         state = state.copyWith(isLoading: false);
       }
@@ -189,5 +203,5 @@ class InlineCompletionNotifier extends Notifier<InlineCompletionState> {
 
 final inlineCompletionProvider =
     NotifierProvider<InlineCompletionNotifier, InlineCompletionState>(
-  InlineCompletionNotifier.new,
-);
+      InlineCompletionNotifier.new,
+    );

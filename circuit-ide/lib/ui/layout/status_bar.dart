@@ -7,10 +7,14 @@ import '../../state/editor_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/git_provider.dart';
+import '../../state/ai_context_provider.dart';
+import '../../state/terminal_provider.dart';
 import '../../state/model_routing_provider.dart';
+import '../../state/workspace_context_provider.dart';
 import '../../enums/connection_status.dart';
 import '../../agent/config/models_config.dart';
 import '../../models/routing_models.dart';
+import '../../models/workspace_context.dart';
 import '../editor/prediction_status_widget.dart';
 import '../agents/background_agent_status.dart';
 import '../ghost/ghost_status_widget.dart';
@@ -24,6 +28,7 @@ class StatusBar extends ConsumerWidget {
     final editorState = ref.watch(editorProvider);
     final connectionStatus = ref.watch(connectionStatusProvider);
     final chatState = ref.watch(chatProvider);
+    final workspaceState = ref.watch(workspaceContextProvider);
     final gitState = ref.watch(gitProvider);
     final activeTab = editorState.activeTab;
 
@@ -71,6 +76,23 @@ class StatusBar extends ConsumerWidget {
           const BackgroundAgentStatus(),
           const SizedBox(width: Spacing.lg),
           const GhostStatusWidget(),
+          const SizedBox(width: Spacing.lg),
+          const _WorkspaceHealthButton(),
+          if (workspaceState.isBusy) ...[
+            const SizedBox(width: Spacing.lg),
+            Icon(
+              Icons.sync,
+              size: 12,
+              color: tokens.statusBarText.withValues(alpha: 0.8),
+            ),
+            const SizedBox(width: 3),
+            Text(
+              workspaceState.message ?? 'Indexing workspace',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textStyle,
+            ),
+          ],
 
           const Spacer(),
 
@@ -187,6 +209,252 @@ class _Divider extends StatelessWidget {
         width: 1,
         height: 12,
         color: color.withValues(alpha: 0.25),
+      ),
+    );
+  }
+}
+
+class _WorkspaceHealthButton extends ConsumerWidget {
+  const _WorkspaceHealthButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final workspace = ref.watch(workspaceContextProvider);
+    final color = switch (workspace.status) {
+      WorkspaceLifecycleStatus.ready => tokens.success,
+      WorkspaceLifecycleStatus.error => tokens.error,
+      WorkspaceLifecycleStatus.cancelled => tokens.warning,
+      WorkspaceLifecycleStatus.loading ||
+      WorkspaceLifecycleStatus.indexing => tokens.warning,
+      WorkspaceLifecycleStatus.empty => tokens.statusBarText.withValues(
+        alpha: 0.5,
+      ),
+    };
+
+    return Tooltip(
+      message: 'Workspace health',
+      child: InkWell(
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (_) => const _WorkspaceHealthDialog(),
+        ),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.health_and_safety_outlined, size: 12, color: color),
+            const SizedBox(width: 3),
+            Text(
+              workspace.status == WorkspaceLifecycleStatus.empty
+                  ? 'workspace'
+                  : workspace.status.name,
+              style: TextStyle(
+                color: tokens.statusBarText.withValues(alpha: 0.9),
+                fontSize: FontSizes.xs,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceHealthDialog extends ConsumerWidget {
+  const _WorkspaceHealthDialog();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final workspace = ref.watch(workspaceContextProvider);
+    final aiContext = ref.watch(aiContextProvider);
+    final terminal = ref.watch(terminalProvider);
+    final git = ref.watch(gitProvider);
+    final terminalLines = terminal.terminals.isEmpty
+        ? 0
+        : terminal.terminals[terminal.activeTerminalIndex].outputBuffer.length;
+
+    return Dialog(
+      backgroundColor: tokens.surfaceOverlay,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.lg),
+        side: BorderSide(color: tokens.outlineStrong),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.health_and_safety_outlined,
+                    color: tokens.accent,
+                    size: 18,
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Text(
+                    'Workspace Health',
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontSize: FontSizes.xl,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: Icon(Icons.close, color: tokens.textMuted, size: 18),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Spacing.lg),
+              _HealthLine(
+                label: 'Root',
+                value: workspace.rootPath ?? 'No workspace open',
+              ),
+              _HealthLine(
+                label: 'File index',
+                value:
+                    '${workspace.fileIndexProgress?.files ?? 0} files · ${workspace.fileIndexProgress?.directories ?? 0} dirs',
+              ),
+              _HealthLine(
+                label: 'L-SDF',
+                value:
+                    '${aiContext.lsdfStatus.name} · ${workspace.lsdfProgress?.files ?? aiContext.lsdfFilesIndexed} files',
+              ),
+              _HealthLine(
+                label: 'Terminal',
+                value: '$terminalLines buffered lines',
+              ),
+              _HealthLine(
+                label: 'Git',
+                value:
+                    '${git.status.totalChanges} changes · diff context ${aiContext.includeGitDiff ? "on" : "off"}',
+              ),
+              _HealthLine(
+                label: 'Refreshed',
+                value: workspace.refreshedAt?.toLocal().toString() ?? 'Not yet',
+              ),
+              if (workspace.error != null)
+                _HealthLine(label: 'Last error', value: workspace.error!),
+              const SizedBox(height: Spacing.lg),
+              Wrap(
+                spacing: Spacing.sm,
+                runSpacing: Spacing.sm,
+                children: [
+                  _HealthAction(
+                    label: 'Refresh',
+                    icon: Icons.refresh,
+                    onTap: () =>
+                        ref.read(workspaceContextProvider.notifier).refresh(),
+                  ),
+                  _HealthAction(
+                    label: 'Rebuild L-SDF',
+                    icon: Icons.hub_outlined,
+                    onTap: () => ref
+                        .read(workspaceContextProvider.notifier)
+                        .refresh(forceLsdf: true),
+                  ),
+                  _HealthAction(
+                    label: 'Cancel',
+                    icon: Icons.stop_circle_outlined,
+                    onTap: () =>
+                        ref.read(workspaceContextProvider.notifier).cancel(),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthLine extends ConsumerWidget {
+  final String label;
+  final String value;
+
+  const _HealthLine({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 82,
+            child: Text(
+              label,
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthAction extends ConsumerWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HealthAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+        decoration: BoxDecoration(
+          color: tokens.surfaceRaised,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(color: tokens.outlineSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: tokens.textSecondary),
+            const SizedBox(width: Spacing.sm),
+            Text(
+              label,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

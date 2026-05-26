@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../agent/config/models_config.dart';
 import '../../core/constants/design_tokens.dart';
+import '../../enums/ai_provider.dart';
 import '../../agent/tools/tool_registry.dart';
 import '../../models/agent_config_model.dart';
 import '../../models/agent_trigger.dart';
@@ -28,13 +30,9 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
   late Set<String> _selectedTools;
   late List<AgentTrigger> _triggers;
 
-  static const _models = [
-    'gpt-4.1',
-    'gpt-4.1-mini',
-    'gpt-4.1-nano',
-    'claude-sonnet-4-20250514',
-    'claude-haiku-4-5-20251001',
-  ];
+  static final _models = ModelsConfig.ciscoModels
+      .map((model) => model.id)
+      .toList(growable: false);
 
   @override
   void initState() {
@@ -43,7 +41,10 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
     _nameController = TextEditingController(text: e?.name ?? '');
     _descController = TextEditingController(text: e?.description ?? '');
     _promptController = TextEditingController(text: e?.systemPrompt ?? '');
-    _model = e?.model ?? 'gpt-4o';
+    _model = ModelsConfig.coerceModelForProvider(
+      AIProviderType.cisco,
+      e?.model,
+    );
     _autoApprove = e?.autoApprove ?? false;
     _selectedTools = Set.from(e?.allowedTools ?? {});
     _triggers = List.from(e?.triggers ?? []);
@@ -113,17 +114,27 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _buildField(tokens, 'Name', _nameController,
-                          hint: 'e.g., Code Reviewer'),
-                      const SizedBox(height: Spacing.lg),
-                      _buildField(tokens, 'Description', _descController,
-                          hint: 'What does this agent do?'),
+                      _buildField(
+                        tokens,
+                        'Name',
+                        _nameController,
+                        hint: 'e.g., Code Reviewer',
+                      ),
                       const SizedBox(height: Spacing.lg),
                       _buildField(
-                          tokens, 'System Prompt', _promptController,
-                          hint:
-                              'Custom instructions for the agent...',
-                          maxLines: 5),
+                        tokens,
+                        'Description',
+                        _descController,
+                        hint: 'What does this agent do?',
+                      ),
+                      const SizedBox(height: Spacing.lg),
+                      _buildField(
+                        tokens,
+                        'System Prompt',
+                        _promptController,
+                        hint: 'Custom instructions for the agent...',
+                        maxLines: 5,
+                      ),
                       const SizedBox(height: Spacing.lg),
 
                       // Model dropdown
@@ -131,12 +142,12 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                       const SizedBox(height: Spacing.sm),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: Spacing.lg),
+                          horizontal: Spacing.lg,
+                        ),
                         decoration: BoxDecoration(
                           color: tokens.inputBg,
                           borderRadius: BorderRadius.circular(Radii.md),
-                          border: Border.all(
-                              color: tokens.inputBorder),
+                          border: Border.all(color: tokens.inputBorder),
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
@@ -148,8 +159,12 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                               fontSize: FontSizes.sm,
                             ),
                             items: _models
-                                .map((m) => DropdownMenuItem(
-                                    value: m, child: Text(m)))
+                                .map(
+                                  (m) => DropdownMenuItem(
+                                    value: m,
+                                    child: Text(m),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (v) {
                               if (v != null) setState(() => _model = v);
@@ -163,21 +178,19 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                       _buildLabel(tokens, 'Tools (empty = all)'),
                       const SizedBox(height: Spacing.sm),
                       Container(
-                        constraints:
-                            const BoxConstraints(maxHeight: 120),
+                        constraints: const BoxConstraints(maxHeight: 120),
                         decoration: BoxDecoration(
                           color: tokens.inputBg,
                           borderRadius: BorderRadius.circular(Radii.md),
-                          border: Border.all(
-                              color: tokens.inputBorder),
+                          border: Border.all(color: tokens.inputBorder),
                         ),
                         child: ListView(
                           shrinkWrap: true,
                           padding: const EdgeInsets.symmetric(
-                              vertical: Spacing.sm),
+                            vertical: Spacing.sm,
+                          ),
                           children: allToolNames.map((tool) {
-                            final selected =
-                                _selectedTools.contains(tool);
+                            final selected = _selectedTools.contains(tool);
                             return InkWell(
                               onTap: () {
                                 setState(() {
@@ -198,8 +211,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                                     Icon(
                                       selected
                                           ? Icons.check_box
-                                          : Icons
-                                              .check_box_outline_blank,
+                                          : Icons.check_box_outline_blank,
                                       size: 16,
                                       color: selected
                                           ? tokens.accent
@@ -228,8 +240,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                         children: [
                           Switch(
                             value: _autoApprove,
-                            onChanged: (v) =>
-                                setState(() => _autoApprove = v),
+                            onChanged: (v) => setState(() => _autoApprove = v),
                             activeTrackColor: tokens.accent,
                           ),
                           const SizedBox(width: Spacing.md),
@@ -264,7 +275,9 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                                 value: trigger.enabled,
                                 onChanged: (v) {
                                   setState(() {
-                                    _triggers[idx] = trigger.copyWith(enabled: v);
+                                    _triggers[idx] = trigger.copyWith(
+                                      enabled: v,
+                                    );
                                   });
                                 },
                                 activeTrackColor: tokens.accent,
@@ -300,7 +313,11 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                                 },
                                 child: MouseRegion(
                                   cursor: SystemMouseCursors.click,
-                                  child: Icon(Icons.close, size: 14, color: tokens.error),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 14,
+                                    color: tokens.error,
+                                  ),
                                 ),
                               ),
                             ],
@@ -412,10 +429,14 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                       color: tokens.textPrimary,
                       fontSize: FontSizes.sm,
                     ),
-                    items: AgentTriggerType.values.map((t) => DropdownMenuItem(
-                      value: t,
-                      child: Text(t.displayName),
-                    )).toList(),
+                    items: AgentTriggerType.values
+                        .map(
+                          (t) => DropdownMenuItem(
+                            value: t,
+                            child: Text(t.displayName),
+                          ),
+                        )
+                        .toList(),
                     onChanged: (v) {
                       if (v != null) setDialogState(() => selectedType = v);
                     },
@@ -467,7 +488,10 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(),
-              child: Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: tokens.textSecondary),
+              ),
             ),
             TextButton(
               onPressed: () {
@@ -477,10 +501,9 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
                     .where((p) => p.isNotEmpty)
                     .toList();
                 setState(() {
-                  _triggers.add(AgentTrigger(
-                    type: selectedType,
-                    filePatterns: patterns,
-                  ));
+                  _triggers.add(
+                    AgentTrigger(type: selectedType, filePatterns: patterns),
+                  );
                 });
                 Navigator.of(ctx).pop();
               },
@@ -518,10 +541,7 @@ class _AgentConfigDialogState extends ConsumerState<AgentConfigDialog> {
         TextField(
           controller: controller,
           maxLines: maxLines,
-          style: TextStyle(
-            color: tokens.textPrimary,
-            fontSize: FontSizes.sm,
-          ),
+          style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(

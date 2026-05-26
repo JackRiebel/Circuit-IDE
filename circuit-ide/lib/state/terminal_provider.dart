@@ -185,12 +185,14 @@ class TerminalNotifier extends Notifier<TerminalState> {
 
   @override
   TerminalState build() {
+    ref.onDispose(() => _outputNotifyTimer?.cancel());
     unawaited(_loadSession());
     return TerminalState();
   }
 
   Future<void> _loadSession() async {
     final data = await _TerminalStorage.read();
+    if (!ref.mounted) return;
     final visible = data['terminal_visible'];
     final height = (data['terminal_height'] as num?)?.toDouble();
     state = state.copyWith(

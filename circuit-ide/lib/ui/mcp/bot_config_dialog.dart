@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agent/config/models_config.dart';
 import '../../agent/mcp/bot_agent_config.dart';
 import '../../core/constants/design_tokens.dart';
+import '../../enums/ai_provider.dart';
 import '../../state/mcp_hub_provider.dart';
 import '../../state/theme_provider.dart';
 
@@ -20,11 +22,13 @@ class _BotConfigDialogState extends ConsumerState<BotConfigDialog> {
   final _roomIdsController = TextEditingController();
   final _webexTokenController = TextEditingController();
   final _openaiKeyController = TextEditingController();
-  String _model = 'gpt-4o';
+  String _model = ModelsConfig.defaultCiscoModel;
   bool _obscure = true;
   bool _isLoading = true;
 
-  static const _models = ['gpt-4o', 'gpt-4.1', 'gpt-4o-mini', 'o3-mini'];
+  static final _models = ModelsConfig.ciscoModels
+      .map((model) => model.id)
+      .toList(growable: false);
 
   @override
   void initState() {
@@ -41,7 +45,10 @@ class _BotConfigDialogState extends ConsumerState<BotConfigDialog> {
       final config = hubState.botAgent!.config;
       _scriptPathController.text = config.scriptPath ?? '';
       _portController.text = config.port.toString();
-      _model = config.model;
+      _model = ModelsConfig.coerceModelForProvider(
+        AIProviderType.cisco,
+        config.model,
+      );
       _systemPromptController.text = config.systemPrompt ?? '';
       _roomIdsController.text = config.roomIds.join(', ');
     }

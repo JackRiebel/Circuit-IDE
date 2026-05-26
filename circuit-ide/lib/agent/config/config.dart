@@ -7,12 +7,14 @@ import 'package:path/path.dart' as p;
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../core/utils/logger.dart';
+import '../../enums/ai_provider.dart';
 import '../context/flow_analyzer.dart';
 import '../context/flow_context_builder.dart';
 import '../context/lsdf_context_loader.dart';
 import '../context/memories_loader.dart';
 import '../context/rules_loader.dart';
 import '../context/smart_rules_matcher.dart';
+import 'models_config.dart';
 
 class AgentConfig {
   String? ciscoClientId;
@@ -35,7 +37,7 @@ class AgentConfig {
     this.anthropicApiKey,
     this.githubPat,
     this.workingDir,
-    this.model = 'gpt-4.1',
+    this.model = ModelsConfig.defaultCiscoModel,
     this.autoApprove = false,
     this.thinkingMode = false,
     this.streamResponses = true,
@@ -86,7 +88,10 @@ class AgentConfig {
         config.ciscoAppKey ??= json['app_key'] as String?;
         config.anthropicApiKey ??= json['anthropic_api_key'] as String?;
         config.githubPat ??= json['github_pat'] as String?;
-        config.model = json['model'] as String? ?? 'gpt-4o';
+        config.model = ModelsConfig.coerceModelForProvider(
+          AIProviderType.cisco,
+          json['model'] as String?,
+        );
         config.autoApprove = json['auto_approve'] as bool? ?? false;
       }
     } catch (e) {

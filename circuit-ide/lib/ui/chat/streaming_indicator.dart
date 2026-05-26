@@ -14,14 +14,13 @@ class StreamingIndicator extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final isStreaming = content.isNotEmpty;
 
     return Container(
       padding: const EdgeInsets.all(Spacing.lg),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(Radii.lg),
-        border: Border.all(
-          color: tokens.accent.withValues(alpha: 0.15),
-        ),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.15)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,6 +49,10 @@ class StreamingIndicator extends ConsumerWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (isStreaming) ...[
+                const SizedBox(width: Spacing.sm),
+                _StreamingBadge(color: tokens.accent),
+              ],
             ],
           ),
           const SizedBox(height: Spacing.md),
@@ -62,6 +65,60 @@ class StreamingIndicator extends ConsumerWidget {
           else
             _ThinkingDots(color: tokens.accent),
         ],
+      ),
+    );
+  }
+}
+
+class _StreamingBadge extends StatefulWidget {
+  final Color color;
+
+  const _StreamingBadge({required this.color});
+
+  @override
+  State<_StreamingBadge> createState() => _StreamingBadgeState();
+}
+
+class _StreamingBadgeState extends State<_StreamingBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1100),
+      vsync: this,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.55, end: 1).animate(_controller),
+      child: Container(
+        height: 18,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: widget.color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: widget.color.withValues(alpha: 0.24)),
+        ),
+        child: Text(
+          'Streaming',
+          style: TextStyle(
+            color: widget.color,
+            fontSize: FontSizes.xxs,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -104,8 +161,10 @@ class _ThinkingDotsState extends State<_ThinkingDots>
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
             final delay = i * 0.2;
-            final opacity =
-                (((_controller.value + delay) % 1.0) * 2).clamp(0.0, 1.0);
+            final opacity = (((_controller.value + delay) % 1.0) * 2).clamp(
+              0.0,
+              1.0,
+            );
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Opacity(

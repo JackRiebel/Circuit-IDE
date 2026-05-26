@@ -6,6 +6,22 @@ import '../agent/context/flow_analyzer.dart';
 import '../core/utils/file_utils.dart';
 import 'import_parser.dart';
 
+typedef LsdfProgressCallback = void Function(LsdfIndexProgress progress);
+
+class LsdfIndexProgress {
+  final String message;
+  final String? path;
+  final int directories;
+  final int files;
+
+  const LsdfIndexProgress({
+    required this.message,
+    this.path,
+    this.directories = 0,
+    this.files = 0,
+  });
+}
+
 class LsdfIndexService {
   static const version = '1.1-circuit';
 
@@ -40,10 +56,14 @@ class LsdfIndexService {
   };
 
   final String rootPath;
+  final LsdfProgressCallback? onProgress;
   late final ImportParser _importParser;
   late final FlowAnalyzer _flowAnalyzer;
 
-  LsdfIndexService({required this.rootPath}) {
+  int _directoriesIndexed = 0;
+  int _filesIndexed = 0;
+
+  LsdfIndexService({required this.rootPath, this.onProgress}) {
     _importParser = ImportParser(rootPath: rootPath);
     _flowAnalyzer = FlowAnalyzer(rootPath: rootPath);
   }
@@ -52,9 +72,15 @@ class LsdfIndexService {
     final root = Directory(rootPath);
     if (!await root.exists()) return;
 
+    _directoriesIndexed = 0;
+    _filesIndexed = 0;
+    _report('Preparing L-SDF files...', root.path);
     await _writeSupportFiles();
+    _report('Writing project manifest...', root.path);
     await _writeProjectManifest(root);
+    _report('Scanning project directories...', root.path);
     await _generateDirectory(root, recursive: recursive);
+    _report('L-SDF map ready', root.path);
   }
 
   Future<void> refreshForPath(String changedPath) async {
@@ -203,6 +229,8 @@ class LsdfIndexService {
     required bool recursive,
   }) async {
     if (_shouldSkipDirectory(dir.path)) return;
+    _directoriesIndexed++;
+    _report('Mapping ${_displayPath(dir.path)}', dir.path);
 
     final files = <File>[];
     final childDirs = <Directory>[];
@@ -222,6 +250,8 @@ class LsdfIndexService {
     final detail = StringBuffer();
 
     for (final file in files) {
+      _filesIndexed++;
+      _report('Indexing ${_displayPath(file.path)}', file.path);
       final entry = await _buildFileEntry(file);
       if (entry == null) continue;
       if (nav.isNotEmpty) nav.writeln();
@@ -459,6 +489,22 @@ class LsdfIndexService {
 
   String _compactEntity(String value) =>
       value.trim().replaceAll(RegExp(r'\s+'), ' ');
+
+  void _report(String message, [String? path]) {
+    onProgress?.call(
+      LsdfIndexProgress(
+        message: message,
+        path: path,
+        directories: _directoriesIndexed,
+        files: _filesIndexed,
+      ),
+    );
+  }
+
+  String _displayPath(String path) {
+    final relative = p.relative(path, from: rootPath);
+    return relative == '.' ? p.basename(rootPath) : relative;
+  }
 
   static const _instructions = '''
 # L-SDF Protocol

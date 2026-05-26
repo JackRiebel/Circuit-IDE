@@ -6,6 +6,7 @@ import '../agent/agent.dart';
 import '../agent/checkpoint/checkpoint_manager.dart';
 import '../agent/config/config.dart';
 import '../agent/config/model_router.dart';
+import '../agent/config/models_config.dart';
 import '../agent/memory/session_manager.dart';
 import '../agent/providers/provider_interface.dart';
 import '../agent/providers/cisco_provider.dart';
@@ -76,11 +77,10 @@ class AgentService {
       await _provider!.connect(credentials);
 
       // Create agent
-      final selectedModel =
-          model ??
-          (providerType == AIProviderType.cisco
-              ? 'gpt-4.1'
-              : 'claude-sonnet-4-20250514');
+      final selectedModel = ModelsConfig.coerceModelForProvider(
+        providerType,
+        model,
+      );
 
       _agent = CircuitAgent(
         provider: _provider!,
@@ -271,7 +271,7 @@ class AgentService {
               // State updates happen via events already
             },
           )
-          .timeout(const Duration(seconds: 120));
+          .timeout(const Duration(minutes: 4));
 
       // Update service state (token/cost tracking only — UI messages
       // are owned by ChatNotifier, not synced from agent history)
@@ -290,7 +290,7 @@ class AgentService {
       _updateState(
         (s) => s.copyWith(
           isProcessing: false,
-          error: 'Request timed out after 120 seconds',
+          error: 'Request timed out after 4 minutes',
         ),
       );
       return null;

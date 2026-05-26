@@ -8,9 +8,12 @@ import '../enums/event_type.dart';
 import '../enums/message_role.dart';
 import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
+import '../models/context_attachment.dart';
 import '../models/token_usage.dart';
 import '../models/cost_info.dart';
 import '../models/tool_call_info.dart';
+import '../models/agent_run.dart';
+import 'agent_run_provider.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
 
@@ -166,8 +169,11 @@ class ChatNotifier extends Notifier<ChatState> {
     });
   }
 
-  Future<void> sendMessage(String content) async {
-    if (content.trim().isEmpty) return;
+  Future<void> sendMessage(
+    String content, {
+    List<ContextAttachment> attachments = const [],
+  }) async {
+    if (content.trim().isEmpty && attachments.isEmpty) return;
     if (state.isProcessing) return;
 
     final service = ref.read(agentServiceProvider);
@@ -180,14 +186,27 @@ class ChatNotifier extends Notifier<ChatState> {
     }
 
     // Add the user message to the chat immediately so it's visible
+    final visibleContent = content.trim().isEmpty
+        ? '[Context-only request]'
+        : content;
     final userMsg = ChatMessage(
       id: _uuid.v4(),
       role: MessageRole.user,
-      content: content,
+      content: visibleContent,
       timestamp: DateTime.now(),
     );
 
     _wasCancelled = false;
+    final runNotifier = ref.read(agentRunProvider.notifier);
+    runNotifier.startRun(
+      kind: AgentRunKind.chat,
+      model: service.state.model,
+      message: 'User message sent',
+      title: _preview(visibleContent),
+      inputPreview: _preview(visibleContent),
+      retryPrompt: visibleContent,
+      contextAttachmentCount: attachments.length,
+    );
     state = state.copyWith(
       isProcessing: true,
       messages: [...state.messages, userMsg],
@@ -195,11 +214,15 @@ class ChatNotifier extends Notifier<ChatState> {
       error: null,
     );
 
-    // Start safety timer — auto-reset stuck state after 30 seconds
+    // Start safety timer — only reset genuinely stuck requests.
     _startSafetyTimer();
 
     try {
-      final result = await service.sendMessage(content);
+      final finalContent = _buildMessageWithContext(
+        visibleContent,
+        attachments,
+      );
+      final result = await service.sendMessage(finalContent);
 
       _cancelSafetyTimer();
 
@@ -213,6 +236,12 @@ class ChatNotifier extends Notifier<ChatState> {
 
       // If result is null and we're still processing, service hit timeout/error
       if (result == null && state.isProcessing) {
+        runNotifier.finishRun(
+          AgentRunKind.chat,
+          error:
+              service.state.error ??
+              'Request failed — check credentials and try again.',
+        );
         state = state.copyWith(
           isStreaming: false,
           isProcessing: false,
@@ -222,8 +251,20 @@ class ChatNotifier extends Notifier<ChatState> {
               'Request failed — check credentials and try again.',
         );
       }
+      if (result != null) {
+        runNotifier.finishRun(
+          AgentRunKind.chat,
+          outputPreview: _preview(result),
+        );
+      }
     } catch (e) {
       _cancelSafetyTimer();
+      ref
+          .read(agentRunProvider.notifier)
+          .finishRun(
+            AgentRunKind.chat,
+            error: e.toString().replaceFirst('Exception: ', ''),
+          );
       state = state.copyWith(
         isStreaming: false,
         isProcessing: false,
@@ -247,6 +288,10 @@ class ChatNotifier extends Notifier<ChatState> {
   void cancelOperation() {
     final service = ref.read(agentServiceProvider);
     service.cancelCurrentOperation();
+    ref.read(agentRunProvider.notifier).requestCancel(AgentRunKind.chat);
+    ref
+        .read(agentRunProvider.notifier)
+        .finishRun(AgentRunKind.chat, cancelled: true);
     _wasCancelled = true;
     _cancelSafetyTimer();
     state = state.copyWith(
@@ -301,13 +346,21 @@ class ChatNotifier extends Notifier<ChatState> {
 
   void _startSafetyTimer() {
     _cancelSafetyTimer();
-    _safetyTimer = Timer(const Duration(seconds: 60), () {
+    _safetyTimer = Timer(const Duration(minutes: 4), () {
       if (state.isProcessing) {
+        ref
+            .read(agentRunProvider.notifier)
+            .finishRun(
+              AgentRunKind.chat,
+              error:
+                  'The AI request is still running after 4 minutes. Please try again or check the provider connection.',
+            );
         state = state.copyWith(
           isProcessing: false,
           isStreaming: false,
           streamingContent: '',
-          error: 'Request timed out. Please try again.',
+          error:
+              'The AI request is still running after 4 minutes. Please try again or check the provider connection.',
         );
       }
     });
@@ -316,6 +369,28 @@ class ChatNotifier extends Notifier<ChatState> {
   void _cancelSafetyTimer() {
     _safetyTimer?.cancel();
     _safetyTimer = null;
+  }
+
+  String _buildMessageWithContext(
+    String content,
+    List<ContextAttachment> attachments,
+  ) {
+    final parts = <String>[];
+    if (attachments.isNotEmpty) {
+      parts.add(
+        attachments
+            .map((attachment) => attachment.toPromptBlock())
+            .join('\n\n'),
+      );
+    }
+    parts.add(content);
+    return parts.join('\n\n');
+  }
+
+  String _preview(String value) {
+    final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.length <= 120) return normalized;
+    return '${normalized.substring(0, 120)}...';
   }
 }
 
