@@ -86,10 +86,10 @@ class _FileTreeItemState extends ConsumerState<FileTreeItem> {
                       color: _isHovering
                           ? tokens.textPrimary
                           : widget.node.isDirectory
-                              ? tokens.textSecondary
-                              : tokens.textPrimary,
+                          ? tokens.textSecondary
+                          : tokens.textPrimary,
                       fontSize: FontSizes.sm,
-                      letterSpacing: -0.1,
+                      letterSpacing: 0,
                     ),
                   ),
                 ),

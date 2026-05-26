@@ -11,8 +11,7 @@ class ReviewSummaryPanel extends ConsumerStatefulWidget {
   const ReviewSummaryPanel({super.key});
 
   @override
-  ConsumerState<ReviewSummaryPanel> createState() =>
-      _ReviewSummaryPanelState();
+  ConsumerState<ReviewSummaryPanel> createState() => _ReviewSummaryPanelState();
 }
 
 class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
@@ -43,10 +42,7 @@ class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
             const SizedBox(height: Spacing.md),
             Text(
               'Reviewing changes...',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),
@@ -55,8 +51,7 @@ class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
 
     final (verdictLabel, verdictColor) = switch (review.verdict) {
       ReviewVerdict.pass => ('PASS', tokens.success),
-      ReviewVerdict.passWithWarnings =>
-        ('PASS WITH WARNINGS', tokens.warning),
+      ReviewVerdict.passWithWarnings => ('PASS WITH WARNINGS', tokens.warning),
       ReviewVerdict.needsChanges => ('NEEDS CHANGES', tokens.error),
     };
 
@@ -73,9 +68,7 @@ class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
             decoration: BoxDecoration(
               color: verdictColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(Radii.sm),
-              border: Border.all(
-                color: verdictColor.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: verdictColor.withValues(alpha: 0.3)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -84,8 +77,8 @@ class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
                   review.verdict == ReviewVerdict.pass
                       ? Icons.check_circle
                       : review.verdict == ReviewVerdict.passWithWarnings
-                          ? Icons.warning_amber
-                          : Icons.cancel,
+                      ? Icons.warning_amber
+                      : Icons.cancel,
                   size: 14,
                   color: verdictColor,
                 ),
@@ -122,26 +115,25 @@ class _ReviewSummaryPanelState extends ConsumerState<ReviewSummaryPanel> {
         _StatsRow(review: review),
         const SizedBox(height: Spacing.md),
 
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.2),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.2)),
         const SizedBox(height: Spacing.md),
 
         // File list with expandable annotations
-        ...review.fileResults.map((fileResult) => _FileSection(
-              fileResult: fileResult,
-              isExpanded: _expandedFiles.contains(fileResult.filePath),
-              onToggle: () {
-                setState(() {
-                  if (_expandedFiles.contains(fileResult.filePath)) {
-                    _expandedFiles.remove(fileResult.filePath);
-                  } else {
-                    _expandedFiles.add(fileResult.filePath);
-                  }
-                });
-              },
-            )),
+        ...review.fileResults.map(
+          (fileResult) => _FileSection(
+            fileResult: fileResult,
+            isExpanded: _expandedFiles.contains(fileResult.filePath),
+            onToggle: () {
+              setState(() {
+                if (_expandedFiles.contains(fileResult.filePath)) {
+                  _expandedFiles.remove(fileResult.filePath);
+                } else {
+                  _expandedFiles.add(fileResult.filePath);
+                }
+              });
+            },
+          ),
+        ),
 
         const SizedBox(height: Spacing.md),
 
@@ -206,13 +198,14 @@ class _StatsRow extends ConsumerWidget {
         _StatBadge(
           label: 'Suggestions',
           count: review.fileResults.fold(
-              0, (sum, f) => sum + f.suggestionCount),
+            0,
+            (sum, f) => sum + f.suggestionCount,
+          ),
           color: tokens.info,
         ),
         _StatBadge(
           label: 'Nits',
-          count:
-              review.fileResults.fold(0, (sum, f) => sum + f.nitCount),
+          count: review.fileResults.fold(0, (sum, f) => sum + f.nitCount),
           color: tokens.textMuted,
         ),
       ],
@@ -305,7 +298,7 @@ class _FileSection extends ConsumerWidget {
                       style: TextStyle(
                         color: tokens.textPrimary,
                         fontSize: FontSizes.sm,
-                        letterSpacing: -0.1,
+                        letterSpacing: 0,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -320,8 +313,8 @@ class _FileSection extends ConsumerWidget {
                         color: fileResult.criticalCount > 0
                             ? tokens.error.withValues(alpha: 0.15)
                             : fileResult.warningCount > 0
-                                ? tokens.warning.withValues(alpha: 0.15)
-                                : tokens.info.withValues(alpha: 0.15),
+                            ? tokens.warning.withValues(alpha: 0.15)
+                            : tokens.info.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(Radii.xs),
                       ),
                       child: Text(
@@ -330,8 +323,8 @@ class _FileSection extends ConsumerWidget {
                           color: fileResult.criticalCount > 0
                               ? tokens.error
                               : fileResult.warningCount > 0
-                                  ? tokens.warning
-                                  : tokens.info,
+                              ? tokens.warning
+                              : tokens.info,
                           fontSize: FontSizes.xxs,
                           fontWeight: FontWeight.w600,
                         ),

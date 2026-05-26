@@ -45,11 +45,7 @@ class WelcomeScreen extends ConsumerWidget {
                     color: tokens.accent.withValues(alpha: 0.2),
                   ),
                 ),
-                child: Icon(
-                  Icons.memory,
-                  size: 32,
-                  color: tokens.accent,
-                ),
+                child: Icon(Icons.memory, size: 32, color: tokens.accent),
               ),
               const SizedBox(height: Spacing.xxl),
               Text(
@@ -58,7 +54,7 @@ class WelcomeScreen extends ConsumerWidget {
                   color: tokens.textPrimary,
                   fontSize: FontSizes.title,
                   fontWeight: FontWeight.w300,
-                  letterSpacing: -0.5,
+                  letterSpacing: 0,
                 ),
               ),
               const SizedBox(height: Spacing.sm),
@@ -122,7 +118,9 @@ class WelcomeScreen extends ConsumerWidget {
                 Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(Radii.lg),
-                    border: Border.all(color: tokens.border.withValues(alpha: 0.5)),
+                    border: Border.all(
+                      color: tokens.border.withValues(alpha: 0.5),
+                    ),
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: Column(
@@ -132,26 +130,28 @@ class WelcomeScreen extends ConsumerWidget {
                         .asMap()
                         .entries
                         .map((entry) {
-                      final path = entry.value;
-                      final isLast =
-                          entry.key == settings.recentProjects.take(5).length - 1;
-                      return _RecentProjectItem(
-                        path: path,
-                        showBorder: !isLast,
-                        onTap: () async {
-                          await ref
-                              .read(fileTreeProvider.notifier)
-                              .openDirectory(path);
-                          ref
-                              .read(settingsProvider.notifier)
-                              .addRecentProject(path);
-                          final service = ref.read(agentServiceProvider);
-                          if (service.isConnected) {
-                            service.updateWorkingDir(path);
-                          }
-                        },
-                      );
-                    }).toList(),
+                          final path = entry.value;
+                          final isLast =
+                              entry.key ==
+                              settings.recentProjects.take(5).length - 1;
+                          return _RecentProjectItem(
+                            path: path,
+                            showBorder: !isLast,
+                            onTap: () async {
+                              await ref
+                                  .read(fileTreeProvider.notifier)
+                                  .openDirectory(path);
+                              ref
+                                  .read(settingsProvider.notifier)
+                                  .addRecentProject(path);
+                              final service = ref.read(agentServiceProvider);
+                              if (service.isConnected) {
+                                service.updateWorkingDir(path);
+                              }
+                            },
+                          );
+                        })
+                        .toList(),
                   ),
                 ),
               ],
@@ -202,10 +202,7 @@ class WelcomeScreen extends ConsumerWidget {
           children: [
             Text(
               'Created in ~/Documents',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xs,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
             ),
             const SizedBox(height: Spacing.lg),
             TextField(
@@ -244,13 +241,11 @@ class WelcomeScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel',
-                style: TextStyle(color: tokens.textMuted)),
+            child: Text('Cancel', style: TextStyle(color: tokens.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: Text('Create',
-                style: TextStyle(color: tokens.accent)),
+            child: Text('Create', style: TextStyle(color: tokens.accent)),
           ),
         ],
       ),
@@ -372,8 +367,7 @@ class _RecentProjectItem extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_RecentProjectItem> createState() =>
-      _RecentProjectItemState();
+  ConsumerState<_RecentProjectItem> createState() => _RecentProjectItemState();
 }
 
 class _RecentProjectItemState extends ConsumerState<_RecentProjectItem> {
@@ -481,10 +475,7 @@ class _ShortcutChip extends ConsumerWidget {
         const SizedBox(width: 5),
         Text(
           label,
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xs,
-          ),
+          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
         ),
       ],
     );

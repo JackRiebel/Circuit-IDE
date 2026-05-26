@@ -39,4 +39,44 @@ void main() {
       contains('ai.reconnect'),
     );
   });
+
+  test('Command palette supports category filters and recent commands', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    var ran = false;
+    final refresh = CommandDescriptor(
+      id: 'workspace.refresh',
+      title: 'Refresh Workspace',
+      category: 'Workspace',
+      icon: Icons.refresh,
+      run: () => ran = true,
+    );
+    final reconnect = CommandDescriptor(
+      id: 'ai.reconnect',
+      title: 'Reconnect AI',
+      category: 'AI',
+      icon: Icons.power_settings_new,
+      run: () {},
+    );
+
+    container.read(commandPaletteProvider.notifier).registerCommands([
+      refresh,
+      reconnect,
+    ]);
+    container.read(commandPaletteProvider.notifier).setCategory('AI');
+
+    expect(
+      container.read(commandPaletteProvider).filteredCommands.single.id,
+      'ai.reconnect',
+    );
+
+    container.read(commandPaletteProvider.notifier).execute(refresh);
+
+    expect(ran, isTrue);
+    expect(
+      container.read(commandPaletteProvider).recentCommands.single.id,
+      'workspace.refresh',
+    );
+  });
 }

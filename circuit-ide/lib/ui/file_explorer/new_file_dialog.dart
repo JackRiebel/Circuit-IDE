@@ -54,7 +54,7 @@ class _NewFileDialogState extends ConsumerState<NewFileDialog> {
                 color: tokens.textPrimary,
                 fontSize: FontSizes.xl,
                 fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
+                letterSpacing: 0,
               ),
             ),
             const SizedBox(height: Spacing.xxl),
@@ -190,7 +190,9 @@ class _TypeTab extends ConsumerWidget {
           duration: AnimationDurations.fast,
           margin: const EdgeInsets.all(2),
           decoration: BoxDecoration(
-            color: isActive ? tokens.accent.withValues(alpha: 0.15) : Colors.transparent,
+            color: isActive
+                ? tokens.accent.withValues(alpha: 0.15)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(Radii.sm),
           ),
           child: Row(

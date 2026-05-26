@@ -23,6 +23,7 @@ import '../../state/terminal_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/workspace_context_provider.dart';
 import '../../theme/theme_tokens.dart';
+import '../common/circuit_primitives.dart';
 
 enum WorkbenchTab { context, activity }
 
@@ -90,20 +91,14 @@ class AiWorkbenchPanel extends ConsumerWidget {
                   ),
                 ),
                 const Spacer(),
-                _SegmentButton(
-                  label: 'Context',
-                  selected: tab == WorkbenchTab.context,
-                  onTap: () => ref
-                      .read(aiWorkbenchTabProvider.notifier)
-                      .set(WorkbenchTab.context),
-                ),
-                const SizedBox(width: Spacing.sm),
-                _SegmentButton(
-                  label: 'Activity',
-                  selected: tab == WorkbenchTab.activity,
-                  onTap: () => ref
-                      .read(aiWorkbenchTabProvider.notifier)
-                      .set(WorkbenchTab.activity),
+                CircuitSegmentedControl<WorkbenchTab>(
+                  value: tab,
+                  segments: const [
+                    CircuitSegment(WorkbenchTab.context, 'Context'),
+                    CircuitSegment(WorkbenchTab.activity, 'Activity'),
+                  ],
+                  onChanged: (value) =>
+                      ref.read(aiWorkbenchTabProvider.notifier).set(value),
                 ),
               ],
             ),
@@ -133,6 +128,9 @@ class _ContextWorkbench extends ConsumerWidget {
     final connectionStatus = ref.watch(connectionStatusProvider);
     final contextState = ref.watch(aiContextProvider);
     final workspaceState = ref.watch(workspaceContextProvider);
+    final runs = ref.watch(agentRunProvider);
+    final activeRun =
+        runs.activeChatRun ?? runs.activeRuns[AgentRunKind.backgroundTask];
     final activeFile = _activeFile(activeTab);
     final terminalOutput = ref
         .read(terminalProvider.notifier)
@@ -160,80 +158,79 @@ class _ContextWorkbench extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _ContextTile(
-                  icon: Icons.folder_open_outlined,
-                  title: rootPath == null
-                      ? 'Scratch workspace'
-                      : p.basename(rootPath),
-                  subtitle: rootPath ?? PlatformUtils.scratchDir,
-                  statusColor: rootPath == null
-                      ? tokens.textMuted
-                      : tokens.success,
-                ),
-              ),
-              const SizedBox(width: Spacing.sm),
-              Expanded(
-                child: _ContextTile(
-                  icon: _lsdfIcon(contextState.lsdfStatus),
-                  title: _lsdfTitle(contextState),
-                  subtitle: _lsdfSubtitle(contextState),
-                  statusColor: _lsdfColor(contextState.lsdfStatus, tokens),
-                ),
-              ),
-            ],
+          _AiReadinessCard(
+            connectionStatus: connectionStatus,
+            providerLabel: settings.activeProvider.shortName,
+            workspaceState: workspaceState,
+            contextState: contextState,
+            activeRun: activeRun,
           ),
           const SizedBox(height: Spacing.sm),
-          Row(
-            children: [
-              Expanded(
-                child: _ContextTile(
-                  icon: Icons.description_outlined,
-                  title: activeFile?.fileName ?? 'No active file',
-                  subtitle: activeFile == null
-                      ? 'Open a file for editor actions'
-                      : '${activeFile.language} · $lineCount lines',
-                  statusColor: activeFile == null
-                      ? tokens.textMuted
-                      : tokens.info,
-                ),
-              ),
-              const SizedBox(width: Spacing.sm),
-              Expanded(
-                child: _ContextTile(
-                  icon: Icons.terminal,
-                  title: terminalLines == 0
-                      ? 'Terminal ready'
-                      : '$terminalLines recent lines',
-                  subtitle:
-                      'Tab ${terminalState.activeTerminalIndex + 1} · recent output buffer',
-                  statusColor: terminalLines == 0
-                      ? tokens.textMuted
-                      : tokens.warning,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: Spacing.md),
           if (workspaceState.isBusy || workspaceState.error != null) ...[
             _WorkspaceProgressRow(state: workspaceState),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.sm),
           ],
-          Row(
+          CircuitDisclosureRow(
+            icon: Icons.tune_outlined,
+            title: 'Context details',
+            subtitle:
+                '${rootPath == null ? "Scratch workspace" : p.basename(rootPath)} · ${activeFile?.fileName ?? "no active file"}',
             children: [
-              _ContextPill(
-                icon: _connectionIcon(connectionStatus),
-                label:
-                    '${settings.activeProvider.shortName} ${_connectionLabel(connectionStatus)}',
-                color: _connectionColor(connectionStatus, tokens),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ContextTile(
+                      icon: Icons.folder_open_outlined,
+                      title: rootPath == null
+                          ? 'Scratch workspace'
+                          : p.basename(rootPath),
+                      subtitle: rootPath ?? PlatformUtils.scratchDir,
+                      statusColor: rootPath == null
+                          ? tokens.textMuted
+                          : tokens.success,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: _ContextTile(
+                      icon: _lsdfIcon(contextState.lsdfStatus),
+                      title: _lsdfTitle(contextState),
+                      subtitle: _lsdfSubtitle(contextState),
+                      statusColor: _lsdfColor(contextState.lsdfStatus, tokens),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: Spacing.sm),
-              _ContextPill(
-                icon: Icons.hub_outlined,
-                label: workspaceState.message ?? _lsdfPillLabel(contextState),
-                color: _lsdfColor(contextState.lsdfStatus, tokens),
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: _ContextTile(
+                      icon: Icons.description_outlined,
+                      title: activeFile?.fileName ?? 'No active file',
+                      subtitle: activeFile == null
+                          ? 'Open a file for editor actions'
+                          : '${activeFile.language} · $lineCount lines',
+                      statusColor: activeFile == null
+                          ? tokens.textMuted
+                          : tokens.info,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: _ContextTile(
+                      icon: Icons.terminal,
+                      title: terminalLines == 0
+                          ? 'Terminal ready'
+                          : '$terminalLines recent lines',
+                      subtitle:
+                          'Tab ${terminalState.activeTerminalIndex + 1} · recent output buffer',
+                      statusColor: terminalLines == 0
+                          ? tokens.textMuted
+                          : tokens.warning,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -247,30 +244,12 @@ class _ContextWorkbench extends ConsumerWidget {
     return tab;
   }
 
-  static IconData _connectionIcon(ConnectionStatus status) {
-    return switch (status) {
-      ConnectionStatus.connected => Icons.check_circle_outline,
-      ConnectionStatus.connecting => Icons.sync,
-      ConnectionStatus.error => Icons.error_outline,
-      ConnectionStatus.disconnected => Icons.radio_button_unchecked,
-    };
-  }
-
   static String _connectionLabel(ConnectionStatus status) {
     return switch (status) {
       ConnectionStatus.connected => 'connected',
       ConnectionStatus.connecting => 'connecting',
       ConnectionStatus.error => 'error',
       ConnectionStatus.disconnected => 'offline',
-    };
-  }
-
-  static Color _connectionColor(ConnectionStatus status, ThemeTokens tokens) {
-    return switch (status) {
-      ConnectionStatus.connected => tokens.success,
-      ConnectionStatus.connecting => tokens.warning,
-      ConnectionStatus.error => tokens.error,
-      ConnectionStatus.disconnected => tokens.textMuted,
     };
   }
 
@@ -327,6 +306,104 @@ class _ContextWorkbench extends ConsumerWidget {
       LsdfIndexStatus.ready => 'L-SDF map active',
       LsdfIndexStatus.error => 'L-SDF map failed',
     };
+  }
+}
+
+class _AiReadinessCard extends ConsumerWidget {
+  final ConnectionStatus connectionStatus;
+  final String providerLabel;
+  final WorkspaceContextState workspaceState;
+  final AiContextState contextState;
+  final AgentRun? activeRun;
+
+  const _AiReadinessCard({
+    required this.connectionStatus,
+    required this.providerLabel,
+    required this.workspaceState,
+    required this.contextState,
+    required this.activeRun,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final ready =
+        connectionStatus == ConnectionStatus.connected &&
+        workspaceState.error == null;
+    final color = ready
+        ? tokens.success
+        : connectionStatus == ConnectionStatus.error
+        ? tokens.error
+        : tokens.warning;
+    final runLabel = activeRun == null
+        ? 'Idle'
+        : '${activeRun!.kind.name} ${activeRun!.status.name}';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel,
+        borderRadius: BorderRadius.circular(Radii.lg),
+        border: Border.all(color: tokens.outlineSoft),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(Radii.lg),
+            ),
+            child: Icon(
+              ready ? Icons.check_rounded : Icons.info_outline,
+              color: color,
+              size: 16,
+            ),
+          ),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ready ? 'AI ready' : 'AI needs attention',
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    providerLabel,
+                    _ContextWorkbench._connectionLabel(connectionStatus),
+                    _ContextWorkbench._lsdfPillLabel(contextState),
+                    runLabel,
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          CircuitStatusChip(
+            icon: Icons.hub_outlined,
+            label: '${contextState.lsdfFilesIndexed} files',
+            color: _ContextWorkbench._lsdfColor(
+              contextState.lsdfStatus,
+              tokens,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -868,50 +945,6 @@ class _RunAction extends ConsumerWidget {
   }
 }
 
-class _SegmentButton extends ConsumerWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _SegmentButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.md),
-      child: Container(
-        height: 24,
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? tokens.accent.withValues(alpha: 0.14) : null,
-          borderRadius: BorderRadius.circular(Radii.md),
-          border: Border.all(
-            color: selected
-                ? tokens.accent.withValues(alpha: 0.28)
-                : tokens.border.withValues(alpha: 0.45),
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? tokens.accent : tokens.textSecondary,
-            fontSize: FontSizes.xs,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ContextTile extends ConsumerWidget {
   final IconData icon;
   final String title;
@@ -978,56 +1011,6 @@ class _ContextTile extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ContextPill extends ConsumerWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _ContextPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: Spacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(Radii.pill),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: Spacing.sm),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: tokens.textSecondary,
-                  fontSize: FontSizes.xs,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

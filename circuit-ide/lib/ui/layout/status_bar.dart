@@ -107,16 +107,12 @@ class StatusBar extends ConsumerWidget {
                 return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.alt_route,
-                      size: 12,
-                      color: tokens.textMuted.withValues(alpha: 0.6),
-                    ),
-                    const SizedBox(width: 3),
-                    Text(
-                      'routing',
-                      style: textStyle.copyWith(
-                        color: tokens.textMuted.withValues(alpha: 0.6),
+                    Tooltip(
+                      message: 'Model routing enabled',
+                      child: Icon(
+                        Icons.alt_route,
+                        size: 12,
+                        color: tokens.statusBarText.withValues(alpha: 0.45),
                       ),
                     ),
                     _Divider(color: tokens.statusBarText),
@@ -130,13 +126,13 @@ class StatusBar extends ConsumerWidget {
                 ModelTier.powerful => tokens.accent,
                 null => tokens.textMuted,
               };
-              final shortName = routedModel.split('-').last.split('.').last;
               return Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.alt_route, size: 12, color: tierColor),
-                  const SizedBox(width: 3),
-                  Text(shortName, style: textStyle.copyWith(color: tierColor)),
+                  Tooltip(
+                    message: 'Routed model: $routedModel',
+                    child: Icon(Icons.alt_route, size: 12, color: tierColor),
+                  ),
                   _Divider(color: tokens.statusBarText),
                 ],
               );
@@ -184,11 +180,15 @@ class StatusBar extends ConsumerWidget {
 
           if (chatState.tokenUsage.totalTokens > 0) ...[
             _Divider(color: tokens.statusBarText),
-            Text(
-              chatState.lastTokenUsage.isNotEmpty
+            Tooltip(
+              message: chatState.lastTokenUsage.isNotEmpty
                   ? chatState.lastTokenUsage.formattedInputOutput
                   : chatState.tokenUsage.formattedWithBreakdown,
-              style: textStyle,
+              child: Icon(
+                Icons.data_usage,
+                size: 12,
+                color: tokens.statusBarText.withValues(alpha: 0.78),
+              ),
             ),
           ],
         ],

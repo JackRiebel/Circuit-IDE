@@ -469,7 +469,7 @@ class _SectionLabel extends ConsumerWidget {
             color: color,
             fontSize: FontSizes.sm,
             fontWeight: FontWeight.w600,
-            letterSpacing: -0.1,
+            letterSpacing: 0,
           ),
         ),
       ],

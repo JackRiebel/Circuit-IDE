@@ -21,6 +21,9 @@ import 'confirmation_dialog.dart';
 import 'provider_switcher.dart';
 import 'session_list.dart';
 import 'token_tracker.dart';
+import '../common/circuit_primitives.dart';
+
+enum _ChatHeaderAction { save, history, clear }
 
 class ChatPanel extends ConsumerStatefulWidget {
   const ChatPanel({super.key});
@@ -143,97 +146,60 @@ class _ChatPanelState extends ConsumerState<ChatPanel> {
                 ),
                 const Spacer(),
                 const ProviderSwitcher(),
-                Padding(
-                  padding: const EdgeInsets.only(left: Spacing.md),
-                  child: Tooltip(
-                    message: _showWorkbench
-                        ? 'Hide AI workbench'
-                        : 'Show AI workbench',
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () =>
-                            setState(() => _showWorkbench = !_showWorkbench),
-                        child: Icon(
-                          Icons.dashboard_customize_outlined,
-                          size: 14,
-                          color: _showWorkbench
-                              ? tokens.accent
-                              : tokens.textMuted,
-                        ),
-                      ),
-                    ),
-                  ),
+                const SizedBox(width: Spacing.sm),
+                CircuitIconButton(
+                  icon: Icons.dashboard_customize_outlined,
+                  tooltip: _showWorkbench
+                      ? 'Hide AI workbench'
+                      : 'Show AI workbench',
+                  selected: _showWorkbench,
+                  onPressed: () =>
+                      setState(() => _showWorkbench = !_showWorkbench),
                 ),
-                if (chatState.messages.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Spacing.md),
-                    child: Tooltip(
-                      message: 'Save session',
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () async {
-                            final name = await ref
-                                .read(chatProvider.notifier)
-                                .saveSession();
-                            if (name != null && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Session saved'),
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          },
-                          child: Icon(
-                            Icons.bookmark_border,
-                            size: 14,
-                            color: tokens.textMuted,
-                          ),
-                        ),
+                CircuitActionMenu<_ChatHeaderAction>(
+                  tooltip: 'Chat actions',
+                  items: [
+                    PopupMenuItem(
+                      value: _ChatHeaderAction.save,
+                      enabled: chatState.messages.isNotEmpty,
+                      child: const Text('Save session'),
+                    ),
+                    PopupMenuItem(
+                      value: _ChatHeaderAction.history,
+                      child: Text(
+                        _showHistory ? 'Hide history' : 'Show history',
                       ),
                     ),
-                  ),
-                Padding(
-                  padding: const EdgeInsets.only(left: Spacing.md),
-                  child: Tooltip(
-                    message: 'Session history',
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () =>
-                            setState(() => _showHistory = !_showHistory),
-                        child: Icon(
-                          Icons.history,
-                          size: 14,
-                          color: _showHistory
-                              ? tokens.accent
-                              : tokens.textMuted,
-                        ),
-                      ),
+                    PopupMenuItem(
+                      value: _ChatHeaderAction.clear,
+                      enabled: chatState.messages.isNotEmpty,
+                      child: const Text('Clear chat'),
                     ),
-                  ),
+                  ],
+                  onSelected: (action) async {
+                    switch (action) {
+                      case _ChatHeaderAction.save:
+                        final name = await ref
+                            .read(chatProvider.notifier)
+                            .saveSession();
+                        if (name != null && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Session saved'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                        break;
+                      case _ChatHeaderAction.history:
+                        setState(() => _showHistory = !_showHistory);
+                        break;
+                      case _ChatHeaderAction.clear:
+                        ref.read(chatProvider.notifier).clearHistory();
+                        break;
+                    }
+                  },
                 ),
-                if (chatState.messages.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(left: Spacing.md),
-                    child: Tooltip(
-                      message: 'Clear chat',
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: () =>
-                              ref.read(chatProvider.notifier).clearHistory(),
-                          child: Icon(
-                            Icons.delete_outline,
-                            size: 14,
-                            color: tokens.textMuted,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),

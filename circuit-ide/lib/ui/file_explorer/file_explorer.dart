@@ -80,7 +80,7 @@ class FileExplorer extends ConsumerWidget {
                     color: tokens.textPrimary,
                     fontSize: FontSizes.sm,
                     fontWeight: FontWeight.w600,
-                    letterSpacing: -0.1,
+                    letterSpacing: 0,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -129,9 +129,7 @@ class FileExplorer extends ConsumerWidget {
                               .read(fileTreeProvider.notifier)
                               .toggleExpand(node);
                         } else {
-                          ref
-                              .read(editorProvider.notifier)
-                              .openFile(node.path);
+                          ref.read(editorProvider.notifier).openFile(node.path);
                         }
                       },
                       onSecondaryTap: (position) =>
@@ -157,8 +155,12 @@ class FileExplorer extends ConsumerWidget {
     }
   }
 
-  void _showNewFileDialog(BuildContext context, WidgetRef ref, bool isDirectory,
-      [String? rootPath]) {
+  void _showNewFileDialog(
+    BuildContext context,
+    WidgetRef ref,
+    bool isDirectory, [
+    String? rootPath,
+  ]) {
     showDialog(
       context: context,
       builder: (context) => NewFileDialog(
@@ -181,13 +183,21 @@ class FileExplorer extends ConsumerWidget {
         _menuItem('open', Icons.open_in_new, 'Open', tokens),
       if (node.isDirectory) ...[
         _menuItem('new_file', Icons.note_add_outlined, 'New File', tokens),
-        _menuItem('new_folder', Icons.create_new_folder_outlined, 'New Folder',
-            tokens),
+        _menuItem(
+          'new_folder',
+          Icons.create_new_folder_outlined,
+          'New Folder',
+          tokens,
+        ),
         const PopupMenuDivider(height: 8),
       ],
       if (!node.isDirectory) ...[
         _menuItem(
-            'generate_tests', Icons.science_outlined, 'Generate Tests', tokens),
+          'generate_tests',
+          Icons.science_outlined,
+          'Generate Tests',
+          tokens,
+        ),
         const PopupMenuDivider(height: 8),
       ],
       _menuItem('rename', Icons.edit_outlined, 'Rename', tokens),
@@ -195,7 +205,11 @@ class FileExplorer extends ConsumerWidget {
       const PopupMenuDivider(height: 8),
       _menuItem('copy_path', Icons.copy, 'Copy Path', tokens),
       _menuItem(
-          'reveal', Icons.folder_open_outlined, 'Reveal in Finder', tokens),
+        'reveal',
+        Icons.folder_open_outlined,
+        'Reveal in Finder',
+        tokens,
+      ),
     ];
 
     final result = await showMenu<String>(
@@ -243,12 +257,14 @@ class FileExplorer extends ConsumerWidget {
       '${ref.read(fileTreeProvider).rootPath}/',
       '',
     );
-    ref.read(chatProvider.notifier).sendMessage(
-      'Read the file "$relativePath" and generate comprehensive tests for it. '
-      'Use the appropriate testing framework for the language. '
-      'Create the test file in a logical location following project conventions. '
-      'Cover edge cases, error handling, and key business logic.',
-    );
+    ref
+        .read(chatProvider.notifier)
+        .sendMessage(
+          'Read the file "$relativePath" and generate comprehensive tests for it. '
+          'Use the appropriate testing framework for the language. '
+          'Create the test file in a logical location following project conventions. '
+          'Cover edge cases, error handling, and key business logic.',
+        );
   }
 
   PopupMenuItem<String> _menuItem(
@@ -266,10 +282,7 @@ class FileExplorer extends ConsumerWidget {
           const SizedBox(width: 8),
           Text(
             label,
-            style: TextStyle(
-              color: tokens.textPrimary,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
           ),
         ],
       ),
@@ -314,9 +327,7 @@ class FileExplorer extends ConsumerWidget {
           ),
           onSubmitted: (value) async {
             if (value.isNotEmpty && value != node.name) {
-              await ref
-                  .read(fileTreeProvider.notifier)
-                  .renameNode(node, value);
+              await ref.read(fileTreeProvider.notifier).renameNode(node, value);
             }
             if (ctx.mounted) Navigator.of(ctx).pop();
           },
@@ -324,8 +335,10 @@ class FileExplorer extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel',
-                style: TextStyle(color: tokens.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: tokens.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () async {
@@ -337,8 +350,7 @@ class FileExplorer extends ConsumerWidget {
               }
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child:
-                Text('Rename', style: TextStyle(color: tokens.accent)),
+            child: Text('Rename', style: TextStyle(color: tokens.accent)),
           ),
         ],
       ),
@@ -368,8 +380,10 @@ class FileExplorer extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel',
-                style: TextStyle(color: tokens.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: tokens.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () async {

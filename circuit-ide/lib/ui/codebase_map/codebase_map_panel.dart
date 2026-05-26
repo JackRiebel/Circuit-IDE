@@ -68,9 +68,8 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
                 child: ElevatedButton.icon(
                   onPressed: graphState.isLoading
                       ? null
-                      : () => ref
-                            .read(codebaseMapProvider.notifier)
-                            .buildGraph(),
+                      : () =>
+                            ref.read(codebaseMapProvider.notifier).buildGraph(),
                   icon: graphState.isLoading
                       ? SizedBox(
                           width: 12,
@@ -81,9 +80,9 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
                           ),
                         )
                       : const Icon(Icons.account_tree_outlined, size: 14),
-                  label: Text(graphState.isLoading
-                      ? 'Building...'
-                      : 'Build Map'),
+                  label: Text(
+                    graphState.isLoading ? 'Building...' : 'Build Map',
+                  ),
                 ),
               ),
               const SizedBox(height: Spacing.md),
@@ -112,10 +111,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
             ],
           ),
         ),
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.3),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
 
         // View mode selector
         Padding(
@@ -161,10 +157,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
             ],
           ),
         ),
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.3),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
 
         // Stats
         if (graphState.nodes.isNotEmpty)
@@ -207,10 +200,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
 
         // Legend
         if (graphState.nodes.isNotEmpty) ...[
-          Container(
-            height: 1,
-            color: tokens.border.withValues(alpha: 0.3),
-          ),
+          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
           Padding(
             padding: const EdgeInsets.symmetric(
               horizontal: Spacing.md,
@@ -241,10 +231,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
 
         // Open Map button
         if (graphState.nodes.isNotEmpty) ...[
-          Container(
-            height: 1,
-            color: tokens.border.withValues(alpha: 0.3),
-          ),
+          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
           Padding(
             padding: const EdgeInsets.all(Spacing.md),
             child: SizedBox(
@@ -262,9 +249,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
         ],
 
         // Node list (filtered)
-        Expanded(
-          child: _buildNodeList(graphState, tokens),
-        ),
+        Expanded(child: _buildNodeList(graphState, tokens)),
 
         // Error display
         if (graphState.error != null)
@@ -272,10 +257,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
             padding: const EdgeInsets.all(Spacing.md),
             child: Text(
               graphState.error!,
-              style: TextStyle(
-                color: tokens.error,
-                fontSize: FontSizes.xs,
-              ),
+              style: TextStyle(color: tokens.error, fontSize: FontSizes.xs),
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
             ),
@@ -335,10 +317,7 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
             Text(
               'Build a map to visualize\nyour codebase',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),
@@ -352,8 +331,11 @@ class _CodebaseMapPanelState extends ConsumerState<CodebaseMapPanel> {
 
     if (_filter.isNotEmpty) {
       filteredNodes = filteredNodes
-          .where((n) => n.label.toLowerCase().contains(_filter) ||
-              n.id.toLowerCase().contains(_filter))
+          .where(
+            (n) =>
+                n.label.toLowerCase().contains(_filter) ||
+                n.id.toLowerCase().contains(_filter),
+          )
           .toList();
     }
 
@@ -413,8 +395,8 @@ class _ViewModeChipState extends ConsumerState<_ViewModeChip> {
             color: widget.isActive
                 ? tokens.accent.withValues(alpha: 0.15)
                 : _isHovered
-                    ? tokens.accent.withValues(alpha: 0.05)
-                    : Colors.transparent,
+                ? tokens.accent.withValues(alpha: 0.05)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(Radii.xs),
             border: Border.all(
               color: widget.isActive
@@ -472,8 +454,8 @@ class _NodeListItemState extends ConsumerState<_NodeListItem> {
           color: widget.isSelected
               ? tokens.accent.withValues(alpha: 0.1)
               : _isHovered
-                  ? tokens.accent.withValues(alpha: 0.05)
-                  : Colors.transparent,
+              ? tokens.accent.withValues(alpha: 0.05)
+              : Colors.transparent,
           padding: const EdgeInsets.symmetric(
             horizontal: Spacing.lg,
             vertical: 3,
@@ -498,7 +480,7 @@ class _NodeListItemState extends ConsumerState<_NodeListItem> {
                       style: TextStyle(
                         color: tokens.textPrimary,
                         fontSize: FontSizes.sm,
-                        letterSpacing: -0.1,
+                        letterSpacing: 0,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),

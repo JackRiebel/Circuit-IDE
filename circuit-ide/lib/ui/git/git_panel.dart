@@ -43,16 +43,16 @@ class _GitPanelState extends ConsumerState<GitPanel> {
     setState(() => _isGeneratingCommitMsg = true);
 
     try {
-      final workingDir = ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
+      final workingDir =
+          ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
       final git = ref.read(gitProvider);
 
       // Use staged diff if there are staged changes, otherwise unstaged diff
       final diffArg = git.status.staged.isNotEmpty ? '--cached' : '';
-      final result = await Process.run(
-        'git',
-        ['diff', if (diffArg.isNotEmpty) diffArg],
-        workingDirectory: workingDir,
-      );
+      final result = await Process.run('git', [
+        'diff',
+        if (diffArg.isNotEmpty) diffArg,
+      ], workingDirectory: workingDir);
 
       final diff = (result.stdout as String).trim();
       if (diff.isEmpty) {
@@ -100,10 +100,7 @@ class _GitPanelState extends ConsumerState<GitPanel> {
             const SizedBox(height: Spacing.md),
             Text(
               'Not a Git repository',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),
@@ -114,10 +111,7 @@ class _GitPanelState extends ConsumerState<GitPanel> {
       children: [
         // Branch picker
         const BranchPicker(),
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.3),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
 
         // Commit input
         Padding(
@@ -207,76 +201,69 @@ class _GitPanelState extends ConsumerState<GitPanel> {
         const SizedBox(height: Spacing.sm),
         const CodeReviewButton(),
         const SizedBox(height: Spacing.sm),
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.3),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
 
         // Changes list or Review summary
         Expanded(
           child: reviewState.currentReview != null
               ? const ReviewSummaryPanel()
               : git.isLoading
-                  ? Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: tokens.accent,
+              ? Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: tokens.accent,
+                    ),
+                  ),
+                )
+              : ListView(
+                  children: [
+                    if (git.status.staged.isNotEmpty)
+                      _ChangeSection(
+                        title: 'Staged Changes (${git.status.staged.length})',
+                        changes: git.status.staged,
+                        isStaged: true,
+                      ),
+                    if (git.status.unstaged.isNotEmpty)
+                      _ChangeSection(
+                        title: 'Changes (${git.status.unstaged.length})',
+                        changes: git.status.unstaged,
+                        isStaged: false,
+                      ),
+                    if (git.status.untracked.isNotEmpty)
+                      _ChangeSection(
+                        title: 'Untracked (${git.status.untracked.length})',
+                        changes: git.status.untracked,
+                        isStaged: false,
+                      ),
+                    if (git.status.isClean)
+                      Padding(
+                        padding: const EdgeInsets.all(Spacing.xl),
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 24,
+                                color: tokens.success.withValues(alpha: 0.4),
+                              ),
+                              const SizedBox(height: Spacing.sm),
+                              Text(
+                                'No changes',
+                                style: TextStyle(
+                                  color: tokens.textMuted,
+                                  fontSize: FontSizes.sm,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    )
-                  : ListView(
-                      children: [
-                        if (git.status.staged.isNotEmpty)
-                          _ChangeSection(
-                            title:
-                                'Staged Changes (${git.status.staged.length})',
-                            changes: git.status.staged,
-                            isStaged: true,
-                          ),
-                        if (git.status.unstaged.isNotEmpty)
-                          _ChangeSection(
-                            title:
-                                'Changes (${git.status.unstaged.length})',
-                            changes: git.status.unstaged,
-                            isStaged: false,
-                          ),
-                        if (git.status.untracked.isNotEmpty)
-                          _ChangeSection(
-                            title:
-                                'Untracked (${git.status.untracked.length})',
-                            changes: git.status.untracked,
-                            isStaged: false,
-                          ),
-                        if (git.status.isClean)
-                          Padding(
-                            padding: const EdgeInsets.all(Spacing.xl),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_circle_outline,
-                                    size: 24,
-                                    color:
-                                        tokens.success.withValues(alpha: 0.4),
-                                  ),
-                                  const SizedBox(height: Spacing.sm),
-                                  Text(
-                                    'No changes',
-                                    style: TextStyle(
-                                      color: tokens.textMuted,
-                                      fontSize: FontSizes.sm,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                  ],
+                ),
         ),
       ],
     );
@@ -316,10 +303,9 @@ class _ChangeSection extends ConsumerWidget {
             ),
           ),
         ),
-        ...changes.map((change) => _ChangeItem(
-              change: change,
-              isStaged: isStaged,
-            )),
+        ...changes.map(
+          (change) => _ChangeItem(change: change, isStaged: isStaged),
+        ),
       ],
     );
   }
@@ -329,10 +315,7 @@ class _ChangeItem extends ConsumerStatefulWidget {
   final GitFileChange change;
   final bool isStaged;
 
-  const _ChangeItem({
-    required this.change,
-    required this.isStaged,
-  });
+  const _ChangeItem({required this.change, required this.isStaged});
 
   @override
   ConsumerState<_ChangeItem> createState() => _ChangeItemState();
@@ -395,7 +378,7 @@ class _ChangeItemState extends ConsumerState<_ChangeItem> {
                   style: TextStyle(
                     color: tokens.textPrimary,
                     fontSize: FontSizes.sm,
-                    letterSpacing: -0.1,
+                    letterSpacing: 0,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),

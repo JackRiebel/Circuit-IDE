@@ -18,23 +18,25 @@ class Radii {
   static const double sm = 4;
   static const double md = 6;
   static const double lg = 8;
-  static const double xl = 12;
+  static const double xl = 10;
   static const double pill = 1000;
 }
 
 /// Enterprise type scale — compact but readable
 class FontSizes {
-  static const double xxs = 9;
-  static const double xs = 10;
-  static const double sm = 11;
-  static const double md = 12;
-  static const double base = 13;
-  static const double lg = 14;
-  static const double xl = 16;
+  static const double xxs = 10;
+  static const double xs = 11;
+  static const double sm = 12;
+  static const double md = 13;
+  static const double base = 14;
+  static const double lg = 15;
+  static const double xl = 17;
   static const double xxl = 20;
   static const double title = 24;
   static const double display = 32;
 }
+
+enum UiDensityMode { comfortable, compact }
 
 class EditorDefaults {
   static const double fontSize = 14;
@@ -77,56 +79,33 @@ class LayoutDimensions {
 
 class Shadows {
   static const List<BoxShadow> subtle = [
-    BoxShadow(
-      color: Color(0x0F000000),
-      blurRadius: 4,
-      offset: Offset(0, 1),
-    ),
+    BoxShadow(color: Color(0x0F000000), blurRadius: 4, offset: Offset(0, 1)),
   ];
 
   static const List<BoxShadow> medium = [
-    BoxShadow(
-      color: Color(0x14000000),
-      blurRadius: 8,
-      offset: Offset(0, 4),
-    ),
-    BoxShadow(
-      color: Color(0x08000000),
-      blurRadius: 2,
-      offset: Offset(0, 1),
-    ),
+    BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 4)),
+    BoxShadow(color: Color(0x08000000), blurRadius: 2, offset: Offset(0, 1)),
   ];
 
   static const List<BoxShadow> elevated = [
-    BoxShadow(
-      color: Color(0x1A000000),
-      blurRadius: 16,
-      offset: Offset(0, 8),
-    ),
-    BoxShadow(
-      color: Color(0x0A000000),
-      blurRadius: 4,
-      offset: Offset(0, 2),
-    ),
+    BoxShadow(color: Color(0x1A000000), blurRadius: 16, offset: Offset(0, 8)),
+    BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 2)),
   ];
 
   static List<BoxShadow> glow(Color color) => [
-        BoxShadow(
-          color: color.withValues(alpha: 0.25),
-          blurRadius: 12,
-          offset: const Offset(0, 2),
-        ),
-        BoxShadow(
-          color: color.withValues(alpha: 0.08),
-          blurRadius: 4,
-          offset: const Offset(0, 1),
-        ),
-      ];
+    BoxShadow(
+      color: color.withValues(alpha: 0.25),
+      blurRadius: 12,
+      offset: const Offset(0, 2),
+    ),
+    BoxShadow(
+      color: color.withValues(alpha: 0.08),
+      blurRadius: 4,
+      offset: const Offset(0, 1),
+    ),
+  ];
 
   static List<BoxShadow> softGlow(Color color) => [
-        BoxShadow(
-          color: color.withValues(alpha: 0.15),
-          blurRadius: 8,
-        ),
-      ];
+    BoxShadow(color: color.withValues(alpha: 0.15), blurRadius: 8),
+  ];
 }

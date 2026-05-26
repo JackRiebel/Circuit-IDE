@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../state/theme_provider.dart';
+import '../common/circuit_primitives.dart';
 import 'activity_bar.dart';
 
 class ToolsPanel extends ConsumerWidget {
@@ -75,56 +76,39 @@ class ToolsPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-
     return ListView(
       padding: const EdgeInsets.all(Spacing.lg),
       children: [
-        Text(
-          'Advanced tools',
-          style: TextStyle(
-            color: tokens.textPrimary,
-            fontSize: FontSizes.md,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: Spacing.xs),
-        Text(
-          'The main rail stays focused. Everything deeper still lives here.',
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xs,
-            height: 1.35,
-          ),
-        ),
-        const SizedBox(height: Spacing.lg),
-        ..._groups.expand(
-          (group) => [
-            Padding(
-              padding: const EdgeInsets.only(
-                top: Spacing.md,
-                bottom: Spacing.sm,
-              ),
-              child: Text(
-                group.label.toUpperCase(),
-                style: TextStyle(
-                  color: tokens.textMuted,
-                  fontSize: FontSizes.xxs,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
+        for (final group in _groups)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: CircuitDisclosureRow(
+              icon: _groupIcon(group.label),
+              title: group.label,
+              subtitle: '${group.tools.length} tools',
+              initiallyExpanded: group.label == 'Project',
+              children: group.tools
+                  .map(
+                    (tool) => Padding(
+                      padding: const EdgeInsets.only(bottom: Spacing.sm),
+                      child: _ToolButton(tool: tool),
+                    ),
+                  )
+                  .toList(),
             ),
-            ...group.tools.map(
-              (tool) => Padding(
-                padding: const EdgeInsets.only(bottom: Spacing.sm),
-                child: _ToolButton(tool: tool),
-              ),
-            ),
-          ],
-        ),
+          ),
       ],
     );
+  }
+
+  static IconData _groupIcon(String label) {
+    return switch (label) {
+      'Project' => Icons.folder_open_outlined,
+      'AI' => Icons.auto_awesome_outlined,
+      'Verification' => Icons.verified_outlined,
+      'Integrations' => Icons.extension_outlined,
+      _ => Icons.widgets_outlined,
+    };
   }
 }
 
@@ -143,7 +127,7 @@ class _ToolButton extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(Spacing.md),
         decoration: BoxDecoration(
-          color: tokens.surfaceRaised,
+          color: tokens.surfaceInset,
           borderRadius: BorderRadius.circular(Radii.md),
           border: Border.all(color: tokens.outlineSubtle),
         ),
@@ -153,7 +137,7 @@ class _ToolButton extends ConsumerWidget {
               width: 30,
               height: 30,
               decoration: BoxDecoration(
-                color: tokens.accent.withValues(alpha: 0.08),
+                color: tokens.surfacePressed,
                 borderRadius: BorderRadius.circular(Radii.md),
               ),
               child: Icon(tool.icon, color: tokens.accent, size: 16),

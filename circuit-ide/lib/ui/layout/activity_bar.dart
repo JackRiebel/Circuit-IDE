@@ -8,29 +8,100 @@ import '../../state/theme_provider.dart';
 import '../../state/terminal_provider.dart';
 
 enum ActivityBarItem {
-  explorer(Icons.folder_outlined, Icons.folder, 'Explorer'),
-  search(Icons.search, Icons.search, 'Search'),
-  git(Icons.account_tree_outlined, Icons.account_tree, 'Source Control'),
-  ai(Icons.auto_awesome_outlined, Icons.auto_awesome, 'AI Assistant'),
-  runTest(Icons.play_circle_outline, Icons.play_circle, 'Run & Test'),
-  tools(Icons.widgets_outlined, Icons.widgets, 'Tools'),
-  codebaseMap(Icons.hub_outlined, Icons.hub, 'Codebase Map'),
-  notebook(Icons.science_outlined, Icons.science, 'Notebooks'),
-  testing(Icons.bug_report_outlined, Icons.bug_report, 'Test Generation'),
-  security(Icons.shield_outlined, Icons.shield, 'Security Scan'),
-  mcp(Icons.extension_outlined, Icons.extension, 'MCP Hub'),
-  vericoding(Icons.verified_outlined, Icons.verified, 'Vericoding'),
-  memories(Icons.auto_awesome_outlined, Icons.auto_awesome, 'AI Memories'),
-  checkpoints(Icons.history_outlined, Icons.history, 'Checkpoints'),
-  rules(Icons.rule_outlined, Icons.rule, 'Rules'),
-  agents(Icons.smart_toy_outlined, Icons.smart_toy, 'Agents');
+  explorer(Icons.folder_outlined, Icons.folder, 'Explorer', 'Core', true),
+  search(Icons.search, Icons.search, 'Search', 'Core', true),
+  git(
+    Icons.account_tree_outlined,
+    Icons.account_tree,
+    'Source Control',
+    'Core',
+    true,
+  ),
+  ai(
+    Icons.auto_awesome_outlined,
+    Icons.auto_awesome,
+    'AI Assistant',
+    'Core',
+    true,
+  ),
+  runTest(
+    Icons.play_circle_outline,
+    Icons.play_circle,
+    'Run & Test',
+    'Core',
+    true,
+  ),
+  tools(Icons.widgets_outlined, Icons.widgets, 'Tools', 'Core', true),
+  codebaseMap(Icons.hub_outlined, Icons.hub, 'Codebase Map', 'Project', false),
+  notebook(
+    Icons.science_outlined,
+    Icons.science,
+    'Notebooks',
+    'Project',
+    false,
+  ),
+  testing(
+    Icons.bug_report_outlined,
+    Icons.bug_report,
+    'Test Generation',
+    'Verification',
+    false,
+  ),
+  security(
+    Icons.shield_outlined,
+    Icons.shield,
+    'Security Scan',
+    'Verification',
+    false,
+  ),
+  mcp(
+    Icons.extension_outlined,
+    Icons.extension,
+    'MCP Hub',
+    'Integrations',
+    false,
+  ),
+  vericoding(
+    Icons.verified_outlined,
+    Icons.verified,
+    'Vericoding',
+    'Verification',
+    false,
+  ),
+  memories(
+    Icons.auto_awesome_outlined,
+    Icons.auto_awesome,
+    'AI Memories',
+    'AI',
+    false,
+  ),
+  checkpoints(
+    Icons.history_outlined,
+    Icons.history,
+    'Checkpoints',
+    'Verification',
+    false,
+  ),
+  rules(Icons.rule_outlined, Icons.rule, 'Rules', 'AI', false),
+  agents(Icons.smart_toy_outlined, Icons.smart_toy, 'Agents', 'AI', false);
 
-  const ActivityBarItem(this.icon, this.activeIcon, this.tooltip);
+  const ActivityBarItem(
+    this.icon,
+    this.activeIcon,
+    this.tooltip,
+    this.group,
+    this.isPrimary,
+  );
   final IconData icon;
   final IconData activeIcon;
   final String tooltip;
+  final String group;
+  final bool isPrimary;
+  bool get defaultVisible => isPrimary;
+  String get commandOnlyLabel => tooltip;
 
-  static const primary = [explorer, search, git, ai, runTest, tools];
+  static List<ActivityBarItem> get primary =>
+      values.where((item) => item.isPrimary).toList(growable: false);
 }
 
 class ActiveActivityItemNotifier extends Notifier<ActivityBarItem> {
@@ -157,7 +228,9 @@ class _ActivityBarButtonState extends ConsumerState<_ActivityBarButton> {
             decoration: BoxDecoration(
               border: Border(
                 left: BorderSide(
-                  color: widget.isActive ? tokens.accent : Colors.transparent,
+                  color: widget.isActive
+                      ? tokens.outlineFocus
+                      : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -171,9 +244,9 @@ class _ActivityBarButtonState extends ConsumerState<_ActivityBarButton> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(Radii.md),
                   color: widget.isActive
-                      ? tokens.accent.withValues(alpha: 0.1)
+                      ? tokens.surfacePressed
                       : _isHovered
-                      ? tokens.textMuted.withValues(alpha: 0.08)
+                      ? tokens.surfaceHover
                       : Colors.transparent,
                 ),
                 child: Icon(

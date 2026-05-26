@@ -25,13 +25,13 @@ class AppTheme {
           color: tokens.textPrimary,
           fontSize: 14,
           fontFamily: _uiFontFamily,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
         ),
         bodyMedium: TextStyle(
           color: tokens.textPrimary,
           fontSize: 13,
           fontFamily: _uiFontFamily,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
         ),
         bodySmall: TextStyle(
           color: tokens.textSecondary,
@@ -43,7 +43,7 @@ class AppTheme {
           fontSize: 13,
           fontWeight: FontWeight.w500,
           fontFamily: _uiFontFamily,
-          letterSpacing: -0.1,
+          letterSpacing: 0,
         ),
         labelMedium: TextStyle(
           color: tokens.textSecondary,
@@ -55,13 +55,10 @@ class AppTheme {
           fontSize: 16,
           fontWeight: FontWeight.w600,
           fontFamily: _uiFontFamily,
-          letterSpacing: -0.2,
+          letterSpacing: 0,
         ),
       ),
-      iconTheme: IconThemeData(
-        color: tokens.textSecondary,
-        size: 18,
-      ),
+      iconTheme: IconThemeData(color: tokens.textSecondary, size: 18),
       dividerTheme: DividerThemeData(
         color: tokens.border,
         thickness: 1,
@@ -79,8 +76,8 @@ class AppTheme {
         waitDuration: const Duration(milliseconds: 400),
         decoration: BoxDecoration(
           color: tokens.bgLighter,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: tokens.border),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: tokens.outlineSoft),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.2),
@@ -97,11 +94,11 @@ class AppTheme {
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(
-        color: tokens.bgLight,
+        color: tokens.surfacePopover,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: tokens.border),
+          side: BorderSide(color: tokens.outlineSoft),
         ),
         textStyle: TextStyle(
           color: tokens.textPrimary,
@@ -112,8 +109,10 @@ class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: tokens.inputBg,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
         isDense: true,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
@@ -143,14 +142,14 @@ class AppTheme {
               return tokens.accentHover;
             }
             if (states.contains(WidgetState.hovered)) {
-              return Color.lerp(tokens.accent, tokens.accentHover, 0.5)!;
+              return tokens.accentHover;
             }
             return tokens.accent;
           }),
           foregroundColor: const WidgetStatePropertyAll(Colors.white),
-          shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-          )),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
           padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
@@ -158,7 +157,7 @@ class AppTheme {
             TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              letterSpacing: 0.2,
+              letterSpacing: 0,
             ),
           ),
           elevation: WidgetStateProperty.resolveWith((states) {
@@ -180,13 +179,13 @@ class AppTheme {
           foregroundColor: WidgetStatePropertyAll(tokens.textPrimary),
           side: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.hovered)) {
-              return BorderSide(color: tokens.accent);
+              return BorderSide(color: tokens.outlineFocus);
             }
-            return BorderSide(color: tokens.border);
+            return BorderSide(color: tokens.outlineSoft);
           }),
-          shape: WidgetStatePropertyAll(RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-          )),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          ),
           padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           ),
@@ -194,7 +193,7 @@ class AppTheme {
             TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              letterSpacing: 0.2,
+              letterSpacing: 0,
             ),
           ),
           overlayColor: WidgetStatePropertyAll(
@@ -205,13 +204,8 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: tokens.accent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-          ),
-          textStyle: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
         ),
       ),
     );

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/constants/design_tokens.dart';
 import '../../state/theme_provider.dart';
 import 'activity_bar.dart';
+import '../common/circuit_primitives.dart';
 import '../agents/agent_manager_panel.dart';
 import '../checkpoints/checkpoint_panel.dart';
 import '../codebase_map/codebase_map_panel.dart';
@@ -37,25 +37,9 @@ class SidePanel extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Panel header
-          Container(
-            height: LayoutDimensions.tabBarHeight,
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
-              ),
-            ),
-            alignment: Alignment.centerLeft,
-            child: Text(
-              activeItem.tooltip.toUpperCase(),
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xxs,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.2,
-              ),
-            ),
+          CircuitPanelHeader(
+            icon: activeItem.icon,
+            title: activeItem.tooltip.toUpperCase(),
           ),
 
           // Panel content

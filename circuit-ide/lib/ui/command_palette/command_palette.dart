@@ -35,6 +35,12 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     final paletteState = ref.watch(commandPaletteProvider);
+    final visibleCommands =
+        paletteState.query.isEmpty &&
+            paletteState.categoryFilter == null &&
+            paletteState.recentCommands.isNotEmpty
+        ? paletteState.recentCommands
+        : paletteState.filteredCommands;
 
     return GestureDetector(
       onTap: () => ref.read(commandPaletteProvider.notifier).close(),
@@ -46,11 +52,11 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
             onTap: () {},
             child: Container(
               width: 520,
-              constraints: const BoxConstraints(maxHeight: 400),
+              constraints: const BoxConstraints(maxHeight: 460),
               decoration: BoxDecoration(
-                color: tokens.bgLight,
+                color: tokens.surfacePopover,
                 borderRadius: BorderRadius.circular(Radii.xl),
-                border: Border.all(color: tokens.border),
+                border: Border.all(color: tokens.outlineSoft),
                 boxShadow: Shadows.elevated,
               ),
               child: Column(
@@ -70,31 +76,32 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                             ref.read(commandPaletteProvider.notifier).close();
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.arrowDown) {
-                            if (paletteState.filteredCommands.isEmpty) return;
+                            if (visibleCommands.isEmpty) return;
                             setState(() {
                               _selectedIndex = (_selectedIndex + 1).clamp(
                                 0,
-                                paletteState.filteredCommands.length - 1,
+                                visibleCommands.length - 1,
                               );
                             });
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.arrowUp) {
-                            if (paletteState.filteredCommands.isEmpty) return;
+                            if (visibleCommands.isEmpty) return;
                             setState(() {
                               _selectedIndex = (_selectedIndex - 1).clamp(
                                 0,
-                                paletteState.filteredCommands.length - 1,
+                                visibleCommands.length - 1,
                               );
                             });
                           } else if (event.logicalKey ==
                               LogicalKeyboardKey.enter) {
-                            if (paletteState.filteredCommands.isNotEmpty) {
+                            if (visibleCommands.isNotEmpty) {
+                              final index = _selectedIndex.clamp(
+                                0,
+                                visibleCommands.length - 1,
+                              );
                               ref
                                   .read(commandPaletteProvider.notifier)
-                                  .execute(
-                                    paletteState
-                                        .filteredCommands[_selectedIndex],
-                                  );
+                                  .execute(visibleCommands[index]);
                             }
                           }
                         }
@@ -134,19 +141,50 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       ),
                     ),
                   ),
-                  Divider(
-                    color: tokens.border.withValues(alpha: 0.5),
-                    height: 1,
-                  ),
+                  Divider(color: tokens.outlineSoft, height: 1),
+                  if (paletteState.query.isEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Spacing.lg,
+                        Spacing.sm,
+                        Spacing.lg,
+                        0,
+                      ),
+                      child: _CategoryChips(
+                        categories: paletteState.categories,
+                        selected: paletteState.categoryFilter,
+                      ),
+                    ),
+                    if (paletteState.recentCommands.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          Spacing.xl,
+                          Spacing.md,
+                          Spacing.xl,
+                          Spacing.xs,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Recent',
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xxs,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
 
                   // Commands list
                   Flexible(
                     child: ListView.builder(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
-                      itemCount: paletteState.filteredCommands.length,
+                      itemCount: visibleCommands.length,
                       itemBuilder: (context, index) {
-                        final command = paletteState.filteredCommands[index];
+                        final command = visibleCommands[index];
                         final isSelected = index == _selectedIndex;
                         final enabled = command.enabled;
 
@@ -164,7 +202,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                             ),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? tokens.accent.withValues(alpha: 0.1)
+                                  ? tokens.surfacePressed
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(Radii.sm),
                             ),
@@ -225,14 +263,12 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                                       vertical: 1,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: tokens.bgDark,
+                                      color: tokens.surfaceInset,
                                       borderRadius: BorderRadius.circular(
                                         Radii.xs,
                                       ),
                                       border: Border.all(
-                                        color: tokens.border.withValues(
-                                          alpha: 0.5,
-                                        ),
+                                        color: tokens.outlineSoft,
                                       ),
                                     ),
                                     child: Text(
@@ -254,6 +290,86 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryChips extends ConsumerWidget {
+  final List<String> categories;
+  final String? selected;
+
+  const _CategoryChips({required this.categories, required this.selected});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final allSelected = selected == null;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _PaletteChip(
+            label: 'All',
+            selected: allSelected,
+            onTap: () =>
+                ref.read(commandPaletteProvider.notifier).setCategory(null),
+          ),
+          const SizedBox(width: Spacing.sm),
+          ...categories.map(
+            (category) => Padding(
+              padding: const EdgeInsets.only(right: Spacing.sm),
+              child: _PaletteChip(
+                label: category,
+                selected: selected == category,
+                onTap: () => ref
+                    .read(commandPaletteProvider.notifier)
+                    .setCategory(category),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaletteChip extends ConsumerWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PaletteChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: 4,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? tokens.surfacePressed : tokens.surfaceInset,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(
+            color: selected ? tokens.outlineFocus : tokens.outlineSoft,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? tokens.textPrimary : tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
