@@ -62,7 +62,6 @@ class ThemeTokens {
 
   // Provider Colors
   final Color circuitColor;
-  final Color claudeColor;
 
   // Terminal
   final Color terminalBg;
@@ -137,7 +136,6 @@ class ThemeTokens {
     required this.statusBarBg,
     required this.statusBarText,
     required this.circuitColor,
-    required this.claudeColor,
     required this.terminalBg,
     required this.terminalText,
     Color? surfaceBase,
@@ -201,7 +199,6 @@ class ThemeTokens {
     statusBarBg: Color(0xFF272624),
     statusBarText: Color(0xFFD8D1C7),
     circuitColor: Color(0xFF9AC7C0),
-    claudeColor: Color(0xFFE8A87C),
     terminalBg: Color(0xFF151514),
     terminalText: Color(0xFFD8D1C7),
     surfaceBase: Color(0xFF1F1F1E),
@@ -258,7 +255,6 @@ class ThemeTokens {
     statusBarBg: Color(0xFFE6E0D7),
     statusBarText: Color(0xFF4F4942),
     circuitColor: Color(0xFF577F78),
-    claudeColor: Color(0xFFD97757),
     terminalBg: Color(0xFFFAF8F4),
     terminalText: Color(0xFF2F2C29),
     surfaceBase: Color(0xFFFAF8F4),
@@ -315,7 +311,6 @@ class ThemeTokens {
     statusBarBg: Color(0xFF1F6FEB),
     statusBarText: Color(0xFFFFFFFF),
     circuitColor: Color(0xFF79C0FF),
-    claudeColor: Color(0xFFE8A87C),
     terminalBg: Color(0xFF0A0E14),
     terminalText: Color(0xFFE6EDF3),
   );
@@ -364,7 +359,6 @@ class ThemeTokens {
     statusBarBg: Color(0xFF2D6A30),
     statusBarText: Color(0xFFFFFFFF),
     circuitColor: Color(0xFF88CFFF),
-    claudeColor: Color(0xFFE8A87C),
     terminalBg: Color(0xFF151E13),
     terminalText: Color(0xFFD4E0D0),
   );
@@ -413,7 +407,6 @@ class ThemeTokens {
     statusBarBg: Color(0xFF268BD2),
     statusBarText: Color(0xFFFDF6E3),
     circuitColor: Color(0xFF88CFFF),
-    claudeColor: Color(0xFFE8A87C),
     terminalBg: Color(0xFF00212B),
     terminalText: Color(0xFF839496),
   );

@@ -7,13 +7,14 @@ import 'settings_provider.dart';
 
 final currentModelProvider = Provider<String>((ref) {
   final settings = ref.watch(settingsProvider);
-  final model = settings.activeProvider == AIProviderType.cisco
-      ? settings.ciscoModel
-      : settings.anthropicModel;
-  return ModelsConfig.coerceModelForProvider(settings.activeProvider, model);
+  return ModelsConfig.coerceModelForProvider(
+    AIProviderType.cisco,
+    settings.ciscoModel,
+  );
 });
 
 final availableModelsProvider = Provider<List<ModelInfo>>((ref) {
   final settings = ref.watch(settingsProvider);
-  return ModelsConfig.modelsForProvider(settings.activeProvider);
+  final cached = settings.connectorModels.map((model) => model.toModelInfo());
+  return cached.isEmpty ? ModelsConfig.ciscoModels : cached.toList();
 });

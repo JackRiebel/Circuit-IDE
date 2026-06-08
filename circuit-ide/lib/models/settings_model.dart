@@ -1,9 +1,13 @@
 import '../enums/ai_provider.dart';
+import '../agent/providers/provider_interface.dart';
 
 class SettingsModel {
   final AIProviderType activeProvider;
   final String ciscoModel;
-  final String anthropicModel;
+  final List<ConnectorModelInfo> connectorModels;
+  final DateTime? connectorModelsRefreshedAt;
+  final ConnectorHealthStatus connectorHealthStatus;
+  final String? connectorHealthMessage;
   final String themeName;
   final double editorFontSize;
   final bool editorWordWrap;
@@ -17,7 +21,10 @@ class SettingsModel {
   const SettingsModel({
     this.activeProvider = AIProviderType.cisco,
     this.ciscoModel = 'gpt-5-nano',
-    this.anthropicModel = 'claude-sonnet-4-20250514',
+    this.connectorModels = const [],
+    this.connectorModelsRefreshedAt,
+    this.connectorHealthStatus = ConnectorHealthStatus.unknown,
+    this.connectorHealthMessage,
     this.themeName = 'dark',
     this.editorFontSize = 14.0,
     this.editorWordWrap = false,
@@ -32,7 +39,10 @@ class SettingsModel {
   SettingsModel copyWith({
     AIProviderType? activeProvider,
     String? ciscoModel,
-    String? anthropicModel,
+    List<ConnectorModelInfo>? connectorModels,
+    DateTime? connectorModelsRefreshedAt,
+    ConnectorHealthStatus? connectorHealthStatus,
+    String? connectorHealthMessage,
     String? themeName,
     double? editorFontSize,
     bool? editorWordWrap,
@@ -46,7 +56,13 @@ class SettingsModel {
     return SettingsModel(
       activeProvider: activeProvider ?? this.activeProvider,
       ciscoModel: ciscoModel ?? this.ciscoModel,
-      anthropicModel: anthropicModel ?? this.anthropicModel,
+      connectorModels: connectorModels ?? this.connectorModels,
+      connectorModelsRefreshedAt:
+          connectorModelsRefreshedAt ?? this.connectorModelsRefreshedAt,
+      connectorHealthStatus:
+          connectorHealthStatus ?? this.connectorHealthStatus,
+      connectorHealthMessage:
+          connectorHealthMessage ?? this.connectorHealthMessage,
       themeName: themeName ?? this.themeName,
       editorFontSize: editorFontSize ?? this.editorFontSize,
       editorWordWrap: editorWordWrap ?? this.editorWordWrap,

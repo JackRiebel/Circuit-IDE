@@ -19,7 +19,6 @@ class AgentConfig {
   String? ciscoClientId;
   String? ciscoClientSecret;
   String? ciscoAppKey;
-  String? anthropicApiKey;
   String? githubPat;
   String? workingDir;
   String model;
@@ -33,7 +32,6 @@ class AgentConfig {
     this.ciscoClientId,
     this.ciscoClientSecret,
     this.ciscoAppKey,
-    this.anthropicApiKey,
     this.githubPat,
     this.workingDir,
     this.model = ModelsConfig.defaultCiscoModel,
@@ -54,7 +52,6 @@ class AgentConfig {
     config.ciscoClientId = Platform.environment['CIRCUIT_CLIENT_ID'];
     config.ciscoClientSecret = Platform.environment['CIRCUIT_CLIENT_SECRET'];
     config.ciscoAppKey = Platform.environment['CIRCUIT_APP_KEY'];
-    config.anthropicApiKey = Platform.environment['ANTHROPIC_API_KEY'];
     config.githubPat =
         Platform.environment['GITHUB_PERSONAL_ACCESS_TOKEN'] ??
         Platform.environment['GITHUB_TOKEN'];
@@ -68,9 +65,6 @@ class AgentConfig {
         key: 'cisco_client_secret',
       );
       config.ciscoAppKey ??= await _secureStorage.read(key: 'cisco_app_key');
-      config.anthropicApiKey ??= await _secureStorage.read(
-        key: 'anthropic_api_key',
-      );
       config.githubPat ??= await _secureStorage.read(key: 'github_pat');
     } catch (e) {
       Logger.warning('Could not read secure storage: $e', 'Config');
@@ -85,7 +79,6 @@ class AgentConfig {
         config.ciscoClientId ??= json['client_id'] as String?;
         config.ciscoClientSecret ??= json['client_secret'] as String?;
         config.ciscoAppKey ??= json['app_key'] as String?;
-        config.anthropicApiKey ??= json['anthropic_api_key'] as String?;
         config.githubPat ??= json['github_pat'] as String?;
         config.model = ModelsConfig.coerceModelForProvider(
           AIProviderType.cisco,
@@ -106,7 +99,6 @@ class AgentConfig {
       await _writeOrDeleteSecure('cisco_client_id', ciscoClientId);
       await _writeOrDeleteSecure('cisco_client_secret', ciscoClientSecret);
       await _writeOrDeleteSecure('cisco_app_key', ciscoAppKey);
-      await _writeOrDeleteSecure('anthropic_api_key', anthropicApiKey);
       await _writeOrDeleteSecure('github_pat', githubPat);
       await _saveToFile();
     } catch (e) {
@@ -135,7 +127,6 @@ class AgentConfig {
       if (ciscoClientId != null) 'client_id': ciscoClientId,
       if (ciscoClientSecret != null) 'client_secret': ciscoClientSecret,
       if (ciscoAppKey != null) 'app_key': ciscoAppKey,
-      if (anthropicApiKey != null) 'anthropic_api_key': anthropicApiKey,
       if (githubPat != null) 'github_pat': githubPat,
       'model': model,
       'auto_approve': autoApprove,
@@ -145,8 +136,6 @@ class AgentConfig {
 
   bool get hasCiscoCredentials =>
       ciscoClientId != null && ciscoClientSecret != null && ciscoAppKey != null;
-
-  bool get hasAnthropicCredentials => anthropicApiKey != null;
 
   /// Load CIRCUIT.md system prompt from working dir or global config.
   /// [activeFilePath] is used to filter smart rules by pattern.

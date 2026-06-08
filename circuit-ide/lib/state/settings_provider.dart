@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../agent/config/models_config.dart';
+import '../agent/providers/provider_interface.dart';
 import '../core/utils/platform_utils.dart';
 import '../enums/ai_provider.dart';
 import '../models/settings_model.dart';
@@ -25,20 +26,27 @@ class SettingsNotifier extends Notifier<SettingsModel> {
       if (await file.exists()) {
         final json =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-        final activeProvider = AIProviderType.values.firstWhere(
-          (p) => p.name == json['active_provider'],
-          orElse: () => AIProviderType.cisco,
-        );
         state = SettingsModel(
-          activeProvider: activeProvider,
+          activeProvider: AIProviderType.cisco,
           ciscoModel: ModelsConfig.coerceModelForProvider(
             AIProviderType.cisco,
             json['cisco_model'] as String?,
           ),
-          anthropicModel: ModelsConfig.coerceModelForProvider(
-            AIProviderType.anthropic,
-            json['anthropic_model'] as String?,
+          connectorModels:
+              (json['connector_models'] as List<dynamic>?)
+                  ?.whereType<Map<String, dynamic>>()
+                  .map(ConnectorModelInfo.fromJson)
+                  .whereType<ConnectorModelInfo>()
+                  .toList() ??
+              const [],
+          connectorModelsRefreshedAt: DateTime.tryParse(
+            json['connector_models_refreshed_at'] as String? ?? '',
           ),
+          connectorHealthStatus: ConnectorHealthStatus.values.firstWhere(
+            (status) => status.name == json['connector_health_status'],
+            orElse: () => ConnectorHealthStatus.unknown,
+          ),
+          connectorHealthMessage: json['connector_health_message'] as String?,
           themeName: json['theme'] as String? ?? 'dark',
           editorFontSize:
               (json['editor_font_size'] as num?)?.toDouble() ?? 14.0,
@@ -66,7 +74,13 @@ class SettingsNotifier extends Notifier<SettingsModel> {
         const JsonEncoder.withIndent('  ').convert({
           'active_provider': state.activeProvider.name,
           'cisco_model': state.ciscoModel,
-          'anthropic_model': state.anthropicModel,
+          'connector_models': state.connectorModels
+              .map((model) => model.toJson())
+              .toList(),
+          'connector_models_refreshed_at': state.connectorModelsRefreshedAt
+              ?.toIso8601String(),
+          'connector_health_status': state.connectorHealthStatus.name,
+          'connector_health_message': state.connectorHealthMessage,
           'theme': state.themeName,
           'editor_font_size': state.editorFontSize,
           'editor_word_wrap': state.editorWordWrap,
@@ -87,7 +101,7 @@ class SettingsNotifier extends Notifier<SettingsModel> {
   }
 
   void setActiveProvider(AIProviderType provider) {
-    state = state.copyWith(activeProvider: provider);
+    state = state.copyWith(activeProvider: AIProviderType.cisco);
     _save();
   }
 
@@ -101,12 +115,18 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     _save();
   }
 
-  void setAnthropicModel(String model) {
+  void setConnectorModels(List<ConnectorModelInfo> models) {
     state = state.copyWith(
-      anthropicModel: ModelsConfig.coerceModelForProvider(
-        AIProviderType.anthropic,
-        model,
-      ),
+      connectorModels: models,
+      connectorModelsRefreshedAt: DateTime.now(),
+    );
+    _save();
+  }
+
+  void setConnectorHealth(ConnectorHealth health) {
+    state = state.copyWith(
+      connectorHealthStatus: health.status,
+      connectorHealthMessage: health.message,
     );
     _save();
   }

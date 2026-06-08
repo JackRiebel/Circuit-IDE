@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../agent/config/config.dart';
 import '../../core/utils/logger.dart';
 import '../../core/utils/platform_utils.dart';
+import '../../enums/ai_provider.dart';
 import '../../enums/connection_status.dart';
 import '../../state/connection_provider.dart';
 import '../../state/file_tree_provider.dart';
@@ -36,44 +37,36 @@ class _IDEScreenState extends ConsumerState<IDEScreen> {
       final rootPath = ref.read(fileTreeProvider).rootPath;
       final workingDir = rootPath ?? await PlatformUtils.ensureScratchDir();
 
-      Map<String, String>? credentials;
-      if (settings.activeProvider.name == 'cisco' &&
-          config.hasCiscoCredentials) {
-        credentials = {
-          'client_id': config.ciscoClientId!,
-          'client_secret': config.ciscoClientSecret!,
-          'app_key': config.ciscoAppKey!,
-        };
-      } else if (settings.activeProvider.name == 'anthropic' &&
-          config.hasAnthropicCredentials) {
-        credentials = {
-          'api_key': config.anthropicApiKey!,
-        };
-      }
-
-      if (credentials == null) return;
+      if (!config.hasCiscoCredentials) return;
 
       ref
           .read(connectionStatusProvider.notifier)
           .set(ConnectionStatus.connecting);
 
       final success = await service.connect(
-        providerType: settings.activeProvider,
-        credentials: credentials,
+        providerType: AIProviderType.cisco,
+        credentials: {
+          'client_id': config.ciscoClientId!,
+          'client_secret': config.ciscoClientSecret!,
+          'app_key': config.ciscoAppKey!,
+        },
         workingDir: workingDir,
+        model: settings.ciscoModel,
       );
 
       if (!mounted) return;
 
-      ref.read(connectionStatusProvider.notifier).set(
-            success ? ConnectionStatus.connected : ConnectionStatus.disconnected,
+      ref
+          .read(connectionStatusProvider.notifier)
+          .set(
+            success
+                ? ConnectionStatus.connected
+                : ConnectionStatus.disconnected,
           );
     } catch (e) {
       Logger.error('Auto-connect failed', e);
       if (!mounted) return;
-      ref
-          .read(connectionStatusProvider.notifier)
-          .set(ConnectionStatus.error);
+      ref.read(connectionStatusProvider.notifier).set(ConnectionStatus.error);
     }
   }
 

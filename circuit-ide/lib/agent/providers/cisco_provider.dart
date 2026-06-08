@@ -17,6 +17,7 @@ class CiscoProvider implements AIProvider {
   String? _accessToken;
   DateTime? _tokenExpiry;
   bool _connected = false;
+  CancelToken? _activeCancelToken;
 
   /// Retry config
   static const int _maxRetries = 3;
@@ -32,10 +33,26 @@ class CiscoProvider implements AIProvider {
   }
 
   @override
-  String get name => 'Cisco Circuit';
+  String get name => 'Circuit Company AI';
 
   @override
   List<ModelInfo> get availableModels => ModelsConfig.ciscoModels;
+
+  @override
+  ProviderDescriptor get descriptor => const ProviderDescriptor(
+    id: 'circuit',
+    displayName: 'Circuit Company AI',
+    shortName: 'Circuit',
+    capabilities: ProviderCapabilities(
+      supportsStreaming: true,
+      supportsNativeToolCalls: true,
+      supportsModelRefresh: true,
+      supportsCancellation: true,
+    ),
+  );
+
+  @override
+  ProviderCapabilities get capabilities => descriptor.capabilities;
 
   @override
   bool get isConnected => _connected;
@@ -47,12 +64,12 @@ class CiscoProvider implements AIProvider {
     _appKey = credentials['app_key'];
 
     if (_clientId == null || _clientSecret == null || _appKey == null) {
-      throw ArgumentError('Missing Cisco credentials');
+      throw ArgumentError('Missing Circuit credentials');
     }
 
     await _refreshToken();
     _connected = true;
-    Logger.info('Connected to Cisco Circuit API', 'CiscoProvider');
+    Logger.info('Connected to Circuit Company AI', 'CiscoProvider');
   }
 
   @override
@@ -60,7 +77,128 @@ class CiscoProvider implements AIProvider {
     _connected = false;
     _accessToken = null;
     _tokenExpiry = null;
-    Logger.info('Disconnected from Cisco Circuit API', 'CiscoProvider');
+    cancelActiveRequest();
+    Logger.info('Disconnected from Circuit Company AI', 'CiscoProvider');
+  }
+
+  @override
+  Future<ConnectorHealth> checkHealth() async {
+    if (_clientId == null || _clientSecret == null || _appKey == null) {
+      return ConnectorHealth(
+        status: ConnectorHealthStatus.credentialsMissing,
+        message: 'Circuit credentials are missing.',
+        checkedAt: DateTime.now(),
+      );
+    }
+    try {
+      await _getToken();
+      return ConnectorHealth(
+        status: ConnectorHealthStatus.connected,
+        message: 'Circuit connector is ready.',
+        checkedAt: DateTime.now(),
+      );
+    } catch (e) {
+      return ConnectorHealth(
+        status: ConnectorHealthStatus.tokenFailed,
+        message: e.toString().replaceFirst('Exception: ', ''),
+        checkedAt: DateTime.now(),
+      );
+    }
+  }
+
+  @override
+  void cancelActiveRequest() {
+    _activeCancelToken?.cancel('Request cancelled by user.');
+    _activeCancelToken = null;
+  }
+
+  @override
+  Future<List<ConnectorModelInfo>> refreshModels() async {
+    if (_clientId == null || _clientSecret == null || _appKey == null) {
+      return _bundledConnectorModels();
+    }
+
+    try {
+      final token = await _getToken();
+      final response = await _dio.get(
+        AppConstants.ciscoChatBaseUrl,
+        queryParameters: {'api-version': AppConstants.ciscoApiVersion},
+        options: Options(headers: {'api-key': token}),
+      );
+      final parsed = _parseModelCatalog(response.data);
+      if (parsed.isNotEmpty) return parsed;
+    } catch (e) {
+      Logger.warning(
+        'Circuit model refresh fell back to bundled catalog: $e',
+        'CiscoProvider',
+      );
+    }
+    return _bundledConnectorModels();
+  }
+
+  List<ConnectorModelInfo> _bundledConnectorModels() {
+    return availableModels
+        .map(
+          (model) => ConnectorModelInfo(
+            id: model.id,
+            displayName: model.displayName,
+            contextWindow: model.contextWindow,
+            supportsTools: model.supportsTools,
+            inputCostPer1k: model.inputCostPer1k,
+            outputCostPer1k: model.outputCostPer1k,
+          ),
+        )
+        .toList();
+  }
+
+  List<ConnectorModelInfo> _parseModelCatalog(dynamic data) {
+    final items = switch (data) {
+      {'data': final List<dynamic> models} => models,
+      {'models': final List<dynamic> models} => models,
+      final List<dynamic> models => models,
+      _ => const <dynamic>[],
+    };
+
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map((json) {
+          final id = json['id'] as String? ?? json['model'] as String?;
+          if (id == null || id.trim().isEmpty) return null;
+          final capabilities = json['capabilities'] as Map<String, dynamic>?;
+          final supportsTools =
+              capabilities?['tools'] as bool? ??
+              capabilities?['tool_calls'] as bool? ??
+              _isKnownToolCapableModel(id);
+          final contextWindow =
+              json['contextWindow'] as int? ??
+              json['context_window'] as int? ??
+              120000;
+          return ConnectorModelInfo(
+            id: id,
+            displayName:
+                json['displayName'] as String? ??
+                json['display_name'] as String? ??
+                id,
+            contextWindow: contextWindow,
+            supportsTools: supportsTools,
+            inputCostPer1k:
+                (json['inputCostPer1k'] as num?)?.toDouble() ??
+                (json['input_cost_per_1k'] as num?)?.toDouble() ??
+                0,
+            outputCostPer1k:
+                (json['outputCostPer1k'] as num?)?.toDouble() ??
+                (json['output_cost_per_1k'] as num?)?.toDouble() ??
+                0,
+          );
+        })
+        .whereType<ConnectorModelInfo>()
+        .toList();
+  }
+
+  bool _isKnownToolCapableModel(String id) {
+    return ModelsConfig.ciscoModels.any(
+      (model) => model.id == id && model.supportsTools,
+    );
   }
 
   Future<void> _refreshToken() async {
@@ -157,16 +295,22 @@ class CiscoProvider implements AIProvider {
     );
 
     Response<ResponseBody> response;
+    final cancelToken = CancelToken();
+    _activeCancelToken = cancelToken;
     try {
       response = await _dio.post<ResponseBody>(
         url,
         data: jsonEncode(body),
+        cancelToken: cancelToken,
         options: Options(
           headers: {'api-key': token, 'Content-Type': 'application/json'},
           responseType: ResponseType.stream,
         ),
       );
     } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        throw Exception('Request cancelled');
+      }
       final status = e.response?.statusCode;
       if (status == 401) {
         await _refreshToken();
@@ -180,7 +324,7 @@ class CiscoProvider implements AIProvider {
         );
         return;
       }
-      String errorMsg = 'Cisco API error $status';
+      String errorMsg = 'Circuit API error $status';
       if (e.response?.data != null) {
         try {
           final errBody = await _readStreamBody(e.response!.data);
@@ -207,73 +351,83 @@ class CiscoProvider implements AIProvider {
     String? finishReason;
     bool yieldedAny = false;
 
-    await for (final bytes in stream) {
-      buffer += utf8.decode(bytes, allowMalformed: true);
-      // Normalize \r\n to \n for SSE parsing
-      buffer = buffer.replaceAll('\r\n', '\n');
+    try {
+      await for (final bytes in stream) {
+        if (cancelToken.isCancelled) {
+          throw Exception('Request cancelled');
+        }
+        buffer += utf8.decode(bytes, allowMalformed: true);
+        // Normalize \r\n to \n for SSE parsing
+        buffer = buffer.replaceAll('\r\n', '\n');
 
-      // Process complete SSE events (delimited by blank line)
-      while (buffer.contains('\n\n')) {
-        final eventEnd = buffer.indexOf('\n\n');
-        final eventBlock = buffer.substring(0, eventEnd);
-        buffer = buffer.substring(eventEnd + 2);
+        // Process complete SSE events (delimited by blank line)
+        while (buffer.contains('\n\n')) {
+          final eventEnd = buffer.indexOf('\n\n');
+          final eventBlock = buffer.substring(0, eventEnd);
+          buffer = buffer.substring(eventEnd + 2);
 
-        for (final line in eventBlock.split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          final payload = line.substring(6).trim();
+          for (final line in eventBlock.split('\n')) {
+            if (!line.startsWith('data: ')) continue;
+            final payload = line.substring(6).trim();
 
-          if (payload == '[DONE]') {
-            yield ChatChunk(
-              finishReason: finishReason ?? 'stop',
-              promptTokens: promptTokens,
-              completionTokens: completionTokens,
-              isDone: true,
-            );
-            return;
-          }
-
-          Map<String, dynamic> json;
-          try {
-            json = jsonDecode(payload) as Map<String, dynamic>;
-          } catch (_) {
-            continue;
-          }
-
-          final usage = json['usage'] as Map<String, dynamic>?;
-          if (usage != null) {
-            promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
-            completionTokens =
-                usage['completion_tokens'] as int? ?? completionTokens;
-          }
-
-          final choices = json['choices'] as List<dynamic>?;
-          if (choices == null || choices.isEmpty) continue;
-
-          final choice = choices[0] as Map<String, dynamic>;
-          final delta = choice['delta'] as Map<String, dynamic>? ?? {};
-          finishReason = choice['finish_reason'] as String? ?? finishReason;
-
-          final content = delta['content'] as String?;
-          if (content != null && content.isNotEmpty) {
-            yieldedAny = true;
-            yield ChatChunk(content: content);
-          }
-
-          final toolCalls = delta['tool_calls'] as List<dynamic>?;
-          if (toolCalls != null) {
-            yieldedAny = true;
-            for (final tc in toolCalls) {
-              final tcMap = tc as Map<String, dynamic>;
-              final function = tcMap['function'] as Map<String, dynamic>? ?? {};
+            if (payload == '[DONE]') {
               yield ChatChunk(
-                toolCallIndex: tcMap['index'] as int?,
-                toolCallId: tcMap['id'] as String?,
-                toolCallName: function['name'] as String?,
-                toolCallArguments: function['arguments'] as String?,
+                finishReason: finishReason ?? 'stop',
+                promptTokens: promptTokens,
+                completionTokens: completionTokens,
+                isDone: true,
               );
+              return;
+            }
+
+            Map<String, dynamic> json;
+            try {
+              json = jsonDecode(payload) as Map<String, dynamic>;
+            } catch (_) {
+              continue;
+            }
+
+            final usage = json['usage'] as Map<String, dynamic>?;
+            if (usage != null) {
+              promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
+              completionTokens =
+                  usage['completion_tokens'] as int? ?? completionTokens;
+            }
+
+            final choices = json['choices'] as List<dynamic>?;
+            if (choices == null || choices.isEmpty) continue;
+
+            final choice = choices[0] as Map<String, dynamic>;
+            final delta = choice['delta'] as Map<String, dynamic>? ?? {};
+            finishReason = choice['finish_reason'] as String? ?? finishReason;
+
+            final content = delta['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              yieldedAny = true;
+              yield ChatChunk(content: content);
+            }
+
+            final toolCalls = delta['tool_calls'] as List<dynamic>?;
+            if (toolCalls != null) {
+              yieldedAny = true;
+              for (final tc in toolCalls) {
+                final tcMap = tc as Map<String, dynamic>;
+                final function =
+                    tcMap['function'] as Map<String, dynamic>? ?? {};
+                yield ChatChunk(
+                  toolCallIndex: tcMap['index'] as int?,
+                  toolCallId: tcMap['id'] as String?,
+                  toolCallName: function['name'] as String?,
+                  toolCallArguments: function['arguments'] as String?,
+                );
+              }
             }
           }
         }
+      }
+    } finally {
+      if (identical(_activeCancelToken, cancelToken)) {
+        _activeCancelToken = null;
       }
     }
 

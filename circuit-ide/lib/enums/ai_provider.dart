@@ -1,6 +1,5 @@
 enum AIProviderType {
-  cisco('Cisco Circuit', 'Circuit AI'),
-  anthropic('Anthropic', 'Claude');
+  cisco('Circuit Company AI', 'Circuit');
 
   const AIProviderType(this.displayName, this.shortName);
   final String displayName;

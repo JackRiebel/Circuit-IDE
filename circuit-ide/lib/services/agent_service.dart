@@ -8,9 +8,9 @@ import '../agent/config/config.dart';
 import '../agent/config/model_router.dart';
 import '../agent/config/models_config.dart';
 import '../agent/memory/session_manager.dart';
+import '../agent/providers/company_connector_provider.dart';
 import '../agent/providers/provider_interface.dart';
-import '../agent/providers/cisco_provider.dart';
-import '../agent/providers/anthropic_provider.dart';
+import '../agent/providers/provider_registry.dart';
 import '../core/utils/logger.dart';
 import '../agent/mcp/mcp_client.dart';
 import '../enums/ai_provider.dart';
@@ -34,6 +34,7 @@ class AgentService {
 
   CircuitAgent? _agent;
   AIProvider? _provider;
+  final ProviderRegistry _providerRegistry = const ProviderRegistry();
   AgentState _state = const AgentState();
 
   AgentState get state => _state;
@@ -68,11 +69,9 @@ class AgentService {
     events.emit(EventType.connecting);
 
     try {
-      // Create provider
-      _provider = switch (providerType) {
-        AIProviderType.cisco => CiscoProvider(),
-        AIProviderType.anthropic => AnthropicProvider(),
-      };
+      // Create the company connector provider through the registry so future
+      // connector changes happen behind one app-facing seam.
+      _provider = _providerRegistry.create(providerType);
 
       await _provider!.connect(credentials);
 
@@ -131,19 +130,6 @@ class AgentService {
   }) async {
     final config = await AgentConfig.load();
 
-    // Try preferred provider first, then fall back
-    if (preferredProvider == AIProviderType.anthropic ||
-        (preferredProvider == null && config.hasAnthropicCredentials)) {
-      if (config.hasAnthropicCredentials) {
-        return connect(
-          providerType: AIProviderType.anthropic,
-          credentials: {'api_key': config.anthropicApiKey!},
-          workingDir: workingDir,
-          model: config.model,
-        );
-      }
-    }
-
     if (config.hasCiscoCredentials) {
       return connect(
         providerType: AIProviderType.cisco,
@@ -193,6 +179,7 @@ class AgentService {
   /// Cancel the current operation
   void cancelCurrentOperation() {
     _agent?.cancel();
+    _provider?.cancelActiveRequest();
     _updateState((s) => s.copyWith(isProcessing: false));
   }
 
@@ -214,9 +201,26 @@ class AgentService {
 
   /// Get the active provider type
   AIProviderType? get activeProviderType {
-    if (_provider is CiscoProvider) return AIProviderType.cisco;
-    if (_provider is AnthropicProvider) return AIProviderType.anthropic;
+    if (_provider is CompanyConnectorProvider) return AIProviderType.cisco;
     return null;
+  }
+
+  Future<ConnectorHealth> checkProviderHealth() async {
+    final provider = _provider;
+    if (provider == null) {
+      return ConnectorHealth(
+        status: ConnectorHealthStatus.credentialsMissing,
+        message: 'Circuit credentials are required before connecting.',
+        checkedAt: DateTime.now(),
+      );
+    }
+    return provider.checkHealth();
+  }
+
+  Future<List<ConnectorModelInfo>> refreshConnectorModels() async {
+    final provider =
+        _provider ?? _providerRegistry.create(AIProviderType.cisco);
+    return provider.refreshModels();
   }
 
   /// Send a message to the AI
@@ -288,6 +292,7 @@ class AgentService {
       return response;
     } on TimeoutException {
       _agent?.cancel();
+      _provider?.cancelActiveRequest();
       _updateState(
         (s) => s.copyWith(
           isProcessing: false,

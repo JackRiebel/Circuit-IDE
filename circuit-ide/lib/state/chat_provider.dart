@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../agent/config/config.dart';
 import '../agent/config/models_config.dart';
+import '../agent/providers/provider_interface.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
 import '../enums/message_role.dart';
@@ -19,7 +20,9 @@ import '../models/token_usage.dart';
 import '../models/cost_info.dart';
 import '../models/tool_call_info.dart';
 import '../models/agent_run.dart';
+import '../models/agent_request.dart';
 import 'agent_run_provider.dart';
+import 'agent_request_provider.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
 import 'settings_provider.dart';
@@ -112,6 +115,9 @@ class ChatNotifier extends Notifier<ChatState> {
         isStreaming: true,
         streamingContent: state.streamingContent + content,
       );
+      ref
+          .read(agentRequestProvider.notifier)
+          .markStreaming(AgentRequestLane.chat);
     });
 
     // Message completed — create assistant message from event data
@@ -154,6 +160,7 @@ class ChatNotifier extends Notifier<ChatState> {
       }
       _cancelSafetyTimer();
       _activeRequestId = null;
+      ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
     });
 
     // Message error — add error info to chat
@@ -168,6 +175,9 @@ class ChatNotifier extends Notifier<ChatState> {
       );
       _cancelSafetyTimer();
       _activeRequestId = null;
+      ref
+          .read(agentRequestProvider.notifier)
+          .finish(AgentRequestLane.chat, error: errorMsg);
     });
 
     service.events.on(EventType.confirmationNeeded, (event) {
@@ -231,6 +241,13 @@ class ChatNotifier extends Notifier<ChatState> {
       retryAttachments: resolvedAttachments,
       contextAttachmentCount: resolvedAttachments.length,
     );
+    ref
+        .read(agentRequestProvider.notifier)
+        .start(
+          lane: AgentRequestLane.chat,
+          requestId: requestId,
+          model: service.state.model,
+        );
     _activeRequestId = requestId;
     state = state.copyWith(
       isProcessing: true,
@@ -279,12 +296,21 @@ class ChatNotifier extends Notifier<ChatState> {
               service.state.error ??
               'Request failed — check credentials and try again.',
         );
+        ref
+            .read(agentRequestProvider.notifier)
+            .finish(
+              AgentRequestLane.chat,
+              error:
+                  service.state.error ??
+                  'Request failed — check credentials and try again.',
+            );
       }
       if (result != null) {
         runNotifier.finishRun(
           AgentRunKind.chat,
           outputPreview: _preview(result),
         );
+        ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
         if (_activeRequestId == requestId) _activeRequestId = null;
       }
     } catch (e) {
@@ -301,6 +327,9 @@ class ChatNotifier extends Notifier<ChatState> {
         streamingContent: '',
         error: e.toString().replaceFirst('Exception: ', ''),
       );
+      ref
+          .read(agentRequestProvider.notifier)
+          .finish(AgentRequestLane.chat, error: e.toString());
       _activeRequestId = null;
     } finally {
       _cancelSafetyTimer();
@@ -319,6 +348,9 @@ class ChatNotifier extends Notifier<ChatState> {
   void cancelOperation() {
     final service = ref.read(agentServiceProvider);
     service.cancelCurrentOperation();
+    ref
+        .read(agentRequestProvider.notifier)
+        .requestCancel(AgentRequestLane.chat);
     ref.read(agentRunProvider.notifier).requestCancel(AgentRunKind.chat);
     ref
         .read(agentRunProvider.notifier)
@@ -331,6 +363,9 @@ class ChatNotifier extends Notifier<ChatState> {
       isStreaming: false,
       streamingContent: '',
     );
+    ref
+        .read(agentRequestProvider.notifier)
+        .finish(AgentRequestLane.chat, cancelled: true);
   }
 
   /// Clear the current error
@@ -413,12 +448,18 @@ class ChatNotifier extends Notifier<ChatState> {
     final service = ref.read(agentServiceProvider);
     final connectionStatus = ref.read(connectionStatusProvider);
     final workspace = ref.read(workspaceContextProvider);
-    final selectedModel = settings.activeProvider == service.activeProviderType
+    final selectedModel = service.activeProviderType == AIProviderType.cisco
         ? service.state.model
-        : settings.activeProvider == AIProviderType.cisco
-        ? settings.ciscoModel
-        : settings.anthropicModel;
-    final modelInfo = ModelsConfig.getModel(selectedModel);
+        : settings.ciscoModel;
+    ModelInfo? cachedModelInfo;
+    for (final model in settings.connectorModels) {
+      final info = model.toModelInfo();
+      if (info.id == selectedModel) {
+        cachedModelInfo = info;
+        break;
+      }
+    }
+    final modelInfo = cachedModelInfo ?? ModelsConfig.getModel(selectedModel);
     final contextWindow = modelInfo?.contextWindow ?? 120000;
     final estimatedTokens = _estimateTokens(
       _buildMessageWithContext(content, attachments),
@@ -436,15 +477,13 @@ class ChatNotifier extends Notifier<ChatState> {
 
     if (connectionStatus != ConnectionStatus.connected) {
       final config = await AgentConfig.load();
-      final hasCredentials = settings.activeProvider == AIProviderType.cisco
-          ? config.hasCiscoCredentials
-          : config.hasAnthropicCredentials;
+      final hasCredentials = config.hasCiscoCredentials;
       issues.add(
         AgentPreflightIssue(
           severity: AgentPreflightSeverity.blocking,
           message: hasCredentials
               ? 'AI is not connected. Reconnect before sending.'
-              : 'Provider credentials are missing. Add credentials in Settings.',
+              : 'Circuit credentials are missing. Add them in Settings.',
           recoveryAction: hasCredentials
               ? AgentPreflightRecoveryAction.reconnect
               : AgentPreflightRecoveryAction.openSettings,
@@ -452,14 +491,27 @@ class ChatNotifier extends Notifier<ChatState> {
       );
     }
 
-    final modelAvailable = ModelsConfig.modelsForProvider(
-      settings.activeProvider,
-    ).any((model) => model.id == selectedModel);
+    final availableModels = [
+      ...ModelsConfig.ciscoModels,
+      ...settings.connectorModels.map((model) => model.toModelInfo()),
+    ];
+    final modelAvailable = availableModels.any(
+      (model) => model.id == selectedModel,
+    );
     if (!modelAvailable) {
       issues.add(
         AgentPreflightIssue(
           severity: AgentPreflightSeverity.blocking,
-          message: '$selectedModel is not available for this provider.',
+          message: '$selectedModel is not available from Circuit Company AI.',
+          recoveryAction: AgentPreflightRecoveryAction.openSettings,
+        ),
+      );
+    } else if (modelInfo?.supportsTools == false && attachments.isNotEmpty) {
+      issues.add(
+        AgentPreflightIssue(
+          severity: AgentPreflightSeverity.warning,
+          message:
+              '$selectedModel does not advertise tool support, so coding actions may be limited.',
           recoveryAction: AgentPreflightRecoveryAction.openSettings,
         ),
       );

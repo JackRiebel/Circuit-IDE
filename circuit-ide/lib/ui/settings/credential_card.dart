@@ -8,7 +8,6 @@ import '../../core/utils/platform_utils.dart';
 import '../../agent/config/config.dart';
 import '../../state/theme_provider.dart';
 import '../../state/connection_provider.dart';
-import '../../state/settings_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../enums/ai_provider.dart';
 import '../../enums/connection_status.dart';
@@ -24,7 +23,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
   final _clientIdController = TextEditingController();
   final _clientSecretController = TextEditingController();
   final _appKeyController = TextEditingController();
-  final _anthropicKeyController = TextEditingController();
   final _githubPatController = TextEditingController();
   bool _obscure = true;
   bool _isLoading = false;
@@ -55,9 +53,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       if (config.ciscoAppKey != null) {
         _appKeyController.text = config.ciscoAppKey!;
       }
-      if (config.anthropicApiKey != null) {
-        _anthropicKeyController.text = config.anthropicApiKey!;
-      }
       if (config.githubPat != null) {
         _githubPatController.text = config.githubPat!;
       }
@@ -75,7 +70,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
     _clientIdController.dispose();
     _clientSecretController.dispose();
     _appKeyController.dispose();
-    _anthropicKeyController.dispose();
     _githubPatController.dispose();
     super.dispose();
   }
@@ -84,7 +78,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
     _clientIdController,
     _clientSecretController,
     _appKeyController,
-    _anthropicKeyController,
     _githubPatController,
   ];
 
@@ -104,9 +97,9 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cisco section
+          // Circuit section
           _SectionLabel(
-            label: 'Cisco Circuit API',
+            label: 'Circuit Company AI',
             color: tokens.circuitColor,
             icon: Icons.cloud_outlined,
           ),
@@ -126,24 +119,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
           _CredentialField(
             controller: _appKeyController,
             label: 'App Key',
-            obscure: _obscure,
-          ),
-          const SizedBox(height: Spacing.xl),
-
-          // Divider
-          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
-          const SizedBox(height: Spacing.xl),
-
-          // Anthropic section
-          _SectionLabel(
-            label: 'Anthropic Claude API',
-            color: tokens.claudeColor,
-            icon: Icons.auto_awesome_outlined,
-          ),
-          const SizedBox(height: Spacing.lg),
-          _CredentialField(
-            controller: _anthropicKeyController,
-            label: 'API Key',
             obscure: _obscure,
           ),
           const SizedBox(height: Spacing.xl),
@@ -289,17 +264,14 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       _successMessage = null;
     });
 
-    final settings = ref.read(settingsProvider);
-
     final values = _credentialValues();
     final hasCisco = values.hasCisco;
-    final hasAnthropic = values.hasAnthropic;
     final hasAnySavedValue = values.hasAny;
 
     if (!hasAnySavedValue) {
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Please enter credentials for at least one provider.';
+        _errorMessage = 'Please enter Circuit credentials.';
       });
       return;
     }
@@ -307,24 +279,13 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
     try {
       await _persistCredentialsOnly(values);
 
-      if (settings.activeProvider == AIProviderType.cisco && !hasCisco) {
+      if (!hasCisco) {
         ref
             .read(connectionStatusProvider.notifier)
             .set(ConnectionStatus.disconnected);
         setState(() {
           _successMessage =
-              'Credentials saved. Fill all Cisco fields to connect.';
-        });
-        return;
-      }
-      if (settings.activeProvider == AIProviderType.anthropic &&
-          !hasAnthropic) {
-        ref
-            .read(connectionStatusProvider.notifier)
-            .set(ConnectionStatus.disconnected);
-        setState(() {
-          _successMessage =
-              'Credentials saved. Add an Anthropic API key to connect.';
+              'Credentials saved. Fill all Circuit fields to connect.';
         });
         return;
       }
@@ -339,17 +300,13 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       final workingDir =
           ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
 
-      final credentials = settings.activeProvider == AIProviderType.cisco
-          ? {
-              'client_id': values.ciscoClientId!,
-              'client_secret': values.ciscoClientSecret!,
-              'app_key': values.ciscoAppKey!,
-            }
-          : {'api_key': values.anthropicApiKey!};
-
       final success = await service.connect(
-        providerType: settings.activeProvider,
-        credentials: credentials,
+        providerType: AIProviderType.cisco,
+        credentials: {
+          'client_id': values.ciscoClientId!,
+          'client_secret': values.ciscoClientSecret!,
+          'app_key': values.ciscoAppKey!,
+        },
         workingDir: workingDir,
       );
 
@@ -358,8 +315,7 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
             .read(connectionStatusProvider.notifier)
             .set(ConnectionStatus.connected);
         setState(() {
-          _successMessage =
-              'Connected to ${settings.activeProvider.displayName}';
+          _successMessage = 'Connected to Circuit Company AI';
         });
       } else {
         ref.read(connectionStatusProvider.notifier).set(ConnectionStatus.error);
@@ -395,7 +351,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       ciscoClientId: values.ciscoClientId,
       ciscoClientSecret: values.ciscoClientSecret,
       ciscoAppKey: values.ciscoAppKey,
-      anthropicApiKey: values.anthropicApiKey,
       githubPat: values.githubPat,
     );
     await config.save();
@@ -411,7 +366,6 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
       ciscoClientId: clean(_clientIdController.text),
       ciscoClientSecret: clean(_clientSecretController.text),
       ciscoAppKey: clean(_appKeyController.text),
-      anthropicApiKey: clean(_anthropicKeyController.text),
       githubPat: clean(_githubPatController.text),
     );
   }
@@ -421,25 +375,20 @@ class _CredentialValues {
   final String? ciscoClientId;
   final String? ciscoClientSecret;
   final String? ciscoAppKey;
-  final String? anthropicApiKey;
   final String? githubPat;
 
   const _CredentialValues({
     required this.ciscoClientId,
     required this.ciscoClientSecret,
     required this.ciscoAppKey,
-    required this.anthropicApiKey,
     required this.githubPat,
   });
 
   bool get hasCisco =>
       ciscoClientId != null && ciscoClientSecret != null && ciscoAppKey != null;
 
-  bool get hasAnthropic => anthropicApiKey != null;
-
   bool get hasAny =>
       hasCisco ||
-      hasAnthropic ||
       ciscoClientId != null ||
       ciscoClientSecret != null ||
       ciscoAppKey != null ||

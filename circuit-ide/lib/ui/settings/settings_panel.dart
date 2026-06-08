@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../agent/config/models_config.dart';
 import '../../agent/providers/provider_interface.dart';
 import '../../core/constants/design_tokens.dart';
-import '../../enums/ai_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/settings_provider.dart';
@@ -23,15 +22,19 @@ class SettingsPanel extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final settings = ref.watch(settingsProvider);
     final vstate = ref.watch(vericodingProvider);
+    final connectorModels = settings.connectorModels
+        .map((model) => model.toModelInfo())
+        .toList(growable: false);
+    final availableModels = connectorModels.isEmpty
+        ? ModelsConfig.ciscoModels
+        : connectorModels;
 
     return ListView(
       padding: const EdgeInsets.all(Spacing.lg),
       children: [
         // Theme
         const _SectionHeader(title: 'Theme'),
-        const _SettingsCard(
-          child: ThemePicker(),
-        ),
+        const _SettingsCard(child: ThemePicker()),
         const SizedBox(height: Spacing.xxl),
 
         // Credentials
@@ -40,31 +43,34 @@ class SettingsPanel extends ConsumerWidget {
         const SizedBox(height: Spacing.xxl),
 
         // Model Selection
-        const _SectionHeader(title: 'Model'),
+        const _SectionHeader(title: 'Circuit AI'),
         _SettingsCard(
           child: Column(
             children: [
               _ModelSelector(
-                label: 'Cisco Model',
+                label: 'Model',
                 value: settings.ciscoModel,
-                models: ModelsConfig.ciscoModels,
+                models: availableModels,
                 onChanged: (model) {
                   ref.read(settingsProvider.notifier).setCiscoModel(model);
-                  if (settings.activeProvider == AIProviderType.cisco) {
-                    ref.read(agentServiceProvider).setModel(model);
-                  }
+                  ref.read(agentServiceProvider).setModel(model);
                 },
               ),
               Divider(color: tokens.border, height: 1),
-              _ModelSelector(
-                label: 'Anthropic Model',
-                value: settings.anthropicModel,
-                models: ModelsConfig.anthropicModels,
-                onChanged: (model) {
-                  ref.read(settingsProvider.notifier).setAnthropicModel(model);
-                  if (settings.activeProvider == AIProviderType.anthropic) {
-                    ref.read(agentServiceProvider).setModel(model);
-                  }
+              _ConnectorHealthRow(
+                status: settings.connectorHealthStatus,
+                message: settings.connectorHealthMessage,
+                refreshedAt: settings.connectorModelsRefreshedAt,
+                onRefresh: () async {
+                  final service = ref.read(agentServiceProvider);
+                  final health = await service.checkProviderHealth();
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setConnectorHealth(health);
+                  final models = await service.refreshConnectorModels();
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setConnectorModels(models);
                 },
               ),
             ],
@@ -112,9 +118,7 @@ class SettingsPanel extends ConsumerWidget {
 
         // Model Routing
         const _SectionHeader(title: 'Model Routing'),
-        const _SettingsCard(
-          child: RoutingConfigWidget(),
-        ),
+        const _SettingsCard(child: RoutingConfigWidget()),
         const SizedBox(height: Spacing.xxl),
 
         // Vericoding
@@ -129,9 +133,9 @@ class SettingsPanel extends ConsumerWidget {
                     'configurable checks (dart analyze, tests, etc).',
                 value: vstate.config.enabled,
                 onChanged: (v) {
-                  ref.read(vericodingProvider.notifier).updateConfig(
-                        vstate.config.copyWith(enabled: v),
-                      );
+                  ref
+                      .read(vericodingProvider.notifier)
+                      .updateConfig(vstate.config.copyWith(enabled: v));
                 },
               ),
               Divider(color: tokens.border, height: 1),
@@ -139,9 +143,12 @@ class SettingsPanel extends ConsumerWidget {
                 label: 'Auto-run after AI edits',
                 value: vstate.config.autoRunAfterEdit,
                 onChanged: (_) {
-                  ref.read(vericodingProvider.notifier).updateConfig(
+                  ref
+                      .read(vericodingProvider.notifier)
+                      .updateConfig(
                         vstate.config.copyWith(
-                            autoRunAfterEdit: !vstate.config.autoRunAfterEdit),
+                          autoRunAfterEdit: !vstate.config.autoRunAfterEdit,
+                        ),
                       );
                 },
               ),
@@ -151,9 +158,12 @@ class SettingsPanel extends ConsumerWidget {
                 child: _FontSizeStepper(
                   value: vstate.config.maxRetries.toDouble(),
                   onChanged: (v) {
-                    ref.read(vericodingProvider.notifier).updateConfig(
-                          vstate.config
-                              .copyWith(maxRetries: v.toInt().clamp(1, 10)),
+                    ref
+                        .read(vericodingProvider.notifier)
+                        .updateConfig(
+                          vstate.config.copyWith(
+                            maxRetries: v.toInt().clamp(1, 10),
+                          ),
                         );
                   },
                 ),
@@ -170,7 +180,8 @@ class SettingsPanel extends ConsumerWidget {
             children: [
               _SettingToggleWithDescription(
                 label: 'Write Permissions',
-                description: 'Allow agent to edit files, run commands, and '
+                description:
+                    'Allow agent to edit files, run commands, and '
                     'commit without asking for confirmation each time.',
                 value: settings.autoApprove,
                 onChanged: (v) {
@@ -193,6 +204,117 @@ class SettingsPanel extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ConnectorHealthRow extends ConsumerStatefulWidget {
+  final ConnectorHealthStatus status;
+  final String? message;
+  final DateTime? refreshedAt;
+  final Future<void> Function() onRefresh;
+
+  const _ConnectorHealthRow({
+    required this.status,
+    required this.message,
+    required this.refreshedAt,
+    required this.onRefresh,
+  });
+
+  @override
+  ConsumerState<_ConnectorHealthRow> createState() =>
+      _ConnectorHealthRowState();
+}
+
+class _ConnectorHealthRowState extends ConsumerState<_ConnectorHealthRow> {
+  bool _refreshing = false;
+
+  Future<void> _refresh() async {
+    setState(() => _refreshing = true);
+    try {
+      await widget.onRefresh();
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = ref.watch(themeProvider);
+    final color = switch (widget.status) {
+      ConnectorHealthStatus.connected => tokens.success,
+      ConnectorHealthStatus.degraded => tokens.warning,
+      ConnectorHealthStatus.connecting => tokens.warning,
+      ConnectorHealthStatus.unknown => tokens.textMuted,
+      _ => tokens.error,
+    };
+    final label = switch (widget.status) {
+      ConnectorHealthStatus.connected => 'Connected',
+      ConnectorHealthStatus.degraded => 'Degraded',
+      ConnectorHealthStatus.connecting => 'Checking',
+      ConnectorHealthStatus.credentialsMissing => 'Credentials missing',
+      ConnectorHealthStatus.tokenFailed => 'Token failed',
+      ConnectorHealthStatus.modelUnavailable => 'Model unavailable',
+      ConnectorHealthStatus.requestFailed => 'Request failed',
+      ConnectorHealthStatus.unknown => 'Not checked',
+    };
+    final refreshed = widget.refreshedAt == null
+        ? null
+        : 'Models refreshed ${widget.refreshedAt!.toLocal()}';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Spacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connector $label',
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                  ),
+                ),
+                if (widget.message != null || refreshed != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      widget.message ?? refreshed!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xs,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          TextButton.icon(
+            onPressed: _refreshing ? null : _refresh,
+            icon: _refreshing
+                ? SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: tokens.textMuted,
+                    ),
+                  )
+                : const Icon(Icons.refresh, size: 14),
+            label: const Text('Refresh Models'),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -301,10 +423,7 @@ class _SettingToggle extends ConsumerWidget {
               ),
             ),
           ),
-          ToggleSwitch(
-            value: value,
-            onChanged: onChanged,
-          ),
+          ToggleSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -357,10 +476,7 @@ class _SettingToggleWithDescription extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: Spacing.lg),
-          ToggleSwitch(
-            value: value,
-            onChanged: onChanged,
-          ),
+          ToggleSwitch(value: value, onChanged: onChanged),
         ],
       ),
     );
@@ -405,14 +521,20 @@ class _ModelSelector extends ConsumerWidget {
             ),
             child: DropdownButtonHideUnderline(
               child: DropdownButton<String>(
-                value: models.any((m) => m.id == value) ? value : models.first.id,
+                value: models.any((m) => m.id == value)
+                    ? value
+                    : models.first.id,
                 dropdownColor: tokens.bgLight,
                 style: TextStyle(
                   color: tokens.textPrimary,
                   fontSize: FontSizes.xs,
                   fontFamily: 'JetBrains Mono',
                 ),
-                icon: Icon(Icons.expand_more, size: 16, color: tokens.textMuted),
+                icon: Icon(
+                  Icons.expand_more,
+                  size: 16,
+                  color: tokens.textMuted,
+                ),
                 isDense: true,
                 items: models.map((model) {
                   return DropdownMenuItem<String>(
@@ -442,10 +564,7 @@ class _FontSizeStepper extends ConsumerWidget {
   final double value;
   final ValueChanged<double> onChanged;
 
-  const _FontSizeStepper({
-    required this.value,
-    required this.onChanged,
-  });
+  const _FontSizeStepper({required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -523,9 +642,7 @@ class _StepperButtonState extends ConsumerState<_StepperButton> {
           child: Icon(
             widget.icon,
             size: 14,
-            color: _isHovered
-                ? tokens.accent
-                : tokens.textMuted,
+            color: _isHovered ? tokens.accent : tokens.textMuted,
           ),
         ),
       ),

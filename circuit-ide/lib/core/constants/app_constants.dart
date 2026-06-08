@@ -34,7 +34,4 @@ class AppConstants {
       'https://chat-ai.cisco.com/openai/deployments';
   static const String ciscoApiVersion = '2025-04-01-preview';
 
-  // Anthropic API
-  static const String anthropicBaseUrl = 'https://api.anthropic.com';
-  static const String anthropicApiVersion = '2023-06-01';
 }

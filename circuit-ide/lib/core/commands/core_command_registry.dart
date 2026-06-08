@@ -194,8 +194,7 @@ class CoreCommandRegistry {
       CommandDescriptor(
         id: 'ai.reconnect',
         title: 'Reconnect AI',
-        description:
-            'Reconnect using saved credentials for the active provider.',
+        description: 'Reconnect using saved Circuit Company AI credentials.',
         category: 'AI',
         icon: Icons.power_settings_new,
         run: () async {
