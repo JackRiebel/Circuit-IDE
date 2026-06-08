@@ -21,7 +21,6 @@ class StudioLeftRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final settings = ref.watch(settingsProvider);
-    final tasks = ref.watch(agentWorkspaceProvider).tasks;
     return Container(
       width: 236,
       decoration: BoxDecoration(
@@ -48,22 +47,6 @@ class StudioLeftRail extends ConsumerWidget {
               label: 'New task',
               onTap: () => ref.read(studioShellProvider.notifier).openHome(),
             ),
-            _RailAction(icon: Icons.search, label: 'Search', onTap: () {}),
-            _RailAction(
-              icon: Icons.hub_outlined,
-              label: 'Plugins',
-              onTap: () {},
-            ),
-            _RailAction(
-              icon: Icons.schedule_outlined,
-              label: 'Automations',
-              onTap: () {},
-            ),
-            _RailAction(
-              icon: Icons.phone_iphone_outlined,
-              label: 'Circuit mobile',
-              onTap: () {},
-            ),
             const SizedBox(height: Spacing.xl),
             Expanded(
               child: ListView(
@@ -71,10 +54,7 @@ class StudioLeftRail extends ConsumerWidget {
                 children: [
                   const _RailSectionLabel('Projects'),
                   for (final path in settings.recentProjects.take(8))
-                    _RecentProjectGroup(
-                      path: path,
-                      taskCount: tasks.where((task) => true).length,
-                    ),
+                    _RecentProjectGroup(path: path),
                   if (settings.recentProjects.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(
@@ -213,9 +193,8 @@ class _RailSectionLabel extends ConsumerWidget {
 
 class _RecentProjectGroup extends ConsumerWidget {
   final String path;
-  final int taskCount;
 
-  const _RecentProjectGroup({required this.path, required this.taskCount});
+  const _RecentProjectGroup({required this.path});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

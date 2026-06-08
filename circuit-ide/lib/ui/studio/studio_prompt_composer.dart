@@ -103,11 +103,6 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                 ),
                 Row(
                   children: [
-                    const _ComposerIcon(
-                      icon: Icons.add,
-                      tooltip: 'Add context',
-                    ),
-                    const SizedBox(width: Spacing.sm),
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -122,12 +117,6 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             const SizedBox(width: Spacing.md),
                             _ComposerPill(
                               label: _modelLabel(settings.ciscoModel),
-                              trailing: Icons.expand_more,
-                            ),
-                            const SizedBox(width: Spacing.sm),
-                            const _ComposerIcon(
-                              icon: Icons.mic_none,
-                              tooltip: 'Voice input',
                             ),
                           ],
                         ),
@@ -175,19 +164,16 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                   _ComposerPill(
                     icon: Icons.folder_copy_outlined,
                     label: projectLabel,
-                    trailing: Icons.expand_more,
                   ),
                   const SizedBox(width: Spacing.lg),
                   const _ComposerPill(
                     icon: Icons.computer_outlined,
                     label: 'Work locally',
-                    trailing: Icons.expand_more,
                   ),
                   const SizedBox(width: Spacing.lg),
                   _ComposerPill(
                     icon: Icons.account_tree_outlined,
                     label: branch.isEmpty ? 'main' : branch,
-                    trailing: Icons.expand_more,
                   ),
                 ],
               ),
@@ -231,26 +217,6 @@ class _ComposerModeSelector extends ConsumerWidget {
         icon: Icons.route_outlined,
         label: value.label,
         trailing: Icons.expand_more,
-      ),
-    );
-  }
-}
-
-class _ComposerIcon extends ConsumerWidget {
-  final IconData icon;
-  final String tooltip;
-
-  const _ComposerIcon({required this.icon, required this.tooltip});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    return Tooltip(
-      message: tooltip,
-      child: SizedBox(
-        width: 28,
-        height: 28,
-        child: Icon(icon, color: tokens.textMuted, size: 18),
       ),
     );
   }

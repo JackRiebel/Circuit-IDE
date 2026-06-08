@@ -31,12 +31,6 @@ class StudioProgressPanel extends ConsumerWidget {
         label: 'Branch',
         value: git.branch.isEmpty ? 'main' : git.branch,
       ),
-      const StudioProgressRow(label: 'Push', value: 'Available'),
-      const StudioProgressRow(
-        label: 'Create pull request',
-        value: 'After apply',
-        enabled: false,
-      ),
     ];
 
     return Container(
@@ -64,9 +58,7 @@ class StudioProgressPanel extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                Icon(Icons.chevron_right, color: tokens.textMuted, size: 18),
                 const Spacer(),
-                Icon(Icons.tune, color: tokens.textMuted, size: 15),
               ],
             ),
             const SizedBox(height: Spacing.xl),
@@ -136,7 +128,6 @@ class _ProgressRow extends ConsumerWidget {
       'Changes' => Icons.inventory_2_outlined,
       'Local' => Icons.computer_outlined,
       'Branch' => Icons.account_tree_outlined,
-      'Push' => Icons.cloud_upload_outlined,
       _ => Icons.data_object_outlined,
     };
   }

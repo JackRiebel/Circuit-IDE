@@ -60,6 +60,12 @@ void main() {
     expect(find.text('What should we build in Circuit-IDE?'), findsOneWidget);
     expect(find.text('Do anything'), findsOneWidget);
     expect(find.text('Default permissions'), findsOneWidget);
+    expect(find.text('Search'), findsNothing);
+    expect(find.text('Plugins'), findsNothing);
+    expect(find.text('Automations'), findsNothing);
+    expect(find.text('Circuit mobile'), findsNothing);
+    expect(find.byTooltip('Add context'), findsNothing);
+    expect(find.byTooltip('Voice input'), findsNothing);
   });
 
   testWidgets('Studio Task View renders transcript and progress panel', (
@@ -82,6 +88,8 @@ void main() {
     expect(find.text('Create role-based mini Salesforce'), findsWidgets);
     expect(find.text('Progress'), findsOneWidget);
     expect(find.text('Environment'), findsOneWidget);
+    expect(find.text('Push'), findsNothing);
+    expect(find.text('Create pull request'), findsNothing);
     expect(find.text('Ask for follow-up changes'), findsOneWidget);
   });
 

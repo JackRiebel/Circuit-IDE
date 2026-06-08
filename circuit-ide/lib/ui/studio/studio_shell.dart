@@ -97,15 +97,6 @@ class _StudioTopBar extends ConsumerWidget {
             onPressed: () => ref.read(studioShellProvider.notifier).openHome(),
             icon: Icon(Icons.arrow_back, color: tokens.textMuted, size: 17),
           ),
-          IconButton(
-            tooltip: 'Forward',
-            onPressed: () {},
-            icon: Icon(
-              Icons.arrow_forward,
-              color: tokens.textMuted.withValues(alpha: 0.45),
-              size: 17,
-            ),
-          ),
           const SizedBox(width: Spacing.lg),
           Expanded(
             child: Text(
@@ -126,23 +117,13 @@ class _StudioTopBar extends ConsumerWidget {
               icon: const Icon(Icons.dashboard_customize_outlined, size: 15),
               label: const Text('Back to Studio'),
             )
-          else ...[
-            const _TopIcon(
-              icon: Icons.folder_copy_outlined,
-              tooltip: 'Project',
-            ),
-            const SizedBox(width: Spacing.sm),
-            const _TopIcon(icon: Icons.info_outline, tooltip: 'Details'),
-            const SizedBox(width: Spacing.sm),
+          else
             _TopIcon(
               icon: Icons.terminal_outlined,
               tooltip: 'Open Advanced Editor',
               onTap: () =>
                   ref.read(studioShellProvider.notifier).openAdvancedEditor(),
             ),
-            const SizedBox(width: Spacing.sm),
-            const _TopIcon(icon: Icons.more_horiz, tooltip: 'More'),
-          ],
         ],
       ),
     );
