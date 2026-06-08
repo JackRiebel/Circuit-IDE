@@ -4,18 +4,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/file_node.dart';
+import '../models/workspace_open_result.dart';
 
 class FileTreeState {
   final String? rootPath;
   final List<FileNode> nodes;
   final bool isLoading;
   final String? error;
+  final WorkspaceOpenResult? lastOpenResult;
 
   const FileTreeState({
     this.rootPath,
     this.nodes = const [],
     this.isLoading = false,
     this.error,
+    this.lastOpenResult,
   });
 
   FileTreeState copyWith({
@@ -23,12 +26,14 @@ class FileTreeState {
     List<FileNode>? nodes,
     bool? isLoading,
     String? error,
+    WorkspaceOpenResult? lastOpenResult,
   }) {
     return FileTreeState(
       rootPath: rootPath ?? this.rootPath,
       nodes: nodes ?? this.nodes,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      lastOpenResult: lastOpenResult ?? this.lastOpenResult,
     );
   }
 }
@@ -51,14 +56,81 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
     '.gradle',
   };
 
-  Future<void> openDirectory(String path) async {
-    state = state.copyWith(rootPath: path, isLoading: true);
+  Future<WorkspaceOpenResult> openDirectory(String path) async {
+    final validation = await _validateDirectory(path);
+    if (!validation.success) {
+      state = state.copyWith(
+        isLoading: false,
+        error: validation.message,
+        lastOpenResult: validation,
+      );
+      return validation;
+    }
+
+    state = state.copyWith(
+      rootPath: path,
+      nodes: const [],
+      isLoading: true,
+      error: null,
+      lastOpenResult: validation,
+    );
 
     try {
       final nodes = await _loadDirectory(path, 0);
-      state = state.copyWith(nodes: nodes, isLoading: false);
+      state = state.copyWith(
+        nodes: nodes,
+        isLoading: false,
+        error: null,
+        lastOpenResult: validation,
+      );
+      return validation;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      final failure = WorkspaceOpenResult.failure(
+        path: path,
+        reason: WorkspaceOpenFailureReason.unknown,
+        message: 'Could not open project: $e',
+      );
+      state = state.copyWith(
+        isLoading: false,
+        error: failure.message,
+        lastOpenResult: failure,
+      );
+      return failure;
+    }
+  }
+
+  Future<WorkspaceOpenResult> _validateDirectory(String path) async {
+    final dir = Directory(path);
+    try {
+      final type = await FileSystemEntity.type(path);
+      if (type == FileSystemEntityType.notFound) {
+        return WorkspaceOpenResult.failure(
+          path: path,
+          reason: WorkspaceOpenFailureReason.missing,
+          message: 'Project no longer exists.',
+        );
+      }
+      if (type != FileSystemEntityType.directory) {
+        return WorkspaceOpenResult.failure(
+          path: path,
+          reason: WorkspaceOpenFailureReason.notDirectory,
+          message: 'Recent project is not a folder.',
+        );
+      }
+      await dir.list().take(1).drain<void>();
+      return WorkspaceOpenResult.success(path);
+    } on FileSystemException catch (e) {
+      return WorkspaceOpenResult.failure(
+        path: path,
+        reason: WorkspaceOpenFailureReason.unreadable,
+        message: e.message.isEmpty ? 'Project is not readable.' : e.message,
+      );
+    } catch (e) {
+      return WorkspaceOpenResult.failure(
+        path: path,
+        reason: WorkspaceOpenFailureReason.unknown,
+        message: 'Could not open project: $e',
+      );
     }
   }
 

@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../core/utils/logger.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/checkpoint.dart';
+import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../enums/tool_status.dart';
 import '../checkpoint/checkpoint_manager.dart';
@@ -179,7 +180,9 @@ class ToolExecutor {
         }
       }
 
-      final result = await _dispatch(toolCall.name, toolCall.arguments);
+      final result = toolCall.name == 'run_command'
+          ? await _executeCommandTool(toolCall, updated)
+          : await _dispatch(toolCall.name, toolCall.arguments);
 
       onToolCallUpdate?.call(
         updated.copyWith(
@@ -206,6 +209,30 @@ class ToolExecutor {
         success: false,
       );
     }
+  }
+
+  Future<String> _executeCommandTool(
+    ToolCallInfo toolCall,
+    ToolCallInfo running,
+  ) {
+    final output = StringBuffer();
+    return _commandTools.runCommand(
+      toolCall.arguments,
+      onEvent: (event) {
+        if (event.type == CommandRunEventType.stdout ||
+            event.type == CommandRunEventType.stderr) {
+          output.write(event.text);
+        }
+        onToolCallUpdate?.call(
+          running.copyWith(
+            result: output.toString().trim(),
+            error: event.type == CommandRunEventType.stderr
+                ? event.text.trim()
+                : null,
+          ),
+        );
+      },
+    );
   }
 
   Future<String> _dispatch(String name, Map<String, dynamic> args) async {

@@ -19,36 +19,68 @@ enum AgentRunEventType {
   providerRequest,
   streamChunk,
   toolCall,
+  patchProposal,
+  patchApply,
+  commandRun,
+  checkpoint,
+  verification,
   tokenUsage,
   completed,
   failed,
   cancelled,
 }
 
+enum AgentTraceSpanKind {
+  run,
+  contextBuild,
+  providerRequest,
+  stream,
+  toolCall,
+  patchProposal,
+  patchApply,
+  commandRun,
+  checkpoint,
+  verification,
+}
+
 class AgentTraceSpan {
   final String id;
+  final String? requestId;
+  final AgentTraceSpanKind kind;
   final String name;
   final DateTime startedAt;
   final DateTime? endedAt;
   final String? detail;
+  final Map<String, String> metadata;
   final bool failed;
 
   const AgentTraceSpan({
     required this.id,
+    this.requestId,
+    this.kind = AgentTraceSpanKind.run,
     required this.name,
     required this.startedAt,
     this.endedAt,
     this.detail,
+    this.metadata = const {},
     this.failed = false,
   });
 
-  AgentTraceSpan copyWith({DateTime? endedAt, String? detail, bool? failed}) {
+  AgentTraceSpan copyWith({
+    DateTime? endedAt,
+    String? detail,
+    Map<String, String>? metadata,
+    bool? failed,
+  }) {
     return AgentTraceSpan(
       id: id,
+      requestId: requestId,
+      kind: kind,
       name: name,
       startedAt: startedAt,
       endedAt: endedAt ?? this.endedAt,
       detail: detail ?? this.detail,
+      metadata: metadata ?? this.metadata,
       failed: failed ?? this.failed,
     );
   }
@@ -58,11 +90,15 @@ class AgentRunEvent {
   final AgentRunEventType type;
   final DateTime timestamp;
   final String message;
+  final String? requestId;
+  final Map<String, String> metadata;
 
   const AgentRunEvent({
     required this.type,
     required this.timestamp,
     required this.message,
+    this.requestId,
+    this.metadata = const {},
   });
 }
 
@@ -84,6 +120,9 @@ class AgentRun {
   final bool cancelRequested;
   final List<AgentRunEvent> events;
   final List<AgentTraceSpan> spans;
+  final List<String> changedFiles;
+  final List<String> commandSummaries;
+  final String? checkpointId;
 
   const AgentRun({
     required this.id,
@@ -103,6 +142,9 @@ class AgentRun {
     this.cancelRequested = false,
     this.events = const [],
     this.spans = const [],
+    this.changedFiles = const [],
+    this.commandSummaries = const [],
+    this.checkpointId,
   });
 
   AgentRun copyWith({
@@ -120,6 +162,9 @@ class AgentRun {
     bool? cancelRequested,
     List<AgentRunEvent>? events,
     List<AgentTraceSpan>? spans,
+    List<String>? changedFiles,
+    List<String>? commandSummaries,
+    Object? checkpointId = _sentinel,
   }) {
     return AgentRun(
       id: id,
@@ -140,6 +185,11 @@ class AgentRun {
       cancelRequested: cancelRequested ?? this.cancelRequested,
       events: events ?? this.events,
       spans: spans ?? this.spans,
+      changedFiles: changedFiles ?? this.changedFiles,
+      commandSummaries: commandSummaries ?? this.commandSummaries,
+      checkpointId: identical(checkpointId, _sentinel)
+          ? this.checkpointId
+          : checkpointId as String?,
     );
   }
 
@@ -164,12 +214,32 @@ class AgentRun {
       'totalTokens': tokenUsage.totalTokens,
       'error': error,
       'cancelRequested': cancelRequested,
+      'changedFiles': changedFiles,
+      'commandSummaries': commandSummaries,
+      'checkpointId': checkpointId,
       'events': events
           .map(
             (event) => {
               'type': event.type.name,
               'timestamp': event.timestamp.toIso8601String(),
               'message': event.message,
+              'requestId': event.requestId,
+              'metadata': event.metadata,
+            },
+          )
+          .toList(),
+      'spans': spans
+          .map(
+            (span) => {
+              'id': span.id,
+              'requestId': span.requestId,
+              'kind': span.kind.name,
+              'name': span.name,
+              'startedAt': span.startedAt.toIso8601String(),
+              'endedAt': span.endedAt?.toIso8601String(),
+              'detail': span.detail,
+              'metadata': span.metadata,
+              'failed': span.failed,
             },
           )
           .toList(),
@@ -196,6 +266,37 @@ class AgentRun {
                   DateTime.tryParse(event['timestamp'] as String? ?? '') ??
                   DateTime.now(),
               message: event['message'] as String? ?? '',
+              requestId: event['requestId'] as String?,
+              metadata:
+                  (event['metadata'] as Map<String, dynamic>?)?.map(
+                    (key, value) => MapEntry(key, value.toString()),
+                  ) ??
+                  const {},
+            );
+          })
+          .toList();
+      final spans = (json['spans'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map((span) {
+            return AgentTraceSpan(
+              id: span['id'] as String? ?? '',
+              requestId: span['requestId'] as String?,
+              kind: AgentTraceSpanKind.values.firstWhere(
+                (value) => value.name == span['kind'],
+                orElse: () => AgentTraceSpanKind.run,
+              ),
+              name: span['name'] as String? ?? 'run',
+              startedAt:
+                  DateTime.tryParse(span['startedAt'] as String? ?? '') ??
+                  DateTime.now(),
+              endedAt: DateTime.tryParse(span['endedAt'] as String? ?? ''),
+              detail: span['detail'] as String?,
+              metadata:
+                  (span['metadata'] as Map<String, dynamic>?)?.map(
+                    (key, value) => MapEntry(key, value.toString()),
+                  ) ??
+                  const {},
+              failed: span['failed'] as bool? ?? false,
             );
           })
           .toList();
@@ -226,6 +327,14 @@ class AgentRun {
         error: json['error'] as String?,
         cancelRequested: json['cancelRequested'] as bool? ?? false,
         events: events,
+        spans: spans,
+        changedFiles:
+            (json['changedFiles'] as List<dynamic>?)?.cast<String>() ??
+            const [],
+        commandSummaries:
+            (json['commandSummaries'] as List<dynamic>?)?.cast<String>() ??
+            const [],
+        checkpointId: json['checkpointId'] as String?,
       );
     } catch (_) {
       return null;

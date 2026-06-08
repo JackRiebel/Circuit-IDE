@@ -3,6 +3,8 @@ import 'package:uuid/uuid.dart';
 
 import '../models/project_profile.dart';
 import '../models/work_item.dart';
+import '../models/work_item_handoff_summary.dart';
+import 'agent_run_provider.dart';
 import 'chat_provider.dart';
 import 'git_provider.dart';
 import 'project_profile_provider.dart';
@@ -110,21 +112,28 @@ class WorkItemController extends Notifier<WorkItem?> {
   String handoffSummary() {
     final item = state;
     if (item == null) return 'No active work item.';
-    return [
-      'CircuitCode work item handoff',
-      'Goal: ${item.prompt}',
-      'Status: ${item.status.name}',
-      if (item.changedFiles.isNotEmpty)
-        'Changed files: ${item.changedFiles.join(', ')}',
-      if (item.verificationResults.isNotEmpty) 'Verification:',
-      ...item.verificationResults.map(
-        (result) =>
-            '- ${result.command}: ${result.statusLabel} (${result.duration.inSeconds}s)',
-      ),
-      if (item.result != null) 'Result: ${item.result}',
-      if (item.suggestedNextSteps.isNotEmpty) 'Next steps:',
-      ...item.suggestedNextSteps.map((step) => '- $step'),
-    ].join('\n');
+    final profile = ref.read(projectProfileProvider);
+    final run = ref.read(agentRunProvider).latestRun;
+    final errors = [
+      for (final step in item.steps)
+        if (step.error != null) step.error!,
+      if (run?.error != null) run!.error!,
+    ];
+    return WorkItemHandoffSummary(
+      goal: item.prompt,
+      status: item.status.name,
+      context: [
+        if (profile.rootPath != null) profile.rootPath!,
+        profile.primaryType.label,
+        ...profile.projectTypes.map((type) => type.label).take(4),
+      ],
+      changedFiles: item.changedFiles,
+      commandsRun: run?.commandSummaries ?? const [],
+      verificationResults: item.verificationResults,
+      run: run,
+      errors: errors,
+      nextSteps: item.suggestedNextSteps,
+    ).serialize();
   }
 
   List<WorkItemStep> _defaultSteps(String prompt, String projectType) {

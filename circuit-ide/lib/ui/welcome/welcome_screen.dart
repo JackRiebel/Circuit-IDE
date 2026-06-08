@@ -10,12 +10,20 @@ import '../../state/theme_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
+import '../../models/workspace_open_result.dart';
 
-class WelcomeScreen extends ConsumerWidget {
+class WelcomeScreen extends ConsumerStatefulWidget {
   const WelcomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
+  String? _recentProjectMessage;
+
+  @override
+  Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     final settings = ref.watch(settingsProvider);
 
@@ -102,6 +110,10 @@ class WelcomeScreen extends ConsumerWidget {
 
               // Recent projects
               if (settings.recentProjects.isNotEmpty) ...[
+                if (_recentProjectMessage != null) ...[
+                  _RecentProjectNotice(message: _recentProjectMessage!),
+                  const SizedBox(height: Spacing.md),
+                ],
                 Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -137,18 +149,8 @@ class WelcomeScreen extends ConsumerWidget {
                           return _RecentProjectItem(
                             path: path,
                             showBorder: !isLast,
-                            onTap: () async {
-                              await ref
-                                  .read(fileTreeProvider.notifier)
-                                  .openDirectory(path);
-                              ref
-                                  .read(settingsProvider.notifier)
-                                  .addRecentProject(path);
-                              final service = ref.read(agentServiceProvider);
-                              if (service.isConnected) {
-                                service.updateWorkingDir(path);
-                              }
-                            },
+                            onRemove: () => _removeRecentProject(path),
+                            onTap: () => _openRecentProject(path),
                           );
                         })
                         .toList(),
@@ -261,25 +263,95 @@ class WelcomeScreen extends ConsumerWidget {
       await dir.create(recursive: true);
     }
 
-    await ref.read(fileTreeProvider.notifier).openDirectory(newPath);
-    ref.read(settingsProvider.notifier).addRecentProject(newPath);
-    final service = ref.read(agentServiceProvider);
-    if (service.isConnected) {
-      service.updateWorkingDir(newPath);
-    }
+    await _openWorkspacePath(newPath, addToRecents: true);
   }
 
   Future<void> _openFolder(WidgetRef ref) async {
     final result = await FilePicker.platform.getDirectoryPath();
     if (result != null) {
-      await ref.read(fileTreeProvider.notifier).openDirectory(result);
-      ref.read(settingsProvider.notifier).addRecentProject(result);
-      // Reconnect agent with new working directory
-      final service = ref.read(agentServiceProvider);
-      if (service.isConnected) {
-        service.updateWorkingDir(result);
-      }
+      await _openWorkspacePath(result, addToRecents: true);
     }
+  }
+
+  Future<void> _openRecentProject(String path) async {
+    await _openWorkspacePath(path, addToRecents: true, fromRecent: true);
+  }
+
+  Future<void> _openWorkspacePath(
+    String path, {
+    required bool addToRecents,
+    bool fromRecent = false,
+  }) async {
+    final result = await ref
+        .read(fileTreeProvider.notifier)
+        .openDirectory(path);
+    if (!mounted) return;
+
+    if (!result.success) {
+      if (fromRecent &&
+          result.recentProjectStatus == RecentProjectStatus.missing) {
+        ref.read(settingsProvider.notifier).removeRecentProject(path);
+      }
+      setState(() {
+        _recentProjectMessage =
+            '${result.message ?? "Could not open project"} ${fromRecent ? "It was removed from Recent." : ""}'
+                .trim();
+      });
+      return;
+    }
+
+    setState(() => _recentProjectMessage = null);
+    if (addToRecents) {
+      ref.read(settingsProvider.notifier).addRecentProject(path);
+    }
+    final service = ref.read(agentServiceProvider);
+    if (service.isConnected) {
+      await service.updateWorkingDir(path);
+    }
+  }
+
+  void _removeRecentProject(String path) {
+    ref.read(settingsProvider.notifier).removeRecentProject(path);
+    setState(() => _recentProjectMessage = null);
+  }
+}
+
+class _RecentProjectNotice extends ConsumerWidget {
+  final String message;
+
+  const _RecentProjectNotice({required this.message});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.lg,
+        vertical: Spacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: tokens.warning.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.warning.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 14, color: tokens.warning),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -359,11 +431,13 @@ class _RecentProjectItem extends ConsumerStatefulWidget {
   final String path;
   final bool showBorder;
   final VoidCallback onTap;
+  final VoidCallback onRemove;
 
   const _RecentProjectItem({
     required this.path,
     required this.showBorder,
     required this.onTap,
+    required this.onRemove,
   });
 
   @override
@@ -383,60 +457,70 @@ class _RecentProjectItemState extends ConsumerState<_RecentProjectItem> {
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.xl,
-            vertical: Spacing.lg,
-          ),
-          decoration: BoxDecoration(
-            color: _isHovered
-                ? tokens.accent.withValues(alpha: 0.04)
-                : Colors.transparent,
-            border: widget.showBorder
-                ? Border(
-                    bottom: BorderSide(
-                      color: tokens.border.withValues(alpha: 0.3),
-                    ),
-                  )
-                : null,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.folder_outlined,
-                size: 15,
-                color: _isHovered ? tokens.accent : tokens.textMuted,
-              ),
-              const SizedBox(width: Spacing.lg),
-              Text(
-                name,
-                style: TextStyle(
-                  color: _isHovered ? tokens.accent : tokens.textPrimary,
-                  fontSize: FontSizes.sm,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(width: Spacing.md),
-              Expanded(
-                child: Text(
-                  dir,
-                  style: TextStyle(
-                    color: tokens.textMuted,
-                    fontSize: FontSizes.xs,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.xl,
+          vertical: Spacing.lg,
+        ),
+        decoration: BoxDecoration(
+          color: _isHovered
+              ? tokens.accent.withValues(alpha: 0.04)
+              : Colors.transparent,
+          border: widget.showBorder
+              ? Border(
+                  bottom: BorderSide(
+                    color: tokens.border.withValues(alpha: 0.3),
                   ),
-                  overflow: TextOverflow.ellipsis,
+                )
+              : null,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onTap,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 15,
+                      color: _isHovered ? tokens.accent : tokens.textMuted,
+                    ),
+                    const SizedBox(width: Spacing.lg),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: _isHovered ? tokens.accent : tokens.textPrimary,
+                        fontSize: FontSizes.sm,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(width: Spacing.md),
+                    Expanded(
+                      child: Text(
+                        dir,
+                        style: TextStyle(
+                          color: tokens.textMuted,
+                          fontSize: FontSizes.xs,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (_isHovered)
-                Icon(
-                  Icons.arrow_forward,
-                  size: 13,
-                  color: tokens.accent.withValues(alpha: 0.5),
-                ),
-            ],
-          ),
+            ),
+            if (_isHovered)
+              IconButton(
+                tooltip: 'Remove from Recent',
+                onPressed: widget.onRemove,
+                icon: Icon(Icons.close, size: 13, color: tokens.textMuted),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+              ),
+          ],
         ),
       ),
     );

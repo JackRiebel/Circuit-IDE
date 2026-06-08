@@ -50,7 +50,7 @@ class SettingsModel {
     bool? autoApprove,
     bool? thinkingMode,
     bool? streamResponses,
-    String? lastProjectPath,
+    Object? lastProjectPath = _sentinel,
     List<String>? recentProjects,
   }) {
     return SettingsModel(
@@ -70,8 +70,12 @@ class SettingsModel {
       autoApprove: autoApprove ?? this.autoApprove,
       thinkingMode: thinkingMode ?? this.thinkingMode,
       streamResponses: streamResponses ?? this.streamResponses,
-      lastProjectPath: lastProjectPath ?? this.lastProjectPath,
+      lastProjectPath: identical(lastProjectPath, _sentinel)
+          ? this.lastProjectPath
+          : lastProjectPath as String?,
       recentProjects: recentProjects ?? this.recentProjects,
     );
   }
 }
+
+const _sentinel = Object();

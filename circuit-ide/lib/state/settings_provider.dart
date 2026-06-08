@@ -164,6 +164,34 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     state = state.copyWith(recentProjects: projects, lastProjectPath: path);
     _save();
   }
+
+  void removeRecentProject(String path) {
+    final projects = List<String>.from(state.recentProjects)..remove(path);
+    state = state.copyWith(
+      recentProjects: projects,
+      lastProjectPath: state.lastProjectPath == path
+          ? null
+          : state.lastProjectPath,
+    );
+    _save();
+  }
+
+  Future<void> pruneRecentProjects() async {
+    final kept = <String>[];
+    for (final path in state.recentProjects) {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        kept.add(path);
+      }
+    }
+    state = state.copyWith(
+      recentProjects: kept,
+      lastProjectPath: kept.contains(state.lastProjectPath)
+          ? state.lastProjectPath
+          : null,
+    );
+    _save();
+  }
 }
 
 final settingsProvider = NotifierProvider<SettingsNotifier, SettingsModel>(

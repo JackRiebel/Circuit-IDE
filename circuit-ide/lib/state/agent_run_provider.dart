@@ -74,9 +74,18 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
           type: AgentRunEventType.started,
           timestamp: now,
           message: message ?? '${_kindLabel(kind)} started',
+          requestId: runId,
         ),
       ],
-      spans: [AgentTraceSpan(id: _uuid.v4(), name: 'run', startedAt: now)],
+      spans: [
+        AgentTraceSpan(
+          id: _uuid.v4(),
+          requestId: runId,
+          kind: AgentTraceSpanKind.run,
+          name: 'run',
+          startedAt: now,
+        ),
+      ],
     );
 
     state = state.copyWith(activeRuns: {...state.activeRuns, kind: run});
@@ -90,14 +99,64 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
     );
   }
 
-  void addEvent(AgentRunKind kind, AgentRunEventType type, String message) {
+  void addEvent(
+    AgentRunKind kind,
+    AgentRunEventType type,
+    String message, {
+    Map<String, String> metadata = const {},
+  }) {
     _updateActive(kind, (run) {
       final event = AgentRunEvent(
         type: type,
         timestamp: DateTime.now(),
         message: message,
+        requestId: run.id,
+        metadata: metadata,
       );
       return run.copyWith(events: [...run.events, event].takeLast(40));
+    });
+  }
+
+  void addSpan(
+    AgentRunKind kind, {
+    required AgentTraceSpanKind spanKind,
+    required String name,
+    String? detail,
+    Map<String, String> metadata = const {},
+    bool failed = false,
+  }) {
+    _updateActive(kind, (run) {
+      final now = DateTime.now();
+      final span = AgentTraceSpan(
+        id: _uuid.v4(),
+        requestId: run.id,
+        kind: spanKind,
+        name: name,
+        startedAt: now,
+        endedAt: now,
+        detail: detail,
+        metadata: metadata,
+        failed: failed,
+      );
+      return run.copyWith(spans: [...run.spans, span].takeLast(40));
+    });
+  }
+
+  void addRunArtifacts(
+    AgentRunKind kind, {
+    List<String> changedFiles = const [],
+    List<String> commandSummaries = const [],
+    String? checkpointId,
+  }) {
+    _updateActive(kind, (run) {
+      return run.copyWith(
+        changedFiles: {...run.changedFiles, ...changedFiles}.toList(),
+        commandSummaries: [
+          ...run.commandSummaries,
+          ...commandSummaries,
+        ].takeLast(20),
+        checkpointId: checkpointId ?? run.checkpointId,
+      );
     });
   }
 
@@ -172,6 +231,11 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
         AgentRunEventType.providerRequest,
         'Provider request started',
       );
+      addSpan(
+        AgentRunKind.chat,
+        spanKind: AgentTraceSpanKind.providerRequest,
+        name: 'Provider request',
+      );
     });
     service.events.on(EventType.messageChunk, (event) {
       if (!_eventBelongsToActiveChat(event.data)) return;
@@ -189,14 +253,83 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       if (!_eventBelongsToActiveChat(event.data)) return;
       final tool = event.data['toolCall'] as ToolCallInfo?;
       if (tool != null) {
-        addEvent(AgentRunKind.chat, AgentRunEventType.toolCall, tool.name);
+        final command = tool.name == 'run_command'
+            ? tool.arguments['command'] as String?
+            : null;
+        addEvent(
+          AgentRunKind.chat,
+          command == null
+              ? AgentRunEventType.toolCall
+              : AgentRunEventType.commandRun,
+          command == null ? tool.name : 'Command: $command',
+          metadata: {
+            'tool': tool.name,
+            if (command != null) ...{'command': command},
+          },
+        );
+        addSpan(
+          AgentRunKind.chat,
+          spanKind: command == null
+              ? AgentTraceSpanKind.toolCall
+              : AgentTraceSpanKind.commandRun,
+          name: tool.name,
+          detail: command,
+        );
+        if (command != null) {
+          addRunArtifacts(AgentRunKind.chat, commandSummaries: [command]);
+        }
       }
+    });
+    service.events.on(EventType.checkpointCreated, (event) {
+      final checkpoint = event.data['checkpoint'];
+      final checkpointId = _readProperty(checkpoint, 'id');
+      addEvent(
+        AgentRunKind.chat,
+        AgentRunEventType.checkpoint,
+        'Checkpoint created',
+        metadata: {
+          if (checkpointId != null) ...{'checkpointId': checkpointId},
+        },
+      );
+      addSpan(
+        AgentRunKind.chat,
+        spanKind: AgentTraceSpanKind.checkpoint,
+        name: 'Checkpoint created',
+        detail: checkpointId,
+      );
+      addRunArtifacts(AgentRunKind.chat, checkpointId: checkpointId);
+    });
+    service.events.on(EventType.vericodeTriggered, (event) {
+      final files =
+          (event.data['editedFiles'] as List<dynamic>?)
+              ?.whereType<String>()
+              .toList() ??
+          const <String>[];
+      addEvent(
+        AgentRunKind.chat,
+        AgentRunEventType.verification,
+        files.isEmpty ? 'Verification triggered' : 'Verification triggered',
+        metadata: {if (files.isNotEmpty) 'files': files.join(', ')},
+      );
+      addRunArtifacts(AgentRunKind.chat, changedFiles: files);
     });
     service.events.on(EventType.tokensUpdated, (event) {
       if (!_eventBelongsToActiveChat(event.data)) return;
       final usage = event.data['lastUsage'] as TokenUsage?;
       if (usage != null) updateUsage(AgentRunKind.chat, usage);
     });
+  }
+
+  String? _readProperty(dynamic value, String property) {
+    try {
+      final dynamic object = value;
+      return switch (property) {
+        'id' => object.id as String?,
+        _ => null,
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   bool _eventBelongsToActiveChat(Map<String, dynamic> data) {

@@ -145,12 +145,15 @@ class FileExplorer extends ConsumerWidget {
   Future<void> _openFolder(WidgetRef ref) async {
     final result = await FilePicker.platform.getDirectoryPath();
     if (result != null) {
-      await ref.read(fileTreeProvider.notifier).openDirectory(result);
+      final opened = await ref
+          .read(fileTreeProvider.notifier)
+          .openDirectory(result);
+      if (!opened.success) return;
       ref.read(settingsProvider.notifier).addRecentProject(result);
       // Reconnect agent with new working directory
       final service = ref.read(agentServiceProvider);
       if (service.isConnected) {
-        service.updateWorkingDir(result);
+        await service.updateWorkingDir(result);
       }
     }
   }
