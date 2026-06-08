@@ -26,19 +26,20 @@ class SettingsNotifier extends Notifier<SettingsModel> {
       if (await file.exists()) {
         final json =
             jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        final connectorModels =
+            (json['connector_models'] as List<dynamic>?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(ConnectorModelInfo.fromJson)
+                .whereType<ConnectorModelInfo>()
+                .toList() ??
+            const <ConnectorModelInfo>[];
         state = SettingsModel(
           activeProvider: AIProviderType.cisco,
-          ciscoModel: ModelsConfig.coerceModelForProvider(
-            AIProviderType.cisco,
+          ciscoModel: _coerceCiscoModel(
             json['cisco_model'] as String?,
+            connectorModels,
           ),
-          connectorModels:
-              (json['connector_models'] as List<dynamic>?)
-                  ?.whereType<Map<String, dynamic>>()
-                  .map(ConnectorModelInfo.fromJson)
-                  .whereType<ConnectorModelInfo>()
-                  .toList() ??
-              const [],
+          connectorModels: connectorModels,
           connectorModelsRefreshedAt: DateTime.tryParse(
             json['connector_models_refreshed_at'] as String? ?? '',
           ),
@@ -106,21 +107,33 @@ class SettingsNotifier extends Notifier<SettingsModel> {
   }
 
   void setCiscoModel(String model) {
-    state = state.copyWith(
-      ciscoModel: ModelsConfig.coerceModelForProvider(
-        AIProviderType.cisco,
-        model,
-      ),
-    );
+    state = state.copyWith(ciscoModel: _coerceCiscoModel(model));
     _save();
   }
 
   void setConnectorModels(List<ConnectorModelInfo> models) {
     state = state.copyWith(
       connectorModels: models,
+      ciscoModel: _coerceCiscoModel(state.ciscoModel, models),
       connectorModelsRefreshedAt: DateTime.now(),
     );
     _save();
+  }
+
+  String _coerceCiscoModel(
+    String? model, [
+    List<ConnectorModelInfo>? connectorModels,
+  ]) {
+    final trimmed = model?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return ModelsConfig.defaultCiscoModel;
+    }
+    final knownStatic = ModelsConfig.ciscoModels.any((m) => m.id == trimmed);
+    final knownConnector = (connectorModels ?? state.connectorModels).any(
+      (m) => m.id == trimmed,
+    );
+    if (knownStatic || knownConnector) return trimmed;
+    return ModelsConfig.defaultCiscoModel;
   }
 
   void setConnectorHealth(ConnectorHealth health) {

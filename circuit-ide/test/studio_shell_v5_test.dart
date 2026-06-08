@@ -59,13 +59,39 @@ void main() {
     expect(find.text('New task'), findsOneWidget);
     expect(find.text('What should we build in Circuit-IDE?'), findsOneWidget);
     expect(find.text('Do anything'), findsOneWidget);
-    expect(find.text('Default permissions'), findsOneWidget);
+    expect(find.text('Review first'), findsOneWidget);
+    expect(find.text('Default permissions'), findsNothing);
+    expect(find.text('gpt-5-nano'), findsOneWidget);
+    expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
+    expect(find.text('Work locally'), findsNothing);
     expect(find.text('Search'), findsNothing);
     expect(find.text('Plugins'), findsNothing);
     expect(find.text('Automations'), findsNothing);
     expect(find.text('Circuit mobile'), findsNothing);
     expect(find.byTooltip('Add context'), findsNothing);
     expect(find.byTooltip('Voice input'), findsNothing);
+  });
+
+  testWidgets('Studio composer menus expose only working controls', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+
+    await tester.tap(find.text('Review first'));
+    await tester.pumpAndSettle();
+    expect(find.text('Auto approve tools'), findsOneWidget);
+    await tester.tap(find.text('Auto approve tools'));
+    await tester.pumpAndSettle();
+    expect(find.text('Auto approve tools'), findsOneWidget);
+
+    await tester.tap(find.text('gpt-5-nano'));
+    await tester.pumpAndSettle();
+    expect(find.text('gemini-3.1-flash-lite'), findsOneWidget);
+    expect(find.textContaining('120.0K context'), findsWidgets);
   });
 
   testWidgets('Studio Task View renders transcript and progress panel', (

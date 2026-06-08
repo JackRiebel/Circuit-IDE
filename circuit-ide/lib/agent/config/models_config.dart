@@ -4,6 +4,8 @@ import '../providers/provider_interface.dart';
 
 class ModelsConfig {
   static const defaultCiscoModel = 'gpt-5-nano';
+  static const freeTierInputTokenLimit = 50000000;
+  static const freeTierOutputTokenLimit = 5000000;
 
   static const ciscoModels = [
     ModelInfo(
@@ -35,6 +37,14 @@ class ModelsConfig {
       if (m.id == id) return m;
     }
     return null;
+  }
+
+  static int periodInputTokenLimitForModel(String modelId) {
+    return freeTierInputTokenLimit;
+  }
+
+  static int periodOutputTokenLimitForModel(String modelId) {
+    return freeTierOutputTokenLimit;
   }
 
   static List<ModelInfo> modelsForProvider(AIProviderType provider) {

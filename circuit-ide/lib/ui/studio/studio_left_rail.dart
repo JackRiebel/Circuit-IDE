@@ -47,13 +47,18 @@ class StudioLeftRail extends ConsumerWidget {
               label: 'New task',
               onTap: () => ref.read(studioShellProvider.notifier).openHome(),
             ),
+            _RailAction(
+              icon: Icons.create_new_folder_outlined,
+              label: 'New project',
+              onTap: () => unawaited(_chooseProjectRoot(ref)),
+            ),
             const SizedBox(height: Spacing.xl),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
                 children: [
                   const _RailSectionLabel('Projects'),
-                  for (final path in settings.recentProjects.take(8))
+                  for (final path in settings.recentProjects)
                     _RecentProjectGroup(path: path),
                   if (settings.recentProjects.isEmpty)
                     Padding(
@@ -98,8 +103,8 @@ class _RailTopBar extends ConsumerWidget {
         children: [
           const SizedBox(width: 74),
           IconButton(
-            tooltip: 'Open project',
-            onPressed: () => unawaited(_openProject(ref)),
+            tooltip: 'Open project folder',
+            onPressed: () => unawaited(_chooseProjectRoot(ref)),
             icon: Icon(
               Icons.download_for_offline,
               color: tokens.accent,
@@ -110,17 +115,17 @@ class _RailTopBar extends ConsumerWidget {
       ),
     );
   }
+}
 
-  Future<void> _openProject(WidgetRef ref) async {
-    final result = await FilePicker.platform.getDirectoryPath();
-    if (result == null) return;
-    final openResult = await ref
-        .read(fileTreeProvider.notifier)
-        .openDirectory(result);
-    if (!openResult.success) return;
-    ref.read(settingsProvider.notifier).addRecentProject(result);
-    ref.read(studioShellProvider.notifier).openProject(result);
-  }
+Future<void> _chooseProjectRoot(WidgetRef ref) async {
+  final result = await FilePicker.platform.getDirectoryPath();
+  if (result == null) return;
+  final openResult = await ref
+      .read(fileTreeProvider.notifier)
+      .openDirectory(result);
+  if (!openResult.success) return;
+  ref.read(settingsProvider.notifier).addRecentProject(result);
+  ref.read(studioShellProvider.notifier).openProject(result);
 }
 
 class _RailAction extends ConsumerWidget {
