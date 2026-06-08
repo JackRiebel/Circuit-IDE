@@ -92,6 +92,14 @@ class ThemeTokens {
   Color get outlineSubtle => outlineSoft;
   Color get outlineStrong => borderLight.withValues(alpha: 0.78);
 
+  Color get studioCanvas => bgDark;
+  Color get studioRail => activityBarBg;
+  Color get studioPanel => surfacePanel;
+  Color get studioCard => surfacePopover.withValues(alpha: 0.72);
+  Color get studioComposer => surfacePanel;
+  Color get studioDivider => outlineSoft;
+  Color get studioHover => surfaceHover;
+
   const ThemeTokens({
     required this.name,
     required this.displayName,

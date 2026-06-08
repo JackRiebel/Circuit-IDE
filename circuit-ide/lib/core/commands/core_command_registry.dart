@@ -9,6 +9,7 @@ import '../../enums/connection_status.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_descriptor.dart';
 import '../../models/run_diagnostics_summary.dart';
+import '../../models/studio_shell.dart';
 import '../../state/agent_run_provider.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/ai_context_provider.dart';
@@ -23,6 +24,7 @@ import '../../state/layout_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/project_profile_provider.dart';
 import '../../state/settings_provider.dart';
+import '../../state/studio_shell_provider.dart';
 import '../../state/terminal_provider.dart';
 import '../../state/work_item_provider.dart';
 import '../../state/workspace_context_provider.dart';
@@ -45,6 +47,57 @@ class CoreCommandRegistry {
           _showSidePanel(ref, ActivityBarItem.tools);
           unawaited(ref.read(projectProfileProvider.notifier).refresh());
         },
+      ),
+      CommandDescriptor(
+        id: 'studio.home',
+        title: 'Open Studio Home',
+        description: 'Return to the Cisco Circuit prompt-first home.',
+        category: 'Studio',
+        icon: Icons.dashboard_customize_outlined,
+        priority: 120,
+        run: () => ref.read(studioShellProvider.notifier).openHome(),
+      ),
+      CommandDescriptor(
+        id: 'studio.newTask',
+        title: 'New Circuit Task',
+        description: 'Start a supervised Cisco Circuit coding task.',
+        category: 'Studio',
+        icon: Icons.edit_square,
+        priority: 118,
+        run: () {
+          ref
+              .read(studioShellProvider.notifier)
+              .setPromptMode(StudioPromptMode.code);
+          ref.read(studioShellProvider.notifier).openHome();
+        },
+      ),
+      CommandDescriptor(
+        id: 'studio.advancedEditor',
+        title: 'Open Advanced Editor',
+        description: 'Open the full IDE with files, terminal, Git, and tools.',
+        category: 'Studio',
+        icon: Icons.code,
+        priority: 116,
+        run: () => ref.read(studioShellProvider.notifier).openAdvancedEditor(),
+      ),
+      CommandDescriptor(
+        id: 'studio.backToStudio',
+        title: 'Back to Studio',
+        description: 'Leave Advanced Editor and return to Studio Home.',
+        category: 'Studio',
+        icon: Icons.home_outlined,
+        priority: 115,
+        run: () => ref.read(studioShellProvider.notifier).openHome(),
+      ),
+      CommandDescriptor(
+        id: 'studio.reviewChanges',
+        title: 'Review Changes',
+        description: 'Open the beginner-friendly Studio review surface.',
+        category: 'Studio',
+        icon: Icons.rate_review_outlined,
+        priority: 114,
+        isEnabled: () => ref.read(patchProposalProvider).active != null,
+        run: () => ref.read(studioShellProvider.notifier).openReview(),
       ),
       CommandDescriptor(
         id: 'project.startWorkItem',

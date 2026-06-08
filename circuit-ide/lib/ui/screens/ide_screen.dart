@@ -9,8 +9,8 @@ import '../../enums/connection_status.dart';
 import '../../state/connection_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
-import '../layout/ide_scaffold.dart';
 import '../command_palette/command_palette.dart';
+import '../studio/studio_shell.dart';
 import '../../state/command_palette_provider.dart';
 
 class IDEScreen extends ConsumerStatefulWidget {
@@ -76,7 +76,7 @@ class _IDEScreenState extends ConsumerState<IDEScreen> {
 
     return Stack(
       children: [
-        const IDEScaffold(),
+        const StudioShell(),
         if (paletteState.isOpen) const CommandPalette(),
       ],
     );
