@@ -37,6 +37,7 @@ class ContextPackController extends Notifier<ContextPack?> {
         type: ContextPackItemType.projectProfile,
         title: 'Project profile',
         detail: [
+          if (rootPath != null) 'Workspace root: $rootPath',
           'Stack: ${profile.projectTypes.isEmpty ? profile.primaryType.label : profile.projectTypes.map((type) => type.label).join(', ')}',
           if (profile.entrypoints.isNotEmpty)
             'Entrypoints: ${profile.entrypoints.take(6).join(', ')}',

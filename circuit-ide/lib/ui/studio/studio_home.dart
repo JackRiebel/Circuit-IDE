@@ -8,11 +8,11 @@ import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/studio_shell.dart';
 import '../../state/agent_workspace_provider.dart';
-import '../../state/chat_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
+import 'studio_message_sender.dart';
 import 'studio_prompt_composer.dart';
 import 'studio_task_card.dart';
 
@@ -109,8 +109,8 @@ class StudioHome extends ConsumerWidget {
     final task = ref
         .read(agentWorkspaceProvider.notifier)
         .startTask(goal: text, profile: profile);
-    unawaited(ref.read(chatProvider.notifier).sendMessage(text));
     ref.read(studioShellProvider.notifier).openTask(task.id);
+    unawaited(sendStudioMessage(ref, text, taskId: task.id, finishTask: true));
   }
 }
 
