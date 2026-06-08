@@ -6,7 +6,18 @@ enum ContextPackItemType {
   gitDiff,
   diagnostics,
   terminal,
+  instruction,
   rule,
+  memory,
+}
+
+enum ContextPackSourceKind {
+  projectProfile,
+  editor,
+  git,
+  terminal,
+  instructionFile,
+  circuitRule,
   memory,
 }
 
@@ -16,8 +27,10 @@ class ContextPackItem {
   final String title;
   final String detail;
   final String? source;
+  final ContextPackSourceKind sourceKind;
   final int estimatedTokens;
   final bool removable;
+  final bool includedByDefault;
 
   const ContextPackItem({
     required this.id,
@@ -25,8 +38,10 @@ class ContextPackItem {
     required this.title,
     required this.detail,
     this.source,
+    this.sourceKind = ContextPackSourceKind.projectProfile,
     this.estimatedTokens = 0,
     this.removable = true,
+    this.includedByDefault = true,
   });
 
   String get promptBlock {
@@ -41,8 +56,10 @@ class ContextPackItem {
       'title': title,
       'detail': detail,
       'source': source,
+      'sourceKind': sourceKind.name,
       'estimatedTokens': estimatedTokens,
       'removable': removable,
+      'includedByDefault': includedByDefault,
     };
   }
 
@@ -57,8 +74,13 @@ class ContextPackItem {
         title: json['title'] as String? ?? '',
         detail: json['detail'] as String? ?? '',
         source: json['source'] as String?,
+        sourceKind: ContextPackSourceKind.values.firstWhere(
+          (value) => value.name == json['sourceKind'],
+          orElse: () => ContextPackSourceKind.projectProfile,
+        ),
         estimatedTokens: json['estimatedTokens'] as int? ?? 0,
         removable: json['removable'] as bool? ?? true,
+        includedByDefault: json['includedByDefault'] as bool? ?? true,
       );
     } catch (_) {
       return null;
@@ -71,6 +93,7 @@ class ContextPack {
   final String projectKey;
   final DateTime createdAt;
   final List<ContextPackItem> items;
+  final List<ContextPackItem> instructionItems;
   final List<String> removedItemIds;
 
   const ContextPack({
@@ -78,10 +101,13 @@ class ContextPack {
     required this.projectKey,
     required this.createdAt,
     this.items = const [],
+    this.instructionItems = const [],
     this.removedItemIds = const [],
   });
 
-  List<ContextPackItem> get visibleItems => items
+  List<ContextPackItem> get allItems => [...items, ...instructionItems];
+
+  List<ContextPackItem> get visibleItems => allItems
       .where((item) => !removedItemIds.contains(item.id))
       .toList(growable: false);
 
@@ -90,6 +116,7 @@ class ContextPack {
 
   ContextPack copyWith({
     List<ContextPackItem>? items,
+    List<ContextPackItem>? instructionItems,
     List<String>? removedItemIds,
   }) {
     return ContextPack(
@@ -97,6 +124,7 @@ class ContextPack {
       projectKey: projectKey,
       createdAt: createdAt,
       items: items ?? this.items,
+      instructionItems: instructionItems ?? this.instructionItems,
       removedItemIds: removedItemIds ?? this.removedItemIds,
     );
   }
@@ -115,6 +143,9 @@ class ContextPack {
       'projectKey': projectKey,
       'createdAt': createdAt.toIso8601String(),
       'items': items.map((item) => item.toJson()).toList(),
+      'instructionItems': instructionItems
+          .map((item) => item.toJson())
+          .toList(),
       'removedItemIds': removedItemIds,
     };
   }
@@ -128,6 +159,11 @@ class ContextPack {
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),
         items: (json['items'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(ContextPackItem.fromJson)
+            .nonNulls
+            .toList(),
+        instructionItems: (json['instructionItems'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(ContextPackItem.fromJson)
             .nonNulls

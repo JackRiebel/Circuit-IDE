@@ -123,6 +123,11 @@ class AgentRun {
   final List<String> changedFiles;
   final List<String> commandSummaries;
   final String? checkpointId;
+  final String? agentTaskId;
+  final String? parentRunId;
+  final String? approvalId;
+  final String? artifactId;
+  final String? mascotAlias;
 
   const AgentRun({
     required this.id,
@@ -145,6 +150,11 @@ class AgentRun {
     this.changedFiles = const [],
     this.commandSummaries = const [],
     this.checkpointId,
+    this.agentTaskId,
+    this.parentRunId,
+    this.approvalId,
+    this.artifactId,
+    this.mascotAlias,
   });
 
   AgentRun copyWith({
@@ -165,6 +175,11 @@ class AgentRun {
     List<String>? changedFiles,
     List<String>? commandSummaries,
     Object? checkpointId = _sentinel,
+    Object? agentTaskId = _sentinel,
+    Object? parentRunId = _sentinel,
+    Object? approvalId = _sentinel,
+    Object? artifactId = _sentinel,
+    Object? mascotAlias = _sentinel,
   }) {
     return AgentRun(
       id: id,
@@ -190,6 +205,21 @@ class AgentRun {
       checkpointId: identical(checkpointId, _sentinel)
           ? this.checkpointId
           : checkpointId as String?,
+      agentTaskId: identical(agentTaskId, _sentinel)
+          ? this.agentTaskId
+          : agentTaskId as String?,
+      parentRunId: identical(parentRunId, _sentinel)
+          ? this.parentRunId
+          : parentRunId as String?,
+      approvalId: identical(approvalId, _sentinel)
+          ? this.approvalId
+          : approvalId as String?,
+      artifactId: identical(artifactId, _sentinel)
+          ? this.artifactId
+          : artifactId as String?,
+      mascotAlias: identical(mascotAlias, _sentinel)
+          ? this.mascotAlias
+          : mascotAlias as String?,
     );
   }
 
@@ -217,6 +247,11 @@ class AgentRun {
       'changedFiles': changedFiles,
       'commandSummaries': commandSummaries,
       'checkpointId': checkpointId,
+      'agentTaskId': agentTaskId,
+      'parentRunId': parentRunId,
+      'approvalId': approvalId,
+      'artifactId': artifactId,
+      'mascotAlias': mascotAlias,
       'events': events
           .map(
             (event) => {
@@ -335,6 +370,11 @@ class AgentRun {
             (json['commandSummaries'] as List<dynamic>?)?.cast<String>() ??
             const [],
         checkpointId: json['checkpointId'] as String?,
+        agentTaskId: json['agentTaskId'] as String?,
+        parentRunId: json['parentRunId'] as String?,
+        approvalId: json['approvalId'] as String?,
+        artifactId: json['artifactId'] as String?,
+        mascotAlias: json['mascotAlias'] as String?,
       );
     } catch (_) {
       return null;

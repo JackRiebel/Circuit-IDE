@@ -55,6 +55,11 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
     String? retryPrompt,
     List<ContextAttachment> retryAttachments = const [],
     int contextAttachmentCount = 0,
+    String? agentTaskId,
+    String? parentRunId,
+    String? approvalId,
+    String? artifactId,
+    String? mascotAlias,
   }) {
     final runId = id ?? _uuid.v4();
     final now = DateTime.now();
@@ -68,6 +73,11 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       retryPrompt: retryPrompt,
       retryAttachments: retryAttachments,
       contextAttachmentCount: contextAttachmentCount,
+      agentTaskId: agentTaskId,
+      parentRunId: parentRunId,
+      approvalId: approvalId,
+      artifactId: artifactId,
+      mascotAlias: mascotAlias,
       startedAt: now,
       events: [
         AgentRunEvent(

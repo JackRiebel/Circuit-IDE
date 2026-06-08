@@ -4,6 +4,7 @@ import '../enums/event_type.dart';
 import '../enums/tool_status.dart';
 import '../models/command_run.dart';
 import '../models/tool_call_info.dart';
+import 'agent_workspace_provider.dart';
 import 'connection_provider.dart';
 import 'work_item_provider.dart';
 import '../services/event_bus.dart';
@@ -36,6 +37,12 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
         ],
       ),
     };
+    final task = ref.read(agentWorkspaceProvider).selectedTask;
+    if (task != null) {
+      ref
+          .read(agentWorkspaceProvider.notifier)
+          .attachCommandRun(task.id, id, command);
+    }
   }
 
   void append(String id, CommandRunEventType type, String text) {

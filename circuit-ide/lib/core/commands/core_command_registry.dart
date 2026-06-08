@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/utils/platform_utils.dart';
 import '../../enums/connection_status.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/command_descriptor.dart';
 import '../../models/run_diagnostics_summary.dart';
 import '../../state/agent_run_provider.dart';
+import '../../state/agent_workspace_provider.dart';
 import '../../state/ai_context_provider.dart';
 import '../../state/chat_context_draft_provider.dart';
 import '../../state/chat_provider.dart';
@@ -152,6 +154,136 @@ class CoreCommandRegistry {
         run: () {
           _showSidePanel(ref, ActivityBarItem.tools);
           ref.read(contextPackProvider.notifier).buildForCodingTask();
+        },
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.open',
+        title: 'Open Agent Workspace',
+        description: 'Show supervised parallel tasks in Project Cockpit.',
+        category: 'Agent Workspace',
+        icon: Icons.supervised_user_circle_outlined,
+        surface: 'cockpit',
+        priority: 88,
+        run: () => _showSidePanel(ref, ActivityBarItem.tools),
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.startParallelTask',
+        title: 'Start Parallel Task',
+        description:
+            'Start a supervised investigation with reviewed writes and commands.',
+        category: 'Agent Workspace',
+        icon: Icons.play_arrow_outlined,
+        surface: 'cockpit',
+        priority: 86,
+        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          ref
+              .read(agentWorkspaceProvider.notifier)
+              .startTask(
+                goal:
+                    'Investigate this project and propose the safest next coding step.',
+                profile: AgentTaskProfile.investigate,
+              );
+        },
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.approveSelectedProposal',
+        title: 'Approve Selected Proposal',
+        description: 'Apply the active reviewed patch proposal.',
+        category: 'Agent Workspace',
+        icon: Icons.check_circle_outline,
+        surface: 'cockpit',
+        priority: 84,
+        isEnabled: () => ref.read(patchProposalProvider).active != null,
+        run: () =>
+            unawaited(ref.read(patchProposalProvider.notifier).applyActive()),
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.rejectSelectedProposal',
+        title: 'Reject Selected Proposal',
+        description: 'Reject the active supervised patch proposal.',
+        category: 'Agent Workspace',
+        icon: Icons.cancel_outlined,
+        surface: 'cockpit',
+        priority: 83,
+        isEnabled: () => ref.read(patchProposalProvider).active != null,
+        run: () => ref.read(patchProposalProvider.notifier).rejectActive(),
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.compareProposals',
+        title: 'Compare Proposals',
+        description: 'Copy a comparison of supervised agent patch proposals.',
+        category: 'Agent Workspace',
+        icon: Icons.compare_arrows,
+        surface: 'cockpit',
+        priority: 82,
+        run: () {
+          Clipboard.setData(
+            ClipboardData(
+              text: ref
+                  .read(agentWorkspaceProvider.notifier)
+                  .compareProposals(),
+            ),
+          );
+          _showSidePanel(ref, ActivityBarItem.tools);
+        },
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.runVerification',
+        title: 'Run Verification',
+        description: 'Run recommended checks for the active work item.',
+        category: 'Agent Workspace',
+        icon: Icons.playlist_add_check_outlined,
+        surface: 'cockpit',
+        priority: 81,
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          unawaited(ref.read(workItemProvider.notifier).runVerification());
+        },
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.restoreCheckpoint',
+        title: 'Restore Checkpoint',
+        description: 'Restore the active patch checkpoint when available.',
+        category: 'Agent Workspace',
+        icon: Icons.restore_outlined,
+        surface: 'cockpit',
+        priority: 79,
+        isEnabled: () =>
+            ref.read(patchProposalProvider).active?.checkpointId != null,
+        run: () {
+          final checkpointId = ref
+              .read(patchProposalProvider)
+              .active
+              ?.checkpointId;
+          if (checkpointId == null) return;
+          unawaited(
+            ref
+                .read(patchProposalProvider.notifier)
+                .restoreCheckpoint(checkpointId),
+          );
+        },
+      ),
+      CommandDescriptor(
+        id: 'agentWorkspace.copyTaskDiagnostics',
+        title: 'Copy Task Diagnostics',
+        description: 'Copy diagnostics for the selected supervised task.',
+        category: 'Agent Workspace',
+        icon: Icons.assignment_outlined,
+        surface: 'cockpit',
+        priority: 78,
+        isEnabled: () => ref.read(agentWorkspaceProvider).selectedTask != null,
+        run: () {
+          final task = ref.read(agentWorkspaceProvider).selectedTask;
+          if (task == null) return;
+          Clipboard.setData(
+            ClipboardData(
+              text: ref
+                  .read(agentWorkspaceProvider.notifier)
+                  .diagnosticsFor(task.id),
+            ),
+          );
         },
       ),
       CommandDescriptor(

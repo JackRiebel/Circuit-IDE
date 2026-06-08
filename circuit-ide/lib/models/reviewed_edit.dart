@@ -33,7 +33,10 @@ class ProposedPatchSet {
   final String id;
   final String title;
   final String? workItemId;
+  final String? agentTaskId;
   final String? runId;
+  final String? comparisonSummary;
+  final String? supersededBy;
   final List<ProposedFileEdit> edits;
   final DateTime createdAt;
   final String? checkpointId;
@@ -47,7 +50,10 @@ class ProposedPatchSet {
     required this.id,
     required this.title,
     this.workItemId,
+    this.agentTaskId,
     this.runId,
+    this.comparisonSummary,
+    this.supersededBy,
     required this.edits,
     required this.createdAt,
     this.checkpointId,
@@ -63,7 +69,10 @@ class ProposedPatchSet {
 
   ProposedPatchSet copyWith({
     String? workItemId,
+    String? agentTaskId,
     String? runId,
+    Object? comparisonSummary = _sentinel,
+    Object? supersededBy = _sentinel,
     String? checkpointId,
     PatchApprovalStatus? approvalStatus,
     PatchApplyStatus? applyStatus,
@@ -75,7 +84,14 @@ class ProposedPatchSet {
       id: id,
       title: title,
       workItemId: workItemId ?? this.workItemId,
+      agentTaskId: agentTaskId ?? this.agentTaskId,
       runId: runId ?? this.runId,
+      comparisonSummary: identical(comparisonSummary, _sentinel)
+          ? this.comparisonSummary
+          : comparisonSummary as String?,
+      supersededBy: identical(supersededBy, _sentinel)
+          ? this.supersededBy
+          : supersededBy as String?,
       edits: edits,
       createdAt: createdAt,
       checkpointId: checkpointId ?? this.checkpointId,

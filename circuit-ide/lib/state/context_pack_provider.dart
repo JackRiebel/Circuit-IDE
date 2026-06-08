@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -42,6 +44,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           if (prompt?.trim().isNotEmpty == true) 'Task: ${prompt!.trim()}',
         ].join('\n'),
         source: rootPath,
+        sourceKind: ContextPackSourceKind.projectProfile,
         estimatedTokens: 80,
         removable: false,
       ),
@@ -57,6 +60,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           source: rootPath == null
               ? activeTab.filePath
               : p.relative(activeTab.filePath, from: rootPath),
+          sourceKind: ContextPackSourceKind.editor,
           estimatedTokens: 40,
         ),
       );
@@ -74,6 +78,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           type: ContextPackItemType.gitDiff,
           title: 'Working tree changes',
           detail: changedFiles.join('\n'),
+          sourceKind: ContextPackSourceKind.git,
           estimatedTokens: 80,
         ),
       );
@@ -86,6 +91,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           type: ContextPackItemType.terminal,
           title: 'Recent terminal',
           detail: _truncate(terminal, 3000),
+          sourceKind: ContextPackSourceKind.terminal,
           estimatedTokens: _estimateTokens(terminal),
         ),
       );
@@ -99,6 +105,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           title: rule.name,
           detail: _truncate(rule.content, 1600),
           source: rule.filePath,
+          sourceKind: ContextPackSourceKind.circuitRule,
           estimatedTokens: _estimateTokens(rule.content),
         ),
       );
@@ -112,6 +119,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           title: memory.name,
           detail: _truncate(memory.content, 1600),
           source: memory.isGlobal ? 'global memory' : 'project memory',
+          sourceKind: ContextPackSourceKind.memory,
           estimatedTokens: _estimateTokens(memory.content),
         ),
       );
@@ -122,6 +130,7 @@ class ContextPackController extends Notifier<ContextPack?> {
       projectKey: rootPath ?? 'scratch',
       createdAt: DateTime.now(),
       items: items,
+      instructionItems: _instructionItems(rootPath),
     );
     return state!;
   }
@@ -129,7 +138,7 @@ class ContextPackController extends Notifier<ContextPack?> {
   void removeItem(String id) {
     final pack = state;
     if (pack == null) return;
-    final item = pack.items
+    final item = pack.allItems
         .where((candidate) => candidate.id == id)
         .firstOrNull;
     if (item == null || !item.removable) return;
@@ -153,6 +162,41 @@ class ContextPackController extends Notifier<ContextPack?> {
   static String _truncate(String value, int maxChars) {
     if (value.length <= maxChars) return value;
     return '${value.substring(0, maxChars)}\n... truncated ...';
+  }
+
+  List<ContextPackItem> _instructionItems(String? rootPath) {
+    if (rootPath == null) return const [];
+    const candidates = [
+      'AGENTS.md',
+      'AGENT.md',
+      '.rules',
+      '.cursorrules',
+      '.github/copilot-instructions.md',
+      '.circuit/rules',
+    ];
+    final items = <ContextPackItem>[];
+    for (final relativePath in candidates) {
+      final file = File(p.join(rootPath, relativePath));
+      if (!file.existsSync()) continue;
+      try {
+        final content = file.readAsStringSync();
+        if (content.trim().isEmpty) continue;
+        items.add(
+          ContextPackItem(
+            id: 'instruction:$relativePath',
+            type: ContextPackItemType.instruction,
+            title: p.basename(relativePath),
+            detail: _truncate(content.trim(), 2200),
+            source: relativePath,
+            sourceKind: ContextPackSourceKind.instructionFile,
+            estimatedTokens: _estimateTokens(content),
+            removable: true,
+            includedByDefault: true,
+          ),
+        );
+      } catch (_) {}
+    }
+    return items.take(5).toList();
   }
 }
 

@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/context_pack.dart';
 import '../../models/project_profile.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/suggested_learning.dart';
 import '../../models/work_item.dart';
+import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/context_pack_provider.dart';
@@ -45,6 +47,7 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     final profile = ref.watch(projectProfileProvider);
+    final agentWorkspace = ref.watch(agentWorkspaceProvider);
     final workItem = ref.watch(workItemProvider);
     final contextPack = ref.watch(contextPackProvider);
     final patchProposal = ref.watch(patchProposalProvider);
@@ -98,6 +101,11 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
             onRun: (recommendation) => _runRecommendation(recommendation),
           ),
           const SizedBox(height: Spacing.lg),
+          _AgentWorkspaceCard(
+            workspace: agentWorkspace,
+            onStart: _startParallelTask,
+          ),
+          const SizedBox(height: Spacing.lg),
           _ProjectFacts(profile: profile),
           const SizedBox(height: Spacing.lg),
           if (contextPack != null) ...[
@@ -144,6 +152,19 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
     if (text.isEmpty) return;
     ref.read(workItemProvider.notifier).start(text);
     _promptController.clear();
+  }
+
+  void _startParallelTask({
+    AgentTaskProfile profile = AgentTaskProfile.investigate,
+  }) {
+    final text = _promptController.text.trim();
+    final goal = text.isEmpty
+        ? 'Investigate this project and propose the safest next coding step.'
+        : text;
+    ref
+        .read(agentWorkspaceProvider.notifier)
+        .startTask(goal: goal, profile: profile);
+    if (text.isNotEmpty) _promptController.clear();
   }
 
   void _runRecommendation(ProjectRecommendation recommendation) {
@@ -399,6 +420,205 @@ class _Recommendations extends ConsumerWidget {
   }
 }
 
+class _AgentWorkspaceCard extends ConsumerWidget {
+  final AgentWorkspaceState workspace;
+  final void Function({AgentTaskProfile profile}) onStart;
+
+  const _AgentWorkspaceCard({required this.workspace, required this.onStart});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final tasks = workspace.activeTasks.isEmpty
+        ? workspace.recentTasks.take(3).toList()
+        : workspace.activeTasks;
+    return CircuitDisclosureRow(
+      icon: Icons.supervised_user_circle_outlined,
+      title: 'Agent Workspace',
+      subtitle: workspace.activeTasks.isEmpty
+          ? 'No active supervised tasks'
+          : '${workspace.activeTasks.length} active',
+      initiallyExpanded: true,
+      children: [
+        if (workspace.message != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _Notice(text: workspace.message!, color: tokens.accent),
+          ),
+        if (tasks.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.md),
+            child: Text(
+              'Start supervised tasks to investigate, plan, patch, verify, or prepare a handoff in parallel.',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+                height: 1.35,
+              ),
+            ),
+          )
+        else
+          for (final task in tasks)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.sm),
+              child: _AgentTaskRow(task: task),
+            ),
+        Wrap(
+          spacing: Spacing.sm,
+          runSpacing: Spacing.sm,
+          children: [
+            FilledButton.icon(
+              onPressed: () => onStart(profile: AgentTaskProfile.investigate),
+              icon: const Icon(Icons.play_arrow_outlined, size: 16),
+              label: const Text('Start Parallel Task'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => Clipboard.setData(
+                ClipboardData(
+                  text: ref
+                      .read(agentWorkspaceProvider.notifier)
+                      .compareProposals(),
+                ),
+              ),
+              icon: const Icon(Icons.compare_arrows, size: 16),
+              label: const Text('Compare'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AgentTaskRow extends ConsumerWidget {
+  final AgentTask task;
+
+  const _AgentTaskRow({required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final spec = AgentTaskProfileSpec.forProfile(task.profile);
+    final color = switch (task.status) {
+      AgentTaskStatus.completed => tokens.success,
+      AgentTaskStatus.failed => tokens.error,
+      AgentTaskStatus.cancelled => tokens.textMuted,
+      AgentTaskStatus.waitingForApproval => tokens.warning,
+      AgentTaskStatus.queued || AgentTaskStatus.running => tokens.accent,
+    };
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.md),
+      onTap: () =>
+          ref.read(agentWorkspaceProvider.notifier).selectTask(task.id),
+      child: Container(
+        padding: const EdgeInsets.all(Spacing.md),
+        decoration: BoxDecoration(
+          color: tokens.surfaceInset,
+          borderRadius: BorderRadius.circular(Radii.md),
+          border: Border.all(color: tokens.outlineSoft),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                    border: Border.all(color: color.withValues(alpha: 0.25)),
+                  ),
+                  child: Text(
+                    task.mascotAlias.characters.first,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: FontSizes.xs,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Expanded(
+                  child: Text(
+                    '${task.mascotAlias} · ${spec.label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textPrimary,
+                      fontSize: FontSizes.sm,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                CircuitStatusChip(
+                  icon: _taskStatusIcon(task.status),
+                  label: task.status.name,
+                  color: color,
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              task.goal,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+                height: 1.3,
+              ),
+            ),
+            if (task.artifacts.isNotEmpty) ...[
+              const SizedBox(height: Spacing.sm),
+              Wrap(
+                spacing: Spacing.xs,
+                runSpacing: Spacing.xs,
+                children: [
+                  for (final artifact in task.artifacts.take(4))
+                    CircuitStatusChip(
+                      icon: _artifactIcon(artifact.type),
+                      label: artifact.title,
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                _SmallTextButton(
+                  icon: Icons.copy,
+                  label: 'Diagnostics',
+                  onTap: () => Clipboard.setData(
+                    ClipboardData(
+                      text: ref
+                          .read(agentWorkspaceProvider.notifier)
+                          .diagnosticsFor(task.id),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                if (task.status == AgentTaskStatus.running ||
+                    task.status == AgentTaskStatus.queued ||
+                    task.status == AgentTaskStatus.waitingForApproval)
+                  _SmallTextButton(
+                    icon: Icons.stop_circle_outlined,
+                    label: 'Cancel',
+                    onTap: () => ref
+                        .read(agentWorkspaceProvider.notifier)
+                        .cancelTask(task.id),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProjectFacts extends ConsumerWidget {
   final ProjectProfile profile;
 
@@ -476,7 +696,7 @@ class _ContextPackCard extends ConsumerWidget {
           '${pack.visibleItems.length} items · ~${pack.estimatedTokens} tokens',
       initiallyExpanded: true,
       children: [
-        for (final item in pack.items)
+        for (final item in pack.allItems)
           Padding(
             padding: const EdgeInsets.only(bottom: Spacing.sm),
             child: Container(
@@ -1273,6 +1493,51 @@ class _Notice extends ConsumerWidget {
   }
 }
 
+class _SmallTextButton extends ConsumerWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _SmallTextButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.sm),
+      child: Container(
+        height: 24,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+        decoration: BoxDecoration(
+          color: tokens.surfaceHover,
+          borderRadius: BorderRadius.circular(Radii.sm),
+          border: Border.all(color: tokens.outlineSoft),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: tokens.textSecondary, size: 12),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xxs,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 String _stackLabel(ProjectProfile profile) {
   if (profile.projectTypes.isEmpty) return profile.primaryType.label;
   return profile.projectTypes.map((type) => type.label).join(' + ');
@@ -1326,8 +1591,31 @@ IconData _contextIcon(ContextPackItemType type) {
     ContextPackItemType.gitDiff => Icons.difference_outlined,
     ContextPackItemType.diagnostics => Icons.bug_report_outlined,
     ContextPackItemType.terminal => Icons.terminal_outlined,
+    ContextPackItemType.instruction => Icons.menu_book_outlined,
     ContextPackItemType.rule => Icons.rule_outlined,
     ContextPackItemType.memory => Icons.psychology_alt_outlined,
+  };
+}
+
+IconData _taskStatusIcon(AgentTaskStatus status) {
+  return switch (status) {
+    AgentTaskStatus.queued => Icons.pending_outlined,
+    AgentTaskStatus.running => Icons.play_circle_outline,
+    AgentTaskStatus.waitingForApproval => Icons.rate_review_outlined,
+    AgentTaskStatus.completed => Icons.check_circle_outline,
+    AgentTaskStatus.failed => Icons.error_outline,
+    AgentTaskStatus.cancelled => Icons.cancel_outlined,
+  };
+}
+
+IconData _artifactIcon(AgentTaskArtifactType type) {
+  return switch (type) {
+    AgentTaskArtifactType.contextPack => Icons.dataset_linked_outlined,
+    AgentTaskArtifactType.patchProposal => Icons.rate_review_outlined,
+    AgentTaskArtifactType.commandRun => Icons.terminal_outlined,
+    AgentTaskArtifactType.checkpoint => Icons.restore_outlined,
+    AgentTaskArtifactType.verification => Icons.playlist_add_check_outlined,
+    AgentTaskArtifactType.diagnostic => Icons.fact_check_outlined,
   };
 }
 

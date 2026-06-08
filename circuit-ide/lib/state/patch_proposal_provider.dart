@@ -8,6 +8,7 @@ import '../models/agent_run.dart';
 import '../models/checkpoint.dart';
 import '../models/reviewed_edit.dart';
 import 'agent_run_provider.dart';
+import 'agent_workspace_provider.dart';
 import 'diff_preview_provider.dart';
 import 'file_tree_provider.dart';
 import 'work_item_provider.dart';
@@ -69,12 +70,16 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     required List<ProposedFileEdit> edits,
     String? workItemId,
     String? runId,
+    String? agentTaskId,
+    String? comparisonSummary,
   }) {
     final patchSet = ProposedPatchSet(
       id: _uuid.v4().substring(0, 8),
       title: title,
       workItemId: workItemId,
       runId: runId,
+      agentTaskId: agentTaskId,
+      comparisonSummary: comparisonSummary,
       edits: edits,
       createdAt: DateTime.now(),
     );
@@ -85,6 +90,11 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     );
     _showDiffPreview(patchSet);
     ref.read(workItemProvider.notifier).recordPatchSet(patchSet);
+    if (agentTaskId != null) {
+      ref
+          .read(agentWorkspaceProvider.notifier)
+          .attachPatchSet(agentTaskId, patchSet);
+    }
     ref
         .read(agentRunProvider.notifier)
         .addEvent(
@@ -217,6 +227,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       message: 'Patch rejected.',
     );
     ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
   }
 
   void requestRevision(PatchProposalRevisionRequest request) {
@@ -232,6 +243,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       message: 'Revision requested.',
     );
     ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
   }
 
   Future<PatchApplyResult> restoreCheckpoint(String checkpointId) async {
@@ -303,6 +315,15 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     );
     await ref.read(fileTreeProvider.notifier).refresh();
     ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
+    if (result.applied && updated.agentTaskId != null) {
+      ref
+          .read(agentWorkspaceProvider.notifier)
+          .completeTask(
+            updated.agentTaskId!,
+            result: 'Applied patch ${updated.title}.',
+          );
+    }
     ref
         .read(agentRunProvider.notifier)
         .addEvent(
@@ -355,6 +376,12 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       ...state.history.where((patchSet) => patchSet.id != updated.id),
     ];
     return replaced.take(20).toList();
+  }
+
+  void _syncAgentTask(ProposedPatchSet patchSet) {
+    final taskId = patchSet.agentTaskId;
+    if (taskId == null) return;
+    ref.read(agentWorkspaceProvider.notifier).attachPatchSet(taskId, patchSet);
   }
 
   String? _resolve(String rootPath, String targetPath) {
