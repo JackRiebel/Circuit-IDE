@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/studio_shell.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
@@ -104,15 +105,11 @@ class StudioHome extends ConsumerWidget {
 
   void _submit(WidgetRef ref, String text) {
     final mode = ref.read(studioShellProvider).promptMode;
-    final profile = mode.agentProfile;
-    if (profile == null) {
-      unawaited(ref.read(chatProvider.notifier).sendMessage(text));
-      ref.read(studioShellProvider.notifier).openProject();
-      return;
-    }
+    final profile = mode.agentProfile ?? AgentTaskProfile.plan;
     final task = ref
         .read(agentWorkspaceProvider.notifier)
         .startTask(goal: text, profile: profile);
+    unawaited(ref.read(chatProvider.notifier).sendMessage(text));
     ref.read(studioShellProvider.notifier).openTask(task.id);
   }
 }

@@ -20,7 +20,7 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
 
   void openProject([String? projectPath]) {
     state = state.copyWith(
-      mode: StudioMode.project,
+      mode: StudioMode.home,
       selectedProjectPath: projectPath ?? state.selectedProjectPath,
       selectedTaskId: null,
     );

@@ -203,65 +203,35 @@ class _RecentProjectGroup extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
     final name = p.basename(path);
-    final tasks = ref.watch(agentWorkspaceProvider).tasks.take(2).toList();
+    final rootPath = ref.watch(fileTreeProvider).rootPath;
+    final isSelectedProject = rootPath == path;
+    final tasks = isSelectedProject
+        ? ref.watch(agentWorkspaceProvider).tasks.take(2).toList()
+        : const [];
+    final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
     return Padding(
       padding: const EdgeInsets.only(bottom: Spacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProjectRow(name: name, path: path),
+          _ProjectRow(name: name, path: path, selected: isSelectedProject),
           for (var i = 0; i < tasks.length; i++)
             Padding(
               padding: const EdgeInsets.only(
                 left: Spacing.xxl,
                 right: Spacing.md,
               ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(Radii.lg),
+              child: _ConversationRow(
+                title: tasks[i].goal,
+                shortcut: '⌘${i + 1}',
+                selected: tasks[i].id == selectedTaskId,
                 onTap: () {
                   ref
                       .read(agentWorkspaceProvider.notifier)
                       .selectTask(tasks[i].id);
                   ref.read(studioShellProvider.notifier).openTask(tasks[i].id);
                 },
-                child: Container(
-                  height: 32,
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          tasks[i].goal,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: tokens.textSecondary,
-                            fontSize: FontSizes.sm,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tokens.textMuted.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(Radii.pill),
-                        ),
-                        child: Text(
-                          '⌘${i + 1}',
-                          style: TextStyle(
-                            color: tokens.textMuted,
-                            fontSize: FontSizes.xxs,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
         ],
@@ -273,8 +243,13 @@ class _RecentProjectGroup extends ConsumerWidget {
 class _ProjectRow extends ConsumerWidget {
   final String name;
   final String path;
+  final bool selected;
 
-  const _ProjectRow({required this.name, required this.path});
+  const _ProjectRow({
+    required this.name,
+    required this.path,
+    required this.selected,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -285,9 +260,22 @@ class _ProjectRow extends ConsumerWidget {
       child: Container(
         height: 32,
         padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+        decoration: BoxDecoration(
+          color: selected
+              ? tokens.studioHover.withValues(alpha: 0.86)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(Radii.lg),
+          border: selected
+              ? Border.all(color: tokens.outlineSoft.withValues(alpha: 0.7))
+              : null,
+        ),
         child: Row(
           children: [
-            Icon(Icons.folder_outlined, color: tokens.textSecondary, size: 16),
+            Icon(
+              Icons.folder_outlined,
+              color: selected ? tokens.textPrimary : tokens.textSecondary,
+              size: 16,
+            ),
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
@@ -295,9 +283,9 @@ class _ProjectRow extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: tokens.textSecondary,
+                  color: selected ? tokens.textPrimary : tokens.textSecondary,
                   fontSize: FontSizes.sm,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                 ),
               ),
             ),
@@ -319,5 +307,71 @@ class _ProjectRow extends ConsumerWidget {
     }
     ref.read(settingsProvider.notifier).addRecentProject(path);
     ref.read(studioShellProvider.notifier).openProject(path);
+  }
+}
+
+class _ConversationRow extends ConsumerWidget {
+  final String title;
+  final String shortcut;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ConversationRow({
+    required this.title,
+    required this.shortcut,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.lg),
+      onTap: onTap,
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+        decoration: BoxDecoration(
+          color: selected
+              ? tokens.accent.withValues(alpha: 0.18)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(Radii.lg),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: selected ? tokens.textPrimary : tokens.textSecondary,
+                  fontSize: FontSizes.sm,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: selected
+                    ? tokens.accent.withValues(alpha: 0.22)
+                    : tokens.textMuted.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(Radii.pill),
+              ),
+              child: Text(
+                shortcut,
+                style: TextStyle(
+                  color: selected ? tokens.textPrimary : tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

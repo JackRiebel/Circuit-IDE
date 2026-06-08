@@ -9,7 +9,6 @@ import '../../state/theme_provider.dart';
 import '../layout/ide_scaffold.dart';
 import 'studio_home.dart';
 import 'studio_left_rail.dart';
-import 'studio_project_view.dart';
 import 'studio_review_panel.dart';
 import 'studio_task_view.dart';
 
@@ -56,7 +55,7 @@ class _StudioBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return switch (mode) {
       StudioMode.home => const StudioHome(),
-      StudioMode.project => const StudioProjectView(),
+      StudioMode.project => const StudioHome(),
       StudioMode.task => const StudioTaskView(),
       StudioMode.review => const StudioReviewPanel(),
       StudioMode.advancedEditor => const IDEScaffold(),
@@ -77,7 +76,7 @@ class _StudioTopBar extends ConsumerWidget {
               .firstOrNull;
     final title = switch (studio.mode) {
       StudioMode.home => '',
-      StudioMode.project => 'Project Studio',
+      StudioMode.project => '',
       StudioMode.task => task?.goal ?? 'Circuit task',
       StudioMode.review => 'Review changes',
       StudioMode.advancedEditor => 'Advanced Editor',

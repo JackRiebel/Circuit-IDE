@@ -19,7 +19,7 @@ void main() {
     expect(container.read(studioShellProvider).mode, StudioMode.home);
 
     container.read(studioShellProvider.notifier).openProject('/tmp/project');
-    expect(container.read(studioShellProvider).mode, StudioMode.project);
+    expect(container.read(studioShellProvider).mode, StudioMode.home);
     expect(
       container.read(studioShellProvider).selectedProjectPath,
       '/tmp/project',
