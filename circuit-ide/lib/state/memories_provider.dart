@@ -4,6 +4,7 @@ import '../agent/context/memories_loader.dart';
 import '../core/utils/logger.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
+import 'suggested_learning_provider.dart';
 
 class MemoriesState {
   final List<Memory> memories;
@@ -31,8 +32,7 @@ class MemoriesState {
   List<Memory> get projectMemories =>
       memories.where((m) => !m.isGlobal).toList();
 
-  List<Memory> get globalMemories =>
-      memories.where((m) => m.isGlobal).toList();
+  List<Memory> get globalMemories => memories.where((m) => m.isGlobal).toList();
 }
 
 class MemoriesNotifier extends Notifier<MemoriesState> {
@@ -97,7 +97,8 @@ class MemoriesNotifier extends Notifier<MemoriesState> {
     if (workingDir == null) return;
 
     try {
-      final prompt = '''Analyze this conversation turn and extract any learnable user preferences, project patterns, or coding conventions that should be remembered for future sessions.
+      final prompt =
+          '''Analyze this conversation turn and extract any learnable user preferences, project patterns, or coding conventions that should be remembered for future sessions.
 
 User message:
 $lastUserMsg
@@ -114,11 +115,11 @@ If there is nothing worth remembering, respond with exactly: NONE''';
       final response = await service.sendOneShot(prompt);
       if (response == null || response.trim() == 'NONE') return;
 
-      final nameMatch =
-          RegExp(r'MEMORY_NAME:\s*(.+)').firstMatch(response);
-      final contentMatch =
-          RegExp(r'MEMORY_CONTENT:\s*([\s\S]+)', multiLine: true)
-              .firstMatch(response);
+      final nameMatch = RegExp(r'MEMORY_NAME:\s*(.+)').firstMatch(response);
+      final contentMatch = RegExp(
+        r'MEMORY_CONTENT:\s*([\s\S]+)',
+        multiLine: true,
+      ).firstMatch(response);
 
       if (nameMatch != null && contentMatch != null) {
         final name = nameMatch
@@ -129,9 +130,10 @@ If there is nothing worth remembering, respond with exactly: NONE''';
         final content = contentMatch.group(1)!.trim();
 
         if (name.isNotEmpty && content.isNotEmpty) {
-          await MemoriesLoader.saveMemory(workingDir, name, content);
-          await loadMemories();
-          Logger.info('Auto-extracted memory: $name', 'Memories');
+          ref
+              .read(suggestedLearningProvider.notifier)
+              .suggestMemory(name: name, content: content);
+          Logger.info('Suggested memory for review: $name', 'Memories');
         }
       }
     } catch (e) {
@@ -140,5 +142,6 @@ If there is nothing worth remembering, respond with exactly: NONE''';
   }
 }
 
-final memoriesProvider =
-    NotifierProvider<MemoriesNotifier, MemoriesState>(MemoriesNotifier.new);
+final memoriesProvider = NotifierProvider<MemoriesNotifier, MemoriesState>(
+  MemoriesNotifier.new,
+);

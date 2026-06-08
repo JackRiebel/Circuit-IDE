@@ -14,9 +14,11 @@ import '../../state/chat_context_draft_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_palette_provider.dart';
 import '../../state/connection_provider.dart';
+import '../../state/context_pack_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/layout_provider.dart';
+import '../../state/patch_proposal_provider.dart';
 import '../../state/project_profile_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/terminal_provider.dart';
@@ -137,6 +139,43 @@ class CoreCommandRegistry {
           );
           _showSidePanel(ref, ActivityBarItem.tools);
         },
+      ),
+      CommandDescriptor(
+        id: 'project.refreshContextPack',
+        title: 'Build Coding Context Pack',
+        description: 'Preview the context Circuit AI will use for guided work.',
+        category: 'Project',
+        icon: Icons.dataset_linked_outlined,
+        surface: 'cockpit',
+        priority: 68,
+        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
+        run: () {
+          _showSidePanel(ref, ActivityBarItem.tools);
+          ref.read(contextPackProvider.notifier).buildForCodingTask();
+        },
+      ),
+      CommandDescriptor(
+        id: 'project.approvePatch',
+        title: 'Approve Active Patch',
+        description: 'Apply the active reviewed patch proposal.',
+        category: 'Project',
+        icon: Icons.check,
+        surface: 'cockpit',
+        priority: 67,
+        isEnabled: () => ref.read(patchProposalProvider).active != null,
+        run: () =>
+            unawaited(ref.read(patchProposalProvider.notifier).applyActive()),
+      ),
+      CommandDescriptor(
+        id: 'project.rejectPatch',
+        title: 'Reject Active Patch',
+        description: 'Reject the active reviewed patch proposal.',
+        category: 'Project',
+        icon: Icons.close,
+        surface: 'cockpit',
+        priority: 66,
+        isEnabled: () => ref.read(patchProposalProvider).active != null,
+        run: () => ref.read(patchProposalProvider.notifier).rejectActive(),
       ),
       CommandDescriptor(
         id: 'workspace.refreshContext',

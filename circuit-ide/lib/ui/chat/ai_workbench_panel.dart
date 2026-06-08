@@ -9,11 +9,13 @@ import '../../enums/connection_status.dart';
 import '../../enums/tool_status.dart';
 import '../../models/editor_state.dart';
 import '../../models/agent_run.dart';
+import '../../models/command_run.dart';
 import '../../models/run_diagnostics_summary.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/workspace_context.dart';
 import '../../state/agent_run_provider.dart';
 import '../../state/chat_provider.dart';
+import '../../state/command_run_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
@@ -521,6 +523,18 @@ class _RunTimeline extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final filter = ref.watch(runConsoleFilterProvider);
+    final commandRuns = ref.watch(commandRunProvider).values.where((run) {
+      return switch (filter) {
+        RunConsoleFilter.active =>
+          run.status == CommandRunStatus.queued ||
+              run.status == CommandRunStatus.running,
+        RunConsoleFilter.recent => true,
+        RunConsoleFilter.failed =>
+          run.status == CommandRunStatus.failed ||
+              run.status == CommandRunStatus.timedOut ||
+              run.status == CommandRunStatus.blocked,
+      };
+    }).toList()..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     final visibleRuns = [...runs.activeRuns.values, ...runs.recentRuns]
         .where((run) {
           return switch (filter) {
@@ -562,7 +576,7 @@ class _RunTimeline extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: Spacing.sm),
-        if (visibleRuns.isEmpty)
+        if (visibleRuns.isEmpty && commandRuns.isEmpty)
           Container(
             padding: const EdgeInsets.all(Spacing.md),
             decoration: BoxDecoration(
@@ -582,6 +596,26 @@ class _RunTimeline extends ConsumerWidget {
               child: _RunTimelineRow(run: run),
             ),
           ),
+        if (commandRuns.isNotEmpty) ...[
+          const SizedBox(height: Spacing.sm),
+          Text(
+            'Commands',
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xxs,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          ...commandRuns
+              .take(6)
+              .map(
+                (run) => Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.sm),
+                  child: _CommandRunTimelineRow(run: run),
+                ),
+              ),
+        ],
       ],
     );
   }
@@ -622,6 +656,88 @@ class _RunFilterChip extends ConsumerWidget {
             fontSize: FontSizes.xxs,
             fontWeight: FontWeight.w700,
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandRunTimelineRow extends ConsumerWidget {
+  final CommandRun run;
+
+  const _CommandRunTimelineRow({required this.run});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = switch (run.status) {
+      CommandRunStatus.succeeded => tokens.success,
+      CommandRunStatus.failed ||
+      CommandRunStatus.timedOut ||
+      CommandRunStatus.blocked => tokens.error,
+      CommandRunStatus.cancelled => tokens.textMuted,
+      CommandRunStatus.queued || CommandRunStatus.running => tokens.warning,
+    };
+
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSubtle),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            0,
+            Spacing.md,
+            Spacing.md,
+          ),
+          leading: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          title: Text(
+            run.command,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w700,
+              fontFamily: EditorDefaults.fallbackFontFamily,
+            ),
+          ),
+          subtitle: Text(
+            '${run.status.name} · ${run.elapsed.inSeconds}s${run.exitCode == null ? '' : ' · exit ${run.exitCode}'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
+          ),
+          iconColor: tokens.textMuted,
+          collapsedIconColor: tokens.textMuted,
+          children: [
+            _RunDetailLine(label: 'Output', value: run.combinedOutput),
+            if (run.events.isNotEmpty) ...[
+              const SizedBox(height: Spacing.sm),
+              ...run.events.reversed
+                  .take(5)
+                  .map((event) => _CommandEventRow(event: event)),
+            ],
+            const SizedBox(height: Spacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _RunAction(
+                icon: Icons.copy,
+                label: 'Copy output',
+                onTap: () =>
+                    Clipboard.setData(ClipboardData(text: run.combinedOutput)),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -838,6 +954,38 @@ class _RunEventRow extends ConsumerWidget {
               style: TextStyle(
                 color: tokens.textMuted,
                 fontSize: FontSizes.xxs,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandEventRow extends ConsumerWidget {
+  final CommandRunEvent event;
+
+  const _CommandEventRow({required this.event});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Row(
+        children: [
+          Icon(Icons.fiber_manual_record, size: 6, color: tokens.textMuted),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              event.text.trim().isEmpty ? event.type.name : event.text.trim(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                fontFamily: EditorDefaults.fallbackFontFamily,
               ),
             ),
           ),

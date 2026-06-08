@@ -6,11 +6,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/command_run.dart';
+import '../../models/context_pack.dart';
 import '../../models/project_profile.dart';
+import '../../models/reviewed_edit.dart';
+import '../../models/suggested_learning.dart';
 import '../../models/work_item.dart';
 import '../../state/chat_provider.dart';
+import '../../state/command_run_provider.dart';
+import '../../state/context_pack_provider.dart';
 import '../../state/layout_provider.dart';
+import '../../state/patch_proposal_provider.dart';
 import '../../state/project_profile_provider.dart';
+import '../../state/suggested_learning_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/work_item_provider.dart';
 import '../../theme/theme_tokens.dart';
@@ -38,6 +46,11 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
     final tokens = ref.watch(themeProvider);
     final profile = ref.watch(projectProfileProvider);
     final workItem = ref.watch(workItemProvider);
+    final contextPack = ref.watch(contextPackProvider);
+    final patchProposal = ref.watch(patchProposalProvider);
+    final commandRuns = ref.watch(commandRunProvider);
+    final workHistory = ref.watch(workItemHistoryProvider);
+    final learningSuggestions = ref.watch(suggestedLearningProvider).pending;
 
     if (!profile.hasWorkspace) {
       return _CockpitCard(
@@ -87,6 +100,22 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
           const SizedBox(height: Spacing.lg),
           _ProjectFacts(profile: profile),
           const SizedBox(height: Spacing.lg),
+          if (contextPack != null) ...[
+            _ContextPackCard(pack: contextPack),
+            const SizedBox(height: Spacing.lg),
+          ],
+          if (patchProposal.active != null) ...[
+            _PatchProposalCard(patchSet: patchProposal.active!),
+            const SizedBox(height: Spacing.lg),
+          ],
+          if (commandRuns.isNotEmpty) ...[
+            _CommandRunsCard(commandRuns: commandRuns.values.toList()),
+            const SizedBox(height: Spacing.lg),
+          ],
+          if (learningSuggestions.isNotEmpty) ...[
+            _LearningSuggestionsCard(suggestions: learningSuggestions),
+            const SizedBox(height: Spacing.lg),
+          ],
           _CommandList(profile: profile),
           const SizedBox(height: Spacing.lg),
           _WorkItemCard(
@@ -101,6 +130,10 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
             onCopy: _copyHandoff,
             onClear: () => ref.read(workItemProvider.notifier).clear(),
           ),
+          if (workHistory.items.isNotEmpty) ...[
+            const SizedBox(height: Spacing.lg),
+            _WorkItemHistoryCard(items: workHistory.items),
+          ],
         ],
       ),
     );
@@ -423,6 +456,425 @@ class _ProjectFacts extends ConsumerWidget {
               ),
             ),
         ],
+      ],
+    );
+  }
+}
+
+class _ContextPackCard extends ConsumerWidget {
+  final ContextPack pack;
+
+  const _ContextPackCard({required this.pack});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return CircuitDisclosureRow(
+      icon: Icons.dataset_linked_outlined,
+      title: 'Context Pack',
+      subtitle:
+          '${pack.visibleItems.length} items · ~${pack.estimatedTokens} tokens',
+      initiallyExpanded: true,
+      children: [
+        for (final item in pack.items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: Container(
+              padding: const EdgeInsets.all(Spacing.md),
+              decoration: BoxDecoration(
+                color: pack.removedItemIds.contains(item.id)
+                    ? tokens.surfaceBase
+                    : tokens.surfaceInset,
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(color: tokens.outlineSoft),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    _contextIcon(item.type),
+                    color: tokens.textMuted,
+                    size: 15,
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.textPrimary,
+                            fontSize: FontSizes.sm,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          item.detail,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.textMuted,
+                            fontSize: FontSizes.xs,
+                            height: 1.25,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (item.removable)
+                    CircuitIconButton(
+                      icon: pack.removedItemIds.contains(item.id)
+                          ? Icons.undo
+                          : Icons.close,
+                      tooltip: pack.removedItemIds.contains(item.id)
+                          ? 'Restore context item'
+                          : 'Remove context item',
+                      onPressed: () {
+                        final notifier = ref.read(contextPackProvider.notifier);
+                        if (pack.removedItemIds.contains(item.id)) {
+                          notifier.restoreItem(item.id);
+                        } else {
+                          notifier.removeItem(item.id);
+                        }
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PatchProposalCard extends ConsumerWidget {
+  final ProposedPatchSet patchSet;
+
+  const _PatchProposalCard({required this.patchSet});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final isApplying = ref.watch(patchProposalProvider).isApplying;
+    return CircuitDisclosureRow(
+      icon: Icons.rate_review_outlined,
+      title: 'Patch Review',
+      subtitle: '${patchSet.fileCount} files · ${patchSet.approvalStatus.name}',
+      initiallyExpanded: true,
+      children: [
+        for (final edit in patchSet.edits)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _PatchFileRow(edit: edit),
+          ),
+        if (patchSet.conflictMessage != null)
+          _Notice(text: patchSet.conflictMessage!, color: tokens.error),
+        const SizedBox(height: Spacing.sm),
+        Wrap(
+          spacing: Spacing.sm,
+          runSpacing: Spacing.sm,
+          children: [
+            FilledButton.icon(
+              onPressed: isApplying
+                  ? null
+                  : () => unawaited(
+                      ref.read(patchProposalProvider.notifier).applyActive(),
+                    ),
+              icon: const Icon(Icons.check, size: 16),
+              label: Text(isApplying ? 'Applying' : 'Approve'),
+            ),
+            OutlinedButton.icon(
+              onPressed: isApplying
+                  ? null
+                  : () =>
+                        ref.read(patchProposalProvider.notifier).rejectActive(),
+              icon: const Icon(Icons.close, size: 16),
+              label: const Text('Reject'),
+            ),
+            OutlinedButton.icon(
+              onPressed: isApplying
+                  ? null
+                  : () => ref
+                        .read(patchProposalProvider.notifier)
+                        .requestRevision(
+                          PatchProposalRevisionRequest(
+                            patchSetId: patchSet.id,
+                            prompt: 'Revise the patch based on user feedback.',
+                          ),
+                        ),
+              icon: const Icon(Icons.edit_note, size: 16),
+              label: const Text('Revise'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _PatchFileRow extends ConsumerWidget {
+  final ProposedFileEdit edit;
+
+  const _PatchFileRow({required this.edit});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final additions = edit.after?.split('\n').length ?? 0;
+    final deletions = edit.before?.split('\n').length ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.surfaceInset,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSoft),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.description_outlined, color: tokens.textMuted, size: 15),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Text(
+              edit.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            '+$additions / -$deletions',
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xxs,
+              fontFamily: EditorDefaults.fallbackFontFamily,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandRunsCard extends ConsumerWidget {
+  final List<CommandRun> commandRuns;
+
+  const _CommandRunsCard({required this.commandRuns});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final runs = commandRuns
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    return CircuitDisclosureRow(
+      icon: Icons.terminal_outlined,
+      title: 'Command Output',
+      subtitle: '${runs.length} runs',
+      children: [
+        for (final run in runs.take(4))
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _CommandRunRow(run: run),
+          ),
+      ],
+    );
+  }
+}
+
+class _CommandRunRow extends ConsumerWidget {
+  final CommandRun run;
+
+  const _CommandRunRow({required this.run});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = switch (run.status) {
+      CommandRunStatus.succeeded => tokens.success,
+      CommandRunStatus.failed ||
+      CommandRunStatus.timedOut ||
+      CommandRunStatus.blocked => tokens.error,
+      CommandRunStatus.cancelled => tokens.textMuted,
+      CommandRunStatus.queued || CommandRunStatus.running => tokens.warning,
+    };
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.surfaceInset,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.circle, color: color, size: 8),
+              const SizedBox(width: Spacing.md),
+              Expanded(
+                child: Text(
+                  run.command,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.xs,
+                    fontFamily: EditorDefaults.fallbackFontFamily,
+                  ),
+                ),
+              ),
+              CircuitIconButton(
+                icon: Icons.copy,
+                tooltip: 'Copy command output',
+                onPressed: () =>
+                    Clipboard.setData(ClipboardData(text: run.combinedOutput)),
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            run.combinedOutput,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+              fontFamily: EditorDefaults.fallbackFontFamily,
+              height: 1.25,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LearningSuggestionsCard extends ConsumerWidget {
+  final List<SuggestedLearning> suggestions;
+
+  const _LearningSuggestionsCard({required this.suggestions});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return CircuitDisclosureRow(
+      icon: Icons.lightbulb_outline,
+      title: 'Suggested Learnings',
+      subtitle: '${suggestions.length} pending',
+      initiallyExpanded: true,
+      children: [
+        for (final suggestion in suggestions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _LearningSuggestionRow(suggestion: suggestion),
+          ),
+      ],
+    );
+  }
+}
+
+class _LearningSuggestionRow extends ConsumerWidget {
+  final SuggestedLearning suggestion;
+
+  const _LearningSuggestionRow({required this.suggestion});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.surfaceInset,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                suggestion.type == SuggestedLearningType.memory
+                    ? Icons.psychology_alt_outlined
+                    : Icons.rule_outlined,
+                color: tokens.textMuted,
+                size: 15,
+              ),
+              const SizedBox(width: Spacing.md),
+              Expanded(
+                child: Text(
+                  suggestion.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            suggestion.content,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          Wrap(
+            spacing: Spacing.sm,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => unawaited(
+                  ref
+                      .read(suggestedLearningProvider.notifier)
+                      .approve(suggestion.id),
+                ),
+                icon: const Icon(Icons.check, size: 16),
+                label: const Text('Approve'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => ref
+                    .read(suggestedLearningProvider.notifier)
+                    .reject(suggestion.id),
+                icon: const Icon(Icons.close, size: 16),
+                label: const Text('Reject'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkItemHistoryCard extends ConsumerWidget {
+  final List<WorkItem> items;
+
+  const _WorkItemHistoryCard({required this.items});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return CircuitDisclosureRow(
+      icon: Icons.history,
+      title: 'Recent Work',
+      subtitle: '${items.length} saved',
+      children: [
+        for (final item in items.take(5))
+          Padding(
+            padding: const EdgeInsets.only(bottom: Spacing.sm),
+            child: _MiniRunRow(label: item.prompt, status: item.status.name),
+          ),
       ],
     );
   }
@@ -862,6 +1314,20 @@ IconData _recommendationIcon(ProjectRecommendationKind kind) {
     ProjectRecommendationKind.explainProject => Icons.psychology_outlined,
     ProjectRecommendationKind.summarizeChanges => Icons.summarize_outlined,
     ProjectRecommendationKind.startWork => Icons.add_task_outlined,
+  };
+}
+
+IconData _contextIcon(ContextPackItemType type) {
+  return switch (type) {
+    ContextPackItemType.projectProfile => Icons.schema_outlined,
+    ContextPackItemType.activeFile => Icons.description_outlined,
+    ContextPackItemType.selection => Icons.highlight_alt_outlined,
+    ContextPackItemType.mentionedFile => Icons.attach_file,
+    ContextPackItemType.gitDiff => Icons.difference_outlined,
+    ContextPackItemType.diagnostics => Icons.bug_report_outlined,
+    ContextPackItemType.terminal => Icons.terminal_outlined,
+    ContextPackItemType.rule => Icons.rule_outlined,
+    ContextPackItemType.memory => Icons.psychology_alt_outlined,
   };
 }
 

@@ -6,6 +6,7 @@ import '../core/constants/app_constants.dart';
 import '../core/utils/logger.dart';
 import '../enums/event_type.dart';
 import '../enums/message_role.dart';
+import '../enums/tool_status.dart';
 import '../models/chat_message.dart';
 import '../models/tool_call_info.dart';
 import '../models/confirmation_request.dart';
@@ -324,7 +325,13 @@ class CircuitAgent {
   }
 
   void _handleToolCallUpdate(ToolCallInfo toolCall) {
-    events.emit(EventType.toolCallStarted, {
+    final type = switch (toolCall.status) {
+      ToolStatus.success => EventType.toolCallCompleted,
+      ToolStatus.error => EventType.toolCallError,
+      ToolStatus.cancelled => EventType.toolCallError,
+      _ => EventType.toolCallStarted,
+    };
+    events.emit(type, {
       'toolCall': toolCall,
       if (_activeRequestId != null) 'requestId': _activeRequestId,
     });
