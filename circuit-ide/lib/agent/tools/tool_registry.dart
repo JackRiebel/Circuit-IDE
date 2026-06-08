@@ -3,7 +3,6 @@ import '../providers/provider_interface.dart';
 class ToolRegistry {
   static const readOnlyTools = {
     'read_file',
-    'lsdf_read_index',
     'list_files',
     'search_files',
     'git_status',
@@ -46,7 +45,6 @@ class ToolRegistry {
 
   static List<ToolDefinition> get allTools => [
     ..._fileTools,
-    ..._lsdfTools,
     ..._gitTools,
     ..._webTools,
     ..._githubTools,
@@ -165,34 +163,6 @@ class ToolRegistry {
           },
         },
         'required': ['command'],
-      },
-    ),
-  ];
-
-  static final _lsdfTools = [
-    const ToolDefinition(
-      name: 'lsdf_read_index',
-      description:
-          'Read compact L-SDF project or directory indexes for low-token codebase navigation before reading source files.',
-      parameters: {
-        'type': 'object',
-        'properties': {
-          'directory': {
-            'type': 'string',
-            'description':
-                'Directory or file path whose nearest L-SDF index should be read. Defaults to project root.',
-          },
-          'detail': {
-            'type': 'boolean',
-            'description':
-                'Read INDEX.detail.lsdf instead of INDEX.lsdf for signatures and source paths.',
-          },
-          'include_project': {
-            'type': 'boolean',
-            'description':
-                'Also include project.lsdf from the repository root.',
-          },
-        },
       },
     ),
   ];

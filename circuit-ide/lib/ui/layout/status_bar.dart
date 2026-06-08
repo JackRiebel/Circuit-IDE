@@ -358,11 +358,6 @@ class _WorkspaceHealthDialog extends ConsumerWidget {
                     '${workspace.fileIndexProgress?.files ?? 0} files · ${workspace.fileIndexProgress?.directories ?? 0} dirs',
               ),
               _HealthLine(
-                label: 'L-SDF',
-                value:
-                    '${aiContext.lsdfStatus.name} · ${workspace.lsdfProgress?.files ?? aiContext.lsdfFilesIndexed} files',
-              ),
-              _HealthLine(
                 label: 'Terminal',
                 value: '$terminalLines buffered lines',
               ),
@@ -387,13 +382,6 @@ class _WorkspaceHealthDialog extends ConsumerWidget {
                     icon: Icons.refresh,
                     onTap: () =>
                         ref.read(workspaceContextProvider.notifier).refresh(),
-                  ),
-                  _HealthAction(
-                    label: 'Rebuild L-SDF',
-                    icon: Icons.hub_outlined,
-                    onTap: () => ref
-                        .read(workspaceContextProvider.notifier)
-                        .refresh(forceLsdf: true),
                   ),
                   _HealthAction(
                     label: 'Cancel',

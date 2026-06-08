@@ -133,7 +133,7 @@ class WorkItemController extends Notifier<WorkItem?> {
         id: _uuid.v4().substring(0, 8),
         title: 'Understand scope',
         detail:
-            'Use the project profile and L-SDF map for $projectType context.',
+            'Use the project profile and visible files for $projectType context.',
       ),
       WorkItemStep(
         id: _uuid.v4().substring(0, 8),
@@ -176,7 +176,7 @@ class WorkItemController extends Notifier<WorkItem?> {
       'Guided work item:',
       item.prompt,
       '',
-      'Use the current project profile, L-SDF map, and visible context.',
+      'Use the current project profile and visible context.',
       'After making changes, explain files changed and verification commands to run.',
     ].join('\n');
   }

@@ -67,16 +67,16 @@ void main() {
     notifier.startRun(
       kind: AgentRunKind.backgroundTask,
       model: 'gemini-3.1-flash-lite',
-      message: 'map workspace',
-      title: 'Map Workspace',
-      inputPreview: 'map workspace',
+      message: 'index workspace',
+      title: 'Index Workspace',
+      inputPreview: 'index workspace',
     );
     notifier.finishRun(AgentRunKind.backgroundTask, error: 'Timed out');
 
     final failed = container.read(agentRunProvider).recentRuns.first;
     expect(failed.status, AgentRunStatus.failed);
     expect(failed.error, 'Timed out');
-    expect(failed.title, 'Map Workspace');
+    expect(failed.title, 'Index Workspace');
 
     notifier.startRun(
       kind: AgentRunKind.chat,

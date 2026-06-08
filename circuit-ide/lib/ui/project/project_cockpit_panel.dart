@@ -13,7 +13,6 @@ import '../../state/layout_provider.dart';
 import '../../state/project_profile_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/work_item_provider.dart';
-import '../../state/workspace_context_provider.dart';
 import '../../theme/theme_tokens.dart';
 import '../common/circuit_primitives.dart';
 
@@ -63,13 +62,6 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
                 icon: _readinessIcon(profile.readiness),
                 label: _readinessLabel(profile.readiness),
                 color: _readinessColor(tokens, profile.readiness),
-              ),
-              CircuitStatusChip(
-                icon: Icons.hub_outlined,
-                label: 'Map ${profile.lsdfStatus}',
-                color: profile.lsdfStatus == 'ready'
-                    ? tokens.success
-                    : tokens.warning,
               ),
               if (profile.gitBranch != null)
                 CircuitStatusChip(
@@ -123,9 +115,6 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
 
   void _runRecommendation(ProjectRecommendation recommendation) {
     switch (recommendation.kind) {
-      case ProjectRecommendationKind.mapWorkspace:
-        unawaited(ref.read(workspaceContextProvider.notifier).refresh());
-        break;
       case ProjectRecommendationKind.runChecks:
         ref.read(workItemProvider.notifier).start('Run recommended checks');
         unawaited(ref.read(workItemProvider.notifier).runVerification());
@@ -136,7 +125,7 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
           ref
               .read(chatProvider.notifier)
               .sendMessage(
-                'Explain this project using the project profile and L-SDF map. '
+                'Explain this project using the project profile and visible context. '
                 'Cover stack, entrypoints, architecture, and safest next steps.',
               ),
         );
@@ -869,7 +858,6 @@ Color _readinessColor(ThemeTokens tokens, ProjectReadiness readiness) {
 
 IconData _recommendationIcon(ProjectRecommendationKind kind) {
   return switch (kind) {
-    ProjectRecommendationKind.mapWorkspace => Icons.hub_outlined,
     ProjectRecommendationKind.runChecks => Icons.playlist_add_check_outlined,
     ProjectRecommendationKind.explainProject => Icons.psychology_outlined,
     ProjectRecommendationKind.summarizeChanges => Icons.summarize_outlined,

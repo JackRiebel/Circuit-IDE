@@ -1,9 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
-
-import '../services/lsdf_index_service.dart';
 
 enum LsdfIndexStatus { idle, checking, building, ready, error }
 
@@ -21,7 +16,7 @@ class AiContextState {
   final int lsdfFilesIndexed;
 
   const AiContextState({
-    this.includeLsdfIndex = true,
+    this.includeLsdfIndex = false,
     this.includeActiveFile = true,
     this.includeTerminalOutput = false,
     this.includeGitDiff = false,
@@ -76,118 +71,34 @@ class AiContextState {
 const _sentinel = Object();
 
 class AiContextNotifier extends Notifier<AiContextState> {
-  Future<void>? _activeIndexRun;
-  String? _activeRootPath;
-
   @override
   AiContextState build() => const AiContextState();
 
   Future<void> ensureLsdfIndex(String? rootPath) {
-    if (rootPath == null || rootPath.trim().isEmpty) {
-      state = const AiContextState();
-      return Future.value();
-    }
-
-    final normalized = p.normalize(rootPath);
-    if (_activeIndexRun != null &&
-        _activeRootPath == normalized &&
-        state.isLsdfBuilding) {
-      return _activeIndexRun!;
-    }
-
-    _activeRootPath = normalized;
-    _activeIndexRun = _ensureLsdfIndex(normalized);
-    return _activeIndexRun!;
+    _disableLsdf(rootPath);
+    return Future.value();
   }
 
   Future<void> rebuildLsdfIndex(String? rootPath) {
-    if (rootPath == null || rootPath.trim().isEmpty) {
-      state = const AiContextState();
-      return Future.value();
-    }
-
-    final normalized = p.normalize(rootPath);
-    _activeRootPath = normalized;
-    _activeIndexRun = _ensureLsdfIndex(normalized, force: true);
-    return _activeIndexRun!;
+    _disableLsdf(rootPath);
+    return Future.value();
   }
 
-  Future<void> _ensureLsdfIndex(String rootPath, {bool force = false}) async {
+  void _disableLsdf(String? rootPath) {
     state = state.copyWith(
-      lsdfStatus: LsdfIndexStatus.checking,
+      includeLsdfIndex: false,
+      lsdfStatus: LsdfIndexStatus.idle,
       lsdfRootPath: rootPath,
-      lsdfMessage: 'Checking L-SDF project map...',
+      lsdfMessage: 'L-SDF mapping is temporarily disabled.',
       lsdfError: null,
+      lsdfIndexedAt: null,
       lsdfDirectoriesIndexed: 0,
       lsdfFilesIndexed: 0,
     );
-
-    try {
-      final projectManifest = File(p.join(rootPath, 'project.lsdf'));
-      final rootIndex = File(p.join(rootPath, 'INDEX.lsdf'));
-      final needsBuild =
-          force || !await projectManifest.exists() || !await rootIndex.exists();
-
-      if (!needsBuild) {
-        state = state.copyWith(
-          lsdfStatus: LsdfIndexStatus.ready,
-          lsdfRootPath: rootPath,
-          lsdfMessage: 'L-SDF map ready',
-          lsdfError: null,
-          lsdfIndexedAt: DateTime.now(),
-          lsdfDirectoriesIndexed: 0,
-          lsdfFilesIndexed: 0,
-        );
-        return;
-      }
-
-      state = state.copyWith(
-        lsdfStatus: LsdfIndexStatus.building,
-        lsdfRootPath: rootPath,
-        lsdfMessage: 'Building L-SDF map for this project...',
-        lsdfError: null,
-        lsdfDirectoriesIndexed: 0,
-        lsdfFilesIndexed: 0,
-      );
-
-      await LsdfIndexService(
-        rootPath: rootPath,
-        onProgress: (progress) {
-          if (_activeRootPath != rootPath) return;
-          state = state.copyWith(
-            lsdfStatus: LsdfIndexStatus.building,
-            lsdfRootPath: rootPath,
-            lsdfMessage: progress.message,
-            lsdfDirectoriesIndexed: progress.directories,
-            lsdfFilesIndexed: progress.files,
-          );
-        },
-      ).generate();
-
-      state = state.copyWith(
-        lsdfStatus: LsdfIndexStatus.ready,
-        lsdfRootPath: rootPath,
-        lsdfMessage:
-            'L-SDF map ready · ${state.lsdfFilesIndexed} files indexed',
-        lsdfError: null,
-        lsdfIndexedAt: DateTime.now(),
-      );
-    } catch (e) {
-      state = state.copyWith(
-        lsdfStatus: LsdfIndexStatus.error,
-        lsdfRootPath: rootPath,
-        lsdfMessage: 'L-SDF map failed',
-        lsdfError: e.toString(),
-      );
-    } finally {
-      if (_activeRootPath == rootPath) {
-        _activeIndexRun = null;
-      }
-    }
   }
 
   void toggleLsdfIndex() {
-    state = state.copyWith(includeLsdfIndex: !state.includeLsdfIndex);
+    state = state.copyWith(includeLsdfIndex: false);
   }
 
   void toggleActiveFile() {

@@ -96,12 +96,6 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
       type: ContextAttachmentType.symbols,
     ),
     SlashCommandSpec(
-      command: '/map',
-      label: 'L-SDF map',
-      description: 'Attach the code map instruction.',
-      type: ContextAttachmentType.lsdfIndex,
-    ),
-    SlashCommandSpec(
       command: '/now',
       label: 'Current time',
       description: 'Attach the current timestamp.',
@@ -233,15 +227,6 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
           final attachment = await _fileAttachment(rootPath, arg);
           if (attachment != null) attachments.add(attachment);
           break;
-        case '/map':
-          attachments.add(
-            _attachment(
-              ContextAttachmentType.lsdfIndex,
-              'L-SDF map',
-              'Use project.lsdf and the nearest INDEX.lsdf before broad file reads.',
-            ),
-          );
-          break;
         case '/diff':
           attachments.add(
             _attachment(
@@ -299,18 +284,6 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
         .trim();
     final attachments = <ContextAttachment>[];
 
-    if (contextState.includeLsdfIndex) {
-      attachments.add(
-        ContextAttachment(
-          id: 'pinned-lsdf',
-          type: ContextAttachmentType.lsdfIndex,
-          label: 'L-SDF map',
-          content:
-              'Use the L-SDF code index before loading broad file context.',
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
     if (contextState.includeActiveFile &&
         activeTab != null &&
         !activeTab.filePath.startsWith('circuit://')) {

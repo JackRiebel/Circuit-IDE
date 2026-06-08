@@ -94,7 +94,7 @@ class CoreCommandRegistry {
             ref
                 .read(chatProvider.notifier)
                 .sendMessage(
-                  'Explain this project using the project profile and L-SDF map. '
+                  'Explain this project using the project profile and visible context. '
                   'Cover stack, entrypoints, architecture, and safest next steps.',
                 ),
           );
@@ -141,23 +141,12 @@ class CoreCommandRegistry {
       CommandDescriptor(
         id: 'workspace.refreshContext',
         title: 'Refresh Workspace',
-        description: 'Refresh workspace file index and code map.',
+        description: 'Refresh the lightweight workspace file index.',
         category: 'Workspace',
         icon: Icons.refresh,
         shortcut: '⌘⇧M',
         isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
         run: () => ref.read(workspaceContextProvider.notifier).refresh(),
-      ),
-      CommandDescriptor(
-        id: 'workspace.rebuildLsdf',
-        title: 'Force Rebuild L-SDF',
-        description: 'Rebuild the L-SDF map even when files already exist.',
-        category: 'Workspace',
-        icon: Icons.hub_outlined,
-        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
-        run: () => ref
-            .read(workspaceContextProvider.notifier)
-            .refresh(forceLsdf: true),
       ),
       CommandDescriptor(
         id: 'workspace.health',
@@ -272,16 +261,6 @@ class CoreCommandRegistry {
         icon: Icons.auto_awesome,
         shortcut: '⌘⇧L',
         run: () => ref.read(chatPanelVisibleProvider.notifier).toggle(),
-      ),
-      CommandDescriptor(
-        id: 'context.toggleLsdf',
-        title: 'Toggle L-SDF Context',
-        category: 'Context',
-        icon: Icons.hub_outlined,
-        run: () {
-          ref.read(aiContextProvider.notifier).toggleLsdfIndex();
-          ref.read(chatContextDraftProvider.notifier).syncPinnedContext();
-        },
       ),
       CommandDescriptor(
         id: 'context.toggleActiveFile',

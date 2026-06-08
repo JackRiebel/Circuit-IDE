@@ -4,7 +4,6 @@ import '../../core/utils/logger.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/checkpoint.dart';
 import '../../models/confirmation_request.dart';
-import '../../services/lsdf_index_service.dart';
 import '../../enums/tool_status.dart';
 import '../checkpoint/checkpoint_manager.dart';
 import '../security/secret_detector.dart';
@@ -45,7 +44,6 @@ class ToolExecutor {
   late final CommandTools _commandTools;
   late final WebTools _webTools;
   late final GitHubTools _githubTools;
-  late final LsdfIndexService _lsdfIndexService;
   final _secretDetector = SecretDetector();
   McpClient? _mcpClient;
   OrchestrateToolExecutor? _orchestrateTool;
@@ -67,7 +65,6 @@ class ToolExecutor {
     _commandTools = CommandTools(workingDir: workingDir);
     _webTools = WebTools();
     _githubTools = GitHubTools();
-    _lsdfIndexService = LsdfIndexService(rootPath: workingDir);
     checkpointManager = CheckpointManager(workingDir: workingDir);
   }
 
@@ -183,7 +180,6 @@ class ToolExecutor {
       }
 
       final result = await _dispatch(toolCall.name, toolCall.arguments);
-      await _refreshLsdfIndexIfNeeded(toolCall);
 
       onToolCallUpdate?.call(
         updated.copyWith(
@@ -217,12 +213,6 @@ class ToolExecutor {
       // File tools
       case 'read_file':
         return _fileTools.readFile(args);
-      case 'lsdf_read_index':
-        return _lsdfIndexService.readIndex(
-          directory: args['directory'] as String? ?? '.',
-          detail: args['detail'] as bool? ?? false,
-          includeProject: args['include_project'] as bool? ?? false,
-        );
       case 'write_file':
         return _fileTools.writeFile(args);
       case 'edit_file':
@@ -285,19 +275,6 @@ class ToolExecutor {
           return 'Error: Could not parse MCP tool name: $name';
         }
         return 'Unknown tool: $name';
-    }
-  }
-
-  Future<void> _refreshLsdfIndexIfNeeded(ToolCallInfo toolCall) async {
-    if (toolCall.name != 'write_file' && toolCall.name != 'edit_file') {
-      return;
-    }
-    final path = toolCall.arguments['path'] as String?;
-    if (path == null || path.isEmpty) return;
-    try {
-      await _lsdfIndexService.refreshForPath(path);
-    } catch (e) {
-      Logger.warning('Failed to refresh L-SDF index for $path: $e', 'LSDF');
     }
   }
 

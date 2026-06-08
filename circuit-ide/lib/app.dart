@@ -76,9 +76,8 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
               LogicalKeyboardKey.keyM,
               meta: true,
               shift: true,
-            ): () => ref
-                .read(workspaceContextProvider.notifier)
-                .refresh(forceLsdf: true),
+            ): () =>
+                ref.read(workspaceContextProvider.notifier).refresh(),
           },
           child: const Focus(autofocus: true, child: IDEScreen()),
         ),

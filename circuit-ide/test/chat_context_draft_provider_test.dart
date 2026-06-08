@@ -9,18 +9,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
-  test('draft starts with visible pinned L-SDF context', () {
+  test('draft starts without hidden L-SDF context', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
     final draft = container.read(chatContextDraftProvider);
 
-    expect(draft.pinnedAttachments, hasLength(1));
-    expect(draft.pinnedAttachments.single.id, 'pinned-lsdf');
-    expect(
-      draft.pinnedAttachments.single.type,
-      ContextAttachmentType.lsdfIndex,
-    );
+    expect(draft.pinnedAttachments, isEmpty);
   });
 
   test('mentions become removable draft attachments', () {
@@ -66,17 +61,14 @@ void main() {
 
     final result = await container
         .read(chatContextDraftProvider.notifier)
-        .parseSlashCommands('/map\n/file README.md\nPlease explain this');
+        .parseSlashCommands('/file README.md\nPlease explain this');
 
     expect(result.message, 'Please explain this');
-    expect(result.attachments, hasLength(2));
+    expect(result.attachments, hasLength(1));
     expect(
       result.attachments.map((attachment) => attachment.type),
-      containsAll([
-        ContextAttachmentType.lsdfIndex,
-        ContextAttachmentType.file,
-      ]),
+      contains(ContextAttachmentType.file),
     );
-    expect(result.attachments.last.content, contains('hello map'));
+    expect(result.attachments.single.content, contains('hello map'));
   });
 }

@@ -13,7 +13,6 @@ import '../../models/run_diagnostics_summary.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/workspace_context.dart';
 import '../../state/agent_run_provider.dart';
-import '../../state/ai_context_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
@@ -126,7 +125,6 @@ class _ContextWorkbench extends ConsumerWidget {
     final terminalState = ref.watch(terminalProvider);
     final settings = ref.watch(settingsProvider);
     final connectionStatus = ref.watch(connectionStatusProvider);
-    final contextState = ref.watch(aiContextProvider);
     final workspaceState = ref.watch(workspaceContextProvider);
     final runs = ref.watch(agentRunProvider);
     final activeRun =
@@ -162,7 +160,6 @@ class _ContextWorkbench extends ConsumerWidget {
             connectionStatus: connectionStatus,
             providerLabel: settings.activeProvider.shortName,
             workspaceState: workspaceState,
-            contextState: contextState,
             activeRun: activeRun,
           ),
           const SizedBox(height: Spacing.sm),
@@ -193,10 +190,14 @@ class _ContextWorkbench extends ConsumerWidget {
                   const SizedBox(width: Spacing.sm),
                   Expanded(
                     child: _ContextTile(
-                      icon: _lsdfIcon(contextState.lsdfStatus),
-                      title: _lsdfTitle(contextState),
-                      subtitle: _lsdfSubtitle(contextState),
-                      statusColor: _lsdfColor(contextState.lsdfStatus, tokens),
+                      icon: Icons.description_outlined,
+                      title: activeFile?.fileName ?? 'No active file',
+                      subtitle: activeFile == null
+                          ? 'Open a file for editor actions'
+                          : '${activeFile.language} · $lineCount lines',
+                      statusColor: activeFile == null
+                          ? tokens.textMuted
+                          : tokens.info,
                     ),
                   ),
                 ],
@@ -206,14 +207,13 @@ class _ContextWorkbench extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: _ContextTile(
-                      icon: Icons.description_outlined,
-                      title: activeFile?.fileName ?? 'No active file',
-                      subtitle: activeFile == null
-                          ? 'Open a file for editor actions'
-                          : '${activeFile.language} · $lineCount lines',
-                      statusColor: activeFile == null
+                      icon: Icons.manage_search_outlined,
+                      title: 'File index',
+                      subtitle:
+                          '${workspaceState.fileIndexProgress?.files ?? 0} files · ${workspaceState.fileIndexProgress?.directories ?? 0} dirs',
+                      statusColor: workspaceState.fileIndexProgress == null
                           ? tokens.textMuted
-                          : tokens.info,
+                          : tokens.success,
                     ),
                   ),
                   const SizedBox(width: Spacing.sm),
@@ -252,75 +252,18 @@ class _ContextWorkbench extends ConsumerWidget {
       ConnectionStatus.disconnected => 'offline',
     };
   }
-
-  static IconData _lsdfIcon(LsdfIndexStatus status) {
-    return switch (status) {
-      LsdfIndexStatus.idle => Icons.hub_outlined,
-      LsdfIndexStatus.checking => Icons.sync,
-      LsdfIndexStatus.building => Icons.sync,
-      LsdfIndexStatus.ready => Icons.check_circle_outline,
-      LsdfIndexStatus.error => Icons.error_outline,
-    };
-  }
-
-  static Color _lsdfColor(LsdfIndexStatus status, ThemeTokens tokens) {
-    return switch (status) {
-      LsdfIndexStatus.idle => tokens.textMuted,
-      LsdfIndexStatus.checking => tokens.warning,
-      LsdfIndexStatus.building => tokens.warning,
-      LsdfIndexStatus.ready => tokens.success,
-      LsdfIndexStatus.error => tokens.error,
-    };
-  }
-
-  static String _lsdfTitle(AiContextState state) {
-    return switch (state.lsdfStatus) {
-      LsdfIndexStatus.idle => 'L-SDF ready',
-      LsdfIndexStatus.checking => 'Checking map',
-      LsdfIndexStatus.building => 'Building map',
-      LsdfIndexStatus.ready => 'L-SDF map ready',
-      LsdfIndexStatus.error => 'Map needs attention',
-    };
-  }
-
-  static String _lsdfSubtitle(AiContextState state) {
-    return switch (state.lsdfStatus) {
-      LsdfIndexStatus.idle => 'Open a project to build the index',
-      LsdfIndexStatus.checking => 'Looking for project.lsdf and INDEX.lsdf',
-      LsdfIndexStatus.building =>
-        '${state.lsdfMessage ?? "Creating directory maps"} · ${state.lsdfFilesIndexed} files',
-      LsdfIndexStatus.ready =>
-        state.lsdfFilesIndexed > 0
-            ? '${state.lsdfFilesIndexed} files indexed'
-            : 'Code index + targeted files',
-      LsdfIndexStatus.error => state.lsdfError ?? 'Could not build index',
-    };
-  }
-
-  static String _lsdfPillLabel(AiContextState state) {
-    return switch (state.lsdfStatus) {
-      LsdfIndexStatus.idle => 'L-SDF auto-map idle',
-      LsdfIndexStatus.checking => 'Checking L-SDF map',
-      LsdfIndexStatus.building =>
-        'Building L-SDF map · ${state.lsdfFilesIndexed} files',
-      LsdfIndexStatus.ready => 'L-SDF map active',
-      LsdfIndexStatus.error => 'L-SDF map failed',
-    };
-  }
 }
 
 class _AiReadinessCard extends ConsumerWidget {
   final ConnectionStatus connectionStatus;
   final String providerLabel;
   final WorkspaceContextState workspaceState;
-  final AiContextState contextState;
   final AgentRun? activeRun;
 
   const _AiReadinessCard({
     required this.connectionStatus,
     required this.providerLabel,
     required this.workspaceState,
-    required this.contextState,
     required this.activeRun,
   });
 
@@ -380,7 +323,7 @@ class _AiReadinessCard extends ConsumerWidget {
                   [
                     providerLabel,
                     _ContextWorkbench._connectionLabel(connectionStatus),
-                    _ContextWorkbench._lsdfPillLabel(contextState),
+                    _workspaceLabel(workspaceState),
                     runLabel,
                   ].join(' · '),
                   maxLines: 1,
@@ -394,16 +337,20 @@ class _AiReadinessCard extends ConsumerWidget {
             ),
           ),
           CircuitStatusChip(
-            icon: Icons.hub_outlined,
-            label: '${contextState.lsdfFilesIndexed} files',
-            color: _ContextWorkbench._lsdfColor(
-              contextState.lsdfStatus,
-              tokens,
-            ),
+            icon: Icons.manage_search_outlined,
+            label: '${workspaceState.fileIndexProgress?.files ?? 0} files',
+            color: workspaceState.error != null ? tokens.error : tokens.success,
           ),
         ],
       ),
     );
+  }
+
+  String _workspaceLabel(WorkspaceContextState state) {
+    if (state.error != null) return 'workspace error';
+    if (state.isBusy) return 'indexing workspace';
+    if (state.fileIndexProgress != null) return 'workspace indexed';
+    return 'workspace ready';
   }
 }
 
@@ -511,7 +458,7 @@ class _WorkspaceProgressRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final isError = state.error != null;
-    final progress = state.lsdfProgress ?? state.fileIndexProgress;
+    final progress = state.fileIndexProgress;
     final files = progress?.files ?? 0;
     final directories = progress?.directories ?? 0;
 

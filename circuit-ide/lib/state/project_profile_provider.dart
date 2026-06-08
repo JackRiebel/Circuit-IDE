@@ -83,11 +83,7 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
         projectTypes: detection.allTypes,
         detectedFeatures: detection.detectedFeatures,
         commands: commands,
-        recommendations: _recommendations(
-          commands,
-          git.status.totalChanges,
-          workspace.lsdfStatus.name,
-        ),
+        recommendations: _recommendations(commands, git.status.totalChanges),
         entrypoints: entrypoints,
         gitBranch: git.status.branch.isEmpty ? null : git.status.branch,
         changedFiles: git.status.totalChanges,
@@ -191,7 +187,6 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
   List<ProjectRecommendation> _recommendations(
     List<ProjectCommand> commands,
     int changedFiles,
-    String lsdfStatus,
   ) {
     final recommendations = <ProjectRecommendation>[
       const ProjectRecommendation(
@@ -219,17 +214,6 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
           description: 'Use detected test, lint, or build commands.',
           kind: ProjectRecommendationKind.runChecks,
           priority: 70,
-        ),
-      );
-    }
-    if (lsdfStatus != 'ready') {
-      recommendations.add(
-        const ProjectRecommendation(
-          id: 'map-workspace',
-          title: 'Refresh the code map',
-          description: 'Rebuild project context before broad AI work.',
-          kind: ProjectRecommendationKind.mapWorkspace,
-          priority: 72,
         ),
       );
     }

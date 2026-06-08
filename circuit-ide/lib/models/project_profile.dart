@@ -4,7 +4,6 @@ import 'agent_run.dart';
 enum ProjectReadiness { noWorkspace, loading, ready, degraded, error }
 
 enum ProjectRecommendationKind {
-  mapWorkspace,
   runChecks,
   explainProject,
   summarizeChanges,

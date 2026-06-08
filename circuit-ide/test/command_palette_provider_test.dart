@@ -12,10 +12,10 @@ void main() {
     container.read(commandPaletteProvider.notifier).registerCommands([
       CommandDescriptor(
         id: 'workspace.refresh',
-        title: 'Refresh Code Map',
-        description: 'Rebuild L-SDF index',
+        title: 'Refresh Workspace',
+        description: 'Refresh the lightweight file index',
         category: 'Workspace',
-        icon: Icons.hub_outlined,
+        icon: Icons.refresh,
         run: () {},
       ),
       CommandDescriptor(
@@ -27,7 +27,7 @@ void main() {
       ),
     ]);
 
-    container.read(commandPaletteProvider.notifier).filter('lsdf');
+    container.read(commandPaletteProvider.notifier).filter('file index');
     expect(
       container.read(commandPaletteProvider).filteredCommands.single.id,
       'workspace.refresh',

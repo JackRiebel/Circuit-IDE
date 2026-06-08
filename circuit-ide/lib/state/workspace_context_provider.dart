@@ -7,7 +7,6 @@ import '../models/workspace_context.dart';
 import '../models/agent_run.dart';
 import '../services/file_indexer.dart';
 import 'agent_run_provider.dart';
-import 'ai_context_provider.dart';
 import 'file_tree_provider.dart';
 
 class WorkspaceContextController extends Notifier<WorkspaceContextState> {
@@ -34,7 +33,6 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
     state = WorkspaceContextState(
       rootPath: normalized,
       status: WorkspaceLifecycleStatus.loading,
-      lsdfStatus: LsdfIndexStatus.checking,
       message: 'Preparing workspace context...',
     );
     ref
@@ -43,15 +41,13 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
           id: 'workspace:$generation',
           kind: AgentRunKind.backgroundTask,
           model: 'workspace',
-          title: 'Map Workspace',
+          title: 'Index Workspace',
           inputPreview: normalized,
-          message: 'Workspace mapping started',
+          message: 'Workspace indexing started',
         );
 
     try {
       await _indexFiles(normalized, generation);
-      if (generation != _generation || state.cancelRequested) return;
-      await _buildLsdf(normalized, generation, force: forceLsdf);
       if (generation != _generation || state.cancelRequested) return;
 
       state = state.copyWith(
@@ -134,54 +130,6 @@ class WorkspaceContextController extends Notifier<WorkspaceContextState> {
           AgentRunKind.backgroundTask,
           AgentRunEventType.contextPrepared,
           'File index ready · ${indexer.files.length} entries',
-        );
-  }
-
-  Future<void> _buildLsdf(
-    String rootPath,
-    int generation, {
-    required bool force,
-  }) async {
-    state = state.copyWith(
-      lsdfStatus: LsdfIndexStatus.building,
-      lsdfProgress: WorkspaceIndexProgress(
-        label: 'Building L-SDF map...',
-        updatedAt: DateTime.now(),
-      ),
-    );
-    ref
-        .read(agentRunProvider.notifier)
-        .addEvent(
-          AgentRunKind.backgroundTask,
-          AgentRunEventType.contextPrepared,
-          'Building L-SDF map',
-        );
-
-    final aiNotifier = ref.read(aiContextProvider.notifier);
-    if (force) {
-      await aiNotifier.rebuildLsdfIndex(rootPath);
-    } else {
-      await aiNotifier.ensureLsdfIndex(rootPath);
-    }
-    if (generation != _generation) return;
-    final aiContext = ref.read(aiContextProvider);
-
-    state = state.copyWith(
-      lsdfStatus: aiContext.lsdfStatus,
-      lsdfProgress: WorkspaceIndexProgress(
-        label: aiContext.lsdfMessage ?? 'L-SDF map ready',
-        files: aiContext.lsdfFilesIndexed,
-        directories: aiContext.lsdfDirectoriesIndexed,
-        updatedAt: DateTime.now(),
-      ),
-      error: aiContext.lsdfError,
-    );
-    ref
-        .read(agentRunProvider.notifier)
-        .addEvent(
-          AgentRunKind.backgroundTask,
-          AgentRunEventType.contextPrepared,
-          state.lsdfProgress?.label ?? 'L-SDF map ready',
         );
   }
 }

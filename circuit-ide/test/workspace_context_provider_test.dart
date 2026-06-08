@@ -10,7 +10,7 @@ import 'package:path/path.dart' as p;
 
 void main() {
   test(
-    'WorkspaceContextController indexes files and prepares L-SDF map',
+    'WorkspaceContextController indexes files without building L-SDF maps',
     () async {
       final root = await Directory.systemTemp.createTemp('workspace_context_');
       addTearDown(() async {
@@ -33,8 +33,8 @@ void main() {
       final state = container.read(workspaceContextProvider);
       expect(state.status, WorkspaceLifecycleStatus.ready);
       expect(state.fileIndexProgress?.files, 1);
-      expect(state.lsdfProgress?.files, 1);
-      expect(await File(p.join(root.path, 'project.lsdf')).exists(), isTrue);
+      expect(state.lsdfProgress, isNull);
+      expect(await File(p.join(root.path, 'project.lsdf')).exists(), isFalse);
       expect(
         container
             .read(agentRunProvider)
