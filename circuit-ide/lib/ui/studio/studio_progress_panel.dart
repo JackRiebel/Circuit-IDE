@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
+import '../../models/command_run.dart';
 import '../../models/studio_shell.dart';
+import '../../models/studio_view_models.dart';
+import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
@@ -17,10 +20,40 @@ class StudioProgressPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final chat = ref.watch(chatProvider);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
-    final commands = ref.watch(commandRunProvider);
-    final rows = [
+    final commands = ref.watch(commandRunProvider).values.toList();
+    final runningCommand = commands
+        .where((command) => command.status == CommandRunStatus.running)
+        .firstOrNull;
+    final displayState = TaskDisplayState.derive(
+      task: task,
+      isChatProcessing: chat.isProcessing,
+      isChatStreaming: chat.isStreaming,
+      hasAssistantResponse: hasAssistantResponse(chat.messages),
+      hasPendingApproval: chat.pendingConfirmation != null,
+      commands: commands,
+      chatError: chat.error,
+    );
+    final rows = <StudioProgressRow>[
+      StudioProgressRow(
+        label: 'Task',
+        value: displayState.label,
+        accent: displayState.isActive || displayState.needsAttention,
+      ),
+      if (chat.pendingConfirmation != null)
+        const StudioProgressRow(
+          label: 'Approval',
+          value: 'Required',
+          accent: true,
+        ),
+      if (runningCommand != null)
+        StudioProgressRow(
+          label: 'Command',
+          value: '${runningCommand.elapsed.inSeconds}s',
+          accent: true,
+        ),
       StudioProgressRow(
         label: 'Changes',
         value: patch == null ? 'No pending changes' : '+${patch.fileCount}',
@@ -125,6 +158,9 @@ class _ProgressRow extends ConsumerWidget {
 
   IconData _iconFor(String label) {
     return switch (label) {
+      'Task' => Icons.radio_button_checked,
+      'Approval' => Icons.shield_outlined,
+      'Command' => Icons.terminal_outlined,
       'Changes' => Icons.inventory_2_outlined,
       'Local' => Icons.computer_outlined,
       'Branch' => Icons.account_tree_outlined,

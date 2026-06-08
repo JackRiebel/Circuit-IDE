@@ -6,8 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/studio_view_models.dart';
 import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
+import '../../state/chat_provider.dart';
+import '../../state/command_run_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
@@ -206,31 +209,56 @@ class _RecentProjectGroup extends ConsumerWidget {
     final name = p.basename(path);
     final rootPath = ref.watch(fileTreeProvider).rootPath;
     final isSelectedProject = rootPath == path;
+    final workspace = ref.watch(agentWorkspaceProvider);
+    final chat = ref.watch(chatProvider);
+    final commands = ref.watch(commandRunProvider).values;
     final tasks = isSelectedProject
-        ? ref.watch(agentWorkspaceProvider).tasks.take(2).toList()
+        ? workspace.tasks.take(4).toList()
         : const [];
     final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
+    final projectSummary = StudioRailProjectSummary(
+      path: path,
+      name: name,
+      selected: isSelectedProject,
+      taskCount: tasks.length,
+    );
+    final taskSummaries = [
+      for (final task in tasks)
+        StudioRailTaskSummary(
+          id: task.id,
+          title: task.goal,
+          selected: task.id == selectedTaskId,
+          displayState: TaskDisplayState.derive(
+            task: task,
+            isChatProcessing: task.id == selectedTaskId && chat.isProcessing,
+            isChatStreaming: task.id == selectedTaskId && chat.isStreaming,
+            hasAssistantResponse:
+                task.id == selectedTaskId &&
+                hasAssistantResponse(chat.messages),
+            hasPendingApproval:
+                task.id == selectedTaskId && chat.pendingConfirmation != null,
+            commands: task.id == selectedTaskId ? commands : const [],
+            chatError: task.id == selectedTaskId ? chat.error : null,
+          ),
+        ),
+    ];
     return Padding(
       padding: const EdgeInsets.only(bottom: Spacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ProjectRow(name: name, path: path, selected: isSelectedProject),
-          for (var i = 0; i < tasks.length; i++)
+          _ProjectRow(summary: projectSummary),
+          for (final task in taskSummaries)
             Padding(
               padding: const EdgeInsets.only(
                 left: Spacing.xxl,
                 right: Spacing.md,
               ),
               child: _ConversationRow(
-                title: tasks[i].goal,
-                shortcut: '⌘${i + 1}',
-                selected: tasks[i].id == selectedTaskId,
+                summary: task,
                 onTap: () {
-                  ref
-                      .read(agentWorkspaceProvider.notifier)
-                      .selectTask(tasks[i].id);
-                  ref.read(studioShellProvider.notifier).openTask(tasks[i].id);
+                  ref.read(agentWorkspaceProvider.notifier).selectTask(task.id);
+                  ref.read(studioShellProvider.notifier).openTask(task.id);
                 },
               ),
             ),
@@ -241,19 +269,14 @@ class _RecentProjectGroup extends ConsumerWidget {
 }
 
 class _ProjectRow extends ConsumerWidget {
-  final String name;
-  final String path;
-  final bool selected;
+  final StudioRailProjectSummary summary;
 
-  const _ProjectRow({
-    required this.name,
-    required this.path,
-    required this.selected,
-  });
+  const _ProjectRow({required this.summary});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final selected = summary.selected;
     return InkWell(
       onTap: () => unawaited(_open(ref)),
       borderRadius: BorderRadius.circular(Radii.lg),
@@ -279,7 +302,7 @@ class _ProjectRow extends ConsumerWidget {
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
-                name,
+                summary.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -298,34 +321,29 @@ class _ProjectRow extends ConsumerWidget {
   Future<void> _open(WidgetRef ref) async {
     final result = await ref
         .read(fileTreeProvider.notifier)
-        .openDirectory(path);
+        .openDirectory(summary.path);
     if (!result.success) {
       if (result.recentProjectStatus == RecentProjectStatus.missing) {
-        ref.read(settingsProvider.notifier).removeRecentProject(path);
+        ref.read(settingsProvider.notifier).removeRecentProject(summary.path);
       }
       return;
     }
-    ref.read(settingsProvider.notifier).addRecentProject(path);
-    ref.read(studioShellProvider.notifier).openProject(path);
+    ref.read(settingsProvider.notifier).addRecentProject(summary.path);
+    ref.read(studioShellProvider.notifier).openProject(summary.path);
   }
 }
 
 class _ConversationRow extends ConsumerWidget {
-  final String title;
-  final String shortcut;
-  final bool selected;
+  final StudioRailTaskSummary summary;
   final VoidCallback onTap;
 
-  const _ConversationRow({
-    required this.title,
-    required this.shortcut,
-    required this.selected,
-    required this.onTap,
-  });
+  const _ConversationRow({required this.summary, required this.onTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final selected = summary.selected;
+    final display = summary.displayState;
     return InkWell(
       borderRadius: BorderRadius.circular(Radii.lg),
       onTap: onTap,
@@ -342,7 +360,7 @@ class _ConversationRow extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(
-                title,
+                summary.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -361,11 +379,17 @@ class _ConversationRow extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(Radii.pill),
               ),
               child: Text(
-                shortcut,
+                display.label,
                 style: TextStyle(
-                  color: selected ? tokens.textPrimary : tokens.textMuted,
+                  color: display.needsAttention
+                      ? tokens.warning
+                      : selected
+                      ? tokens.textPrimary
+                      : tokens.textMuted,
                   fontSize: FontSizes.xxs,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: selected || display.needsAttention
+                      ? FontWeight.w700
+                      : FontWeight.w500,
                 ),
               ),
             ),

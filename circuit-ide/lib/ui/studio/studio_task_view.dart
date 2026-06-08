@@ -7,10 +7,11 @@ import 'package:markdown_widget/markdown_widget.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../enums/message_role.dart';
 import '../../models/agent_workspace.dart';
+import '../../models/chat_message.dart';
 import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
-import '../../models/studio_shell.dart';
+import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
@@ -55,16 +56,6 @@ class _TaskTranscript extends ConsumerWidget {
     final chat = ref.watch(chatProvider);
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
-    final visibleMessages = chat.messages
-        .where(
-          (message) =>
-              message.role == MessageRole.user ||
-              message.role == MessageRole.assistant,
-        )
-        .toList();
-    final recentMessages = visibleMessages.length > 12
-        ? visibleMessages.sublist(visibleMessages.length - 12)
-        : visibleMessages;
     final commandIds = commands.map((command) => command.id).toSet();
     final artifacts =
         task?.artifacts
@@ -76,6 +67,33 @@ class _TaskTranscript extends ConsumerWidget {
             .toList() ??
         const <AgentTaskArtifact>[];
     final title = task?.goal ?? 'New Circuit task';
+    final displayState = TaskDisplayState.derive(
+      task: task,
+      isChatProcessing: chat.isProcessing,
+      isChatStreaming: chat.isStreaming,
+      hasAssistantResponse: hasAssistantResponse(chat.messages),
+      hasPendingApproval: chat.pendingConfirmation != null,
+      commands: commands,
+      chatError: chat.error,
+    );
+    final transcriptItems = _buildTranscriptItems(
+      messages: chat.messages,
+      artifacts: artifacts,
+      commands: commands.take(4).toList(),
+      patch: patch,
+      confirmation: chat.pendingConfirmation,
+      error: chat.error,
+      fallbackUserText: title,
+      fallbackCreatedAt: task?.createdAt,
+    );
+    final activityItems = transcriptItems
+        .where(
+          (item) =>
+              item.type == StudioTranscriptItemType.activity ||
+              item.type == StudioTranscriptItemType.patchReview ||
+              item.type == StudioTranscriptItemType.commandRun,
+        )
+        .toList();
 
     return Column(
       children: [
@@ -86,7 +104,7 @@ class _TaskTranscript extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  _statusLabel(task, chat),
+                  _statusLabel(task, displayState),
                   style: TextStyle(
                     color: tokens.textMuted,
                     fontSize: FontSizes.sm,
@@ -95,22 +113,32 @@ class _TaskTranscript extends ConsumerWidget {
                 const SizedBox(height: Spacing.md),
                 Divider(color: tokens.studioDivider),
                 const SizedBox(height: Spacing.md),
-                if (recentMessages.isEmpty)
-                  _ChatTranscriptLine(isUser: true, text: title),
-                for (final message in recentMessages)
-                  _ChatTranscriptLine(
-                    isUser: message.role == MessageRole.user,
-                    text: message.content,
-                  ),
-                if (chat.pendingConfirmation != null)
-                  _StudioConfirmationCard(request: chat.pendingConfirmation!),
-                if (artifacts.isNotEmpty ||
-                    patch != null ||
-                    commands.isNotEmpty)
+                for (final item in transcriptItems)
+                  switch (item.type) {
+                    StudioTranscriptItemType.userMessage => _ChatTranscriptLine(
+                      isUser: true,
+                      text: item.message!.content,
+                    ),
+                    StudioTranscriptItemType.assistantMarkdown =>
+                      _ChatTranscriptLine(
+                        isUser: false,
+                        text: item.message!.content,
+                      ),
+                    StudioTranscriptItemType.approval =>
+                      _StudioConfirmationCard(request: item.confirmation!),
+                    StudioTranscriptItemType.error => _TranscriptEvent(
+                      icon: Icons.error_outline,
+                      title: 'Circuit AI needs attention',
+                      detail: item.error!,
+                    ),
+                    StudioTranscriptItemType.activity ||
+                    StudioTranscriptItemType.patchReview ||
+                    StudioTranscriptItemType.commandRun =>
+                      const SizedBox.shrink(),
+                  },
+                if (activityItems.isNotEmpty)
                   _ActivitySection(
-                    artifacts: artifacts,
-                    commands: commands.take(4).toList(),
-                    patch: patch,
+                    items: activityItems,
                     artifactIcon: _artifactIcon,
                   ),
                 if (patch != null)
@@ -131,12 +159,6 @@ class _TaskTranscript extends ConsumerWidget {
                     text: chat.streamingContent.isEmpty
                         ? 'Circuit AI is responding...'
                         : chat.streamingContent,
-                  ),
-                if (chat.error != null)
-                  _TranscriptEvent(
-                    icon: Icons.error_outline,
-                    title: 'Circuit AI needs attention',
-                    detail: chat.error!,
                   ),
               ],
             ),
@@ -168,10 +190,9 @@ class _TaskTranscript extends ConsumerWidget {
     return '${delta.inMinutes}m ${delta.inSeconds.remainder(60)}s';
   }
 
-  String _statusLabel(AgentTask? task, ChatState chat) {
-    if (chat.pendingConfirmation != null) return 'Waiting for approval';
-    if (task == null) return chat.isProcessing ? 'Working' : 'Ready';
-    return '${studioTaskStatusLabel(task.status)} for ${_elapsed(task.createdAt)}';
+  String _statusLabel(AgentTask? task, TaskDisplayState displayState) {
+    final elapsed = task == null ? '' : ' for ${_elapsed(task.createdAt)}';
+    return '${displayState.label}$elapsed';
   }
 
   IconData _artifactIcon(AgentTaskArtifactType type) {
@@ -183,6 +204,65 @@ class _TaskTranscript extends ConsumerWidget {
       AgentTaskArtifactType.verification => Icons.playlist_add_check_outlined,
       AgentTaskArtifactType.diagnostic => Icons.fact_check_outlined,
     };
+  }
+
+  List<StudioTranscriptItem> _buildTranscriptItems({
+    required List<ChatMessage> messages,
+    required List<AgentTaskArtifact> artifacts,
+    required List<CommandRun> commands,
+    required ProposedPatchSet? patch,
+    required ConfirmationRequest? confirmation,
+    required String? error,
+    required String fallbackUserText,
+    required DateTime? fallbackCreatedAt,
+  }) {
+    final visibleMessages = messages
+        .where(
+          (message) =>
+              message.role == MessageRole.user ||
+              message.role == MessageRole.assistant,
+        )
+        .toList();
+    final recentMessages = visibleMessages.length > 12
+        ? visibleMessages.sublist(visibleMessages.length - 12)
+        : visibleMessages;
+    final items = <StudioTranscriptItem>[];
+    if (recentMessages.isEmpty) {
+      items.add(
+        StudioTranscriptItem.userMessage(
+          ChatMessage(
+            id: 'studio-fallback-user-message',
+            role: MessageRole.user,
+            content: fallbackUserText,
+            timestamp: fallbackCreatedAt ?? DateTime.now(),
+          ),
+        ),
+      );
+    } else {
+      for (final message in recentMessages) {
+        if (message.role == MessageRole.user) {
+          items.add(StudioTranscriptItem.userMessage(message));
+        } else {
+          items.add(StudioTranscriptItem.assistantMarkdown(message));
+        }
+      }
+    }
+    if (confirmation != null) {
+      items.add(StudioTranscriptItem.approval(confirmation));
+    }
+    for (final artifact in artifacts) {
+      items.add(StudioTranscriptItem.activity(artifact));
+    }
+    if (patch != null) {
+      items.add(StudioTranscriptItem.patchReview(patch));
+    }
+    for (final command in commands) {
+      items.add(StudioTranscriptItem.commandRun(command));
+    }
+    if (error != null) {
+      items.add(StudioTranscriptItem.error(error));
+    }
+    return items;
   }
 }
 
@@ -289,22 +369,14 @@ class _StudioConfirmationCard extends ConsumerWidget {
 }
 
 class _ActivitySection extends ConsumerWidget {
-  final List<AgentTaskArtifact> artifacts;
-  final List<CommandRun> commands;
-  final ProposedPatchSet? patch;
+  final List<StudioTranscriptItem> items;
   final IconData Function(AgentTaskArtifactType type) artifactIcon;
 
-  const _ActivitySection({
-    required this.artifacts,
-    required this.commands,
-    required this.patch,
-    required this.artifactIcon,
-  });
+  const _ActivitySection({required this.items, required this.artifactIcon});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final patchSet = patch;
     return Padding(
       padding: const EdgeInsets.only(top: Spacing.sm, bottom: Spacing.lg),
       child: Container(
@@ -331,32 +403,45 @@ class _ActivitySection extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: Spacing.md),
-            for (final artifact in artifacts)
-              _TranscriptEvent(
-                icon: artifactIcon(artifact.type),
-                title: artifact.title,
-                detail: artifact.detail,
-                compact: true,
-              ),
-            if (patchSet != null)
-              _TranscriptEvent(
-                icon: Icons.rate_review_outlined,
-                title: 'Patch ready for review',
-                detail: '${patchSet.fileCount} files proposed',
-                compact: true,
-              ),
-            for (final command in commands)
-              _TranscriptEvent(
-                icon: Icons.terminal_outlined,
-                title: command.command,
-                detail:
-                    '${command.status.name} · ${command.elapsed.inSeconds}s',
-                compact: true,
-              ),
+            for (final item in items)
+              _ActivityItem(item: item, iconFor: artifactIcon),
           ],
         ),
       ),
     );
+  }
+}
+
+class _ActivityItem extends StatelessWidget {
+  final StudioTranscriptItem item;
+  final IconData Function(AgentTaskArtifactType type) iconFor;
+
+  const _ActivityItem({required this.item, required this.iconFor});
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (item.type) {
+      StudioTranscriptItemType.activity => _TranscriptEvent(
+        icon: iconFor(item.artifact!.type),
+        title: item.artifact!.title,
+        detail: item.artifact!.detail,
+        compact: true,
+      ),
+      StudioTranscriptItemType.patchReview => _TranscriptEvent(
+        icon: Icons.rate_review_outlined,
+        title: 'Patch ready for review',
+        detail: '${item.patch!.fileCount} files proposed',
+        compact: true,
+      ),
+      StudioTranscriptItemType.commandRun => _TranscriptEvent(
+        icon: Icons.terminal_outlined,
+        title: item.commandRun!.command,
+        detail:
+            '${item.commandRun!.status.name} · ${item.commandRun!.elapsed.inSeconds}s',
+        compact: true,
+      ),
+      _ => const SizedBox.shrink(),
+    };
   }
 }
 

@@ -8,26 +8,67 @@ import '../../state/chat_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 
-Future<void> sendStudioMessage(
+enum StudioSendStatus { sent, blocked, failed, completed }
+
+class StudioSendResult {
+  final StudioSendStatus status;
+  final String? message;
+
+  const StudioSendResult._(this.status, [this.message]);
+
+  const StudioSendResult.sent() : this._(StudioSendStatus.sent);
+
+  const StudioSendResult.blocked(String message)
+    : this._(StudioSendStatus.blocked, message);
+
+  const StudioSendResult.failed(String message)
+    : this._(StudioSendStatus.failed, message);
+
+  const StudioSendResult.completed() : this._(StudioSendStatus.completed);
+}
+
+Future<StudioSendResult> sendStudioMessage(
   WidgetRef ref,
   String text, {
   String? taskId,
   bool finishTask = false,
 }) async {
+  final beforeSend = ref.read(chatProvider);
+  if (beforeSend.isProcessing) {
+    return const StudioSendResult.sent();
+  }
   final attachments = buildStudioContextAttachments(ref, text);
   await ref
       .read(chatProvider.notifier)
       .sendMessage(text, attachments: attachments);
 
-  if (!finishTask || taskId == null) return;
   final chat = ref.read(chatProvider);
-  if (chat.error != null) {
-    ref.read(agentWorkspaceProvider.notifier).failTask(taskId, chat.error!);
-    return;
+  final preflight = chat.preflight;
+  if (preflight != null && !preflight.canSend) {
+    final message =
+        preflight.primaryIssue?.message ?? 'Circuit AI is not ready.';
+    if (finishTask && taskId != null) {
+      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+    }
+    return StudioSendResult.blocked(message);
   }
-  ref
-      .read(agentWorkspaceProvider.notifier)
-      .completeTask(taskId, result: _lastAssistantPreview(chat));
+  if (chat.error != null) {
+    if (finishTask && taskId != null) {
+      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, chat.error!);
+    }
+    return StudioSendResult.failed(chat.error!);
+  }
+  if (chat.isProcessing ||
+      chat.isStreaming ||
+      chat.pendingConfirmation != null) {
+    return const StudioSendResult.sent();
+  }
+  if (finishTask && taskId != null) {
+    ref
+        .read(agentWorkspaceProvider.notifier)
+        .completeTask(taskId, result: _lastAssistantPreview(chat));
+  }
+  return const StudioSendResult.completed();
 }
 
 List<ContextAttachment> buildStudioContextAttachments(
