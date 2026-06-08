@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/studio_shell.dart';
 import 'file_tree_provider.dart';
+import 'studio_thread_provider.dart';
 
 class StudioShellNotifier extends Notifier<StudioShellState> {
   @override
@@ -19,6 +20,7 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
   }
 
   void openProject([String? projectPath]) {
+    ref.read(studioThreadProvider.notifier).selectThread(null);
     state = state.copyWith(
       mode: StudioMode.home,
       selectedProjectPath: projectPath ?? state.selectedProjectPath,
@@ -27,6 +29,7 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
   }
 
   void openTask(String taskId) {
+    ref.read(studioThreadProvider.notifier).selectTaskThread(taskId);
     state = state.copyWith(mode: StudioMode.task, selectedTaskId: taskId);
   }
 

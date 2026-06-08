@@ -11,12 +11,14 @@ import '../../models/chat_message.dart';
 import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
+import '../../models/studio_thread.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_shell_provider.dart';
+import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../chat/chat_message_widget.dart';
 import 'studio_message_sender.dart';
@@ -54,8 +56,21 @@ class _TaskTranscript extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final chat = ref.watch(chatProvider);
-    final patch = ref.watch(patchProposalProvider).active;
-    final commands = ref.watch(commandRunProvider).values.toList();
+    final threadState = ref.watch(studioThreadProvider);
+    final thread =
+        threadState.threadForTask(task?.id) ?? threadState.selectedThread;
+    final activePatch = ref.watch(patchProposalProvider).active;
+    final patch =
+        activePatch?.agentTaskId == null || activePatch?.agentTaskId == task?.id
+        ? activePatch
+        : null;
+    final allCommands = ref.watch(commandRunProvider).values.toList();
+    final taskCommandIds = task?.commandRunIds.toSet() ?? const <String>{};
+    final commands = taskCommandIds.isEmpty
+        ? const <CommandRun>[]
+        : allCommands
+              .where((command) => taskCommandIds.contains(command.id))
+              .toList();
     final commandIds = commands.map((command) => command.id).toSet();
     final artifacts =
         task?.artifacts
@@ -67,22 +82,30 @@ class _TaskTranscript extends ConsumerWidget {
             .toList() ??
         const <AgentTaskArtifact>[];
     final title = task?.goal ?? 'New Circuit task';
-    final displayState = TaskDisplayState.derive(
-      task: task,
-      isChatProcessing: chat.isProcessing,
-      isChatStreaming: chat.isStreaming,
-      hasAssistantResponse: hasAssistantResponse(chat.messages),
-      hasPendingApproval: chat.pendingConfirmation != null,
-      commands: commands,
-      chatError: chat.error,
-    );
+    final lifecycle = StudioTaskLifecycleState.fromThread(thread);
+    final displayState = thread == null
+        ? TaskDisplayState.derive(
+            task: task,
+            isChatProcessing: chat.isProcessing,
+            isChatStreaming: chat.isStreaming,
+            hasAssistantResponse: false,
+            hasPendingApproval: chat.pendingConfirmation != null,
+            commands: commands,
+            chatError: chat.error,
+          )
+        : TaskDisplayState.fromLifecycle(lifecycle);
     final transcriptItems = _buildTranscriptItems(
-      messages: chat.messages,
+      messages:
+          thread?.messages.map((message) => message.toChatMessage()).toList() ??
+          const [],
       artifacts: artifacts,
       commands: commands.take(4).toList(),
       patch: patch,
-      confirmation: chat.pendingConfirmation,
-      error: chat.error,
+      confirmation: (thread?.isActive ?? false)
+          ? chat.pendingConfirmation
+          : null,
+      error: thread?.lastError,
+      thread: thread,
       fallbackUserText: title,
       fallbackCreatedAt: task?.createdAt,
     );
@@ -153,12 +176,16 @@ class _TaskTranscript extends ConsumerWidget {
                       ),
                     ),
                   ),
-                if (chat.isStreaming)
+                if ((thread?.isActive ?? false) &&
+                    (thread?.status == StudioThreadStatus.streaming ||
+                        chat.isStreaming))
                   _ChatTranscriptLine(
                     isUser: false,
-                    text: chat.streamingContent.isEmpty
+                    text:
+                        (thread?.streamingContent ?? chat.streamingContent)
+                            .isEmpty
                         ? 'Circuit AI is responding...'
-                        : chat.streamingContent,
+                        : thread?.streamingContent ?? chat.streamingContent,
                   ),
               ],
             ),
@@ -213,6 +240,7 @@ class _TaskTranscript extends ConsumerWidget {
     required ProposedPatchSet? patch,
     required ConfirmationRequest? confirmation,
     required String? error,
+    required StudioThread? thread,
     required String fallbackUserText,
     required DateTime? fallbackCreatedAt,
   }) {
@@ -227,6 +255,10 @@ class _TaskTranscript extends ConsumerWidget {
         ? visibleMessages.sublist(visibleMessages.length - 12)
         : visibleMessages;
     final items = <StudioTranscriptItem>[];
+    final lastUserMessageId = recentMessages
+        .where((message) => message.role == MessageRole.user)
+        .lastOrNull
+        ?.id;
     if (recentMessages.isEmpty) {
       items.add(
         StudioTranscriptItem.userMessage(
@@ -241,26 +273,86 @@ class _TaskTranscript extends ConsumerWidget {
     } else {
       for (final message in recentMessages) {
         if (message.role == MessageRole.user) {
-          items.add(StudioTranscriptItem.userMessage(message));
+          items.add(
+            StudioTranscriptItem.userMessage(
+              message,
+              threadId: thread?.id,
+              requestId: thread?.requestId,
+            ),
+          );
+          if (message.id == lastUserMessageId &&
+              thread?.contextSummary != null) {
+            items.add(
+              StudioTranscriptItem.activity(
+                AgentTaskArtifact(
+                  id: 'context-${thread!.id}-${message.id}',
+                  type: AgentTaskArtifactType.contextPack,
+                  title: thread.contextSummary!.title,
+                  detail: thread.contextSummary!.detail,
+                  createdAt: message.timestamp,
+                ),
+                threadId: thread.id,
+                requestId: thread.requestId,
+                relatedMessageId: message.id,
+                contextSummary: thread.contextSummary,
+              ),
+            );
+          }
         } else {
-          items.add(StudioTranscriptItem.assistantMarkdown(message));
+          items.add(
+            StudioTranscriptItem.assistantMarkdown(
+              message,
+              threadId: thread?.id,
+              requestId: thread?.requestId,
+            ),
+          );
         }
       }
     }
     if (confirmation != null) {
-      items.add(StudioTranscriptItem.approval(confirmation));
+      items.add(
+        StudioTranscriptItem.approval(
+          confirmation,
+          threadId: thread?.id,
+          requestId: thread?.requestId,
+        ),
+      );
     }
     for (final artifact in artifacts) {
-      items.add(StudioTranscriptItem.activity(artifact));
+      items.add(
+        StudioTranscriptItem.activity(
+          artifact,
+          threadId: thread?.id,
+          requestId: thread?.requestId,
+        ),
+      );
     }
     if (patch != null) {
-      items.add(StudioTranscriptItem.patchReview(patch));
+      items.add(
+        StudioTranscriptItem.patchReview(
+          patch,
+          threadId: thread?.id,
+          requestId: thread?.requestId,
+        ),
+      );
     }
     for (final command in commands) {
-      items.add(StudioTranscriptItem.commandRun(command));
+      items.add(
+        StudioTranscriptItem.commandRun(
+          command,
+          threadId: thread?.id,
+          requestId: thread?.requestId,
+        ),
+      );
     }
     if (error != null) {
-      items.add(StudioTranscriptItem.error(error));
+      items.add(
+        StudioTranscriptItem.error(
+          error,
+          threadId: thread?.id,
+          requestId: thread?.requestId,
+        ),
+      );
     }
     return items;
   }

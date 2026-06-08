@@ -4,6 +4,7 @@ import 'chat_message.dart';
 import 'command_run.dart';
 import 'confirmation_request.dart';
 import 'reviewed_edit.dart';
+import 'studio_thread.dart';
 
 enum TaskDisplayKind {
   idle,
@@ -95,6 +96,27 @@ class TaskDisplayState {
     }
     return const TaskDisplayState(kind: TaskDisplayKind.idle, label: 'Ready');
   }
+
+  factory TaskDisplayState.fromLifecycle(StudioTaskLifecycleState lifecycle) {
+    return TaskDisplayState(
+      kind: switch (lifecycle.status) {
+        StudioThreadStatus.waitingForApproval =>
+          TaskDisplayKind.waitingForApproval,
+        StudioThreadStatus.runningCommand => TaskDisplayKind.runningCommand,
+        StudioThreadStatus.streaming => TaskDisplayKind.streaming,
+        StudioThreadStatus.preflighting ||
+        StudioThreadStatus.buildingContext ||
+        StudioThreadStatus.reviewingPatch => TaskDisplayKind.working,
+        StudioThreadStatus.done => TaskDisplayKind.done,
+        StudioThreadStatus.failed => TaskDisplayKind.failed,
+        StudioThreadStatus.cancelled => TaskDisplayKind.cancelled,
+        StudioThreadStatus.idle => TaskDisplayKind.idle,
+      },
+      label: lifecycle.label,
+      isActive: lifecycle.isActive,
+      needsAttention: lifecycle.needsAttention,
+    );
+  }
 }
 
 enum StudioTranscriptItemType {
@@ -109,68 +131,137 @@ enum StudioTranscriptItemType {
 
 class StudioTranscriptItem {
   final StudioTranscriptItemType type;
+  final String? threadId;
+  final String? requestId;
+  final DateTime? timestamp;
+  final String? relatedMessageId;
   final ChatMessage? message;
   final AgentTaskArtifact? artifact;
   final CommandRun? commandRun;
   final ProposedPatchSet? patch;
   final ConfirmationRequest? confirmation;
+  final StudioContextSummary? contextSummary;
+  final String? commandRunId;
+  final String? patchSetId;
+  final String? approvalId;
   final String? error;
 
   const StudioTranscriptItem._({
     required this.type,
+    this.threadId,
+    this.requestId,
+    this.timestamp,
+    this.relatedMessageId,
     this.message,
     this.artifact,
     this.commandRun,
     this.patch,
     this.confirmation,
+    this.contextSummary,
+    this.commandRunId,
+    this.patchSetId,
+    this.approvalId,
     this.error,
   });
 
-  factory StudioTranscriptItem.userMessage(ChatMessage message) {
+  factory StudioTranscriptItem.userMessage(
+    ChatMessage message, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.userMessage,
+      threadId: threadId,
+      requestId: requestId,
+      timestamp: message.timestamp,
       message: message,
     );
   }
 
-  factory StudioTranscriptItem.assistantMarkdown(ChatMessage message) {
+  factory StudioTranscriptItem.assistantMarkdown(
+    ChatMessage message, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.assistantMarkdown,
+      threadId: threadId,
+      requestId: requestId,
+      timestamp: message.timestamp,
       message: message,
     );
   }
 
-  factory StudioTranscriptItem.activity(AgentTaskArtifact artifact) {
+  factory StudioTranscriptItem.activity(
+    AgentTaskArtifact artifact, {
+    String? threadId,
+    String? requestId,
+    String? relatedMessageId,
+    StudioContextSummary? contextSummary,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.activity,
+      threadId: threadId,
+      requestId: requestId,
+      timestamp: artifact.createdAt,
+      relatedMessageId: relatedMessageId,
       artifact: artifact,
+      contextSummary: contextSummary,
     );
   }
 
-  factory StudioTranscriptItem.approval(ConfirmationRequest request) {
+  factory StudioTranscriptItem.approval(
+    ConfirmationRequest request, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.approval,
+      threadId: threadId,
+      requestId: requestId,
+      approvalId: request.id,
       confirmation: request,
     );
   }
 
-  factory StudioTranscriptItem.error(String error) {
+  factory StudioTranscriptItem.error(
+    String error, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.error,
+      threadId: threadId,
+      requestId: requestId,
+      timestamp: DateTime.now(),
       error: error,
     );
   }
 
-  factory StudioTranscriptItem.patchReview(ProposedPatchSet patch) {
+  factory StudioTranscriptItem.patchReview(
+    ProposedPatchSet patch, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.patchReview,
+      threadId: threadId,
+      requestId: requestId,
+      patchSetId: patch.id,
       patch: patch,
     );
   }
 
-  factory StudioTranscriptItem.commandRun(CommandRun commandRun) {
+  factory StudioTranscriptItem.commandRun(
+    CommandRun commandRun, {
+    String? threadId,
+    String? requestId,
+  }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.commandRun,
+      threadId: threadId,
+      requestId: requestId,
+      commandRunId: commandRun.id,
       commandRun: commandRun,
     );
   }

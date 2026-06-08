@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/agent_workspace.dart';
+import '../../models/command_run.dart';
+import '../../models/studio_thread.dart';
 import '../../models/studio_view_models.dart';
 import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
@@ -15,6 +18,7 @@ import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/studio_shell_provider.dart';
+import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 
 class StudioLeftRail extends ConsumerWidget {
@@ -210,6 +214,7 @@ class _RecentProjectGroup extends ConsumerWidget {
     final rootPath = ref.watch(fileTreeProvider).rootPath;
     final isSelectedProject = rootPath == path;
     final workspace = ref.watch(agentWorkspaceProvider);
+    final threadState = ref.watch(studioThreadProvider);
     final chat = ref.watch(chatProvider);
     final commands = ref.watch(commandRunProvider).values;
     final tasks = isSelectedProject
@@ -228,17 +233,12 @@ class _RecentProjectGroup extends ConsumerWidget {
           id: task.id,
           title: task.goal,
           selected: task.id == selectedTaskId,
-          displayState: TaskDisplayState.derive(
-            task: task,
-            isChatProcessing: task.id == selectedTaskId && chat.isProcessing,
-            isChatStreaming: task.id == selectedTaskId && chat.isStreaming,
-            hasAssistantResponse:
-                task.id == selectedTaskId &&
-                hasAssistantResponse(chat.messages),
-            hasPendingApproval:
-                task.id == selectedTaskId && chat.pendingConfirmation != null,
-            commands: task.id == selectedTaskId ? commands : const [],
-            chatError: task.id == selectedTaskId ? chat.error : null,
+          displayState: _displayStateForTask(
+            task,
+            threadState.threadForTask(task.id),
+            isSelected: task.id == selectedTaskId,
+            chat: chat,
+            commands: commands,
           ),
         ),
     ];
@@ -266,6 +266,29 @@ class _RecentProjectGroup extends ConsumerWidget {
       ),
     );
   }
+}
+
+TaskDisplayState _displayStateForTask(
+  AgentTask task,
+  StudioThread? thread, {
+  required bool isSelected,
+  required ChatState chat,
+  required Iterable<CommandRun> commands,
+}) {
+  if (thread != null) {
+    return TaskDisplayState.fromLifecycle(
+      StudioTaskLifecycleState.fromThread(thread),
+    );
+  }
+  return TaskDisplayState.derive(
+    task: task,
+    isChatProcessing: isSelected && chat.isProcessing,
+    isChatStreaming: isSelected && chat.isStreaming,
+    hasAssistantResponse: isSelected && hasAssistantResponse(chat.messages),
+    hasPendingApproval: isSelected && chat.pendingConfirmation != null,
+    commands: isSelected ? commands : const [],
+    chatError: isSelected ? chat.error : null,
+  );
 }
 
 class _ProjectRow extends ConsumerWidget {

@@ -5,11 +5,13 @@ import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/studio_shell.dart';
+import '../../models/studio_thread.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
+import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 
 class StudioProgressPanel extends ConsumerWidget {
@@ -21,21 +23,26 @@ class StudioProgressPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final chat = ref.watch(chatProvider);
+    final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
     final runningCommand = commands
         .where((command) => command.status == CommandRunStatus.running)
         .firstOrNull;
-    final displayState = TaskDisplayState.derive(
-      task: task,
-      isChatProcessing: chat.isProcessing,
-      isChatStreaming: chat.isStreaming,
-      hasAssistantResponse: hasAssistantResponse(chat.messages),
-      hasPendingApproval: chat.pendingConfirmation != null,
-      commands: commands,
-      chatError: chat.error,
-    );
+    final displayState = thread == null
+        ? TaskDisplayState.derive(
+            task: task,
+            isChatProcessing: chat.isProcessing,
+            isChatStreaming: chat.isStreaming,
+            hasAssistantResponse: false,
+            hasPendingApproval: chat.pendingConfirmation != null,
+            commands: commands,
+            chatError: chat.error,
+          )
+        : TaskDisplayState.fromLifecycle(
+            StudioTaskLifecycleState.fromThread(thread),
+          );
     final rows = <StudioProgressRow>[
       StudioProgressRow(
         label: 'Task',
@@ -113,7 +120,7 @@ class StudioProgressPanel extends ConsumerWidget {
             const SizedBox(height: Spacing.md),
             _SourceRow(
               icon: Icons.travel_explore,
-              label: commands.isEmpty ? 'Project context' : 'Tool output',
+              label: _sourceLabel(thread, commands.isNotEmpty),
             ),
           ],
         ),
@@ -167,6 +174,14 @@ class _ProgressRow extends ConsumerWidget {
       _ => Icons.data_object_outlined,
     };
   }
+}
+
+String _sourceLabel(StudioThread? thread, bool hasCommands) {
+  if (hasCommands) return 'Tool output';
+  final summary = thread?.contextSummary;
+  if (summary == null) return 'Project context';
+  if (summary.rootPath == null) return 'No project context';
+  return summary.projectLabel;
 }
 
 class _SourceRow extends ConsumerWidget {
