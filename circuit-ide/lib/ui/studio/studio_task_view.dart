@@ -11,19 +11,21 @@ import '../../models/chat_message.dart';
 import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
+import '../../models/studio_right_drawer.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/patch_proposal_provider.dart';
+import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../chat/chat_message_widget.dart';
 import 'studio_message_sender.dart';
-import 'studio_progress_panel.dart';
 import 'studio_prompt_composer.dart';
+import 'studio_right_drawer.dart';
 
 class StudioTaskView extends ConsumerWidget {
   const StudioTaskView({super.key});
@@ -41,7 +43,7 @@ class StudioTaskView extends ConsumerWidget {
     return Row(
       children: [
         Expanded(child: _TaskTranscript(task: task)),
-        if (studio.rightProgressPanelVisible) StudioProgressPanel(task: task),
+        if (studio.rightProgressPanelVisible) StudioRightDrawer(task: task),
       ],
     );
   }
@@ -109,15 +111,6 @@ class _TaskTranscript extends ConsumerWidget {
       fallbackUserText: title,
       fallbackCreatedAt: task?.createdAt,
     );
-    final activityItems = transcriptItems
-        .where(
-          (item) =>
-              item.type == StudioTranscriptItemType.activity ||
-              item.type == StudioTranscriptItemType.patchReview ||
-              item.type == StudioTranscriptItemType.commandRun,
-        )
-        .toList();
-
     return Column(
       children: [
         Expanded(
@@ -156,14 +149,11 @@ class _TaskTranscript extends ConsumerWidget {
                     ),
                     StudioTranscriptItemType.activity ||
                     StudioTranscriptItemType.patchReview ||
-                    StudioTranscriptItemType.commandRun =>
-                      const SizedBox.shrink(),
+                    StudioTranscriptItemType.commandRun => _ActivityItem(
+                      item: item,
+                      iconFor: _artifactIcon,
+                    ),
                   },
-                if (activityItems.isNotEmpty)
-                  _ActivitySection(
-                    items: activityItems,
-                    artifactIcon: _artifactIcon,
-                  ),
                 if (patch != null)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -460,77 +450,42 @@ class _StudioConfirmationCard extends ConsumerWidget {
   }
 }
 
-class _ActivitySection extends ConsumerWidget {
-  final List<StudioTranscriptItem> items;
-  final IconData Function(AgentTaskArtifactType type) artifactIcon;
-
-  const _ActivitySection({required this.items, required this.artifactIcon});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    return Padding(
-      padding: const EdgeInsets.only(top: Spacing.sm, bottom: Spacing.lg),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(
-          Spacing.lg,
-          Spacing.md,
-          Spacing.lg,
-          Spacing.sm,
-        ),
-        decoration: BoxDecoration(
-          color: tokens.studioPanel.withValues(alpha: 0.38),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: tokens.studioDivider),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Activity',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xs,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: Spacing.md),
-            for (final item in items)
-              _ActivityItem(item: item, iconFor: artifactIcon),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActivityItem extends StatelessWidget {
+class _ActivityItem extends ConsumerWidget {
   final StudioTranscriptItem item;
   final IconData Function(AgentTaskArtifactType type) iconFor;
 
   const _ActivityItem({required this.item, required this.iconFor});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return switch (item.type) {
       StudioTranscriptItemType.activity => _TranscriptEvent(
         icon: iconFor(item.artifact!.type),
         title: item.artifact!.title,
         detail: item.artifact!.detail,
-        compact: true,
+        compact: false,
+        onTap: () => ref
+            .read(studioRightDrawerProvider.notifier)
+            .openMode(StudioDrawerMode.sources),
       ),
       StudioTranscriptItemType.patchReview => _TranscriptEvent(
         icon: Icons.rate_review_outlined,
         title: 'Patch ready for review',
         detail: '${item.patch!.fileCount} files proposed',
-        compact: true,
+        compact: false,
+        onTap: () => ref
+            .read(studioRightDrawerProvider.notifier)
+            .openMode(StudioDrawerMode.diff),
       ),
       StudioTranscriptItemType.commandRun => _TranscriptEvent(
         icon: Icons.terminal_outlined,
         title: item.commandRun!.command,
         detail:
             '${item.commandRun!.status.name} · ${item.commandRun!.elapsed.inSeconds}s',
-        compact: true,
+        compact: false,
+        onTap: () => ref
+            .read(studioRightDrawerProvider.notifier)
+            .openCommand(item.commandRun!.id),
       ),
       _ => const SizedBox.shrink(),
     };
@@ -542,12 +497,14 @@ class _TranscriptEvent extends ConsumerWidget {
   final String title;
   final String detail;
   final bool compact;
+  final VoidCallback? onTap;
 
   const _TranscriptEvent({
     required this.icon,
     required this.title,
     required this.detail,
     this.compact = false,
+    this.onTap,
   });
 
   @override
@@ -555,38 +512,60 @@ class _TranscriptEvent extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Padding(
       padding: EdgeInsets.only(bottom: compact ? Spacing.sm : Spacing.md),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: tokens.textMuted, size: 16),
-          const SizedBox(width: Spacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: FontSizes.sm,
-                    fontWeight: FontWeight.w700,
-                  ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 706),
+          padding: compact
+              ? EdgeInsets.zero
+              : const EdgeInsets.symmetric(
+                  horizontal: Spacing.md,
+                  vertical: Spacing.sm,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  detail,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: tokens.textMuted,
-                    fontSize: FontSizes.xs,
-                    height: 1.35,
-                  ),
+          decoration: compact
+              ? null
+              : BoxDecoration(
+                  color: tokens.studioPanel.withValues(alpha: 0.28),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: tokens.studioDivider),
                 ),
-              ],
-            ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: tokens.textMuted, size: 16),
+              const SizedBox(width: Spacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.sm,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      detail,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xs,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onTap != null)
+                Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import 'chat_message.dart';
 import 'command_run.dart';
 import 'confirmation_request.dart';
 import 'reviewed_edit.dart';
+import 'studio_right_drawer.dart';
 import 'studio_thread.dart';
 
 enum TaskDisplayKind {
@@ -144,6 +145,11 @@ class StudioTranscriptItem {
   final String? commandRunId;
   final String? patchSetId;
   final String? approvalId;
+  final String? sourceArtifactId;
+  final StudioDrawerMode? drawerTarget;
+  final String? filePath;
+  final String? diffId;
+  final String? localUrl;
   final String? error;
 
   const StudioTranscriptItem._({
@@ -161,6 +167,11 @@ class StudioTranscriptItem {
     this.commandRunId,
     this.patchSetId,
     this.approvalId,
+    this.sourceArtifactId,
+    this.drawerTarget,
+    this.filePath,
+    this.diffId,
+    this.localUrl,
     this.error,
   });
 
@@ -198,6 +209,9 @@ class StudioTranscriptItem {
     String? requestId,
     String? relatedMessageId,
     StudioContextSummary? contextSummary,
+    String? sourceArtifactId,
+    String? filePath,
+    String? localUrl,
   }) {
     return StudioTranscriptItem._(
       type: StudioTranscriptItemType.activity,
@@ -207,6 +221,10 @@ class StudioTranscriptItem {
       relatedMessageId: relatedMessageId,
       artifact: artifact,
       contextSummary: contextSummary,
+      sourceArtifactId: sourceArtifactId,
+      drawerTarget: StudioDrawerMode.sources,
+      filePath: filePath,
+      localUrl: localUrl,
     );
   }
 
@@ -247,8 +265,11 @@ class StudioTranscriptItem {
       type: StudioTranscriptItemType.patchReview,
       threadId: threadId,
       requestId: requestId,
+      timestamp: patch.createdAt,
       patchSetId: patch.id,
       patch: patch,
+      diffId: patch.id,
+      drawerTarget: StudioDrawerMode.diff,
     );
   }
 
@@ -261,8 +282,10 @@ class StudioTranscriptItem {
       type: StudioTranscriptItemType.commandRun,
       threadId: threadId,
       requestId: requestId,
+      timestamp: commandRun.startedAt,
       commandRunId: commandRun.id,
       commandRun: commandRun,
+      drawerTarget: StudioDrawerMode.terminal,
     );
   }
 }

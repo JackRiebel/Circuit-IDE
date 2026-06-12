@@ -4,9 +4,11 @@ import 'package:path/path.dart' as p;
 import '../../enums/message_role.dart';
 import '../../models/agent_preflight.dart';
 import '../../models/agent_request.dart';
+import '../../models/chat_message.dart';
 import '../../models/context_attachment.dart';
 import '../../models/context_pack.dart';
 import '../../models/studio_shell.dart';
+import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/agent_request_provider.dart';
@@ -14,6 +16,7 @@ import '../../state/chat_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
+import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 
@@ -163,6 +166,12 @@ Future<StudioSendResult> sendStudioMessage(
   ref
       .read(studioThreadProvider.notifier)
       .appendChatMessages(thread.id, assistantMessages);
+  _registerAssistantSourceArtifacts(
+    ref,
+    threadId: thread.id,
+    requestId: requestId,
+    messages: assistantMessages,
+  );
   ref
       .read(studioThreadProvider.notifier)
       .updateTokenUsage(
@@ -248,6 +257,35 @@ Future<StudioSendResult> sendStudioMessage(
     taskId: taskId,
     contextSummary: payload.summary,
   );
+}
+
+void _registerAssistantSourceArtifacts(
+  WidgetRef ref, {
+  required String threadId,
+  required String? requestId,
+  required List<ChatMessage> messages,
+}) {
+  for (final message in messages) {
+    final content = message.content;
+    for (final url in detectLocalUrls(content)) {
+      ref
+          .read(studioSourceArtifactProvider.notifier)
+          .add(
+            StudioSourceArtifact(
+              id: 'assistant-url-$threadId-${message.id}-$url',
+              kind: StudioSourceArtifactKind.localUrl,
+              title: Uri.tryParse(url)?.host ?? 'Local preview',
+              subtitle: url,
+              value: url,
+              threadId: threadId,
+              requestId: requestId,
+              relatedMessageId: message.id,
+              localUrl: url,
+              createdAt: message.timestamp,
+            ),
+          );
+    }
+  }
 }
 
 class StudioContextPayload {
