@@ -55,18 +55,30 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
   }
 
   void toggleExpanded() {
-    state = state.copyWith(expanded: !state.expanded, collapsed: false);
+    final next = state.widthMode == StudioDrawerWidthMode.standard
+        ? StudioDrawerWidthMode.expanded
+        : StudioDrawerWidthMode.standard;
+    state = state.copyWith(widthMode: next, collapsed: false);
+  }
+
+  void setWidthMode(StudioDrawerWidthMode mode) {
+    state = state.copyWith(widthMode: mode, collapsed: false);
   }
 
   StudioDrawerMode _modeFor(StudioSourceArtifactKind kind) {
     return switch (kind) {
       StudioSourceArtifactKind.localUrl ||
-      StudioSourceArtifactKind.webSource => StudioDrawerMode.browser,
+      StudioSourceArtifactKind.webSource ||
+      StudioSourceArtifactKind.browserComment => StudioDrawerMode.browser,
       StudioSourceArtifactKind.file => StudioDrawerMode.code,
       StudioSourceArtifactKind.diff ||
+      StudioSourceArtifactKind.gitChange ||
+      StudioSourceArtifactKind.gitHunk ||
+      StudioSourceArtifactKind.reviewComment ||
       StudioSourceArtifactKind.patch => StudioDrawerMode.diff,
       StudioSourceArtifactKind.command ||
-      StudioSourceArtifactKind.terminalLog => StudioDrawerMode.terminal,
+      StudioSourceArtifactKind.terminalLog ||
+      StudioSourceArtifactKind.terminalSession => StudioDrawerMode.terminal,
       StudioSourceArtifactKind.toolResult => StudioDrawerMode.sources,
     };
   }

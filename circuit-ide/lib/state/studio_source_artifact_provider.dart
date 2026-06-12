@@ -49,9 +49,12 @@ class StudioSourceArtifactController
 
   void _syncThreads(Iterable<StudioThread> threads) {
     for (final thread in threads) {
+      for (final artifact in thread.sourceArtifacts) {
+        _upsertArtifact(artifact, persist: false);
+      }
       final summary = thread.contextSummary;
       if (summary == null) continue;
-      _upsert(
+      _upsertArtifact(
         StudioSourceArtifact(
           id: 'context-${thread.id}',
           kind: StudioSourceArtifactKind.toolResult,
@@ -62,9 +65,10 @@ class StudioSourceArtifactController
           requestId: thread.requestId,
           createdAt: thread.updatedAt,
         ),
+        persist: false,
       );
       for (final file in summary.selectedFiles) {
-        _upsert(
+        _upsertArtifact(
           StudioSourceArtifact(
             id: 'file-${thread.id}-$file',
             kind: StudioSourceArtifactKind.file,
@@ -76,6 +80,7 @@ class StudioSourceArtifactController
             filePath: file,
             createdAt: thread.updatedAt,
           ),
+          persist: false,
         );
       }
     }
@@ -153,11 +158,20 @@ class StudioSourceArtifactController
   }
 
   void _upsert(StudioSourceArtifact artifact) {
+    _upsertArtifact(artifact);
+  }
+
+  void _upsertArtifact(StudioSourceArtifact artifact, {bool persist = true}) {
     final artifacts = [
       artifact,
       ...state.artifacts.where((candidate) => candidate.id != artifact.id),
     ].take(120).toList();
     state = StudioSourceArtifactState(artifacts: artifacts);
+    final threadId = artifact.threadId;
+    if (!persist || threadId == null) return;
+    ref
+        .read(studioThreadProvider.notifier)
+        .upsertSourceArtifact(threadId, artifact);
   }
 }
 

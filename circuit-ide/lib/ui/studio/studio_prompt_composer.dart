@@ -9,6 +9,7 @@ import '../../agent/config/models_config.dart';
 import '../../agent/providers/provider_interface.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/settings_model.dart';
+import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
 import '../../models/token_usage.dart';
 import '../../state/chat_provider.dart';
@@ -16,6 +17,7 @@ import '../../state/connection_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/settings_provider.dart';
+import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/theme_tokens.dart';
@@ -50,6 +52,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
     );
     _controller.addListener(() {
       ref.read(studioShellProvider.notifier).setComposerText(_controller.text);
+      if (mounted) setState(() {});
     });
   }
 
@@ -82,6 +85,11 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_slashMatches.isNotEmpty)
+            _SlashCommandMenu(
+              commands: _slashMatches,
+              onSelect: _applySlashCommand,
+            ),
           Container(
             height: widget.compact ? 92 : 96,
             padding: const EdgeInsets.fromLTRB(
@@ -178,6 +186,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                     label: projectLabel,
                   ),
                   const SizedBox(width: Spacing.lg),
+                  _ExecutionModeSelector(value: studio.executionMode),
+                  const SizedBox(width: Spacing.lg),
                   _ComposerPill(
                     icon: Icons.account_tree_outlined,
                     label: branch.isEmpty ? 'main' : branch,
@@ -196,6 +206,28 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
     widget.onSubmit(text);
     _controller.clear();
     ref.read(studioShellProvider.notifier).clearComposer();
+  }
+
+  List<_SlashCommand> get _slashMatches {
+    final text = _controller.text.trimLeft();
+    if (!text.startsWith('/')) return const [];
+    final query = text.substring(1).toLowerCase();
+    return _slashCommands
+        .where((command) => command.name.startsWith(query))
+        .take(6)
+        .toList();
+  }
+
+  void _applySlashCommand(_SlashCommand command) {
+    command.run(ref);
+    if (command.prompt.isNotEmpty) {
+      _controller.text = command.prompt;
+      _controller.selection = TextSelection.collapsed(
+        offset: _controller.text.length,
+      );
+    } else {
+      _controller.clear();
+    }
   }
 }
 
@@ -322,6 +354,161 @@ class _PermissionsSelector extends ConsumerWidget {
     );
   }
 }
+
+class _ExecutionModeSelector extends ConsumerWidget {
+  final StudioExecutionMode value;
+
+  const _ExecutionModeSelector({required this.value});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return PopupMenuButton<StudioExecutionMode>(
+      tooltip: 'Execution mode',
+      color: tokens.studioPanel,
+      elevation: 12,
+      position: PopupMenuPosition.under,
+      shape: _softMenuShape(tokens),
+      onSelected: (mode) =>
+          ref.read(studioShellProvider.notifier).setExecutionMode(mode),
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: StudioExecutionMode.local,
+          child: Text('Local project'),
+        ),
+        PopupMenuItem(
+          value: StudioExecutionMode.worktree,
+          enabled: false,
+          child: Text(
+            'Worktree mode is next',
+            style: TextStyle(color: tokens.textMuted),
+          ),
+        ),
+      ],
+      child: _ComposerPill(
+        icon: Icons.computer_outlined,
+        label: value.label,
+        trailing: Icons.expand_more,
+      ),
+    );
+  }
+}
+
+class _SlashCommandMenu extends ConsumerWidget {
+  final List<_SlashCommand> commands;
+  final ValueChanged<_SlashCommand> onSelect;
+
+  const _SlashCommandMenu({required this.commands, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(Spacing.md, Spacing.sm, Spacing.md, 0),
+      decoration: BoxDecoration(
+        color: tokens.studioPanel,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: tokens.studioDivider),
+        boxShadow: Shadows.medium,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final command in commands)
+            ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              leading: Icon(command.icon, size: 16, color: tokens.textMuted),
+              title: Text(
+                '/${command.name}',
+                style: TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: FontSizes.sm,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              subtitle: Text(
+                command.detail,
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                ),
+              ),
+              onTap: () => onSelect(command),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SlashCommand {
+  final String name;
+  final String detail;
+  final String prompt;
+  final IconData icon;
+  final void Function(WidgetRef ref) run;
+
+  const _SlashCommand({
+    required this.name,
+    required this.detail,
+    required this.prompt,
+    required this.icon,
+    required this.run,
+  });
+}
+
+final _slashCommands = <_SlashCommand>[
+  _SlashCommand(
+    name: 'status',
+    detail: 'Ask Circuit to summarize project state.',
+    prompt: 'Summarize the current project status, branch, changes, and risks.',
+    icon: Icons.radio_button_checked,
+    run: (_) {},
+  ),
+  _SlashCommand(
+    name: 'review',
+    detail: 'Review current changes.',
+    prompt: 'Review the current changes and call out risks or missing checks.',
+    icon: Icons.rate_review_outlined,
+    run: (ref) => ref
+        .read(studioShellProvider.notifier)
+        .setPromptMode(StudioPromptMode.review),
+  ),
+  _SlashCommand(
+    name: 'plan',
+    detail: 'Create an implementation plan first.',
+    prompt: 'Create a short implementation plan before making changes.',
+    icon: Icons.alt_route_outlined,
+    run: (_) {},
+  ),
+  _SlashCommand(
+    name: 'init',
+    detail: 'Initialize understanding of this project.',
+    prompt:
+        'Inspect this project and explain its structure and best next steps.',
+    icon: Icons.auto_awesome_outlined,
+    run: (_) {},
+  ),
+  _SlashCommand(
+    name: 'browser',
+    detail: 'Open the Preview drawer.',
+    prompt: '',
+    icon: Icons.language,
+    run: (ref) => ref
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.browser),
+  ),
+  _SlashCommand(
+    name: 'terminal',
+    detail: 'Open the Terminal drawer.',
+    prompt: '',
+    icon: Icons.terminal_outlined,
+    run: (ref) => ref
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.terminal),
+  ),
+];
 
 class _ComposerPill extends ConsumerWidget {
   final IconData? icon;
@@ -495,6 +682,7 @@ Future<void> _chooseProjectRoot(WidgetRef ref) async {
       .read(fileTreeProvider.notifier)
       .openDirectory(result);
   if (!openResult.success) return;
+  await ref.read(agentServiceProvider).updateWorkingDir(result);
   ref.read(settingsProvider.notifier).addRecentProject(result);
   ref.read(studioShellProvider.notifier).openProject(result);
 }

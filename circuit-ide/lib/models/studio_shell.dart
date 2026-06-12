@@ -4,11 +4,14 @@ enum StudioMode { home, project, task, review, advancedEditor }
 
 enum StudioPromptMode { ask, code, fix, review }
 
+enum StudioExecutionMode { local, worktree }
+
 class StudioShellState {
   final StudioMode mode;
   final String? selectedProjectPath;
   final String? selectedTaskId;
   final StudioPromptMode promptMode;
+  final StudioExecutionMode executionMode;
   final String composerText;
   final bool rightProgressPanelVisible;
 
@@ -17,6 +20,7 @@ class StudioShellState {
     this.selectedProjectPath,
     this.selectedTaskId,
     this.promptMode = StudioPromptMode.code,
+    this.executionMode = StudioExecutionMode.local,
     this.composerText = '',
     this.rightProgressPanelVisible = true,
   });
@@ -26,6 +30,7 @@ class StudioShellState {
     Object? selectedProjectPath = _sentinel,
     Object? selectedTaskId = _sentinel,
     StudioPromptMode? promptMode,
+    StudioExecutionMode? executionMode,
     String? composerText,
     bool? rightProgressPanelVisible,
   }) {
@@ -38,10 +43,20 @@ class StudioShellState {
           ? this.selectedTaskId
           : selectedTaskId as String?,
       promptMode: promptMode ?? this.promptMode,
+      executionMode: executionMode ?? this.executionMode,
       composerText: composerText ?? this.composerText,
       rightProgressPanelVisible:
           rightProgressPanelVisible ?? this.rightProgressPanelVisible,
     );
+  }
+}
+
+extension StudioExecutionModeLabels on StudioExecutionMode {
+  String get label {
+    return switch (this) {
+      StudioExecutionMode.local => 'Local',
+      StudioExecutionMode.worktree => 'Worktree',
+    };
   }
 }
 

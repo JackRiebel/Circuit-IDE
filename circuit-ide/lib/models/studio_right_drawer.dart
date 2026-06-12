@@ -8,10 +8,12 @@ enum StudioDrawerMode {
   sources,
 }
 
+enum StudioDrawerWidthMode { standard, expanded, split }
+
 class StudioRightDrawerState {
   final StudioDrawerMode mode;
   final bool collapsed;
-  final bool expanded;
+  final StudioDrawerWidthMode widthMode;
   final String? selectedArtifactId;
   final String? localUrl;
   final String? filePath;
@@ -21,7 +23,7 @@ class StudioRightDrawerState {
   const StudioRightDrawerState({
     this.mode = StudioDrawerMode.progress,
     this.collapsed = false,
-    this.expanded = false,
+    this.widthMode = StudioDrawerWidthMode.standard,
     this.selectedArtifactId,
     this.localUrl,
     this.filePath,
@@ -31,14 +33,19 @@ class StudioRightDrawerState {
 
   double get width {
     if (collapsed) return 52;
-    if (expanded) return 520;
-    return 328;
+    return switch (widthMode) {
+      StudioDrawerWidthMode.standard => 328,
+      StudioDrawerWidthMode.expanded => 520,
+      StudioDrawerWidthMode.split => 680,
+    };
   }
+
+  bool get expanded => widthMode != StudioDrawerWidthMode.standard;
 
   StudioRightDrawerState copyWith({
     StudioDrawerMode? mode,
     bool? collapsed,
-    bool? expanded,
+    StudioDrawerWidthMode? widthMode,
     Object? selectedArtifactId = _sentinel,
     Object? localUrl = _sentinel,
     Object? filePath = _sentinel,
@@ -48,7 +55,7 @@ class StudioRightDrawerState {
     return StudioRightDrawerState(
       mode: mode ?? this.mode,
       collapsed: collapsed ?? this.collapsed,
-      expanded: expanded ?? this.expanded,
+      widthMode: widthMode ?? this.widthMode,
       selectedArtifactId: identical(selectedArtifactId, _sentinel)
           ? this.selectedArtifactId
           : selectedArtifactId as String?,

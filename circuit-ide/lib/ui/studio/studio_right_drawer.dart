@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,7 +8,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
+import '../../models/git_models.dart';
 import '../../models/reviewed_edit.dart';
+import '../../models/studio_browser.dart';
 import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
 import '../../models/studio_source_artifact.dart';
@@ -21,10 +21,13 @@ import '../../state/command_run_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
+import '../../state/studio_browser_provider.dart';
+import '../../state/studio_code_edit_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
+import '../terminal/terminal_panel.dart';
 
 class StudioRightDrawer extends ConsumerWidget {
   final AgentTask? task;
@@ -350,48 +353,77 @@ class _BrowserDrawer extends ConsumerStatefulWidget {
 class _BrowserDrawerState extends ConsumerState<_BrowserDrawer> {
   WebViewController? _controller;
   String? _loadedUrl;
-  int _progress = 0;
-  String? _error;
+  int _loadedReloadNonce = 0;
 
   @override
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     final drawer = ref.watch(studioRightDrawerProvider);
+    final session = ref.watch(studioBrowserProvider);
     final selected = _selectedArtifact(ref);
-    final url = drawer.localUrl ?? selected?.localUrl;
-    if (url != null && url != _loadedUrl) _load(url);
+    final url = drawer.localUrl ?? selected?.localUrl ?? session.currentUrl;
+    if (url != null && session.currentUrl != url) {
+      ref.read(studioBrowserProvider.notifier).open(url);
+    }
+    final activeUrl = session.currentUrl ?? url;
+    if (activeUrl != null &&
+        (activeUrl != _loadedUrl ||
+            session.reloadNonce != _loadedReloadNonce)) {
+      _load(activeUrl, session.reloadNonce);
+    }
 
-    if (url == null) {
+    if (activeUrl == null) {
       return const _EmptyDrawerState(
         icon: Icons.language,
         title: 'No local preview yet',
-        detail:
-            'When Circuit sees a localhost URL from a command or tool, it will appear here.',
+        detail: 'Enter a URL or open a localhost source from the task.',
       );
     }
 
     return Column(
       children: [
         _BrowserToolbar(
-          url: url,
-          progress: _progress,
-          onReload: () => _controller?.reload(),
-          onCopy: () => Clipboard.setData(ClipboardData(text: url)),
-          onOpenExternal: () => launchUrl(Uri.parse(url)),
+          session: session,
+          onBack: () {
+            ref.read(studioBrowserProvider.notifier).goBack();
+          },
+          onForward: () {
+            ref.read(studioBrowserProvider.notifier).goForward();
+          },
+          onNavigate: (value) {
+            ref.read(studioBrowserProvider.notifier).open(value);
+          },
+          onReload: () {
+            ref.read(studioBrowserProvider.notifier).reload();
+          },
+          onCopy: () => Clipboard.setData(ClipboardData(text: activeUrl)),
+          onOpenExternal: () => launchUrl(Uri.parse(activeUrl)),
+          onAllow: () => ref.read(studioBrowserProvider.notifier).allowSite(),
+          onBlock: () => ref.read(studioBrowserProvider.notifier).blockSite(),
+          onComment: () => _showCommentDialog(activeUrl),
         ),
-        if (_error != null)
+        if (session.error != null)
           Padding(
             padding: const EdgeInsets.all(Spacing.lg),
             child: Text(
-              _error!,
+              session.error!,
               style: TextStyle(color: tokens.error, fontSize: FontSizes.sm),
             ),
           ),
-        Expanded(
-          child: _controller == null
-              ? const Center(child: CircularProgressIndicator())
-              : WebViewWidget(controller: _controller!),
-        ),
+        if (session.permission == BrowserSitePermission.blocked)
+          const Expanded(
+            child: _EmptyDrawerState(
+              icon: Icons.block,
+              title: 'Site blocked',
+              detail: 'Allow this site from the browser toolbar to load it.',
+            ),
+          )
+        else
+          Expanded(
+            child: _controller == null
+                ? const Center(child: CircularProgressIndicator())
+                : WebViewWidget(controller: _controller!),
+          ),
       ],
     );
   }
@@ -404,42 +436,98 @@ class _BrowserDrawerState extends ConsumerState<_BrowserDrawer> {
         .firstOrNull;
   }
 
-  void _load(String url) {
+  void _load(String url, int reloadNonce) {
     _loadedUrl = url;
-    _error = null;
-    _progress = 0;
+    _loadedReloadNonce = reloadNonce;
+    ref.read(studioBrowserProvider.notifier).setError(null);
+    ref.read(studioBrowserProvider.notifier).setProgress(0);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (progress) => setState(() => _progress = progress),
+          onProgress: (progress) {
+            ref.read(studioBrowserProvider.notifier).setProgress(progress);
+          },
           onWebResourceError: (error) {
-            setState(() => _error = error.description);
+            ref
+                .read(studioBrowserProvider.notifier)
+                .setError(error.description);
           },
         ),
       )
       ..loadRequest(Uri.parse(url));
+    setState(() {});
+  }
+
+  Future<void> _showCommentDialog(String url) async {
+    final controller = TextEditingController();
+    final note = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final tokens = ref.read(themeProvider);
+        return AlertDialog(
+          backgroundColor: tokens.studioPanel,
+          title: const Text('Comment on preview'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 5,
+            decoration: InputDecoration(
+              hintText: 'Describe what Circuit should notice or change...',
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Add comment'),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (note == null || note.trim().isEmpty) return;
+    ref.read(studioBrowserProvider.notifier).addAnnotation(note);
   }
 }
 
 class _BrowserToolbar extends ConsumerWidget {
-  final String url;
-  final int progress;
+  final StudioBrowserSession session;
+  final VoidCallback onBack;
+  final VoidCallback onForward;
+  final ValueChanged<String> onNavigate;
   final VoidCallback onReload;
   final VoidCallback onCopy;
   final VoidCallback onOpenExternal;
+  final VoidCallback onAllow;
+  final VoidCallback onBlock;
+  final VoidCallback onComment;
 
   const _BrowserToolbar({
-    required this.url,
-    required this.progress,
+    required this.session,
+    required this.onBack,
+    required this.onForward,
+    required this.onNavigate,
     required this.onReload,
     required this.onCopy,
     required this.onOpenExternal,
+    required this.onAllow,
+    required this.onBlock,
+    required this.onComment,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final url = session.currentUrl ?? session.addressDraft;
     return Container(
       padding: const EdgeInsets.all(Spacing.md),
       decoration: BoxDecoration(
@@ -449,14 +537,38 @@ class _BrowserToolbar extends ConsumerWidget {
         children: [
           Row(
             children: [
+              IconButton(
+                tooltip: 'Back',
+                onPressed: session.canGoBack ? onBack : null,
+                icon: const Icon(Icons.chevron_left, size: 16),
+              ),
+              IconButton(
+                tooltip: 'Forward',
+                onPressed: session.canGoForward ? onForward : null,
+                icon: const Icon(Icons.chevron_right, size: 16),
+              ),
               Expanded(
-                child: Text(
-                  url,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: TextFormField(
+                  initialValue: url,
+                  onFieldSubmitted: onNavigate,
                   style: TextStyle(
-                    color: tokens.textMuted,
+                    color: tokens.textSecondary,
                     fontSize: FontSizes.xs,
+                  ),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.md,
+                      vertical: 8,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      borderSide: BorderSide(color: tokens.studioDivider),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.pill),
+                      borderSide: BorderSide(color: tokens.studioDivider),
+                    ),
                   ),
                 ),
               ),
@@ -475,10 +587,53 @@ class _BrowserToolbar extends ConsumerWidget {
                 onPressed: onOpenExternal,
                 icon: const Icon(Icons.open_in_new, size: 16),
               ),
+              PopupMenuButton<BrowserSitePermission>(
+                tooltip: 'Site permission',
+                color: tokens.studioPanel,
+                onSelected: (value) {
+                  if (value == BrowserSitePermission.allowed) onAllow();
+                  if (value == BrowserSitePermission.blocked) onBlock();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: BrowserSitePermission.allowed,
+                    child: Text('Allow site'),
+                  ),
+                  PopupMenuItem(
+                    value: BrowserSitePermission.blocked,
+                    child: Text('Block site'),
+                  ),
+                ],
+                child: Icon(
+                  session.permission == BrowserSitePermission.blocked
+                      ? Icons.block
+                      : Icons.security_outlined,
+                  size: 16,
+                  color: tokens.textMuted,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Add browser comment',
+                onPressed: onComment,
+                icon: const Icon(Icons.add_comment_outlined, size: 16),
+              ),
             ],
           ),
-          if (progress > 0 && progress < 100)
-            LinearProgressIndicator(value: progress / 100),
+          if (session.loadingProgress > 0 && session.loadingProgress < 100)
+            LinearProgressIndicator(value: session.loadingProgress / 100),
+          if (session.annotations.isNotEmpty) ...[
+            const SizedBox(height: Spacing.sm),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${session.annotations.length} preview comments attached',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -502,21 +657,26 @@ class _CodeDrawer extends ConsumerWidget {
       );
     }
     final resolved = _resolvePath(rootPath, path);
-    return FutureBuilder<String>(
-      future: File(resolved).readAsString(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return _EmptyDrawerState(
-            icon: Icons.error_outline,
-            title: 'Could not open file',
-            detail: snapshot.error.toString(),
-          );
-        }
-        return _TextDocumentView(title: path, text: snapshot.data ?? '');
-      },
+    final editor = ref.watch(studioCodeEditProvider);
+    if (editor.filePath != path && !editor.isLoading) {
+      Future.microtask(
+        () => ref.read(studioCodeEditProvider.notifier).open(path),
+      );
+    }
+    if (editor.isLoading || editor.filePath != path) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (editor.error != null) {
+      return _EmptyDrawerState(
+        icon: Icons.error_outline,
+        title: 'Could not open file',
+        detail: editor.error!,
+      );
+    }
+    return _EditableCodeView(
+      title: path,
+      resolvedPath: resolved,
+      state: editor,
     );
   }
 
@@ -529,17 +689,152 @@ class _CodeDrawer extends ConsumerWidget {
   }
 }
 
-class _DiffDrawer extends ConsumerWidget {
-  const _DiffDrawer();
+class _EditableCodeView extends ConsumerWidget {
+  final String title;
+  final String resolvedPath;
+  final StudioCodeEditState state;
+
+  const _EditableCodeView({
+    required this.title,
+    required this.resolvedPath,
+    required this.state,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tokens.surfaceInset,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: tokens.studioDivider),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(Spacing.md),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Tooltip(
+                      message: resolvedPath,
+                      child: Text(
+                        state.isDirty ? '$title *' : title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontSize: FontSizes.xs,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (state.isEditing) ...[
+                    TextButton(
+                      onPressed: state.isSaving
+                          ? null
+                          : ref.read(studioCodeEditProvider.notifier).revert,
+                      child: const Text('Revert'),
+                    ),
+                    FilledButton(
+                      onPressed: state.isSaving || !state.isDirty
+                          ? null
+                          : () => ref
+                                .read(studioCodeEditProvider.notifier)
+                                .save(),
+                      child: Text(state.isSaving ? 'Saving' : 'Save'),
+                    ),
+                  ] else
+                    TextButton.icon(
+                      onPressed: ref
+                          .read(studioCodeEditProvider.notifier)
+                          .startEditing,
+                      icon: const Icon(Icons.edit_outlined, size: 14),
+                      label: const Text('Edit'),
+                    ),
+                  IconButton(
+                    tooltip: 'Copy',
+                    onPressed: () =>
+                        Clipboard.setData(ClipboardData(text: state.draft)),
+                    icon: const Icon(Icons.copy, size: 15),
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: tokens.studioDivider, height: 1),
+            Expanded(
+              child: state.isEditing
+                  ? TextField(
+                      controller: TextEditingController(text: state.draft)
+                        ..selection = TextSelection.collapsed(
+                          offset: state.draft.length,
+                        ),
+                      expands: true,
+                      maxLines: null,
+                      minLines: null,
+                      keyboardType: TextInputType.multiline,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xs,
+                        height: 1.42,
+                        fontFamily: EditorDefaults.fallbackFontFamily,
+                      ),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.all(Spacing.md),
+                      ),
+                      onChanged: ref
+                          .read(studioCodeEditProvider.notifier)
+                          .updateDraft,
+                    )
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(Spacing.md),
+                      child: SelectableText(
+                        state.draft.isEmpty ? '(empty)' : state.draft,
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontSize: FontSizes.xs,
+                          height: 1.42,
+                          fontFamily: EditorDefaults.fallbackFontFamily,
+                        ),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DiffDrawer extends ConsumerStatefulWidget {
+  const _DiffDrawer();
+
+  @override
+  ConsumerState<_DiffDrawer> createState() => _DiffDrawerState();
+}
+
+class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
+  String? _selectedPath;
+  bool _selectedStaged = false;
+
+  @override
+  Widget build(BuildContext context) {
     final patch = ref.watch(patchProposalProvider).active;
     if (patch == null) {
-      return const _EmptyDrawerState(
-        icon: Icons.difference_outlined,
-        title: 'No diff ready',
-        detail: 'When Circuit proposes changes, the review diff appears here.',
+      return _GitReviewDrawer(
+        selectedPath: _selectedPath,
+        selectedStaged: _selectedStaged,
+        onSelect: (path, staged) {
+          setState(() {
+            _selectedPath = path;
+            _selectedStaged = staged;
+          });
+        },
       );
     }
     return _TextDocumentView(title: patch.title, text: _diffPreview(patch));
@@ -562,6 +857,169 @@ class _DiffDrawer extends ConsumerWidget {
           ].join('\n');
         })
         .join('\n\n');
+  }
+}
+
+class _GitReviewDrawer extends ConsumerWidget {
+  final String? selectedPath;
+  final bool selectedStaged;
+  final void Function(String path, bool staged) onSelect;
+
+  const _GitReviewDrawer({
+    required this.selectedPath,
+    required this.selectedStaged,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final git = ref.watch(gitProvider).status;
+    final changes = <_ReviewChange>[
+      for (final change in git.staged)
+        _ReviewChange(change: change, staged: true),
+      for (final change in git.unstaged)
+        _ReviewChange(change: change, staged: false),
+      for (final change in git.untracked)
+        _ReviewChange(change: change, staged: false),
+    ];
+    if (changes.isEmpty) {
+      return const _EmptyDrawerState(
+        icon: Icons.difference_outlined,
+        title: 'No changes',
+        detail: 'Repo changes and AI patch reviews appear here.',
+      );
+    }
+    final selected =
+        changes
+            .where((change) => change.change.path == selectedPath)
+            .firstOrNull ??
+        changes.first;
+    final staged = selectedPath == null ? selected.staged : selectedStaged;
+    return ListView(
+      padding: const EdgeInsets.all(Spacing.lg),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Repository changes',
+                style: TextStyle(
+                  color: ref.watch(themeProvider).textSecondary,
+                  fontSize: FontSizes.sm,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () => ref.read(gitProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh, size: 14),
+              label: const Text('Refresh'),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.md),
+        for (final change in changes)
+          _GitChangeRow(
+            change: change,
+            selected: change.change.path == selected.change.path,
+            onTap: () => onSelect(change.change.path, change.staged),
+          ),
+        const SizedBox(height: Spacing.lg),
+        _GitFileActions(change: selected),
+        const SizedBox(height: Spacing.md),
+        FutureBuilder<String>(
+          future: ref
+              .read(gitProvider.notifier)
+              .getDiff(path: selected.change.path, staged: staged),
+          builder: (context, snapshot) {
+            return _TextDocumentView(
+              title: selected.change.path,
+              text: snapshot.data ?? 'Loading diff...',
+              embedded: true,
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _ReviewChange {
+  final GitFileChange change;
+  final bool staged;
+
+  const _ReviewChange({required this.change, required this.staged});
+}
+
+class _GitChangeRow extends ConsumerWidget {
+  final _ReviewChange change;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _GitChangeRow({
+    required this.change,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _SourceListRow(
+      icon: change.staged ? Icons.check_box : Icons.check_box_outline_blank,
+      title: change.change.path,
+      subtitle:
+          '${change.change.type.label}${change.staged ? ' · staged' : ''}',
+      selected: selected,
+      onTap: onTap,
+    );
+  }
+}
+
+class _GitFileActions extends ConsumerWidget {
+  final _ReviewChange change;
+
+  const _GitFileActions({required this.change});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.studioHover.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              change.change.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (change.staged)
+            TextButton(
+              onPressed: () => ref
+                  .read(gitProvider.notifier)
+                  .unstageFile(change.change.path),
+              child: const Text('Unstage'),
+            )
+          else
+            TextButton(
+              onPressed: () =>
+                  ref.read(gitProvider.notifier).stageFile(change.change.path),
+              child: const Text('Stage'),
+            ),
+        ],
+      ),
+    );
   }
 }
 
@@ -606,38 +1064,59 @@ class _TerminalDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final drawer = ref.watch(studioRightDrawerProvider);
+    final tokens = ref.watch(themeProvider);
     final commands = ref.watch(commandRunProvider).values.toList()
       ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     final selected = commands
         .where((command) => command.id == drawer.commandRunId)
         .firstOrNull;
-    if (commands.isEmpty) {
-      return const _EmptyDrawerState(
-        icon: Icons.terminal_outlined,
-        title: 'No command output',
-        detail: 'Approved command output will stream here.',
-      );
-    }
-    final command = selected ?? commands.first;
-    return ListView(
-      padding: const EdgeInsets.all(Spacing.lg),
+    final command = selected ?? commands.firstOrNull;
+    return Column(
       children: [
-        for (final candidate in commands.take(6))
-          _SourceListRow(
-            icon: Icons.terminal_outlined,
-            title: candidate.command,
-            subtitle: candidate.status.name,
-            selected: candidate.id == command.id,
-            onTap: () => ref
-                .read(studioRightDrawerProvider.notifier)
-                .openCommand(candidate.id),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: const TerminalPanel(),
           ),
-        const SizedBox(height: Spacing.lg),
-        _TextDocumentView(
-          title: command.command,
-          text: command.combinedOutput,
-          embedded: true,
         ),
+        if (commands.isNotEmpty) ...[
+          Divider(color: tokens.studioDivider, height: 1),
+          SizedBox(
+            height: 220,
+            child: ListView(
+              padding: const EdgeInsets.all(Spacing.lg),
+              children: [
+                Text(
+                  'Command logs',
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                for (final candidate in commands.take(4))
+                  _SourceListRow(
+                    icon: Icons.terminal_outlined,
+                    title: candidate.command,
+                    subtitle: candidate.status.name,
+                    selected: candidate.id == command?.id,
+                    onTap: () => ref
+                        .read(studioRightDrawerProvider.notifier)
+                        .openCommand(candidate.id),
+                  ),
+                if (command != null) ...[
+                  const SizedBox(height: Spacing.sm),
+                  _TextDocumentView(
+                    title: command.command,
+                    text: command.combinedOutput,
+                    embedded: true,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -679,12 +1158,17 @@ class _SourcesDrawer extends ConsumerWidget {
   IconData _sourceIcon(StudioSourceArtifactKind kind) {
     return switch (kind) {
       StudioSourceArtifactKind.localUrl ||
-      StudioSourceArtifactKind.webSource => Icons.language,
+      StudioSourceArtifactKind.webSource ||
+      StudioSourceArtifactKind.browserComment => Icons.language,
       StudioSourceArtifactKind.file => Icons.description_outlined,
       StudioSourceArtifactKind.diff ||
+      StudioSourceArtifactKind.gitChange ||
+      StudioSourceArtifactKind.gitHunk ||
+      StudioSourceArtifactKind.reviewComment ||
       StudioSourceArtifactKind.patch => Icons.difference_outlined,
       StudioSourceArtifactKind.command ||
-      StudioSourceArtifactKind.terminalLog => Icons.terminal_outlined,
+      StudioSourceArtifactKind.terminalLog ||
+      StudioSourceArtifactKind.terminalSession => Icons.terminal_outlined,
       StudioSourceArtifactKind.toolResult => Icons.dataset_linked_outlined,
     };
   }

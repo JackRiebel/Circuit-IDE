@@ -3,11 +3,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/commands/core_command_registry.dart';
+import 'models/studio_right_drawer.dart';
+import 'models/studio_shell.dart';
 import 'state/theme_provider.dart';
 import 'state/command_palette_provider.dart';
 import 'state/layout_provider.dart';
 import 'state/project_profile_provider.dart';
 import 'state/settings_provider.dart';
+import 'state/studio_right_drawer_provider.dart';
+import 'state/studio_shell_provider.dart';
+import 'state/studio_thread_search_provider.dart';
 import 'state/terminal_provider.dart';
 import 'state/workspace_context_provider.dart';
 import 'theme/app_theme.dart';
@@ -62,10 +67,24 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
               shift: true,
             ): () =>
                 ref.read(commandPaletteProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyK, meta: true): () =>
+                ref.read(commandPaletteProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyG, meta: true): () =>
+                ref.read(studioThreadSearchProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyF, meta: true): () =>
+                ref.read(studioThreadSearchProvider.notifier).open(),
             const SingleActivator(LogicalKeyboardKey.keyB, meta: true): () =>
                 ref.read(sidePanelVisibleProvider.notifier).toggle(),
-            const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): () =>
-                ref.read(terminalProvider.notifier).toggle(),
+            const SingleActivator(LogicalKeyboardKey.keyJ, meta: true): () {
+              final studioMode = ref.read(studioShellProvider).mode;
+              if (studioMode == StudioMode.advancedEditor) {
+                ref.read(terminalProvider.notifier).toggle();
+                return;
+              }
+              ref
+                  .read(studioRightDrawerProvider.notifier)
+                  .openMode(StudioDrawerMode.terminal);
+            },
             const SingleActivator(
               LogicalKeyboardKey.keyL,
               meta: true,

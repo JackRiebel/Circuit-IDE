@@ -7,6 +7,11 @@ enum StudioSourceArtifactKind {
   terminalLog,
   webSource,
   toolResult,
+  browserComment,
+  gitChange,
+  gitHunk,
+  terminalSession,
+  reviewComment,
 }
 
 class StudioSourceArtifact {
@@ -81,6 +86,51 @@ class StudioSourceArtifact {
           : patchSetId as String?,
       createdAt: createdAt,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'kind': kind.name,
+      'title': title,
+      'subtitle': subtitle,
+      'value': value,
+      'threadId': threadId,
+      'requestId': requestId,
+      'relatedMessageId': relatedMessageId,
+      'filePath': filePath,
+      'localUrl': localUrl,
+      'commandRunId': commandRunId,
+      'patchSetId': patchSetId,
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  static StudioSourceArtifact? fromJson(Map<String, dynamic> json) {
+    try {
+      return StudioSourceArtifact(
+        id: json['id'] as String,
+        kind: StudioSourceArtifactKind.values.firstWhere(
+          (value) => value.name == json['kind'],
+          orElse: () => StudioSourceArtifactKind.toolResult,
+        ),
+        title: json['title'] as String? ?? 'Source',
+        subtitle: json['subtitle'] as String? ?? '',
+        value: json['value'] as String? ?? '',
+        threadId: json['threadId'] as String?,
+        requestId: json['requestId'] as String?,
+        relatedMessageId: json['relatedMessageId'] as String?,
+        filePath: json['filePath'] as String?,
+        localUrl: json['localUrl'] as String?,
+        commandRunId: json['commandRunId'] as String?,
+        patchSetId: json['patchSetId'] as String?,
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
 

@@ -48,6 +48,10 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
     state = state.copyWith(promptMode: mode);
   }
 
+  void setExecutionMode(StudioExecutionMode mode) {
+    state = state.copyWith(executionMode: mode);
+  }
+
   void setComposerText(String text) {
     state = state.copyWith(composerText: text);
   }

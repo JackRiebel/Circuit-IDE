@@ -1,5 +1,6 @@
 import '../enums/message_role.dart';
 import 'chat_message.dart';
+import 'studio_source_artifact.dart';
 import 'token_usage.dart';
 
 enum StudioThreadStatus {
@@ -158,6 +159,7 @@ class StudioThread {
   final String? model;
   final StudioContextSummary? contextSummary;
   final List<StudioThreadMessage> messages;
+  final List<StudioSourceArtifact> sourceArtifacts;
   final String streamingContent;
   final TokenUsage tokenUsage;
   final String? lastError;
@@ -174,6 +176,7 @@ class StudioThread {
     this.model,
     this.contextSummary,
     this.messages = const [],
+    this.sourceArtifacts = const [],
     this.streamingContent = '',
     this.tokenUsage = const TokenUsage(),
     this.lastError,
@@ -197,6 +200,7 @@ class StudioThread {
     Object? model = _sentinel,
     Object? contextSummary = _sentinel,
     List<StudioThreadMessage>? messages,
+    List<StudioSourceArtifact>? sourceArtifacts,
     String? streamingContent,
     TokenUsage? tokenUsage,
     Object? lastError = _sentinel,
@@ -216,6 +220,7 @@ class StudioThread {
           ? this.contextSummary
           : contextSummary as StudioContextSummary?,
       messages: messages ?? this.messages,
+      sourceArtifacts: sourceArtifacts ?? this.sourceArtifacts,
       streamingContent: streamingContent ?? this.streamingContent,
       tokenUsage: tokenUsage ?? this.tokenUsage,
       lastError: identical(lastError, _sentinel)
@@ -237,6 +242,9 @@ class StudioThread {
       'model': model,
       'contextSummary': contextSummary?.toJson(),
       'messages': messages.map((message) => message.toJson()).toList(),
+      'sourceArtifacts': sourceArtifacts
+          .map((artifact) => artifact.toJson())
+          .toList(),
       'streamingContent': streamingContent,
       'tokenUsage': {
         'promptTokens': tokenUsage.promptTokens,
@@ -272,6 +280,11 @@ class StudioThread {
         messages: (json['messages'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(StudioThreadMessage.fromJson)
+            .nonNulls
+            .toList(),
+        sourceArtifacts: (json['sourceArtifacts'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(StudioSourceArtifact.fromJson)
             .nonNulls
             .toList(),
         streamingContent: json['streamingContent'] as String? ?? '',

@@ -9,6 +9,7 @@ import '../core/utils/platform_utils.dart';
 import '../enums/message_role.dart';
 import '../models/agent_preflight.dart';
 import '../models/chat_message.dart';
+import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
 import '../models/token_usage.dart';
 import 'file_tree_provider.dart';
@@ -206,6 +207,18 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     final thread = _find(threadId);
     if (thread == null) return;
     _upsert(thread.copyWith(tokenUsage: usage), select: true);
+  }
+
+  void upsertSourceArtifact(String threadId, StudioSourceArtifact artifact) {
+    final thread = _find(threadId);
+    if (thread == null) return;
+    final artifacts = [
+      artifact,
+      ...thread.sourceArtifacts.where(
+        (candidate) => candidate.id != artifact.id,
+      ),
+    ].take(120).toList();
+    _upsert(thread.copyWith(sourceArtifacts: artifacts), select: false);
   }
 
   void complete(String threadId, {TokenUsage? tokenUsage}) {

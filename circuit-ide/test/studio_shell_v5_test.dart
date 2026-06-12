@@ -64,7 +64,7 @@ void main() {
     expect(find.text('gpt-5-nano'), findsOneWidget);
     expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
     expect(find.text('Work locally'), findsNothing);
-    expect(find.text('Search'), findsNothing);
+    expect(find.text('Search'), findsOneWidget);
     expect(find.text('Plugins'), findsNothing);
     expect(find.text('Automations'), findsNothing);
     expect(find.text('Circuit mobile'), findsNothing);

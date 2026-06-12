@@ -14,11 +14,13 @@ import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
+import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
+import '../../state/studio_thread_search_provider.dart';
 import '../../state/theme_provider.dart';
 
 class StudioLeftRail extends ConsumerWidget {
@@ -55,10 +57,17 @@ class StudioLeftRail extends ConsumerWidget {
               onTap: () => ref.read(studioShellProvider.notifier).openHome(),
             ),
             _RailAction(
+              icon: Icons.search,
+              label: 'Search',
+              onTap: () =>
+                  ref.read(studioThreadSearchProvider.notifier).toggle(),
+            ),
+            _RailAction(
               icon: Icons.create_new_folder_outlined,
               label: 'New project',
               onTap: () => unawaited(_chooseProjectRoot(ref)),
             ),
+            const _RailSearchBox(),
             const SizedBox(height: Spacing.xl),
             Expanded(
               child: ListView(
@@ -100,6 +109,50 @@ class StudioLeftRail extends ConsumerWidget {
   }
 }
 
+class _RailSearchBox extends ConsumerWidget {
+  const _RailSearchBox();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final search = ref.watch(studioThreadSearchProvider);
+    if (!search.isOpen) return const SizedBox.shrink();
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Spacing.sm, Spacing.sm, Spacing.sm, 0),
+      child: TextField(
+        autofocus: true,
+        onChanged: ref.read(studioThreadSearchProvider.notifier).setQuery,
+        style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
+        decoration: InputDecoration(
+          hintText: 'Search tasks',
+          hintStyle: TextStyle(color: tokens.textMuted),
+          prefixIcon: Icon(Icons.search, size: 16, color: tokens.textMuted),
+          suffixIcon: IconButton(
+            tooltip: 'Close search',
+            onPressed: ref.read(studioThreadSearchProvider.notifier).close,
+            icon: Icon(Icons.close, size: 15, color: tokens.textMuted),
+          ),
+          filled: true,
+          fillColor: tokens.studioHover.withValues(alpha: 0.5),
+          isDense: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.lg),
+            borderSide: BorderSide(color: tokens.studioDivider),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.lg),
+            borderSide: BorderSide(color: tokens.studioDivider),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.lg),
+            borderSide: BorderSide(color: tokens.outlineFocus),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RailTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -131,6 +184,7 @@ Future<void> _chooseProjectRoot(WidgetRef ref) async {
       .read(fileTreeProvider.notifier)
       .openDirectory(result);
   if (!openResult.success) return;
+  await ref.read(agentServiceProvider).updateWorkingDir(result);
   ref.read(settingsProvider.notifier).addRecentProject(result);
   ref.read(studioShellProvider.notifier).openProject(result);
 }
@@ -213,6 +267,11 @@ class _RecentProjectGroup extends ConsumerWidget {
     final name = p.basename(path);
     final rootPath = ref.watch(fileTreeProvider).rootPath;
     final isSelectedProject = rootPath == path;
+    final query = ref
+        .watch(studioThreadSearchProvider)
+        .query
+        .trim()
+        .toLowerCase();
     final workspace = ref.watch(agentWorkspaceProvider);
     final threadState = ref.watch(studioThreadProvider);
     final chat = ref.watch(chatProvider);
@@ -229,19 +288,25 @@ class _RecentProjectGroup extends ConsumerWidget {
     );
     final taskSummaries = [
       for (final task in tasks)
-        StudioRailTaskSummary(
-          id: task.id,
-          title: task.goal,
-          selected: task.id == selectedTaskId,
-          displayState: _displayStateForTask(
-            task,
-            threadState.threadForTask(task.id),
-            isSelected: task.id == selectedTaskId,
-            chat: chat,
-            commands: commands,
+        if (query.isEmpty || task.goal.toLowerCase().contains(query))
+          StudioRailTaskSummary(
+            id: task.id,
+            title: task.goal,
+            selected: task.id == selectedTaskId,
+            displayState: _displayStateForTask(
+              task,
+              threadState.threadForTask(task.id),
+              isSelected: task.id == selectedTaskId,
+              chat: chat,
+              commands: commands,
+            ),
           ),
-        ),
     ];
+    if (query.isNotEmpty &&
+        !name.toLowerCase().contains(query) &&
+        taskSummaries.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: Spacing.sm),
       child: Column(
@@ -351,6 +416,7 @@ class _ProjectRow extends ConsumerWidget {
       }
       return;
     }
+    await ref.read(agentServiceProvider).updateWorkingDir(summary.path);
     ref.read(settingsProvider.notifier).addRecentProject(summary.path);
     ref.read(studioShellProvider.notifier).openProject(summary.path);
   }
