@@ -93,6 +93,16 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
     };
   }
 
+  void cancelRunningCommands() {
+    ref.read(agentServiceProvider).cancelActiveCommands();
+    for (final entry in state.entries) {
+      if (entry.value.status == CommandRunStatus.running ||
+          entry.value.status == CommandRunStatus.queued) {
+        finish(entry.key, status: CommandRunStatus.cancelled);
+      }
+    }
+  }
+
   void _listenToAgentEvents() {
     if (_listening) return;
     _listening = true;

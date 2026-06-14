@@ -1,6 +1,7 @@
 import '../enums/message_role.dart';
 import 'chat_message.dart';
 import 'studio_source_artifact.dart';
+import 'studio_turn.dart';
 import 'token_usage.dart';
 
 enum StudioThreadStatus {
@@ -39,6 +40,8 @@ class StudioContextSummary {
   final bool includesGit;
   final bool includesTerminal;
   final List<String> warnings;
+  final List<String> specialistLabels;
+  final String? specialistRouting;
 
   const StudioContextSummary({
     this.rootPath,
@@ -49,6 +52,8 @@ class StudioContextSummary {
     this.includesGit = false,
     this.includesTerminal = false,
     this.warnings = const [],
+    this.specialistLabels = const [],
+    this.specialistRouting,
   });
 
   String get title =>
@@ -62,6 +67,8 @@ class StudioContextSummary {
       if (selectedFiles.isNotEmpty) '${selectedFiles.length} files',
       if (includesGit) 'git',
       if (includesTerminal) 'terminal',
+      if (specialistLabels.isNotEmpty)
+        'specialists: ${specialistLabels.join(' + ')}',
       ...warnings,
     ];
     return parts.where((part) => part.trim().isNotEmpty).join(' · ');
@@ -77,6 +84,8 @@ class StudioContextSummary {
       'includesGit': includesGit,
       'includesTerminal': includesTerminal,
       'warnings': warnings,
+      'specialistLabels': specialistLabels,
+      'specialistRouting': specialistRouting,
     };
   }
 
@@ -95,6 +104,10 @@ class StudioContextSummary {
       includesTerminal: json['includesTerminal'] as bool? ?? false,
       warnings:
           (json['warnings'] as List<dynamic>?)?.cast<String>() ?? const [],
+      specialistLabels:
+          (json['specialistLabels'] as List<dynamic>?)?.cast<String>() ??
+          const [],
+      specialistRouting: json['specialistRouting'] as String?,
     );
   }
 }
@@ -160,6 +173,7 @@ class StudioThread {
   final StudioContextSummary? contextSummary;
   final List<StudioThreadMessage> messages;
   final List<StudioSourceArtifact> sourceArtifacts;
+  final List<StudioTurn> turns;
   final String streamingContent;
   final TokenUsage tokenUsage;
   final String? lastError;
@@ -177,6 +191,7 @@ class StudioThread {
     this.contextSummary,
     this.messages = const [],
     this.sourceArtifacts = const [],
+    this.turns = const [],
     this.streamingContent = '',
     this.tokenUsage = const TokenUsage(),
     this.lastError,
@@ -201,6 +216,7 @@ class StudioThread {
     Object? contextSummary = _sentinel,
     List<StudioThreadMessage>? messages,
     List<StudioSourceArtifact>? sourceArtifacts,
+    List<StudioTurn>? turns,
     String? streamingContent,
     TokenUsage? tokenUsage,
     Object? lastError = _sentinel,
@@ -221,6 +237,7 @@ class StudioThread {
           : contextSummary as StudioContextSummary?,
       messages: messages ?? this.messages,
       sourceArtifacts: sourceArtifacts ?? this.sourceArtifacts,
+      turns: turns ?? this.turns,
       streamingContent: streamingContent ?? this.streamingContent,
       tokenUsage: tokenUsage ?? this.tokenUsage,
       lastError: identical(lastError, _sentinel)
@@ -245,6 +262,7 @@ class StudioThread {
       'sourceArtifacts': sourceArtifacts
           .map((artifact) => artifact.toJson())
           .toList(),
+      'turns': turns.map((turn) => turn.toJson()).toList(),
       'streamingContent': streamingContent,
       'tokenUsage': {
         'promptTokens': tokenUsage.promptTokens,
@@ -285,6 +303,11 @@ class StudioThread {
         sourceArtifacts: (json['sourceArtifacts'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(StudioSourceArtifact.fromJson)
+            .nonNulls
+            .toList(),
+        turns: (json['turns'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(StudioTurn.fromJson)
             .nonNulls
             .toList(),
         streamingContent: json['streamingContent'] as String? ?? '',

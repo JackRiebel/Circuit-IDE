@@ -11,11 +11,13 @@ typedef CommandRunEventCallback = void Function(CommandRunEvent event);
 
 class CommandTools {
   final String workingDir;
+  final Map<String, Process> _activeProcesses = {};
 
   CommandTools({required this.workingDir});
 
   Future<String> runCommand(
     Map<String, dynamic> args, {
+    String? runId,
     CommandRunEventCallback? onEvent,
   }) async {
     final command = args['command'] as String;
@@ -55,6 +57,7 @@ class CommandTools {
         workingDirectory: workingDir,
         environment: {...Platform.environment, 'TERM': 'dumb'},
       );
+      if (runId != null) _activeProcesses[runId] = process;
 
       final stdoutBuffer = StringBuffer();
       final stderrBuffer = StringBuffer();
@@ -101,6 +104,7 @@ class CommandTools {
       );
 
       final exitCode = await completer.future;
+      if (runId != null) _activeProcesses.remove(runId);
       timer.cancel();
       await stdoutSub.cancel();
       await stderrSub.cancel();
@@ -133,13 +137,29 @@ class CommandTools {
       }
       return text.isEmpty ? '(no output)' : text;
     } on ProcessException catch (e) {
+      if (runId != null) _activeProcesses.remove(runId);
       return 'Error executing command: ${e.message}';
     } on TimeoutException {
+      if (runId != null) _activeProcesses.remove(runId);
       return 'Error: Command timed out after ${timeout}s';
     } catch (e) {
+      if (runId != null) _activeProcesses.remove(runId);
       return 'Error: $e';
     } finally {
       timer?.cancel();
     }
+  }
+
+  bool cancel(String runId) {
+    final process = _activeProcesses.remove(runId);
+    return process?.kill(ProcessSignal.sigterm) ?? false;
+  }
+
+  int cancelAll() {
+    var count = 0;
+    for (final id in _activeProcesses.keys.toList()) {
+      if (cancel(id)) count++;
+    }
+    return count;
   }
 }

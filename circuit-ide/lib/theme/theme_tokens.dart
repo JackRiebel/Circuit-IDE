@@ -94,9 +94,24 @@ class ThemeTokens {
 
   Color get studioCanvas => bgDark;
   Color get studioRail => activityBarBg;
+  Color get studioTopBar =>
+      brightness == Brightness.dark ? const Color(0xFF151514) : bgMain;
   Color get studioPanel => surfacePanel;
-  Color get studioCard => surfacePopover.withValues(alpha: 0.72);
-  Color get studioComposer => surfacePanel;
+  Color get studioDrawer =>
+      brightness == Brightness.dark ? const Color(0xFF242321) : surfacePanel;
+  Color get studioCard => surfacePopover.withValues(alpha: 0.62);
+  Color get studioComposer =>
+      brightness == Brightness.dark ? const Color(0xFF2A2927) : inputBg;
+  Color get studioBubble =>
+      brightness == Brightness.dark ? const Color(0xFF2A2928) : userMsgBg;
+  Color get studioControl =>
+      brightness == Brightness.dark ? const Color(0xFF343230) : surfacePanel;
+  Color get studioActivityRow =>
+      brightness == Brightness.dark ? const Color(0xFF22211F) : surfacePanel;
+  Color get studioRailSelected =>
+      brightness == Brightness.dark ? const Color(0xFF36342F) : surfacePressed;
+  Color get studioTaskSelected =>
+      brightness == Brightness.dark ? const Color(0xFF293533) : surfacePressed;
   Color get studioDivider => outlineSoft;
   Color get studioHover => surfaceHover;
 
@@ -167,23 +182,23 @@ class ThemeTokens {
     name: 'dark',
     displayName: 'Dark',
     brightness: Brightness.dark,
-    bgDark: Color(0xFF171717),
-    bgMain: Color(0xFF1F1F1E),
-    bgLight: Color(0xFF292827),
-    bgLighter: Color(0xFF343230),
-    border: Color(0xFF3E3C39),
-    borderLight: Color(0xFF56514B),
-    textPrimary: Color(0xFFE7E2DA),
-    textSecondary: Color(0xFFC1B9AE),
-    textMuted: Color(0xFF8C857B),
-    textDisabled: Color(0xFF625D56),
+    bgDark: Color(0xFF141414),
+    bgMain: Color(0xFF1D1C1A),
+    bgLight: Color(0xFF252422),
+    bgLighter: Color(0xFF302E2B),
+    border: Color(0xFF343230),
+    borderLight: Color(0xFF46423E),
+    textPrimary: Color(0xFFE8E4DC),
+    textSecondary: Color(0xFFBDB7AD),
+    textMuted: Color(0xFF8E887F),
+    textDisabled: Color(0xFF5E5953),
     accent: Color(0xFF7EA7A0),
     accentHover: Color(0xFF95BBB4),
     success: Color(0xFF7FB58B),
     warning: Color(0xFFD4B06A),
     error: Color(0xFFE27D73),
     info: Color(0xFF8FAFCE),
-    activityBarBg: Color(0xFF1A1A19),
+    activityBarBg: Color(0xFF1C1B19),
     activityBarIcon: Color(0xFF8C857B),
     activityBarIconActive: Color(0xFFE7E2DA),
     activityBarBadge: Color(0xFF7EA7A0),
@@ -209,14 +224,14 @@ class ThemeTokens {
     circuitColor: Color(0xFF9AC7C0),
     terminalBg: Color(0xFF151514),
     terminalText: Color(0xFFD8D1C7),
-    surfaceBase: Color(0xFF1F1F1E),
-    surfacePanel: Color(0xFF292827),
-    surfaceInset: Color(0xFF171717),
-    surfacePopover: Color(0xFF343230),
-    surfaceHover: Color(0x1AE7E2DA),
-    surfacePressed: Color(0x267EA7A0),
-    outlineSoft: Color(0x663E3C39),
-    outlineFocus: Color(0x997EA7A0),
+    surfaceBase: Color(0xFF1D1C1A),
+    surfacePanel: Color(0xFF252422),
+    surfaceInset: Color(0xFF171716),
+    surfacePopover: Color(0xFF302E2B),
+    surfaceHover: Color(0x14E7E2DA),
+    surfacePressed: Color(0x1F7EA7A0),
+    outlineSoft: Color(0x553E3C39),
+    outlineFocus: Color(0x887EA7A0),
   );
 
   static const light = ThemeTokens(

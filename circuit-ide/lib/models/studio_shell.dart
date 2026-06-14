@@ -1,4 +1,5 @@
 import 'agent_workspace.dart';
+import 'specialist_agent.dart';
 
 enum StudioMode { home, project, task, review, advancedEditor }
 
@@ -12,6 +13,7 @@ class StudioShellState {
   final String? selectedTaskId;
   final StudioPromptMode promptMode;
   final StudioExecutionMode executionMode;
+  final SpecialistAgentId specialistAgentId;
   final String composerText;
   final bool rightProgressPanelVisible;
 
@@ -21,6 +23,7 @@ class StudioShellState {
     this.selectedTaskId,
     this.promptMode = StudioPromptMode.code,
     this.executionMode = StudioExecutionMode.local,
+    this.specialistAgentId = SpecialistAgentId.auto,
     this.composerText = '',
     this.rightProgressPanelVisible = true,
   });
@@ -31,6 +34,7 @@ class StudioShellState {
     Object? selectedTaskId = _sentinel,
     StudioPromptMode? promptMode,
     StudioExecutionMode? executionMode,
+    SpecialistAgentId? specialistAgentId,
     String? composerText,
     bool? rightProgressPanelVisible,
   }) {
@@ -44,6 +48,7 @@ class StudioShellState {
           : selectedTaskId as String?,
       promptMode: promptMode ?? this.promptMode,
       executionMode: executionMode ?? this.executionMode,
+      specialistAgentId: specialistAgentId ?? this.specialistAgentId,
       composerText: composerText ?? this.composerText,
       rightProgressPanelVisible:
           rightProgressPanelVisible ?? this.rightProgressPanelVisible,

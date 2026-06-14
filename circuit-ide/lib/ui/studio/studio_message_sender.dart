@@ -1,24 +1,27 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
-import '../../enums/message_role.dart';
+import '../../agent/tools/tool_registry.dart';
 import '../../models/agent_preflight.dart';
-import '../../models/agent_request.dart';
-import '../../models/chat_message.dart';
 import '../../models/context_attachment.dart';
 import '../../models/context_pack.dart';
+import '../../models/specialist_agent.dart';
 import '../../models/studio_shell.dart';
-import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../state/agent_workspace_provider.dart';
-import '../../state/agent_request_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
-import '../../state/studio_source_artifact_provider.dart';
+import '../../state/studio_project_creator.dart';
+import '../../state/studio_request_lifecycle_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
+import '../../state/studio_turn_provider.dart';
+import '../../state/workspace_session_provider.dart';
+
+const _uuid = Uuid();
 
 enum StudioSendStatus { sent, blocked, failed, completed }
 
@@ -30,6 +33,8 @@ class StudioSendResult {
   final AgentPreflightResult? preflight;
   final StudioContextSummary? contextSummary;
   final String? error;
+  final bool registeredRequest;
+  final bool blockedByActiveRequest;
 
   const StudioSendResult._(
     this.status, {
@@ -39,6 +44,8 @@ class StudioSendResult {
     this.preflight,
     this.contextSummary,
     this.error,
+    this.registeredRequest = false,
+    this.blockedByActiveRequest = false,
   });
 
   const StudioSendResult.sent({
@@ -46,12 +53,14 @@ class StudioSendResult {
     String? threadId,
     String? taskId,
     StudioContextSummary? contextSummary,
+    bool registeredRequest = false,
   }) : this._(
          StudioSendStatus.sent,
          requestId: requestId,
          threadId: threadId,
          taskId: taskId,
          contextSummary: contextSummary,
+         registeredRequest: registeredRequest,
        );
 
   const StudioSendResult.blocked(
@@ -61,6 +70,7 @@ class StudioSendResult {
     String? taskId,
     AgentPreflightResult? preflight,
     StudioContextSummary? contextSummary,
+    bool blockedByActiveRequest = false,
   }) : this._(
          StudioSendStatus.blocked,
          requestId: requestId,
@@ -69,6 +79,7 @@ class StudioSendResult {
          preflight: preflight,
          contextSummary: contextSummary,
          error: message,
+         blockedByActiveRequest: blockedByActiveRequest,
        );
 
   const StudioSendResult.failed(
@@ -91,12 +102,14 @@ class StudioSendResult {
     String? threadId,
     String? taskId,
     StudioContextSummary? contextSummary,
+    bool registeredRequest = false,
   }) : this._(
          StudioSendStatus.completed,
          requestId: requestId,
          threadId: threadId,
          taskId: taskId,
          contextSummary: contextSummary,
+         registeredRequest: registeredRequest,
        );
 }
 
@@ -107,16 +120,56 @@ Future<StudioSendResult> sendStudioMessage(
   bool finishTask = false,
 }) async {
   final beforeSend = ref.read(chatProvider);
-  if (beforeSend.isProcessing) {
-    return const StudioSendResult.sent();
+  if (beforeSend.pendingConfirmation != null &&
+      ref.read(chatProvider.notifier).handlePendingApprovalText(text)) {
+    final thread = ref.read(studioThreadProvider).selectedThread;
+    if (thread != null) {
+      ref
+          .read(studioThreadProvider.notifier)
+          .markPhase(
+            thread.id,
+            status: StudioThreadStatus.runningCommand,
+            phase: StudioSendPhase.runningCommand,
+            requestId: thread.requestId,
+            model: thread.model,
+            contextSummary: thread.contextSummary,
+          );
+    }
+    return StudioSendResult.sent(
+      requestId: thread?.requestId,
+      threadId: thread?.id,
+      taskId: taskId,
+      contextSummary: thread?.contextSummary,
+      registeredRequest: true,
+    );
   }
-  final rootPath = ref.read(fileTreeProvider).rootPath;
+  ref.read(workspaceSessionProvider.notifier).syncFromCurrentWorkspace();
   final promptMode = ref.read(studioShellProvider).promptMode;
   final model = ref.read(settingsProvider).ciscoModel;
+  var rootPath = ref.read(fileTreeProvider).rootPath;
+  var workspace = ref.read(workspaceSessionProvider);
+  if ((rootPath == null || !workspace.canCode) &&
+      promptMode.agentProfile != null) {
+    final path = await StudioProjectCreator.createProject(
+      name: StudioProjectCreator.projectNameFromPrompt(text),
+    );
+    final openResult = await ref
+        .read(workspaceSessionProvider.notifier)
+        .openWorkspaceAndBindAgent(path);
+    if (openResult.success) {
+      ref.read(settingsProvider.notifier).addRecentProject(path);
+      ref.read(studioShellProvider.notifier).openProject(path);
+      rootPath = path;
+      workspace = ref.read(workspaceSessionProvider);
+    }
+  }
   final payload = buildStudioContextPayload(ref, text);
   final thread = ref
       .read(studioThreadProvider.notifier)
       .ensureThread(taskId: taskId, title: text, model: model);
+  final priorThreadMessages = thread.messages
+      .map((message) => message.toChatMessage())
+      .toList(growable: false);
   ref
       .read(studioThreadProvider.notifier)
       .markPhase(
@@ -126,11 +179,32 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
         contextSummary: payload.summary,
       );
-  ref.read(studioThreadProvider.notifier).appendUserMessage(thread.id, text);
+  final userMessageId =
+      ref
+          .read(studioThreadProvider.notifier)
+          .appendUserMessage(thread.id, text) ??
+      _uuid.v4();
 
-  if (rootPath == null && promptMode.agentProfile != null) {
+  if (beforeSend.isProcessing) {
     const message =
-        'Choose a project folder before using Code, Fix, or Review mode.';
+        'A request is already running. Wait for it to finish or cancel it before sending another.';
+    ref.read(studioThreadProvider.notifier).block(thread.id, message);
+    if (finishTask && taskId != null) {
+      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+    }
+    return StudioSendResult.blocked(
+      message,
+      threadId: thread.id,
+      taskId: taskId,
+      contextSummary: payload.summary,
+      blockedByActiveRequest: true,
+    );
+  }
+
+  if ((rootPath == null || !workspace.canCode) &&
+      promptMode.agentProfile != null) {
+    const message =
+        'Choose a bound project folder before using Code, Fix, or Review mode.';
     ref.read(studioThreadProvider.notifier).block(thread.id, message);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
@@ -152,26 +226,38 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
         contextSummary: payload.summary,
       );
+  final requestId = _uuid.v4();
+  ref
+      .read(studioTurnProvider.notifier)
+      .registerTurn(
+        requestId: requestId,
+        threadId: thread.id,
+        taskId: taskId,
+        userMessageId: userMessageId,
+        prompt: text,
+        model: model,
+        contextSummary: payload.summary,
+      );
+  ref
+      .read(studioRequestLifecycleProvider.notifier)
+      .registerRequest(
+        requestId: requestId,
+        threadId: thread.id,
+        taskId: taskId,
+        model: model,
+        contextSummary: payload.summary,
+      );
   await ref
       .read(chatProvider.notifier)
-      .sendMessage(text, attachments: payload.attachments);
+      .sendMessage(
+        text,
+        attachments: payload.attachments,
+        historyOverride: priorThreadMessages,
+        toolMode: _toolModeForPrompt(promptMode),
+        requestId: requestId,
+      );
 
   final chat = ref.read(chatProvider);
-  final request = ref.read(agentRequestProvider)[AgentRequestLane.chat];
-  final requestId = request?.requestId;
-  final assistantMessages = chat.messages
-      .skip(beforeSend.messages.length)
-      .where((message) => message.role == MessageRole.assistant)
-      .toList();
-  ref
-      .read(studioThreadProvider.notifier)
-      .appendChatMessages(thread.id, assistantMessages);
-  _registerAssistantSourceArtifacts(
-    ref,
-    threadId: thread.id,
-    requestId: requestId,
-    messages: assistantMessages,
-  );
   ref
       .read(studioThreadProvider.notifier)
       .updateTokenUsage(
@@ -185,6 +271,9 @@ Future<StudioSendResult> sendStudioMessage(
     ref
         .read(studioThreadProvider.notifier)
         .block(thread.id, message, preflight: preflight);
+    ref
+        .read(studioRequestLifecycleProvider.notifier)
+        .failRequest(requestId, message);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
     }
@@ -199,6 +288,9 @@ Future<StudioSendResult> sendStudioMessage(
   }
   if (chat.error != null) {
     ref.read(studioThreadProvider.notifier).fail(thread.id, chat.error!);
+    ref
+        .read(studioRequestLifecycleProvider.notifier)
+        .failRequest(requestId, chat.error!);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, chat.error!);
     }
@@ -236,77 +328,69 @@ Future<StudioSendResult> sendStudioMessage(
       threadId: thread.id,
       taskId: taskId,
       contextSummary: payload.summary,
+      registeredRequest: true,
     );
   }
-  if (finishTask && taskId != null) {
-    ref
-        .read(agentWorkspaceProvider.notifier)
-        .completeTask(taskId, result: _lastAssistantPreview(chat));
-  }
-  ref
-      .read(studioThreadProvider.notifier)
-      .complete(
-        thread.id,
-        tokenUsage: chat.lastTokenUsage.isNotEmpty
-            ? chat.lastTokenUsage
-            : chat.tokenUsage,
-      );
+  final lifecycleEntry = ref
+      .read(studioRequestLifecycleProvider)
+      .find(requestId);
   return StudioSendResult.completed(
     requestId: requestId,
     threadId: thread.id,
     taskId: taskId,
     contextSummary: payload.summary,
+    registeredRequest: lifecycleEntry != null,
   );
 }
 
-void _registerAssistantSourceArtifacts(
-  WidgetRef ref, {
-  required String threadId,
-  required String? requestId,
-  required List<ChatMessage> messages,
-}) {
-  for (final message in messages) {
-    final content = message.content;
-    for (final url in detectLocalUrls(content)) {
-      ref
-          .read(studioSourceArtifactProvider.notifier)
-          .add(
-            StudioSourceArtifact(
-              id: 'assistant-url-$threadId-${message.id}-$url',
-              kind: StudioSourceArtifactKind.localUrl,
-              title: Uri.tryParse(url)?.host ?? 'Local preview',
-              subtitle: url,
-              value: url,
-              threadId: threadId,
-              requestId: requestId,
-              relatedMessageId: message.id,
-              localUrl: url,
-              createdAt: message.timestamp,
-            ),
-          );
-    }
-  }
+AgentToolMode _toolModeForPrompt(StudioPromptMode mode) {
+  return switch (mode) {
+    StudioPromptMode.ask => AgentToolMode.ask,
+    StudioPromptMode.code => AgentToolMode.code,
+    StudioPromptMode.fix => AgentToolMode.fix,
+    StudioPromptMode.review => AgentToolMode.review,
+  };
 }
 
 class StudioContextPayload {
   final List<ContextAttachment> attachments;
   final StudioContextSummary summary;
+  final SpecialistAgentSelection specialistSelection;
 
   const StudioContextPayload({
     required this.attachments,
     required this.summary,
+    required this.specialistSelection,
   });
 }
 
 StudioContextPayload buildStudioContextPayload(WidgetRef ref, String prompt) {
   final rootPath = ref.read(fileTreeProvider).rootPath;
+  final studio = ref.read(studioShellProvider);
+  const registry = SpecialistAgentRegistry();
+  final selection = const SpecialistAgentRouter().route(
+    prompt,
+    explicitAgentId: studio.specialistAgentId,
+  );
   final contextPack = ref
       .read(contextPackProvider.notifier)
       .buildForCodingTask(prompt: prompt);
   final attachment = _buildStudioContextAttachment(rootPath, contextPack);
+  final attachments = <ContextAttachment>[
+    attachment,
+    if (selection.hasEnterpriseRouting)
+      _buildSpecialistContextAttachment(selection, registry),
+  ];
   return StudioContextPayload(
-    attachments: [attachment],
-    summary: _buildContextSummary(rootPath, contextPack, attachment),
+    attachments: attachments,
+    summary: _buildContextSummary(
+      rootPath,
+      contextPack,
+      attachments,
+      selection,
+      registry,
+    ),
+    specialistSelection: selection,
   );
 }
 
@@ -348,10 +432,28 @@ ContextAttachment _buildStudioContextAttachment(
   );
 }
 
+ContextAttachment _buildSpecialistContextAttachment(
+  SpecialistAgentSelection selection,
+  SpecialistAgentRegistry registry,
+) {
+  final content = selection.toPromptBlock(registry);
+  return ContextAttachment(
+    id: 'enterprise-specialists-${selection.resolvedAgentIds.map((id) => id.name).join('-')}',
+    type: ContextAttachmentType.note,
+    label: 'Enterprise specialist routing',
+    content: content,
+    resolutionStatus: ContextAttachmentResolutionStatus.resolved,
+    estimatedTokens: (content.length / 4).ceil(),
+    createdAt: DateTime.now(),
+  );
+}
+
 StudioContextSummary _buildContextSummary(
   String? rootPath,
   ContextPack contextPack,
-  ContextAttachment attachment,
+  List<ContextAttachment> attachments,
+  SpecialistAgentSelection specialistSelection,
+  SpecialistAgentRegistry registry,
 ) {
   final files = contextPack.visibleItems
       .where(
@@ -370,7 +472,10 @@ StudioContextSummary _buildContextSummary(
         ? 'No project selected'
         : p.basename(rootPath),
     includedItemCount: contextPack.visibleItems.length,
-    estimatedTokens: attachment.estimatedTokens,
+    estimatedTokens: attachments.fold<int>(
+      0,
+      (sum, attachment) => sum + attachment.estimatedTokens,
+    ),
     selectedFiles: files,
     includesGit: contextPack.visibleItems.any(
       (item) => item.type == ContextPackItemType.gitDiff,
@@ -381,19 +486,14 @@ StudioContextSummary _buildContextSummary(
     warnings: rootPath == null
         ? const ['chat only until a project is selected']
         : const [],
+    specialistLabels: specialistSelection.hasEnterpriseRouting
+        ? specialistSelection
+              .descriptors(registry)
+              .map((descriptor) => descriptor.label)
+              .toList(growable: false)
+        : const [],
+    specialistRouting: specialistSelection.hasEnterpriseRouting
+        ? specialistSelection.rationale
+        : null,
   );
-}
-
-String _lastAssistantPreview(ChatState chat) {
-  final assistants = chat.messages
-      .where((message) => message.role == MessageRole.assistant)
-      .toList();
-  if (assistants.isEmpty) return 'Circuit AI responded.';
-  final normalized = assistants.last.content.trim().replaceAll(
-    RegExp(r'\s+'),
-    ' ',
-  );
-  if (normalized.isEmpty) return 'Circuit AI responded.';
-  if (normalized.length <= 180) return normalized;
-  return '${normalized.substring(0, 180)}...';
 }

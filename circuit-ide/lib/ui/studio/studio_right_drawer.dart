@@ -15,6 +15,7 @@ import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
 import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
+import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
@@ -28,6 +29,7 @@ import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../terminal/terminal_panel.dart';
+import 'studio_chrome.dart';
 
 class StudioRightDrawer extends ConsumerWidget {
   final AgentTask? task;
@@ -44,12 +46,11 @@ class StudioRightDrawer extends ConsumerWidget {
       duration: AnimationDurations.panel,
       curve: AnimationCurves.smooth,
       width: width,
-      margin: const EdgeInsets.fromLTRB(0, 54, Spacing.lg, Spacing.lg),
+      margin: const EdgeInsets.fromLTRB(0, 52, Spacing.md, Spacing.md),
       decoration: BoxDecoration(
-        color: tokens.studioPanel,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tokens.studioDivider),
-        boxShadow: Shadows.medium,
+        color: tokens.studioDrawer,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.78)),
       ),
       clipBehavior: Clip.antiAlias,
       child: drawer.collapsed
@@ -98,9 +99,9 @@ class _DrawerHeader extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         Spacing.lg,
-        Spacing.lg,
         Spacing.md,
-        Spacing.sm,
+        Spacing.md,
+        Spacing.xs,
       ),
       child: Row(
         children: [
@@ -109,28 +110,25 @@ class _DrawerHeader extends ConsumerWidget {
               _titleFor(drawer.mode),
               style: TextStyle(
                 color: tokens.textSecondary,
-                fontSize: FontSizes.base,
-                fontWeight: FontWeight.w800,
+                fontSize: FontSizes.lg,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
-          IconButton(
+          StudioChromeIconButton(
             tooltip: drawer.expanded ? 'Shrink panel' : 'Expand panel',
-            onPressed: () =>
+            onTap: () =>
                 ref.read(studioRightDrawerProvider.notifier).toggleExpanded(),
-            icon: Icon(
-              drawer.expanded
-                  ? Icons.close_fullscreen
-                  : Icons.open_in_full_outlined,
-              color: tokens.textMuted,
-              size: 16,
-            ),
+            icon: drawer.expanded
+                ? Icons.close_fullscreen
+                : Icons.open_in_full_outlined,
           ),
-          IconButton(
+          StudioChromeIconButton(
             tooltip: 'Collapse panel',
-            onPressed: () =>
+            onTap: () =>
                 ref.read(studioRightDrawerProvider.notifier).toggleCollapsed(),
-            icon: Icon(Icons.chevron_right, color: tokens.textMuted, size: 18),
+            icon: Icons.chevron_right,
           ),
         ],
       ),
@@ -159,12 +157,14 @@ class _DrawerModeTabs extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
       decoration: BoxDecoration(
         border: Border(
-          bottom: BorderSide(color: tokens.studioDivider),
-          top: BorderSide(color: tokens.studioDivider),
+          bottom: BorderSide(
+            color: tokens.studioDivider.withValues(alpha: 0.72),
+          ),
+          top: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.72)),
         ),
       ),
       child: Row(
@@ -199,12 +199,12 @@ class _ModeIconButton extends ConsumerWidget {
             ref.read(studioRightDrawerProvider.notifier).openMode(mode),
         borderRadius: BorderRadius.circular(Radii.lg),
         child: Container(
-          width: compact ? 42 : 36,
-          height: 30,
+          width: compact ? 40 : 34,
+          height: 28,
           margin: EdgeInsets.only(right: compact ? 0 : Spacing.xs),
           decoration: BoxDecoration(
-            color: active ? tokens.studioHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(Radii.lg),
+            color: active ? tokens.studioControl : Colors.transparent,
+            borderRadius: BorderRadius.circular(Radii.md),
           ),
           child: Icon(_icon(mode), color: color, size: 16),
         ),
@@ -267,6 +267,9 @@ class _ProgressDrawer extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final chat = ref.watch(chatProvider);
     final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
+    final latestTurn = _latestTurn(thread);
+    final latestEvent = _latestEvent(latestTurn);
+    final hasPendingApproval = _hasPendingApproval(latestTurn);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
@@ -279,7 +282,8 @@ class _ProgressDrawer extends ConsumerWidget {
             isChatProcessing: chat.isProcessing,
             isChatStreaming: chat.isStreaming,
             hasAssistantResponse: false,
-            hasPendingApproval: chat.pendingConfirmation != null,
+            hasPendingApproval:
+                chat.pendingConfirmation != null || hasPendingApproval,
             commands: commands,
             chatError: chat.error,
           )
@@ -292,7 +296,7 @@ class _ProgressDrawer extends ConsumerWidget {
         value: displayState.label,
         accent: displayState.isActive || displayState.needsAttention,
       ),
-      if (chat.pendingConfirmation != null)
+      if (chat.pendingConfirmation != null || hasPendingApproval)
         const StudioProgressRow(
           label: 'Approval',
           value: 'Required',
@@ -321,7 +325,11 @@ class _ProgressDrawer extends ConsumerWidget {
       children: [
         Text(
           'Environment',
-          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: Spacing.md),
         for (final row in rows) _ProgressRow(row: row),
@@ -330,16 +338,46 @@ class _ProgressDrawer extends ConsumerWidget {
         const SizedBox(height: Spacing.lg),
         Text(
           'Latest event',
-          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: Spacing.md),
         _MiniEvent(
           icon: Icons.history,
-          title: displayState.label,
-          detail: thread?.contextSummary?.detail ?? 'Studio is ready.',
+          title: latestEvent?.title ?? displayState.label,
+          detail:
+              latestEvent?.detail ??
+              thread?.contextSummary?.detail ??
+              'Studio is ready.',
         ),
       ],
     );
+  }
+
+  StudioTurn? _latestTurn(StudioThread? thread) {
+    if (thread == null || thread.turns.isEmpty) return null;
+    final turns = thread.turns.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return turns.first;
+  }
+
+  StudioTurnEvent? _latestEvent(StudioTurn? turn) {
+    if (turn == null || turn.events.isEmpty) return null;
+    final events = turn.events.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    return events.first;
+  }
+
+  bool _hasPendingApproval(StudioTurn? turn) {
+    return turn?.events.any(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalState == ApprovalRequestState.pending,
+        ) ??
+        false;
   }
 }
 
@@ -1169,6 +1207,12 @@ class _SourcesDrawer extends ConsumerWidget {
       StudioSourceArtifactKind.command ||
       StudioSourceArtifactKind.terminalLog ||
       StudioSourceArtifactKind.terminalSession => Icons.terminal_outlined,
+      StudioSourceArtifactKind.topology => Icons.account_tree_outlined,
+      StudioSourceArtifactKind.sizing => Icons.straighten_outlined,
+      StudioSourceArtifactKind.lifecycle => Icons.event_available_outlined,
+      StudioSourceArtifactKind.chart => Icons.insert_chart_outlined,
+      StudioSourceArtifactKind.businessUseCase => Icons.query_stats_outlined,
+      StudioSourceArtifactKind.evidence => Icons.verified_outlined,
       StudioSourceArtifactKind.toolResult => Icons.dataset_linked_outlined,
     };
   }
@@ -1184,15 +1228,19 @@ class _ProgressRow extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final color = row.enabled ? tokens.textSecondary : tokens.textMuted;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Icon(_iconFor(row.label), color: color, size: 15),
+          Icon(_iconFor(row.label), color: color, size: 14),
           const SizedBox(width: Spacing.md),
           Expanded(
             child: Text(
               row.label,
-              style: TextStyle(color: color, fontSize: FontSizes.sm),
+              style: TextStyle(
+                color: color,
+                fontSize: FontSizes.sm,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           Text(
@@ -1200,7 +1248,7 @@ class _ProgressRow extends ConsumerWidget {
             style: TextStyle(
               color: row.accent ? tokens.success : tokens.textMuted,
               fontSize: FontSizes.sm,
-              fontWeight: row.accent ? FontWeight.w800 : FontWeight.w500,
+              fontWeight: row.accent ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
         ],
@@ -1260,18 +1308,23 @@ class _SourceListRow extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: Spacing.sm),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(Radii.lg),
         child: Container(
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md,
+            vertical: Spacing.sm,
+          ),
           decoration: BoxDecoration(
-            color: selected ? tokens.studioHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: tokens.studioDivider),
+            color: selected ? tokens.studioControl : tokens.studioActivityRow,
+            borderRadius: BorderRadius.circular(Radii.lg),
+            border: Border.all(
+              color: tokens.studioDivider.withValues(alpha: 0.78),
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: tokens.textMuted, size: 16),
+              Icon(icon, color: tokens.textMuted, size: 15),
               const SizedBox(width: Spacing.md),
               Expanded(
                 child: Column(
@@ -1284,7 +1337,7 @@ class _SourceListRow extends ConsumerWidget {
                       style: TextStyle(
                         color: tokens.textSecondary,
                         fontSize: FontSizes.sm,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 2),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -11,6 +12,7 @@ import 'git_provider.dart';
 import 'memories_provider.dart';
 import 'project_profile_provider.dart';
 import 'rules_provider.dart';
+import 'settings_provider.dart';
 import 'terminal_provider.dart';
 
 const _uuid = Uuid();
@@ -25,6 +27,7 @@ class ContextPackController extends Notifier<ContextPack?> {
     final git = ref.read(gitProvider).status;
     final rules = ref.read(rulesProvider).rules;
     final memories = ref.read(memoriesProvider).memories;
+    final settings = ref.read(settingsProvider);
     final terminal = ref
         .read(terminalProvider.notifier)
         .getActiveTerminalOutput(lines: 40)
@@ -41,6 +44,9 @@ class ContextPackController extends Notifier<ContextPack?> {
           'Stack: ${profile.projectTypes.isEmpty ? profile.primaryType.label : profile.projectTypes.map((type) => type.label).join(', ')}',
           if (profile.entrypoints.isNotEmpty)
             'Entrypoints: ${profile.entrypoints.take(6).join(', ')}',
+          if (profile.commands.isNotEmpty)
+            'Recommended checks: ${profile.commands.where((command) => command.enabled).take(4).map((command) => command.command).join(', ')}',
+          'Selected model: ${settings.ciscoModel}',
           'Changed files: ${profile.changedFiles}',
           if (prompt?.trim().isNotEmpty == true) 'Task: ${prompt!.trim()}',
         ].join('\n'),
@@ -52,17 +58,28 @@ class ContextPackController extends Notifier<ContextPack?> {
     ];
 
     if (activeTab != null && !activeTab.filePath.startsWith('circuit://')) {
+      final relativeSource = rootPath == null
+          ? activeTab.filePath
+          : p.relative(activeTab.filePath, from: rootPath);
+      final activeContent = activeTab.content.trim().isEmpty
+          ? _readFileIfSmall(activeTab.filePath)
+          : activeTab.content;
       items.add(
         ContextPackItem(
           id: 'active-file:${activeTab.filePath}',
           type: ContextPackItemType.activeFile,
           title: activeTab.fileName,
-          detail: 'Active editor file is likely relevant to the task.',
-          source: rootPath == null
-              ? activeTab.filePath
-              : p.relative(activeTab.filePath, from: rootPath),
+          detail: [
+            'Active editor file. Cursor: ${activeTab.cursorLine}:${activeTab.cursorColumn}.',
+            if (activeTab.isModified) 'Unsaved editor changes are present.',
+            if (activeContent.trim().isNotEmpty)
+              _truncate(activeContent, 8000)
+            else
+              'File content was not loaded.',
+          ].join('\n\n'),
+          source: relativeSource,
           sourceKind: ContextPackSourceKind.editor,
-          estimatedTokens: 40,
+          estimatedTokens: _estimateTokens(activeContent) + 40,
         ),
       );
     }
@@ -73,14 +90,37 @@ class ContextPackController extends Notifier<ContextPack?> {
       ...git.untracked.map((change) => change.path),
     }.take(8).toList();
     if (changedFiles.isNotEmpty) {
+      final diff = _gitDiffSnippet(rootPath);
       items.add(
         ContextPackItem(
           id: 'git-diff',
           type: ContextPackItemType.gitDiff,
           title: 'Working tree changes',
-          detail: changedFiles.join('\n'),
+          detail: [
+            changedFiles.join('\n'),
+            if (diff.trim().isNotEmpty)
+              '\nDiff snippet:\n${_truncate(diff, 8000)}',
+          ].join('\n'),
           sourceKind: ContextPackSourceKind.git,
-          estimatedTokens: 80,
+          estimatedTokens: 80 + _estimateTokens(diff),
+        ),
+      );
+    }
+
+    final packageScripts = _packageScripts(rootPath);
+    if (packageScripts.isNotEmpty) {
+      items.add(
+        ContextPackItem(
+          id: 'package-scripts',
+          type: ContextPackItemType.diagnostics,
+          title: 'Package scripts',
+          detail: packageScripts.entries
+              .take(12)
+              .map((entry) => '${entry.key}: ${entry.value}')
+              .join('\n'),
+          source: 'package.json',
+          sourceKind: ContextPackSourceKind.packageScript,
+          estimatedTokens: _estimateTokens(packageScripts.toString()),
         ),
       );
     }
@@ -170,6 +210,8 @@ class ContextPackController extends Notifier<ContextPack?> {
     const candidates = [
       'AGENTS.md',
       'AGENT.md',
+      'CLAUDE.md',
+      'CLAUDE.local.md',
       '.rules',
       '.cursorrules',
       '.github/copilot-instructions.md',
@@ -180,7 +222,7 @@ class ContextPackController extends Notifier<ContextPack?> {
       final file = File(p.join(rootPath, relativePath));
       if (!file.existsSync()) continue;
       try {
-        final content = file.readAsStringSync();
+        final content = _stripHtmlComments(file.readAsStringSync());
         if (content.trim().isEmpty) continue;
         items.add(
           ContextPackItem(
@@ -197,7 +239,79 @@ class ContextPackController extends Notifier<ContextPack?> {
         );
       } catch (_) {}
     }
-    return items.take(5).toList();
+    items.addAll(_claudeRuleItems(rootPath));
+    return items.take(10).toList();
+  }
+
+  String _readFileIfSmall(String path) {
+    try {
+      final file = File(path);
+      if (!file.existsSync() || file.lengthSync() > 80 * 1024) return '';
+      return file.readAsStringSync();
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _gitDiffSnippet(String? rootPath) {
+    if (rootPath == null) return '';
+    try {
+      final result = Process.runSync('git', [
+        'diff',
+        '--',
+      ], workingDirectory: rootPath);
+      if (result.exitCode != 0) return '';
+      return (result.stdout as String?) ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Map<String, String> _packageScripts(String? rootPath) {
+    if (rootPath == null) return const {};
+    try {
+      final file = File(p.join(rootPath, 'package.json'));
+      if (!file.existsSync()) return const {};
+      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final scripts = json['scripts'] as Map<String, dynamic>?;
+      if (scripts == null) return const {};
+      return scripts.map((key, value) => MapEntry(key, value.toString()));
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  List<ContextPackItem> _claudeRuleItems(String rootPath) {
+    final dir = Directory(p.join(rootPath, '.claude', 'rules'));
+    if (!dir.existsSync()) return const [];
+    final items = <ContextPackItem>[];
+    try {
+      for (final entity in dir.listSync(recursive: true).whereType<File>()) {
+        if (p.extension(entity.path).toLowerCase() != '.md') continue;
+        final relativePath = p.relative(entity.path, from: rootPath);
+        final content = _stripHtmlComments(entity.readAsStringSync());
+        if (content.trim().isEmpty) continue;
+        items.add(
+          ContextPackItem(
+            id: 'instruction:$relativePath',
+            type: ContextPackItemType.instruction,
+            title: p.basename(entity.path),
+            detail: _truncate(content.trim(), 2200),
+            source: relativePath,
+            sourceKind: ContextPackSourceKind.instructionFile,
+            estimatedTokens: _estimateTokens(content),
+            removable: true,
+            includedByDefault: true,
+          ),
+        );
+        if (items.length >= 5) break;
+      }
+    } catch (_) {}
+    return items;
+  }
+
+  String _stripHtmlComments(String content) {
+    return content.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '').trim();
   }
 }
 

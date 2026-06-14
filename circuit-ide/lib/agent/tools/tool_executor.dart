@@ -8,6 +8,7 @@ import '../../models/confirmation_request.dart';
 import '../../enums/tool_status.dart';
 import '../checkpoint/checkpoint_manager.dart';
 import '../security/secret_detector.dart';
+import '../security/agent_tool_permission_policy.dart';
 import '../security/command_sanitizer.dart';
 import '../mcp/mcp_client.dart';
 import 'tool_registry.dart';
@@ -45,6 +46,7 @@ class ToolExecutor {
   late final CommandTools _commandTools;
   late final WebTools _webTools;
   late final GitHubTools _githubTools;
+  late final AgentToolPermissionPolicy _permissionPolicy;
   final _secretDetector = SecretDetector();
   McpClient? _mcpClient;
   OrchestrateToolExecutor? _orchestrateTool;
@@ -66,6 +68,7 @@ class ToolExecutor {
     _commandTools = CommandTools(workingDir: workingDir);
     _webTools = WebTools();
     _githubTools = GitHubTools();
+    _permissionPolicy = AgentToolPermissionPolicy(workingDir: workingDir);
     checkpointManager = CheckpointManager(workingDir: workingDir);
   }
 
@@ -105,12 +108,14 @@ class ToolExecutor {
   Future<List<ToolExecutionResult>> executeToolCalls(
     List<ToolCallInfo> toolCalls,
   ) async {
-    // Separate read-only (parallel) from write (sequential)
+    // Separate policy-allowed read-only calls (parallel) from calls that need
+    // ordering, review, or denial handling.
     final readOnly = <ToolCallInfo>[];
     final writeOps = <ToolCallInfo>[];
 
     for (final tc in toolCalls) {
-      if (ToolRegistry.isReadOnly(tc.name) || ToolRegistry.isMcpTool(tc.name)) {
+      final decision = _permissionPolicy.evaluate(tc);
+      if (decision.allowed && decision.isReadOnly) {
         readOnly.add(tc);
       } else {
         writeOps.add(tc);
@@ -141,10 +146,27 @@ class ToolExecutor {
     onToolCallUpdate?.call(updated);
 
     try {
-      // Check if confirmation is needed
-      if (ToolRegistry.needsConfirmation(toolCall.name) && !autoApprove) {
+      // Check policy before relying on model intent. Prompts guide behavior,
+      // but this client-side policy is the enforcement layer.
+      final permission = _permissionPolicy.evaluate(toolCall);
+      if (permission.denied) {
+        onToolCallUpdate?.call(
+          updated.copyWith(
+            status: ToolStatus.error,
+            completedAt: DateTime.now(),
+            error: permission.message,
+          ),
+        );
+        return ToolExecutionResult(
+          toolCallId: toolCall.id,
+          result: 'Action blocked: ${permission.message}',
+          success: false,
+        );
+      }
+
+      if (permission.requiresApproval && !autoApprove) {
         final preview = _generatePreview(toolCall);
-        final warnings = _checkWarnings(toolCall);
+        final warnings = [permission.message, ..._checkWarnings(toolCall)];
 
         if (onConfirmationNeeded != null) {
           final request = ConfirmationRequest(
@@ -218,6 +240,7 @@ class ToolExecutor {
     final output = StringBuffer();
     return _commandTools.runCommand(
       toolCall.arguments,
+      runId: toolCall.id,
       onEvent: (event) {
         if (event.type == CommandRunEventType.stdout ||
             event.type == CommandRunEventType.stderr) {
@@ -235,6 +258,8 @@ class ToolExecutor {
     );
   }
 
+  int cancelActiveCommands() => _commandTools.cancelAll();
+
   Future<String> _dispatch(String name, Map<String, dynamic> args) async {
     switch (name) {
       // File tools
@@ -248,6 +273,10 @@ class ToolExecutor {
         return _fileTools.listFiles(args);
       case 'search_files':
         return _fileTools.searchFiles(args);
+
+      // Patch proposal tool
+      case 'propose_patch':
+        return _proposePatch(args);
 
       // Git tools
       case 'git_status':
@@ -316,6 +345,9 @@ class ToolExecutor {
       case 'edit_file':
         final path = args['path'] ?? 'unknown';
         return 'Edit file: $path';
+      case 'propose_patch':
+        final title = args['title'] ?? 'Patch proposal';
+        return 'Propose patch: $title';
       case 'run_command':
         return 'Execute: ${args['command'] ?? ''}';
       case 'git_commit':
@@ -329,6 +361,24 @@ class ToolExecutor {
       default:
         return '${toolCall.name}: ${args.toString().substring(0, 100.clamp(0, args.toString().length))}';
     }
+  }
+
+  String _proposePatch(Map<String, dynamic> args) {
+    final title = args['title'] as String? ?? 'Patch proposal';
+    final summary = args['summary'] as String? ?? '';
+    final files = args['files'] as List<dynamic>? ?? const [];
+    final fileLines = files
+        .whereType<Map<String, dynamic>>()
+        .map(
+          (file) => '- ${file['path'] ?? 'unknown'}: ${file['intent'] ?? ''}',
+        )
+        .join('\n');
+    return [
+      'Patch proposal: $title',
+      if (summary.trim().isNotEmpty) summary.trim(),
+      if (fileLines.trim().isNotEmpty) fileLines,
+      'No files were changed. Ask the user to approve the plan before applying edits.',
+    ].join('\n\n');
   }
 
   List<String> _checkWarnings(ToolCallInfo toolCall) {

@@ -9,6 +9,7 @@ import '../../agent/config/models_config.dart';
 import '../../agent/providers/provider_interface.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/settings_model.dart';
+import '../../models/specialist_agent.dart';
 import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
 import '../../models/token_usage.dart';
@@ -20,6 +21,7 @@ import '../../state/settings_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../state/workspace_session_provider.dart';
 import '../../theme/theme_tokens.dart';
 
 class StudioPromptComposer extends ConsumerStatefulWidget {
@@ -78,8 +80,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
       decoration: BoxDecoration(
         color: tokens.studioComposer,
         borderRadius: BorderRadius.circular(widget.compact ? 18 : 22),
-        border: Border.all(color: tokens.studioDivider),
-        boxShadow: Shadows.elevated,
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.9)),
+        boxShadow: widget.compact ? Shadows.subtle : Shadows.medium,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -93,9 +95,9 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
           Container(
             height: widget.compact ? 92 : 96,
             padding: const EdgeInsets.fromLTRB(
-              Spacing.lg,
+              Spacing.xl,
               Spacing.md,
-              Spacing.sm,
+              Spacing.md,
               Spacing.sm,
             ),
             child: Column(
@@ -129,9 +131,15 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             _PermissionsSelector(
                               autoApprove: settings.autoApprove,
                             ),
-                            const SizedBox(width: Spacing.lg),
+                            const SizedBox(width: Spacing.md),
                             _ComposerModeSelector(value: studio.promptMode),
                             const SizedBox(width: Spacing.md),
+                            if (widget.compact) ...[
+                              _SpecialistAgentSelector(
+                                value: studio.specialistAgentId,
+                              ),
+                              const SizedBox(width: Spacing.md),
+                            ],
                             _ModelSelector(selectedModel: settings.ciscoModel),
                             const SizedBox(width: Spacing.md),
                             _TokenRemainingPill(
@@ -154,14 +162,14 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: _controller.text.trim().isEmpty
-                                ? tokens.textMuted.withValues(alpha: 0.18)
+                                ? tokens.studioControl
                                 : tokens.textPrimary,
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             Icons.arrow_upward,
                             color: tokens.bgDark,
-                            size: 17,
+                            size: 16,
                           ),
                         ),
                       ),
@@ -174,10 +182,14 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
           if (!widget.compact)
             Container(
               height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
               decoration: BoxDecoration(
-                color: tokens.surfaceBase.withValues(alpha: 0.36),
-                border: Border(top: BorderSide(color: tokens.studioDivider)),
+                color: tokens.surfaceBase.withValues(alpha: 0.22),
+                border: Border(
+                  top: BorderSide(
+                    color: tokens.studioDivider.withValues(alpha: 0.74),
+                  ),
+                ),
               ),
               child: Row(
                 children: [
@@ -192,6 +204,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                     icon: Icons.account_tree_outlined,
                     label: branch.isEmpty ? 'main' : branch,
                   ),
+                  const SizedBox(width: Spacing.lg),
+                  _SpecialistAgentSelector(value: studio.specialistAgentId),
                 ],
               ),
             ),
@@ -254,6 +268,79 @@ class _ComposerModeSelector extends ConsumerWidget {
       child: _ComposerPill(
         icon: Icons.route_outlined,
         label: value.label,
+        trailing: Icons.expand_more,
+      ),
+    );
+  }
+}
+
+class _SpecialistAgentSelector extends ConsumerWidget {
+  final SpecialistAgentId value;
+
+  const _SpecialistAgentSelector({required this.value});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    const registry = SpecialistAgentRegistry();
+    final selected = registry.descriptorFor(value);
+    return PopupMenuButton<SpecialistAgentId>(
+      tooltip: 'Enterprise specialist',
+      color: tokens.studioPanel,
+      elevation: 12,
+      position: PopupMenuPosition.under,
+      shape: _softMenuShape(tokens),
+      onSelected: (agentId) =>
+          ref.read(studioShellProvider.notifier).setSpecialistAgent(agentId),
+      itemBuilder: (context) => [
+        for (final descriptor in registry.selectableDescriptors)
+          PopupMenuItem<SpecialistAgentId>(
+            value: descriptor.id,
+            child: SizedBox(
+              width: 280,
+              child: Row(
+                children: [
+                  Icon(
+                    _specialistIcon(descriptor.id),
+                    color: tokens.textMuted,
+                    size: 16,
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          descriptor.label,
+                          style: TextStyle(
+                            color: tokens.textPrimary,
+                            fontSize: FontSizes.sm,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          descriptor.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.textMuted,
+                            fontSize: FontSizes.xs,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (descriptor.id == value)
+                    Icon(Icons.check, color: tokens.textPrimary, size: 16),
+                ],
+              ),
+            ),
+          ),
+      ],
+      child: _ComposerPill(
+        icon: _specialistIcon(value),
+        label: selected.shortLabel,
         trailing: Icons.expand_more,
       ),
     );
@@ -353,6 +440,18 @@ class _PermissionsSelector extends ConsumerWidget {
       ),
     );
   }
+}
+
+IconData _specialistIcon(SpecialistAgentId id) {
+  return switch (id) {
+    SpecialistAgentId.auto => Icons.auto_awesome_outlined,
+    SpecialistAgentId.topologyDesigner => Icons.account_tree_outlined,
+    SpecialistAgentId.solutionSizer => Icons.straighten_outlined,
+    SpecialistAgentId.lifecycleValidator => Icons.event_available_outlined,
+    SpecialistAgentId.architectureReviewer => Icons.fact_check_outlined,
+    SpecialistAgentId.businessUseCaseResearcher => Icons.query_stats_outlined,
+    SpecialistAgentId.evidenceReviewer => Icons.verified_outlined,
+  };
 }
 
 class _ExecutionModeSelector extends ConsumerWidget {
@@ -531,7 +630,12 @@ class _ComposerPill extends ConsumerWidget {
           label,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            height: 1.1,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         if (trailing != null) ...[
           const SizedBox(width: Spacing.xs),
@@ -679,10 +783,9 @@ Future<void> _chooseProjectRoot(WidgetRef ref) async {
   final result = await FilePicker.platform.getDirectoryPath();
   if (result == null) return;
   final openResult = await ref
-      .read(fileTreeProvider.notifier)
-      .openDirectory(result);
+      .read(workspaceSessionProvider.notifier)
+      .openWorkspaceAndBindAgent(result);
   if (!openResult.success) return;
-  await ref.read(agentServiceProvider).updateWorkingDir(result);
   ref.read(settingsProvider.notifier).addRecentProject(result);
   ref.read(studioShellProvider.notifier).openProject(result);
 }

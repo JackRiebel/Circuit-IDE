@@ -11,6 +11,7 @@ import '../models/agent_preflight.dart';
 import '../models/chat_message.dart';
 import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
+import '../models/studio_turn.dart';
 import '../models/token_usage.dart';
 import 'file_tree_provider.dart';
 import 'work_item_provider.dart';
@@ -175,12 +176,12 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     );
   }
 
-  void appendUserMessage(String threadId, String content) {
-    _appendMessage(threadId, MessageRole.user, content);
+  String? appendUserMessage(String threadId, String content) {
+    return _appendMessage(threadId, MessageRole.user, content);
   }
 
-  void appendAssistantMessage(String threadId, String content) {
-    _appendMessage(threadId, MessageRole.assistant, content);
+  String? appendAssistantMessage(String threadId, String content) {
+    return _appendMessage(threadId, MessageRole.assistant, content);
   }
 
   void appendChatMessages(String threadId, Iterable<ChatMessage> messages) {
@@ -219,6 +220,52 @@ class StudioThreadController extends Notifier<StudioThreadState> {
       ),
     ].take(120).toList();
     _upsert(thread.copyWith(sourceArtifacts: artifacts), select: false);
+  }
+
+  void upsertTurn(String threadId, StudioTurn turn, {bool select = false}) {
+    final thread = _find(threadId);
+    if (thread == null) return;
+    final turns = [
+      turn,
+      ...thread.turns.where((candidate) => candidate.id != turn.id),
+    ].take(80).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _upsert(thread.copyWith(turns: turns), select: select);
+  }
+
+  void upsertTurnEvent(String threadId, String turnId, StudioTurnEvent event) {
+    final thread = _find(threadId);
+    if (thread == null) return;
+    final turn = thread.turns
+        .where((candidate) => candidate.id == turnId)
+        .firstOrNull;
+    if (turn == null) return;
+    upsertTurn(threadId, turn.upsertEvent(event));
+  }
+
+  void updateTurn(
+    String threadId,
+    String turnId, {
+    StudioTurnStatus? status,
+    String? assistantDraft,
+    Object? lastError = _sentinel,
+    bool complete = false,
+    bool expirePendingApprovals = false,
+  }) {
+    final thread = _find(threadId);
+    if (thread == null) return;
+    final turn = thread.turns
+        .where((candidate) => candidate.id == turnId)
+        .firstOrNull;
+    if (turn == null) return;
+    final updated =
+        (expirePendingApprovals ? turn.expirePendingApprovals() : turn)
+            .copyWith(
+              status: status,
+              assistantDraft: assistantDraft,
+              completedAt: complete ? DateTime.now() : _sentinel,
+              lastError: lastError,
+            );
+    upsertTurn(threadId, updated);
   }
 
   void complete(String threadId, {TokenUsage? tokenUsage}) {
@@ -298,9 +345,9 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     return state.threads.where((thread) => thread.id == threadId).firstOrNull;
   }
 
-  void _appendMessage(String threadId, MessageRole role, String content) {
+  String? _appendMessage(String threadId, MessageRole role, String content) {
     final thread = _find(threadId);
-    if (thread == null || content.trim().isEmpty) return;
+    if (thread == null || content.trim().isEmpty) return null;
     final message = StudioThreadMessage(
       id: _uuid.v4(),
       role: role,
@@ -311,6 +358,7 @@ class StudioThreadController extends Notifier<StudioThreadState> {
       thread.copyWith(messages: [...thread.messages, message]),
       select: true,
     );
+    return message.id;
   }
 
   void _upsert(StudioThread thread, {bool select = false}) {

@@ -87,6 +87,7 @@ class CircuitAgent {
   /// Cancel the current operation
   void cancel() {
     _isCancelled = true;
+    _toolExecutor.cancelActiveCommands();
   }
 
   Future<void> init() async {
@@ -106,6 +107,8 @@ class CircuitAgent {
     String userMessage, {
     void Function(String chunk)? onContent,
     String? requestId,
+    List<ChatMessage>? historyOverride,
+    AgentToolMode toolMode = AgentToolMode.code,
   }) async {
     if (_isProcessing) {
       throw StateError('Agent is already processing a message');
@@ -124,6 +127,11 @@ class CircuitAgent {
 
       // Begin a new checkpoint turn
       _toolExecutor.beginTurn();
+      if (historyOverride != null) {
+        history
+          ..clear()
+          ..addAll(historyOverride);
+      }
 
       // Add user message to history
       final userMsg = ChatMessage(
@@ -149,8 +157,20 @@ class CircuitAgent {
         // Stream the response
         events.emit(EventType.thinkingStarted);
 
-        // Merge MCP tools into the tools list for AI provider
-        final allTools = [...ToolRegistry.allTools, ..._mcpTools];
+        final baseTools = ToolRegistry.toolsForMode(toolMode);
+        final allTools = [
+          ...baseTools,
+          if (toolMode != AgentToolMode.ask &&
+              toolMode != AgentToolMode.review &&
+              toolMode != AgentToolMode.handoff)
+            ..._mcpTools,
+        ];
+        events.emit(EventType.agentRunEvent, {
+          'requestId': ?requestId,
+          'event': 'tool_exposure',
+          'mode': toolMode.name,
+          'tools': allTools.map((tool) => tool.name).toList(),
+        });
 
         await for (final chunk in provider.chat(
           optimized,
@@ -312,13 +332,17 @@ class CircuitAgent {
   }
 
   Future<bool> _handleConfirmation(ConfirmationRequest request) async {
-    events.emit(EventType.confirmationNeeded, {'request': request});
+    events.emit(EventType.confirmationNeeded, {
+      'request': request,
+      if (_activeRequestId != null) 'requestId': _activeRequestId,
+    });
 
     final result = await request.response;
 
     events.emit(EventType.confirmationReceived, {
       'id': request.id,
       'approved': result,
+      if (_activeRequestId != null) 'requestId': _activeRequestId,
     });
 
     return result;

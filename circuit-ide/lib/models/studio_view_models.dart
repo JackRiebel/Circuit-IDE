@@ -237,6 +237,7 @@ class StudioTranscriptItem {
       type: StudioTranscriptItemType.approval,
       threadId: threadId,
       requestId: requestId,
+      timestamp: request.timestamp,
       approvalId: request.id,
       confirmation: request,
     );

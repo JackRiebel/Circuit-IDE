@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../core/utils/platform_utils.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/studio_thread.dart';
@@ -14,14 +16,17 @@ import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
-import '../../state/connection_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
+import '../../state/studio_project_creator.dart';
+import '../../state/studio_project_history_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/studio_thread_search_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../state/workspace_session_provider.dart';
+import 'studio_chrome.dart';
 
 class StudioLeftRail extends ConsumerWidget {
   const StudioLeftRail({super.key});
@@ -37,20 +42,19 @@ class StudioLeftRail extends ConsumerWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            tokens.studioRail.withValues(alpha: 0.96),
-            tokens.bgMain.withValues(alpha: 0.92),
-          ],
+          colors: [tokens.studioRail, tokens.bgMain.withValues(alpha: 0.94)],
         ),
-        border: Border(right: BorderSide(color: tokens.studioDivider)),
+        border: Border(
+          right: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.7)),
+        ),
       ),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: Spacing.sm),
+            const SizedBox(height: Spacing.xs),
             _RailTopBar(),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.sm),
             _RailAction(
               icon: Icons.edit_square,
               label: 'New task',
@@ -65,10 +69,10 @@ class StudioLeftRail extends ConsumerWidget {
             _RailAction(
               icon: Icons.create_new_folder_outlined,
               label: 'New project',
-              onTap: () => unawaited(_chooseProjectRoot(ref)),
+              onTap: () => unawaited(_createProject(context, ref)),
             ),
             const _RailSearchBox(),
-            const SizedBox(height: Spacing.xl),
+            const SizedBox(height: Spacing.lg),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
@@ -156,20 +160,18 @@ class _RailSearchBox extends ConsumerWidget {
 class _RailTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
       child: Row(
         children: [
           const SizedBox(width: 74),
-          IconButton(
+          StudioChromeIconButton(
             tooltip: 'Open project folder',
-            onPressed: () => unawaited(_chooseProjectRoot(ref)),
-            icon: Icon(
-              Icons.download_for_offline,
-              color: tokens.accent,
-              size: 22,
-            ),
+            onTap: () => unawaited(_chooseProjectRoot(ref)),
+            icon: Icons.download_for_offline,
+            active: true,
+            width: 30,
+            height: 28,
           ),
         ],
       ),
@@ -181,12 +183,29 @@ Future<void> _chooseProjectRoot(WidgetRef ref) async {
   final result = await FilePicker.platform.getDirectoryPath();
   if (result == null) return;
   final openResult = await ref
-      .read(fileTreeProvider.notifier)
-      .openDirectory(result);
+      .read(workspaceSessionProvider.notifier)
+      .openWorkspaceAndBindAgent(result);
   if (!openResult.success) return;
-  await ref.read(agentServiceProvider).updateWorkingDir(result);
   ref.read(settingsProvider.notifier).addRecentProject(result);
   ref.read(studioShellProvider.notifier).openProject(result);
+}
+
+Future<void> _createProject(BuildContext context, WidgetRef ref) async {
+  final result = await showDialog<_NewProjectResult>(
+    context: context,
+    builder: (context) => const _NewProjectDialog(),
+  );
+  if (result == null) return;
+  final path = await StudioProjectCreator.createProject(
+    name: result.name,
+    parentPath: result.parentPath,
+  );
+  final openResult = await ref
+      .read(workspaceSessionProvider.notifier)
+      .openWorkspaceAndBindAgent(path);
+  if (!openResult.success) return;
+  ref.read(settingsProvider.notifier).addRecentProject(path);
+  ref.read(studioShellProvider.notifier).openProject(path);
 }
 
 class _RailAction extends ConsumerWidget {
@@ -202,31 +221,166 @@ class _RailAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    return StudioRailRow(icon: icon, label: label, onTap: onTap);
+  }
+}
+
+class _NewProjectResult {
+  final String name;
+  final String parentPath;
+
+  const _NewProjectResult({required this.name, required this.parentPath});
+}
+
+class _NewProjectDialog extends ConsumerStatefulWidget {
+  const _NewProjectDialog();
+
+  @override
+  ConsumerState<_NewProjectDialog> createState() => _NewProjectDialogState();
+}
+
+class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
+  late final TextEditingController _nameController;
+  late String _parentPath;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: 'New Circuit project');
+    _parentPath = PlatformUtils.defaultProjectsDir;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: 1),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
-        child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-          child: Row(
+    return Dialog(
+      backgroundColor: tokens.studioPanel,
+      insetPadding: const EdgeInsets.all(24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 16, color: tokens.textSecondary),
-              const SizedBox(width: Spacing.md),
               Text(
-                label,
+                'Create project',
                 style: TextStyle(
-                  color: tokens.textSecondary,
+                  color: tokens.textPrimary,
+                  fontSize: FontSizes.lg,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: Spacing.xs),
+              Text(
+                'Name a new folder for this Circuit task.',
+                style: TextStyle(
+                  color: tokens.textMuted,
                   fontSize: FontSizes.sm,
                 ),
+              ),
+              const SizedBox(height: Spacing.lg),
+              TextField(
+                controller: _nameController,
+                autofocus: true,
+                style: TextStyle(color: tokens.textPrimary),
+                decoration: InputDecoration(
+                  labelText: 'Project name',
+                  labelStyle: TextStyle(color: tokens.textMuted),
+                  filled: true,
+                  fillColor: tokens.studioControl,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: tokens.studioDivider),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: tokens.studioDivider),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: tokens.outlineFocus),
+                  ),
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: Spacing.md),
+              Container(
+                padding: const EdgeInsets.all(Spacing.md),
+                decoration: BoxDecoration(
+                  color: tokens.studioControl.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: tokens.studioDivider),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder_outlined,
+                      size: 16,
+                      color: tokens.textMuted,
+                    ),
+                    const SizedBox(width: Spacing.sm),
+                    Expanded(
+                      child: Text(
+                        _parentPath,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontSize: FontSizes.sm,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _chooseParent,
+                      child: const Text('Change'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: Spacing.xl),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  FilledButton(onPressed: _submit, child: const Text('Create')),
+                ],
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _chooseParent() async {
+    final result = await FilePicker.platform.getDirectoryPath(
+      initialDirectory: Directory(_parentPath).existsSync()
+          ? _parentPath
+          : null,
+    );
+    if (result == null || !mounted) return;
+    setState(() => _parentPath = result);
+  }
+
+  void _submit() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) return;
+    Navigator.of(
+      context,
+    ).pop(_NewProjectResult(name: name, parentPath: _parentPath));
   }
 }
 
@@ -240,16 +394,16 @@ class _RailSectionLabel extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        Spacing.md,
+        Spacing.lg,
         Spacing.lg,
         Spacing.md,
-        Spacing.sm,
+        Spacing.xs,
       ),
       child: Text(
         label,
         style: TextStyle(
           color: tokens.textMuted,
-          fontSize: FontSizes.sm,
+          fontSize: FontSizes.xs,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -274,11 +428,13 @@ class _RecentProjectGroup extends ConsumerWidget {
         .toLowerCase();
     final workspace = ref.watch(agentWorkspaceProvider);
     final threadState = ref.watch(studioThreadProvider);
+    final history = ref.watch(studioProjectHistoryProvider).byPath[path];
     final chat = ref.watch(chatProvider);
     final commands = ref.watch(commandRunProvider).values;
-    final tasks = isSelectedProject
-        ? workspace.tasks.take(4).toList()
-        : const [];
+    final tasks = isSelectedProject ? workspace.tasks : history?.tasks ?? [];
+    final threads = isSelectedProject
+        ? threadState.threads
+        : history?.threads ?? [];
     final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
     final projectSummary = StudioRailProjectSummary(
       path: path,
@@ -292,11 +448,11 @@ class _RecentProjectGroup extends ConsumerWidget {
           StudioRailTaskSummary(
             id: task.id,
             title: task.goal,
-            selected: task.id == selectedTaskId,
+            selected: isSelectedProject && task.id == selectedTaskId,
             displayState: _displayStateForTask(
               task,
-              threadState.threadForTask(task.id),
-              isSelected: task.id == selectedTaskId,
+              threads.where((thread) => thread.taskId == task.id).firstOrNull,
+              isSelected: isSelectedProject && task.id == selectedTaskId,
               chat: chat,
               commands: commands,
             ),
@@ -314,22 +470,37 @@ class _RecentProjectGroup extends ConsumerWidget {
         children: [
           _ProjectRow(summary: projectSummary),
           for (final task in taskSummaries)
-            Padding(
-              padding: const EdgeInsets.only(
-                left: Spacing.xxl,
-                right: Spacing.md,
-              ),
-              child: _ConversationRow(
-                summary: task,
-                onTap: () {
-                  ref.read(agentWorkspaceProvider.notifier).selectTask(task.id);
-                  ref.read(studioShellProvider.notifier).openTask(task.id);
-                },
-              ),
+            _ConversationRow(
+              summary: task,
+              onTap: () =>
+                  unawaited(_openTask(ref, projectPath: path, taskId: task.id)),
             ),
         ],
       ),
     );
+  }
+
+  Future<void> _openTask(
+    WidgetRef ref, {
+    required String projectPath,
+    required String taskId,
+  }) async {
+    if (ref.read(fileTreeProvider).rootPath != projectPath) {
+      final result = await ref
+          .read(workspaceSessionProvider.notifier)
+          .openWorkspaceAndBindAgent(projectPath);
+      if (!result.success) {
+        if (result.openResult?.recentProjectStatus ==
+            RecentProjectStatus.missing) {
+          ref.read(settingsProvider.notifier).removeRecentProject(projectPath);
+        }
+        return;
+      }
+      ref.read(settingsProvider.notifier).addRecentProject(projectPath);
+      ref.read(studioShellProvider.notifier).openProject(projectPath);
+    }
+    ref.read(agentWorkspaceProvider.notifier).selectTask(taskId);
+    ref.read(studioShellProvider.notifier).openTask(taskId);
   }
 }
 
@@ -363,60 +534,27 @@ class _ProjectRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
     final selected = summary.selected;
-    return InkWell(
+    return StudioRailRow(
+      icon: Icons.folder_outlined,
+      label: summary.name,
+      selected: selected,
+      project: true,
       onTap: () => unawaited(_open(ref)),
-      borderRadius: BorderRadius.circular(Radii.lg),
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-        decoration: BoxDecoration(
-          color: selected
-              ? tokens.studioHover.withValues(alpha: 0.86)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(Radii.lg),
-          border: selected
-              ? Border.all(color: tokens.outlineSoft.withValues(alpha: 0.7))
-              : null,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.folder_outlined,
-              color: selected ? tokens.textPrimary : tokens.textSecondary,
-              size: 16,
-            ),
-            const SizedBox(width: Spacing.md),
-            Expanded(
-              child: Text(
-                summary.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? tokens.textPrimary : tokens.textSecondary,
-                  fontSize: FontSizes.sm,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
   Future<void> _open(WidgetRef ref) async {
     final result = await ref
-        .read(fileTreeProvider.notifier)
-        .openDirectory(summary.path);
+        .read(workspaceSessionProvider.notifier)
+        .openWorkspaceAndBindAgent(summary.path);
     if (!result.success) {
-      if (result.recentProjectStatus == RecentProjectStatus.missing) {
+      if (result.openResult?.recentProjectStatus ==
+          RecentProjectStatus.missing) {
         ref.read(settingsProvider.notifier).removeRecentProject(summary.path);
       }
       return;
     }
-    await ref.read(agentServiceProvider).updateWorkingDir(summary.path);
     ref.read(settingsProvider.notifier).addRecentProject(summary.path);
     ref.read(studioShellProvider.notifier).openProject(summary.path);
   }
@@ -430,60 +568,16 @@ class _ConversationRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
     final selected = summary.selected;
     final display = summary.displayState;
-    return InkWell(
-      borderRadius: BorderRadius.circular(Radii.lg),
+    return StudioRailRow(
+      label: summary.title,
+      selected: selected,
+      leftIndent: Spacing.xxl,
       onTap: onTap,
-      child: Container(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-        decoration: BoxDecoration(
-          color: selected
-              ? tokens.accent.withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(Radii.lg),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                summary.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? tokens.textPrimary : tokens.textSecondary,
-                  fontSize: FontSizes.sm,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: selected
-                    ? tokens.accent.withValues(alpha: 0.22)
-                    : tokens.textMuted.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(Radii.pill),
-              ),
-              child: Text(
-                display.label,
-                style: TextStyle(
-                  color: display.needsAttention
-                      ? tokens.warning
-                      : selected
-                      ? tokens.textPrimary
-                      : tokens.textMuted,
-                  fontSize: FontSizes.xxs,
-                  fontWeight: selected || display.needsAttention
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
+      trailing: StudioMiniChip(
+        label: display.label,
+        attention: display.needsAttention,
       ),
     );
   }

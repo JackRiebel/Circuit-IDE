@@ -40,6 +40,12 @@ class PlatformUtils {
   /// Lives inside the app's config dir so it never triggers macOS TCC prompts.
   static String get scratchDir => '$configDir/workspace';
 
+  /// Default parent for user-created Circuit Studio projects.
+  static String get defaultProjectsDir {
+    if (isMacOS || isLinux) return '$homeDir/Desktop/CircuitCode Projects';
+    return '$homeDir\\Desktop\\CircuitCode Projects';
+  }
+
   static Future<String> ensureScratchDir() async {
     final dir = Directory(scratchDir);
     if (!await dir.exists()) {

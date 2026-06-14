@@ -12,6 +12,12 @@ enum StudioSourceArtifactKind {
   gitHunk,
   terminalSession,
   reviewComment,
+  topology,
+  sizing,
+  lifecycle,
+  chart,
+  businessUseCase,
+  evidence,
 }
 
 class StudioSourceArtifact {

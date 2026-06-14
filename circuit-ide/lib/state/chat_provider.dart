@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../agent/config/config.dart';
 import '../agent/config/models_config.dart';
+import '../agent/tools/tool_registry.dart';
 import '../agent/providers/provider_interface.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
@@ -94,6 +95,7 @@ class ChatNotifier extends Notifier<ChatState> {
   Timer? _safetyTimer;
   bool _wasCancelled = false;
   String? _activeRequestId;
+  bool? _temporaryAutoApprovePrevious;
 
   @override
   ChatState build() {
@@ -151,6 +153,7 @@ class ChatNotifier extends Notifier<ChatState> {
         if (toolCalls.isNotEmpty) {
           ref.read(fileTreeProvider.notifier).refresh();
         }
+        _restoreTemporaryAutoApprove();
       } else {
         state = state.copyWith(
           isStreaming: false,
@@ -178,6 +181,7 @@ class ChatNotifier extends Notifier<ChatState> {
       ref
           .read(agentRequestProvider.notifier)
           .finish(AgentRequestLane.chat, error: errorMsg);
+      _restoreTemporaryAutoApprove();
     });
 
     service.events.on(EventType.confirmationNeeded, (event) {
@@ -203,6 +207,9 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> sendMessage(
     String content, {
     List<ContextAttachment> attachments = const [],
+    List<ChatMessage>? historyOverride,
+    AgentToolMode toolMode = AgentToolMode.code,
+    String? requestId,
   }) async {
     if (content.trim().isEmpty && attachments.isEmpty) return;
     if (state.isProcessing) return;
@@ -231,7 +238,8 @@ class ChatNotifier extends Notifier<ChatState> {
 
     _wasCancelled = false;
     final runNotifier = ref.read(agentRunProvider.notifier);
-    final requestId = runNotifier.startRun(
+    final runId = runNotifier.startRun(
+      id: requestId,
       kind: AgentRunKind.chat,
       model: service.state.model,
       message: 'User message sent',
@@ -245,10 +253,10 @@ class ChatNotifier extends Notifier<ChatState> {
         .read(agentRequestProvider.notifier)
         .start(
           lane: AgentRequestLane.chat,
-          requestId: requestId,
+          requestId: runId,
           model: service.state.model,
         );
-    _activeRequestId = requestId;
+    _activeRequestId = runId;
     state = state.copyWith(
       isProcessing: true,
       messages: [...state.messages, userMsg],
@@ -267,7 +275,9 @@ class ChatNotifier extends Notifier<ChatState> {
       );
       final result = await service.sendMessage(
         finalContent,
-        requestId: requestId,
+        requestId: runId,
+        historyOverride: historyOverride,
+        toolMode: toolMode,
       );
 
       _cancelSafetyTimer();
@@ -311,10 +321,11 @@ class ChatNotifier extends Notifier<ChatState> {
           outputPreview: _preview(result),
         );
         ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
-        if (_activeRequestId == requestId) _activeRequestId = null;
+        if (_activeRequestId == runId) _activeRequestId = null;
       }
     } catch (e) {
       _cancelSafetyTimer();
+      _restoreTemporaryAutoApprove();
       ref
           .read(agentRunProvider.notifier)
           .finishRun(
@@ -341,6 +352,9 @@ class ChatNotifier extends Notifier<ChatState> {
           streamingContent: '',
         );
       }
+      if (!state.isProcessing && !state.isStreaming) {
+        _restoreTemporaryAutoApprove();
+      }
     }
   }
 
@@ -366,6 +380,7 @@ class ChatNotifier extends Notifier<ChatState> {
     ref
         .read(agentRequestProvider.notifier)
         .finish(AgentRequestLane.chat, cancelled: true);
+    _restoreTemporaryAutoApprove();
   }
 
   /// Clear the current error
@@ -379,10 +394,50 @@ class ChatNotifier extends Notifier<ChatState> {
 
   void approveConfirmation(String id) {
     ref.read(agentServiceProvider).approveConfirmation(id);
+    if (state.pendingConfirmation?.id == id) {
+      state = state.copyWith(pendingConfirmation: null);
+    }
+  }
+
+  void approveConfirmationForCurrentTask(String id) {
+    final service = ref.read(agentServiceProvider);
+    _temporaryAutoApprovePrevious ??= service.state.autoApprove;
+    service.setAutoApprove(true);
+    service.approveConfirmation(id);
+    if (state.pendingConfirmation?.id == id) {
+      state = state.copyWith(pendingConfirmation: null);
+    }
   }
 
   void rejectConfirmation(String id) {
     ref.read(agentServiceProvider).rejectConfirmation(id);
+    if (state.pendingConfirmation?.id == id) {
+      state = state.copyWith(pendingConfirmation: null);
+    }
+  }
+
+  bool handlePendingApprovalText(String text) {
+    final pending = state.pendingConfirmation;
+    if (pending == null) return false;
+    final normalized = text.trim().toLowerCase();
+    if (normalized.isEmpty) return false;
+    final compact = normalized.replaceAll(RegExp(r'[^a-z ]+'), ' ');
+    if (RegExp(r'\b(reject|deny|cancel|stop)\b').hasMatch(compact)) {
+      rejectConfirmation(pending.id);
+      return true;
+    }
+    if (RegExp(r'\b(always|auto|all|this task)\b').hasMatch(compact) &&
+        RegExp(r'\b(approve|yes|ok|proceed|continue)\b').hasMatch(compact)) {
+      approveConfirmationForCurrentTask(pending.id);
+      return true;
+    }
+    if (RegExp(
+      r'^(approve|approved|yes|y|ok|okay|proceed|continue|do it|go ahead)( please)?$',
+    ).hasMatch(compact.trim())) {
+      approveConfirmation(pending.id);
+      return true;
+    }
+    return false;
   }
 
   /// Save current chat session to disk
@@ -434,6 +489,13 @@ class ChatNotifier extends Notifier<ChatState> {
           error:
               'The AI request is still running after 4 minutes. Please try again or check the provider connection.',
         );
+        ref
+            .read(agentRequestProvider.notifier)
+            .finish(
+              AgentRequestLane.chat,
+              error:
+                  'The AI request is still running after 4 minutes. Please try again or check the provider connection.',
+            );
         _activeRequestId = null;
       }
     });
@@ -565,13 +627,20 @@ class ChatNotifier extends Notifier<ChatState> {
 
   bool _eventBelongsToActiveRequest(Map<String, dynamic> data) {
     final requestId = data['requestId'] as String?;
-    if (_activeRequestId == null) return true;
+    if (_activeRequestId == null) return false;
     return requestId == _activeRequestId;
   }
 
   void _cancelSafetyTimer() {
     _safetyTimer?.cancel();
     _safetyTimer = null;
+  }
+
+  void _restoreTemporaryAutoApprove() {
+    final previous = _temporaryAutoApprovePrevious;
+    if (previous == null) return;
+    _temporaryAutoApprovePrevious = null;
+    ref.read(agentServiceProvider).setAutoApprove(previous);
   }
 
   String _buildMessageWithContext(

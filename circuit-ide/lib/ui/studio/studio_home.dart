@@ -92,14 +92,14 @@ class StudioHome extends ConsumerWidget {
     if (!hasProjects) {
       return const [
         'Open a project and explain what it does',
-        'Create a plan for the first safe improvement',
-        'Review the current codebase for risky areas',
+        'Create a network topology from requirements',
+        'Size a switching solution for Wi-Fi 7 and UPOE needs',
       ];
     }
     return const [
-      'Explain this project in plain English',
-      'Find the safest next improvement',
-      'Review the current changes before I ship',
+      'Create a network topology for this customer',
+      'Size a Cisco solution from client count, WAN speed, and PoE needs',
+      'Validate model lifecycle and replacement options',
     ];
   }
 

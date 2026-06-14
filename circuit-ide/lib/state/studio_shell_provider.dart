@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/studio_shell.dart';
+import '../models/specialist_agent.dart';
 import 'file_tree_provider.dart';
 import 'studio_thread_provider.dart';
 
@@ -50,6 +51,10 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
 
   void setExecutionMode(StudioExecutionMode mode) {
     state = state.copyWith(executionMode: mode);
+  }
+
+  void setSpecialistAgent(SpecialistAgentId agentId) {
+    state = state.copyWith(specialistAgentId: agentId);
   }
 
   void setComposerText(String text) {

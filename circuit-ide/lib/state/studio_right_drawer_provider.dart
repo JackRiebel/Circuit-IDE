@@ -79,6 +79,12 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
       StudioSourceArtifactKind.command ||
       StudioSourceArtifactKind.terminalLog ||
       StudioSourceArtifactKind.terminalSession => StudioDrawerMode.terminal,
+      StudioSourceArtifactKind.topology ||
+      StudioSourceArtifactKind.sizing ||
+      StudioSourceArtifactKind.lifecycle ||
+      StudioSourceArtifactKind.chart ||
+      StudioSourceArtifactKind.businessUseCase ||
+      StudioSourceArtifactKind.evidence ||
       StudioSourceArtifactKind.toolResult => StudioDrawerMode.sources,
     };
   }

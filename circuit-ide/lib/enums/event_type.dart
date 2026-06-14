@@ -35,6 +35,7 @@ enum EventType {
   // Agent state
   thinkingStarted,
   thinkingCompleted,
+  agentRunEvent,
 
   // Checkpoint events
   checkpointCreated,

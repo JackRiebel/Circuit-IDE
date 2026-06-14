@@ -10,6 +10,7 @@ import '../layout/ide_scaffold.dart';
 import 'studio_home.dart';
 import 'studio_left_rail.dart';
 import 'studio_review_panel.dart';
+import 'studio_chrome.dart';
 import 'studio_task_view.dart';
 
 class StudioShell extends ConsumerWidget {
@@ -28,9 +29,13 @@ class StudioShell extends ConsumerWidget {
             decoration: BoxDecoration(
               color: tokens.studioCanvas,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(18),
+                topLeft: Radius.circular(16),
               ),
-              border: Border(left: BorderSide(color: tokens.studioDivider)),
+              border: Border(
+                left: BorderSide(
+                  color: tokens.studioDivider.withValues(alpha: 0.72),
+                ),
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -84,19 +89,23 @@ class _StudioTopBar extends ConsumerWidget {
 
     return Container(
       height: 46,
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
       decoration: BoxDecoration(
-        color: tokens.studioCanvas,
-        border: Border(bottom: BorderSide(color: tokens.studioDivider)),
+        color: tokens.studioTopBar,
+        border: Border(
+          bottom: BorderSide(
+            color: tokens.studioDivider.withValues(alpha: 0.78),
+          ),
+        ),
       ),
       child: Row(
         children: [
-          IconButton(
+          StudioChromeIconButton(
             tooltip: 'Back',
-            onPressed: () => ref.read(studioShellProvider.notifier).openHome(),
-            icon: Icon(Icons.arrow_back, color: tokens.textMuted, size: 17),
+            onTap: () => ref.read(studioShellProvider.notifier).openHome(),
+            icon: Icons.arrow_back,
           ),
-          const SizedBox(width: Spacing.lg),
+          const SizedBox(width: Spacing.md),
           Expanded(
             child: Text(
               title,
@@ -105,7 +114,8 @@ class _StudioTopBar extends ConsumerWidget {
               style: TextStyle(
                 color: tokens.textPrimary,
                 fontSize: FontSizes.base,
-                fontWeight: FontWeight.w700,
+                height: 1.15,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -117,44 +127,13 @@ class _StudioTopBar extends ConsumerWidget {
               label: const Text('Back to Studio'),
             )
           else
-            _TopIcon(
+            StudioChromeIconButton(
               icon: Icons.terminal_outlined,
               tooltip: 'Open Advanced Editor',
               onTap: () =>
                   ref.read(studioShellProvider.notifier).openAdvancedEditor(),
             ),
         ],
-      ),
-    );
-  }
-}
-
-class _TopIcon extends ConsumerWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-
-  const _TopIcon({required this.icon, required this.tooltip, this.onTap});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
-        child: Container(
-          width: 34,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: tokens.studioPanel.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(Radii.lg),
-            border: Border.all(color: tokens.studioDivider),
-          ),
-          child: Icon(icon, color: tokens.textMuted, size: 16),
-        ),
       ),
     );
   }

@@ -12,7 +12,9 @@ import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_right_drawer.dart';
+import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
+import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
@@ -23,6 +25,7 @@ import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../chat/chat_message_widget.dart';
+import 'studio_chrome.dart';
 import 'studio_message_sender.dart';
 import 'studio_prompt_composer.dart';
 import 'studio_right_drawer.dart';
@@ -101,6 +104,7 @@ class _TaskTranscript extends ConsumerWidget {
           thread?.messages.map((message) => message.toChatMessage()).toList() ??
           const [],
       artifacts: artifacts,
+      sourceArtifacts: thread?.sourceArtifacts ?? const [],
       commands: commands.take(4).toList(),
       patch: patch,
       confirmation: (thread?.isActive ?? false)
@@ -111,11 +115,14 @@ class _TaskTranscript extends ConsumerWidget {
       fallbackUserText: title,
       fallbackCreatedAt: task?.createdAt,
     );
+    final turnWidgets = thread?.turns.isNotEmpty == true
+        ? _buildTurnWidgets(context, ref, thread!.turns)
+        : null;
     return Column(
       children: [
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(72, 32, 72, 24),
+            padding: const EdgeInsets.fromLTRB(72, 28, 72, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -123,37 +130,42 @@ class _TaskTranscript extends ConsumerWidget {
                   _statusLabel(task, displayState),
                   style: TextStyle(
                     color: tokens.textMuted,
-                    fontSize: FontSizes.sm,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: Spacing.md),
-                Divider(color: tokens.studioDivider),
-                const SizedBox(height: Spacing.md),
-                for (final item in transcriptItems)
-                  switch (item.type) {
-                    StudioTranscriptItemType.userMessage => _ChatTranscriptLine(
-                      isUser: true,
-                      text: item.message!.content,
-                    ),
-                    StudioTranscriptItemType.assistantMarkdown =>
-                      _ChatTranscriptLine(
-                        isUser: false,
-                        text: item.message!.content,
+                const SizedBox(height: Spacing.sm),
+                Divider(color: tokens.studioDivider.withValues(alpha: 0.82)),
+                const SizedBox(height: Spacing.lg),
+                if (turnWidgets != null)
+                  ...turnWidgets
+                else
+                  for (final item in transcriptItems)
+                    switch (item.type) {
+                      StudioTranscriptItemType.userMessage =>
+                        _ChatTranscriptLine(
+                          isUser: true,
+                          text: item.message!.content,
+                        ),
+                      StudioTranscriptItemType.assistantMarkdown =>
+                        _ChatTranscriptLine(
+                          isUser: false,
+                          text: item.message!.content,
+                        ),
+                      StudioTranscriptItemType.approval =>
+                        _StudioConfirmationCard(request: item.confirmation!),
+                      StudioTranscriptItemType.error => _TranscriptEvent(
+                        icon: Icons.error_outline,
+                        title: 'Circuit AI needs attention',
+                        detail: item.error!,
                       ),
-                    StudioTranscriptItemType.approval =>
-                      _StudioConfirmationCard(request: item.confirmation!),
-                    StudioTranscriptItemType.error => _TranscriptEvent(
-                      icon: Icons.error_outline,
-                      title: 'Circuit AI needs attention',
-                      detail: item.error!,
-                    ),
-                    StudioTranscriptItemType.activity ||
-                    StudioTranscriptItemType.patchReview ||
-                    StudioTranscriptItemType.commandRun => _ActivityItem(
-                      item: item,
-                      iconFor: _artifactIcon,
-                    ),
-                  },
+                      StudioTranscriptItemType.activity ||
+                      StudioTranscriptItemType.patchReview ||
+                      StudioTranscriptItemType.commandRun => _ActivityItem(
+                        item: item,
+                        iconFor: _artifactIcon,
+                      ),
+                    },
                 if (patch != null)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -182,7 +194,7 @@ class _TaskTranscript extends ConsumerWidget {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(72, 0, 72, Spacing.lg),
+          padding: const EdgeInsets.fromLTRB(72, 0, 72, Spacing.md),
           child: StudioPromptComposer(
             compact: true,
             hintText: 'Ask for follow-up changes',
@@ -223,9 +235,112 @@ class _TaskTranscript extends ConsumerWidget {
     };
   }
 
+  List<Widget> _buildTurnWidgets(
+    BuildContext context,
+    WidgetRef ref,
+    List<StudioTurn> turns,
+  ) {
+    final orderedTurns = turns.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final recentTurns = orderedTurns.length > 8
+        ? orderedTurns.sublist(orderedTurns.length - 8)
+        : orderedTurns;
+    final widgets = <Widget>[];
+    for (final turn in recentTurns) {
+      widgets.add(_ChatTranscriptLine(isUser: true, text: turn.prompt));
+      final events = turn.events.toList()
+        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      for (final event in events) {
+        switch (event.type) {
+          case StudioTurnEventType.userMessage:
+            break;
+          case StudioTurnEventType.context:
+            widgets.add(
+              _TranscriptEvent(
+                icon: Icons.dataset_linked_outlined,
+                title: event.title,
+                detail: event.detail,
+                onTap: () => ref
+                    .read(studioRightDrawerProvider.notifier)
+                    .openMode(StudioDrawerMode.sources),
+              ),
+            );
+          case StudioTurnEventType.progress:
+            if (event.transcriptVisible) {
+              widgets.add(
+                _TranscriptEvent(
+                  icon: Icons.pending_outlined,
+                  title: event.title,
+                  detail: event.detail,
+                ),
+              );
+            }
+          case StudioTurnEventType.tool:
+            widgets.add(
+              _TranscriptEvent(
+                icon: _iconForTurnTool(event.toolName),
+                title: event.title,
+                detail: event.detail,
+                onTap: () => ref
+                    .read(studioRightDrawerProvider.notifier)
+                    .openMode(StudioDrawerMode.sources),
+              ),
+            );
+          case StudioTurnEventType.approvalRequest:
+            widgets.add(_StudioTurnApprovalCard(event: event));
+          case StudioTurnEventType.assistantMessage:
+            if ((event.content ?? '').trim().isNotEmpty) {
+              widgets.add(
+                _ChatTranscriptLine(isUser: false, text: event.content!),
+              );
+            }
+          case StudioTurnEventType.error:
+            widgets.add(
+              _TranscriptEvent(
+                icon: Icons.error_outline,
+                title: event.title,
+                detail: event.detail,
+              ),
+            );
+          case StudioTurnEventType.completionSummary:
+            widgets.add(
+              _TranscriptEvent(
+                icon: Icons.check_circle_outline,
+                title: event.title,
+                detail: event.detail,
+              ),
+            );
+        }
+      }
+      final hasFinalAssistant = events.any(
+        (event) => event.type == StudioTurnEventType.assistantMessage,
+      );
+      if (!hasFinalAssistant && turn.assistantDraft.trim().isNotEmpty) {
+        widgets.add(
+          _ChatTranscriptLine(isUser: false, text: turn.assistantDraft),
+        );
+      }
+    }
+    return widgets;
+  }
+
+  IconData _iconForTurnTool(String? toolName) {
+    return switch (toolName) {
+      'run_command' => Icons.terminal_outlined,
+      'read_file' ||
+      'list_files' ||
+      'search_files' => Icons.fact_check_outlined,
+      'write_file' || 'edit_file' => Icons.edit_document,
+      'propose_patch' => Icons.rate_review_outlined,
+      'git_status' || 'git_diff' => Icons.account_tree_outlined,
+      _ => Icons.task_alt_outlined,
+    };
+  }
+
   List<StudioTranscriptItem> _buildTranscriptItems({
     required List<ChatMessage> messages,
     required List<AgentTaskArtifact> artifacts,
+    required List<StudioSourceArtifact> sourceArtifacts,
     required List<CommandRun> commands,
     required ProposedPatchSet? patch,
     required ConfirmationRequest? confirmation,
@@ -308,6 +423,29 @@ class _TaskTranscript extends ConsumerWidget {
         ),
       );
     }
+    final earliestVisible = recentMessages.firstOrNull?.timestamp;
+    for (final source in _compactSourceArtifacts(
+      sourceArtifacts,
+      earliestVisible: earliestVisible,
+    )) {
+      items.add(
+        StudioTranscriptItem.activity(
+          AgentTaskArtifact(
+            id: source.id,
+            type: _artifactTypeForSource(source.kind),
+            title: source.title,
+            detail: source.subtitle.isEmpty ? source.value : source.subtitle,
+            createdAt: source.createdAt,
+          ),
+          threadId: thread?.id,
+          requestId: source.requestId ?? thread?.requestId,
+          relatedMessageId: source.relatedMessageId,
+          sourceArtifactId: source.id,
+          filePath: source.filePath,
+          localUrl: source.localUrl,
+        ),
+      );
+    }
     for (final artifact in artifacts) {
       items.add(
         StudioTranscriptItem.activity(
@@ -344,7 +482,103 @@ class _TaskTranscript extends ConsumerWidget {
         ),
       );
     }
+    items.sort(_compareTranscriptItems);
     return items;
+  }
+
+  List<StudioSourceArtifact> _compactSourceArtifacts(
+    List<StudioSourceArtifact> artifacts, {
+    DateTime? earliestVisible,
+  }) {
+    final visible = artifacts.where((artifact) {
+      if (earliestVisible != null &&
+          artifact.createdAt.isBefore(earliestVisible)) {
+        return false;
+      }
+      if (artifact.kind == StudioSourceArtifactKind.toolResult &&
+          const {'Request sent', 'Completed'}.contains(artifact.title)) {
+        return false;
+      }
+      return true;
+    }).toList();
+    final completedKeys = visible
+        .where((artifact) => artifact.subtitle.toLowerCase() == 'completed')
+        .map(_artifactDedupKey)
+        .toSet();
+    final byId = <String, StudioSourceArtifact>{};
+    for (final artifact in visible) {
+      if (artifact.subtitle.toLowerCase() == 'running' &&
+          completedKeys.contains(_artifactDedupKey(artifact))) {
+        continue;
+      }
+      byId[artifact.id] = artifact;
+    }
+    final compact = byId.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return compact.take(48).toList();
+  }
+
+  String _artifactDedupKey(StudioSourceArtifact artifact) {
+    final title = artifact.title
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .replaceFirst(RegExp(r'^(reading|read) '), 'read ')
+        .replaceFirst(RegExp(r'^(listing|listed) '), 'list ')
+        .replaceFirst(RegExp(r'^(checking|checked) '), 'check ')
+        .replaceFirst(RegExp(r'^(preparing|prepared) '), 'prepare ')
+        .replaceFirst(RegExp(r'^(editing|edited) '), 'edit ');
+    return [
+      artifact.requestId ?? '',
+      artifact.kind.name,
+      title,
+      artifact.filePath ?? '',
+      artifact.localUrl ?? '',
+    ].join('|');
+  }
+
+  int _compareTranscriptItems(StudioTranscriptItem a, StudioTranscriptItem b) {
+    final time = (a.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0))
+        .compareTo(b.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0));
+    if (time != 0) return time;
+    return _transcriptPriority(a).compareTo(_transcriptPriority(b));
+  }
+
+  int _transcriptPriority(StudioTranscriptItem item) {
+    return switch (item.type) {
+      StudioTranscriptItemType.userMessage => 0,
+      StudioTranscriptItemType.activity => 1,
+      StudioTranscriptItemType.commandRun => 2,
+      StudioTranscriptItemType.patchReview => 3,
+      StudioTranscriptItemType.approval => 4,
+      StudioTranscriptItemType.assistantMarkdown => 5,
+      StudioTranscriptItemType.error => 6,
+    };
+  }
+
+  AgentTaskArtifactType _artifactTypeForSource(StudioSourceArtifactKind kind) {
+    return switch (kind) {
+      StudioSourceArtifactKind.command ||
+      StudioSourceArtifactKind.terminalLog ||
+      StudioSourceArtifactKind.terminalSession =>
+        AgentTaskArtifactType.commandRun,
+      StudioSourceArtifactKind.patch ||
+      StudioSourceArtifactKind.diff ||
+      StudioSourceArtifactKind.gitChange ||
+      StudioSourceArtifactKind.gitHunk ||
+      StudioSourceArtifactKind.reviewComment =>
+        AgentTaskArtifactType.patchProposal,
+      StudioSourceArtifactKind.localUrl ||
+      StudioSourceArtifactKind.file ||
+      StudioSourceArtifactKind.webSource ||
+      StudioSourceArtifactKind.toolResult ||
+      StudioSourceArtifactKind.browserComment ||
+      StudioSourceArtifactKind.topology ||
+      StudioSourceArtifactKind.sizing ||
+      StudioSourceArtifactKind.lifecycle ||
+      StudioSourceArtifactKind.chart ||
+      StudioSourceArtifactKind.businessUseCase ||
+      StudioSourceArtifactKind.evidence => AgentTaskArtifactType.diagnostic,
+    };
   }
 }
 
@@ -425,8 +659,10 @@ class _StudioConfirmationCard extends ConsumerWidget {
                 ),
             ],
             const SizedBox(height: Spacing.lg),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            Wrap(
+              alignment: WrapAlignment.end,
+              runSpacing: Spacing.sm,
+              spacing: Spacing.sm,
               children: [
                 TextButton(
                   onPressed: () => ref
@@ -434,12 +670,149 @@ class _StudioConfirmationCard extends ConsumerWidget {
                       .rejectConfirmation(request.id),
                   child: const Text('Reject'),
                 ),
-                const SizedBox(width: Spacing.md),
+                OutlinedButton.icon(
+                  onPressed: () => ref
+                      .read(chatProvider.notifier)
+                      .approveConfirmationForCurrentTask(request.id),
+                  icon: const Icon(Icons.task_alt_outlined, size: 15),
+                  label: const Text('Approve this task'),
+                ),
                 FilledButton(
                   onPressed: () => ref
                       .read(chatProvider.notifier)
                       .approveConfirmation(request.id),
-                  child: const Text('Approve'),
+                  child: const Text('Approve once'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StudioTurnApprovalCard extends ConsumerWidget {
+  final StudioTurnEvent event;
+
+  const _StudioTurnApprovalCard({required this.event});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final approvalId = event.approvalId;
+    final isPending = event.approvalState == ApprovalRequestState.pending;
+    final statusLabel = switch (event.approvalState) {
+      ApprovalRequestState.approved => 'Approved',
+      ApprovalRequestState.rejected => 'Rejected',
+      ApprovalRequestState.expired => 'Expired',
+      ApprovalRequestState.pending || null => 'Approval needed',
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.lg),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 660),
+        padding: const EdgeInsets.all(Spacing.lg),
+        decoration: BoxDecoration(
+          color: tokens.studioPanel,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isPending
+                ? tokens.warning.withValues(alpha: 0.34)
+                : tokens.studioDivider,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isPending ? Icons.shield_outlined : Icons.task_alt_outlined,
+                  color: isPending ? tokens.warning : tokens.textMuted,
+                  size: 16,
+                ),
+                const SizedBox(width: Spacing.sm),
+                Text(
+                  statusLabel,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.md),
+            Text(
+              event.toolName == null
+                  ? 'Circuit wants approval for a protected action.'
+                  : 'Circuit wants to use ${event.toolName!.replaceAll('_', ' ')}:',
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
+            ),
+            const SizedBox(height: Spacing.sm),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(Spacing.md),
+              decoration: BoxDecoration(
+                color: tokens.surfaceInset,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: tokens.studioDivider),
+              ),
+              child: SelectableText(
+                event.approvalPreview ?? event.detail,
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: FontSizes.xs,
+                  height: 1.45,
+                  fontFamily: EditorDefaults.fallbackFontFamily,
+                ),
+              ),
+            ),
+            if (event.approvalWarnings.isNotEmpty) ...[
+              const SizedBox(height: Spacing.md),
+              for (final warning in event.approvalWarnings)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    warning,
+                    style: TextStyle(
+                      color: tokens.error,
+                      fontSize: FontSizes.xs,
+                    ),
+                  ),
+                ),
+            ],
+            const SizedBox(height: Spacing.lg),
+            Wrap(
+              alignment: WrapAlignment.end,
+              runSpacing: Spacing.sm,
+              spacing: Spacing.sm,
+              children: [
+                TextButton(
+                  onPressed: isPending && approvalId != null
+                      ? () => ref
+                            .read(chatProvider.notifier)
+                            .rejectConfirmation(approvalId)
+                      : null,
+                  child: const Text('Reject'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: isPending && approvalId != null
+                      ? () => ref
+                            .read(chatProvider.notifier)
+                            .approveConfirmationForCurrentTask(approvalId)
+                      : null,
+                  icon: const Icon(Icons.task_alt_outlined, size: 15),
+                  label: const Text('Approve this task'),
+                ),
+                FilledButton(
+                  onPressed: isPending && approvalId != null
+                      ? () => ref
+                            .read(chatProvider.notifier)
+                            .approveConfirmation(approvalId)
+                      : null,
+                  child: const Text('Approve once'),
                 ),
               ],
             ),
@@ -463,7 +836,6 @@ class _ActivityItem extends ConsumerWidget {
         icon: iconFor(item.artifact!.type),
         title: item.artifact!.title,
         detail: item.artifact!.detail,
-        compact: false,
         onTap: () => ref
             .read(studioRightDrawerProvider.notifier)
             .openMode(StudioDrawerMode.sources),
@@ -472,7 +844,7 @@ class _ActivityItem extends ConsumerWidget {
         icon: Icons.rate_review_outlined,
         title: 'Patch ready for review',
         detail: '${item.patch!.fileCount} files proposed',
-        compact: false,
+        elevated: true,
         onTap: () => ref
             .read(studioRightDrawerProvider.notifier)
             .openMode(StudioDrawerMode.diff),
@@ -482,7 +854,7 @@ class _ActivityItem extends ConsumerWidget {
         title: item.commandRun!.command,
         detail:
             '${item.commandRun!.status.name} · ${item.commandRun!.elapsed.inSeconds}s',
-        compact: false,
+        elevated: true,
         onTap: () => ref
             .read(studioRightDrawerProvider.notifier)
             .openCommand(item.commandRun!.id),
@@ -496,77 +868,25 @@ class _TranscriptEvent extends ConsumerWidget {
   final IconData icon;
   final String title;
   final String detail;
-  final bool compact;
+  final bool elevated;
   final VoidCallback? onTap;
 
   const _TranscriptEvent({
     required this.icon,
     required this.title,
     required this.detail,
-    this.compact = false,
+    this.elevated = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    return Padding(
-      padding: EdgeInsets.only(bottom: compact ? Spacing.sm : Spacing.md),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 706),
-          padding: compact
-              ? EdgeInsets.zero
-              : const EdgeInsets.symmetric(
-                  horizontal: Spacing.md,
-                  vertical: Spacing.sm,
-                ),
-          decoration: compact
-              ? null
-              : BoxDecoration(
-                  color: tokens.studioPanel.withValues(alpha: 0.28),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: tokens.studioDivider),
-                ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(icon, color: tokens.textMuted, size: 16),
-              const SizedBox(width: Spacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        color: tokens.textSecondary,
-                        fontSize: FontSizes.sm,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      detail,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: tokens.textMuted,
-                        fontSize: FontSizes.xs,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (onTap != null)
-                Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
-            ],
-          ),
-        ),
-      ),
+    return StudioActivityRow(
+      icon: icon,
+      title: title,
+      detail: detail,
+      onTap: onTap,
+      elevated: elevated,
     );
   }
 }
@@ -585,7 +905,7 @@ class _ChatTranscriptLine extends ConsumerWidget {
         alignment: Alignment.centerLeft,
         child: Container(
           constraints: const BoxConstraints(maxWidth: 660),
-          margin: const EdgeInsets.only(bottom: Spacing.lg),
+          margin: const EdgeInsets.only(bottom: Spacing.xl),
           child: MarkdownWidget(
             data: text,
             shrinkWrap: true,
@@ -600,21 +920,21 @@ class _ChatTranscriptLine extends ConsumerWidget {
       alignment: Alignment.centerRight,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 520),
-        margin: const EdgeInsets.only(bottom: Spacing.md),
+        margin: const EdgeInsets.only(bottom: Spacing.lg),
         padding: const EdgeInsets.symmetric(
           horizontal: Spacing.lg,
-          vertical: Spacing.md,
+          vertical: Spacing.sm,
         ),
         decoration: BoxDecoration(
-          color: tokens.studioPanel,
-          borderRadius: BorderRadius.circular(14),
+          color: tokens.studioBubble,
+          borderRadius: BorderRadius.circular(13),
         ),
         child: Text(
           text,
           style: TextStyle(
             color: tokens.textPrimary,
             fontSize: FontSizes.sm,
-            height: 1.4,
+            height: 1.32,
           ),
         ),
       ),

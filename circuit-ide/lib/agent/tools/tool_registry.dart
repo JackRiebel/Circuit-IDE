@@ -8,9 +8,6 @@ class ToolRegistry {
     'git_status',
     'git_diff',
     'git_log',
-    'git_branch',
-    'web_fetch',
-    'web_search',
     'github_whoami',
     'github_list_repos',
     'github_get_repo',
@@ -25,9 +22,9 @@ class ToolRegistry {
   /// Check if a tool name is an MCP-proxied tool
   static bool isMcpTool(String name) => name.startsWith('mcp_');
 
-  /// MCP tools are treated as read-only (they don't modify local files)
+  /// MCP tools are not assumed safe; callers should use the permission policy.
   static bool isReadOnlyIncludingMcp(String name) =>
-      readOnlyTools.contains(name) || isMcpTool(name);
+      readOnlyTools.contains(name);
 
   static const confirmationRequired = {
     'write_file',
@@ -43,12 +40,51 @@ class ToolRegistry {
   static bool needsConfirmation(String toolName) =>
       confirmationRequired.contains(toolName);
 
+  static List<ToolDefinition> toolsForMode(AgentToolMode mode) {
+    final allowedNames = switch (mode) {
+      AgentToolMode.ask => _askToolNames,
+      AgentToolMode.code => _codeToolNames,
+      AgentToolMode.fix => _codeToolNames,
+      AgentToolMode.review => _reviewToolNames,
+      AgentToolMode.handoff => _handoffToolNames,
+    };
+    return allTools.where((tool) => allowedNames.contains(tool.name)).toList();
+  }
+
   static List<ToolDefinition> get allTools => [
     ..._fileTools,
+    ..._patchTools,
     ..._gitTools,
     ..._webTools,
     ..._githubTools,
     ..._orchestrationTools,
+  ];
+
+  static final _patchTools = [
+    const ToolDefinition(
+      name: 'propose_patch',
+      description:
+          'Propose a reviewable patch set instead of directly editing files. Use this for coding changes so the user can inspect diffs before applying them.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'title': {'type': 'string'},
+          'summary': {'type': 'string'},
+          'files': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+                'intent': {'type': 'string'},
+              },
+              'required': ['path', 'intent'],
+            },
+          },
+        },
+        'required': ['title', 'summary', 'files'],
+      },
+    ),
   ];
 
   static final _fileTools = [
@@ -93,7 +129,7 @@ class ToolRegistry {
     const ToolDefinition(
       name: 'edit_file',
       description:
-          'Edit a file by replacing exact text. The old_text must match exactly including whitespace.',
+          'Fallback exact-text edit. Prefer proposing a patch summary first when possible. The old_text must match exactly including whitespace.',
       parameters: {
         'type': 'object',
         'properties': {
@@ -422,3 +458,41 @@ class ToolRegistry {
     ),
   ];
 }
+
+enum AgentToolMode { ask, code, fix, review, handoff }
+
+const _askToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+};
+
+const _codeToolNames = {
+  ..._askToolNames,
+  'propose_patch',
+  'write_file',
+  'edit_file',
+  'run_command',
+  'git_branch',
+};
+
+const _reviewToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+};
+
+const _handoffToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+};

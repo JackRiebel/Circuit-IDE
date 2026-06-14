@@ -19,6 +19,9 @@ enum ContextPackSourceKind {
   instructionFile,
   circuitRule,
   memory,
+  packageScript,
+  diagnostics,
+  sourceArtifact,
 }
 
 class ContextPackItem {
@@ -86,6 +89,34 @@ class ContextPackItem {
       return null;
     }
   }
+}
+
+class ContextPackBudget {
+  final int maxTokens;
+  final int reservedForResponse;
+
+  const ContextPackBudget({
+    required this.maxTokens,
+    this.reservedForResponse = 4096,
+  });
+
+  int get availableForContext =>
+      (maxTokens - reservedForResponse).clamp(0, maxTokens);
+}
+
+class ContextPackWarning {
+  final String message;
+  final String? itemId;
+
+  const ContextPackWarning({required this.message, this.itemId});
+}
+
+class ContextPackSource {
+  final ContextPackSourceKind kind;
+  final String label;
+  final String? path;
+
+  const ContextPackSource({required this.kind, required this.label, this.path});
 }
 
 class ContextPack {
