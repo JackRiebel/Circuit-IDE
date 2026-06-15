@@ -67,6 +67,39 @@ void main() {
       expect(state.label, 'Done');
     });
 
+    test(
+      'treats persisted completed tasks as done even if status is stale',
+      () {
+        final state = TaskDisplayState.derive(
+          task: _task(
+            status: AgentTaskStatus.running,
+            completedAt: DateTime(2026, 1, 2),
+          ),
+          isChatProcessing: false,
+          isChatStreaming: false,
+          hasAssistantResponse: false,
+          hasPendingApproval: false,
+          commands: const [],
+        );
+
+        expect(state.kind, TaskDisplayKind.done);
+        expect(state.label, 'Done');
+      },
+    );
+
+    test('treats persisted task results as done even if status is stale', () {
+      final state = TaskDisplayState.derive(
+        task: _task(status: AgentTaskStatus.running, result: 'Finished.'),
+        isChatProcessing: false,
+        isChatStreaming: false,
+        hasAssistantResponse: false,
+        hasPendingApproval: false,
+        commands: const [],
+      );
+
+      expect(state.kind, TaskDisplayKind.done);
+    });
+
     test('marks provider errors as failed', () {
       final state = TaskDisplayState.derive(
         task: _task(status: AgentTaskStatus.running),
@@ -84,13 +117,19 @@ void main() {
   });
 }
 
-AgentTask _task({required AgentTaskStatus status}) {
+AgentTask _task({
+  required AgentTaskStatus status,
+  DateTime? completedAt,
+  String? result,
+}) {
   return AgentTask(
     id: 'task-1',
     mascotAlias: 'Benny',
     profile: AgentTaskProfile.investigate,
     status: status,
     goal: 'Review the project',
+    result: result,
     createdAt: DateTime(2026),
+    completedAt: completedAt,
   );
 }

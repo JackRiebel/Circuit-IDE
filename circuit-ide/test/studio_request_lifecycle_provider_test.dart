@@ -4,6 +4,7 @@ import 'package:circuit_ide/models/studio_request_lifecycle.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
+import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/chat_provider.dart';
 import 'package:circuit_ide/state/connection_provider.dart';
 import 'package:circuit_ide/state/studio_request_lifecycle_provider.dart';
@@ -264,6 +265,68 @@ void main() {
       expect(updated.sourceArtifacts, isEmpty);
     },
   );
+
+  test('propose_patch creates a reviewable Studio plan artifact', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await _waitForThreadStore(container);
+
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .ensureThread(title: 'Build hello', model: 'gpt-5-nano');
+    _registerTurn(
+      container,
+      'req-plan',
+      thread.id,
+      summary: const StudioContextSummary(projectLabel: 'project'),
+    );
+    container
+        .read(studioRequestLifecycleProvider.notifier)
+        .registerRequest(
+          requestId: 'req-plan',
+          threadId: thread.id,
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        );
+
+    const patchTool = ToolCallInfo(
+      id: 'patch-1',
+      name: 'propose_patch',
+      arguments: {
+        'title': 'Create hello program',
+        'summary': 'Create a small Python hello program.',
+        'plan_markdown': '## Plan\n\n- Add hello.py\n- Add README.md',
+        'files': [
+          {'path': 'hello.py', 'intent': 'Print Hello when executed'},
+          {'path': 'README.md', 'intent': 'Explain how to run it'},
+        ],
+      },
+    );
+
+    container.read(agentServiceProvider).events.emit(
+      EventType.toolCallCompleted,
+      {
+        'requestId': 'req-plan',
+        'toolCall': patchTool.copyWith(result: 'captured'),
+      },
+    );
+
+    final patch = container.read(patchProposalProvider).active;
+    expect(patch, isNotNull);
+    expect(patch!.isPlanOnly, isTrue);
+    expect(patch.title, 'Create hello program');
+    expect(patch.planMarkdown, contains('Add hello.py'));
+    expect(patch.plannedFiles, hasLength(2));
+
+    final updated = container
+        .read(studioThreadProvider)
+        .threads
+        .firstWhere((candidate) => candidate.id == thread.id);
+    expect(
+      updated.turns.single.events.map((event) => event.title),
+      contains('Plan ready for review'),
+    );
+  });
 
   test('message errors fail the thread and ignore stale request events', () {
     final container = ProviderContainer();

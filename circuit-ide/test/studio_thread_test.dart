@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:circuit_ide/enums/message_role.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
+import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,6 +35,43 @@ void main() {
           timestamp: now,
         ),
       ],
+      turns: [
+        StudioTurn(
+          id: 'turn-a',
+          threadId: 'thread-a',
+          requestId: 'request-a',
+          userMessageId: 'message-a',
+          prompt: 'hi',
+          model: 'gpt-5-nano',
+          contextSummary: StudioContextSummary(
+            rootPath: projectA.path,
+            projectLabel: 'project-a',
+            includedItemCount: 2,
+            estimatedTokens: 120,
+          ),
+          status: StudioTurnStatus.completed,
+          events: [
+            StudioTurnEvent.userMessage(
+              id: 'event-user-a',
+              turnId: 'turn-a',
+              requestId: 'request-a',
+              threadId: 'thread-a',
+              content: 'hi',
+              timestamp: now,
+            ),
+            StudioTurnEvent.assistantMessage(
+              turnId: 'turn-a',
+              requestId: 'request-a',
+              threadId: 'thread-a',
+              content: 'hello back',
+              timestamp: now.add(const Duration(seconds: 1)),
+            ),
+          ],
+          createdAt: now,
+          updatedAt: now,
+          completedAt: now.add(const Duration(seconds: 1)),
+        ),
+      ],
       createdAt: now,
       updatedAt: now,
     );
@@ -48,6 +86,14 @@ void main() {
     expect(loadedA.single.id, 'thread-a');
     expect(loadedA.single.contextSummary?.rootPath, projectA.path);
     expect(loadedA.single.messages.single.content, 'hi');
+    expect(loadedA.single.turns.single.prompt, 'hi');
+    expect(
+      loadedA.single.turns.single.events
+          .where((event) => event.type == StudioTurnEventType.assistantMessage)
+          .single
+          .content,
+      'hello back',
+    );
     expect(loadedB, isEmpty);
   });
 
@@ -75,4 +121,49 @@ void main() {
     expect(stateFor(StudioThreadStatus.done).label, 'Done');
     expect(stateFor(StudioThreadStatus.failed).needsAttention, isTrue);
   });
+
+  test(
+    'StudioTaskLifecycleState treats stale active saved threads as done',
+    () {
+      final now = DateTime(2026);
+      final thread = StudioThread(
+        id: 'thread-stale',
+        title: 'Old completed request',
+        status: StudioThreadStatus.streaming,
+        phase: StudioSendPhase.streaming,
+        turns: [
+          StudioTurn(
+            id: 'turn-stale',
+            threadId: 'thread-stale',
+            requestId: 'request-stale',
+            userMessageId: 'message-stale',
+            prompt: 'hello',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(projectLabel: 'project'),
+            status: StudioTurnStatus.completed,
+            events: [
+              StudioTurnEvent.assistantMessage(
+                turnId: 'turn-stale',
+                requestId: 'request-stale',
+                threadId: 'thread-stale',
+                content: 'Done.',
+                timestamp: now,
+              ),
+            ],
+            createdAt: now,
+            updatedAt: now,
+            completedAt: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      final state = StudioTaskLifecycleState.fromThread(thread);
+
+      expect(state.status, StudioThreadStatus.done);
+      expect(state.label, 'Done');
+      expect(state.isActive, isFalse);
+    },
+  );
 }

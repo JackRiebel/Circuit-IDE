@@ -86,7 +86,7 @@ class _TaskTranscript extends ConsumerWidget {
             )
             .toList() ??
         const <AgentTaskArtifact>[];
-    final title = task?.goal ?? 'New Circuit task';
+    final title = task?.goal ?? thread?.title ?? 'New Circuit task';
     final lifecycle = StudioTaskLifecycleState.fromThread(thread);
     final displayState = thread == null
         ? TaskDisplayState.derive(

@@ -344,7 +344,7 @@ class StudioTaskLifecycleState {
   });
 
   static StudioTaskLifecycleState fromThread(StudioThread? thread) {
-    return switch (thread?.status) {
+    return switch (_effectiveStatus(thread)) {
       StudioThreadStatus.preflighting => const StudioTaskLifecycleState(
         status: StudioThreadStatus.preflighting,
         label: 'Checking',
@@ -394,6 +394,64 @@ class StudioTaskLifecycleState {
         status: StudioThreadStatus.idle,
         label: 'Ready',
       ),
+    };
+  }
+
+  static StudioThreadStatus? _effectiveStatus(StudioThread? thread) {
+    if (thread == null) return null;
+    if (!_isPotentiallyStaleActiveStatus(thread.status)) {
+      return thread.status;
+    }
+
+    final latestTurn = thread.turns.fold<StudioTurn?>(
+      null,
+      (latest, turn) =>
+          latest == null || turn.createdAt.isAfter(latest.createdAt)
+          ? turn
+          : latest,
+    );
+    final turnStatus = switch (latestTurn?.status) {
+      StudioTurnStatus.completed => StudioThreadStatus.done,
+      StudioTurnStatus.failed => StudioThreadStatus.failed,
+      StudioTurnStatus.cancelled => StudioThreadStatus.cancelled,
+      StudioTurnStatus.waitingForApproval =>
+        StudioThreadStatus.waitingForApproval,
+      StudioTurnStatus.toolRunning => StudioThreadStatus.runningCommand,
+      StudioTurnStatus.streaming => StudioThreadStatus.streaming,
+      StudioTurnStatus.buildingContext => StudioThreadStatus.buildingContext,
+      _ => null,
+    };
+    if (turnStatus != null) return turnStatus;
+
+    if (thread.lastError?.trim().isNotEmpty ?? false) {
+      return StudioThreadStatus.failed;
+    }
+    final hasCompletedTurn = thread.turns.any(
+      (turn) => turn.status == StudioTurnStatus.completed,
+    );
+    final hasAssistantMessage = thread.messages.any(
+      (message) =>
+          message.role == MessageRole.assistant &&
+          message.content.trim().isNotEmpty,
+    );
+    if (hasCompletedTurn || hasAssistantMessage) {
+      return StudioThreadStatus.done;
+    }
+    return thread.status;
+  }
+
+  static bool _isPotentiallyStaleActiveStatus(StudioThreadStatus status) {
+    return switch (status) {
+      StudioThreadStatus.preflighting ||
+      StudioThreadStatus.buildingContext ||
+      StudioThreadStatus.streaming ||
+      StudioThreadStatus.runningCommand => true,
+      StudioThreadStatus.idle ||
+      StudioThreadStatus.waitingForApproval ||
+      StudioThreadStatus.reviewingPatch ||
+      StudioThreadStatus.done ||
+      StudioThreadStatus.failed ||
+      StudioThreadStatus.cancelled => false,
     };
   }
 }

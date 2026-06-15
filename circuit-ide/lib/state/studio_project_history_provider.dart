@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/agent_workspace.dart';
@@ -50,7 +53,7 @@ class StudioProjectHistoryController
   }
 
   Future<void> _load() async {
-    final paths = ref.read(settingsProvider).recentProjects;
+    final paths = await _projectPaths();
     if (paths.isEmpty) {
       state = const StudioProjectHistoryState();
       return;
@@ -74,7 +77,6 @@ class StudioProjectHistoryController
   void _mergeLiveProject() {
     final rootPath = ref.read(fileTreeProvider).rootPath;
     if (rootPath == null) return;
-    if (!ref.read(settingsProvider).recentProjects.contains(rootPath)) return;
     state = StudioProjectHistoryState(
       byPath: {
         ...state.byPath,
@@ -85,6 +87,38 @@ class StudioProjectHistoryController
       },
       isLoading: state.isLoading,
     );
+  }
+
+  Future<List<String>> _projectPaths() async {
+    final configured = ref.read(settingsProvider).recentProjects;
+    final recovered = <String>{};
+    for (final dirPath in [_taskStore.baseDir, _threadStore.baseDir]) {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) continue;
+      await for (final entity in dir.list()) {
+        if (entity is! File || !entity.path.endsWith('.json')) continue;
+        final name = entity.uri.pathSegments.last.replaceFirst('.json', '');
+        final decoded = _decodeProjectKey(name);
+        if (decoded != null && await Directory(decoded).exists()) {
+          recovered.add(decoded);
+        }
+      }
+    }
+    return [
+      ...configured,
+      for (final path in recovered)
+        if (!configured.contains(path)) path,
+    ];
+  }
+
+  String? _decodeProjectKey(String key) {
+    if (key == 'scratch') return null;
+    try {
+      final normalized = base64Url.normalize(key);
+      return utf8.decode(base64Url.decode(normalized));
+    } catch (_) {
+      return null;
+    }
   }
 }
 

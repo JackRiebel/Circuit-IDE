@@ -42,7 +42,9 @@ class StudioReviewPanel extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Circuit wants to change ${patch.fileCount} files',
+                patch.isPlanOnly
+                    ? 'Circuit created a plan'
+                    : 'Circuit wants to change ${patch.fileCount} files',
                 style: TextStyle(
                   color: tokens.textPrimary,
                   fontSize: FontSizes.xxl,
@@ -51,7 +53,8 @@ class StudioReviewPanel extends ConsumerWidget {
               ),
               const SizedBox(height: Spacing.md),
               Text(
-                patch.comparisonSummary ??
+                patch.planMarkdown ??
+                    patch.comparisonSummary ??
                     'Review the summary, inspect the files, then apply or ask for a revision.',
                 style: TextStyle(
                   color: tokens.textMuted,
@@ -60,11 +63,18 @@ class StudioReviewPanel extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: Spacing.xl),
-              for (final edit in patch.edits)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Spacing.sm),
-                  child: _ReviewFileRow(edit: edit),
-                ),
+              if (patch.isPlanOnly)
+                for (final file in patch.plannedFiles)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Spacing.sm),
+                    child: _PlanFileRow(path: file),
+                  )
+              else
+                for (final edit in patch.edits)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Spacing.sm),
+                    child: _ReviewFileRow(edit: edit),
+                  ),
               const SizedBox(height: Spacing.lg),
               Container(
                 width: double.infinity,
@@ -77,7 +87,9 @@ class StudioReviewPanel extends ConsumerWidget {
                 ),
                 child: SingleChildScrollView(
                   child: Text(
-                    _diffPreview(patch),
+                    patch.isPlanOnly
+                        ? patch.planMarkdown ?? patch.comparisonSummary ?? ''
+                        : _diffPreview(patch),
                     style: TextStyle(
                       color: tokens.textSecondary,
                       fontSize: FontSizes.xs,
@@ -102,6 +114,10 @@ class StudioReviewPanel extends ConsumerWidget {
                   FilledButton.icon(
                     onPressed: patchState.isApplying
                         ? null
+                        : patch.isPlanOnly
+                        ? () => ref
+                              .read(patchProposalProvider.notifier)
+                              .approvePlanActive()
                         : () => unawaited(
                             ref
                                 .read(patchProposalProvider.notifier)
@@ -109,7 +125,11 @@ class StudioReviewPanel extends ConsumerWidget {
                           ),
                     icon: const Icon(Icons.check, size: 16),
                     label: Text(
-                      patchState.isApplying ? 'Applying' : 'Apply changes',
+                      patchState.isApplying
+                          ? 'Applying'
+                          : patch.isPlanOnly
+                          ? 'Approve plan'
+                          : 'Apply changes',
                     ),
                   ),
                   OutlinedButton.icon(
@@ -208,6 +228,47 @@ class _ReviewFileRow extends ConsumerWidget {
           ),
           Text(
             edit.type.name,
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanFileRow extends ConsumerWidget {
+  final String path;
+
+  const _PlanFileRow({required this.path});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.studioCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.description_outlined, color: tokens.textMuted, size: 16),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Text(
+              path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Text(
+            'planned',
             style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
         ],

@@ -68,6 +68,8 @@ class PatchProposalController extends Notifier<PatchProposalState> {
   ProposedPatchSet propose({
     required String title,
     required List<ProposedFileEdit> edits,
+    String? planMarkdown,
+    List<String> plannedFiles = const [],
     String? workItemId,
     String? runId,
     String? agentTaskId,
@@ -81,6 +83,8 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       agentTaskId: agentTaskId,
       comparisonSummary: comparisonSummary,
       edits: edits,
+      planMarkdown: planMarkdown,
+      plannedFiles: plannedFiles,
       createdAt: DateTime.now(),
     );
     state = state.copyWith(
@@ -212,6 +216,22 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         ),
       );
     }
+  }
+
+  void approvePlanActive() {
+    final patchSet = state.active;
+    if (patchSet == null) return;
+    final updated = patchSet.copyWith(
+      approvalStatus: PatchApprovalStatus.approved,
+      applyStatus: PatchApplyStatus.applied,
+    );
+    state = state.copyWith(
+      active: null,
+      history: _replace(updated),
+      message: 'Plan approved.',
+    );
+    ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
   }
 
   void rejectActive() {

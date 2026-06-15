@@ -115,12 +115,16 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     }
   }
 
+  Future<void> reload() => _load();
+
   StudioThread ensureThread({
     String? taskId,
     required String title,
     String? model,
   }) {
-    final existing = state.threadForTask(taskId);
+    final existing = taskId == null
+        ? (state.selectedThreadId == null ? null : state.selectedThread)
+        : state.threadForTask(taskId);
     if (existing != null) {
       final updated = existing.copyWith(
         title: title,

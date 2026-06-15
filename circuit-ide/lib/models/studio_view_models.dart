@@ -85,7 +85,10 @@ class TaskDisplayState {
         label: 'Cancelled',
       );
     }
-    if (task?.status == AgentTaskStatus.completed || hasAssistantResponse) {
+    if (task?.status == AgentTaskStatus.completed ||
+        task?.completedAt != null ||
+        (task?.result?.trim().isNotEmpty ?? false) ||
+        hasAssistantResponse) {
       return const TaskDisplayState(kind: TaskDisplayKind.done, label: 'Done');
     }
     if (task != null) {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../../agent/config/models_config.dart';
@@ -103,22 +104,34 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
             child: Column(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    minLines: 1,
-                    maxLines: widget.compact ? 3 : 4,
-                    style: TextStyle(
-                      color: tokens.textPrimary,
-                      fontSize: FontSizes.base,
-                      height: 1.35,
+                  child: CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(
+                        LogicalKeyboardKey.enter,
+                        shift: true,
+                      ): _submit,
+                      const SingleActivator(
+                        LogicalKeyboardKey.numpadEnter,
+                        shift: true,
+                      ): _submit,
+                    },
+                    child: TextField(
+                      controller: _controller,
+                      minLines: 1,
+                      maxLines: widget.compact ? 3 : 4,
+                      style: TextStyle(
+                        color: tokens.textPrimary,
+                        fontSize: FontSizes.base,
+                        height: 1.35,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: widget.hintText,
+                        hintStyle: TextStyle(color: tokens.textMuted),
+                        border: InputBorder.none,
+                        isCollapsed: true,
+                      ),
+                      onSubmitted: (_) => _submit(),
                     ),
-                    decoration: InputDecoration(
-                      hintText: widget.hintText,
-                      hintStyle: TextStyle(color: tokens.textMuted),
-                      border: InputBorder.none,
-                      isCollapsed: true,
-                    ),
-                    onSubmitted: (_) => _submit(),
                   ),
                 ),
                 Row(

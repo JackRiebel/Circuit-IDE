@@ -64,12 +64,17 @@ class ToolRegistry {
     const ToolDefinition(
       name: 'propose_patch',
       description:
-          'Propose a reviewable patch set instead of directly editing files. Use this for coding changes so the user can inspect diffs before applying them.',
+          'Create a reviewable implementation plan or patch proposal. Use this for coding changes instead of asking the user to type approve. CircuitCode renders approval, revision, and rejection controls.',
       parameters: {
         'type': 'object',
         'properties': {
           'title': {'type': 'string'},
           'summary': {'type': 'string'},
+          'plan_markdown': {
+            'type': 'string',
+            'description':
+                'Markdown plan shown in the Studio review panel. Include implementation steps, files, and verification.',
+          },
           'files': {
             'type': 'array',
             'items': {
@@ -77,6 +82,17 @@ class ToolRegistry {
               'properties': {
                 'path': {'type': 'string'},
                 'intent': {'type': 'string'},
+                'operation': {
+                  'type': 'string',
+                  'enum': ['create', 'modify', 'delete'],
+                },
+                'content': {
+                  'type': 'string',
+                  'description':
+                      'Full target file content when the plan is ready to apply. Omit for plan-only proposals.',
+                },
+                'before': {'type': 'string'},
+                'unified_diff': {'type': 'string'},
               },
               'required': ['path', 'intent'],
             },

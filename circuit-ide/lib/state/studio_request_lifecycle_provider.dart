@@ -13,11 +13,14 @@ import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
 import '../models/token_usage.dart';
 import '../models/tool_call_info.dart';
+import '../models/reviewed_edit.dart';
 import '../services/event_bus.dart';
 import 'agent_request_provider.dart';
 import 'agent_run_provider.dart';
 import 'agent_workspace_provider.dart';
 import 'connection_provider.dart';
+import 'patch_proposal_provider.dart';
+import 'studio_shell_provider.dart';
 import 'studio_thread_provider.dart';
 import 'studio_turn_provider.dart';
 
@@ -236,6 +239,9 @@ class StudioRequestLifecycleController
     );
     if (tool != null) {
       _upsertToolEvent(entry, tool, activity.title, activity.detail);
+      if (tool.name == 'propose_patch') {
+        _createPatchPlan(entry, tool);
+      }
     } else {
       ref
           .read(studioTurnProvider.notifier)
@@ -498,6 +504,66 @@ class StudioRequestLifecycleController
           detail: detail,
           filePath: _pathForTool(tool),
           running: running,
+        );
+  }
+
+  void _createPatchPlan(StudioRequestLifecycleEntry entry, ToolCallInfo tool) {
+    final args = tool.arguments;
+    final title = args['title'] as String? ?? 'Implementation plan';
+    final summary = args['summary'] as String? ?? '';
+    final planMarkdown =
+        args['plan_markdown'] as String? ??
+        args['planMarkdown'] as String? ??
+        summary;
+    final files = (args['files'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList();
+    final edits = <ProposedFileEdit>[];
+    final plannedFiles = <String>[];
+    for (final file in files) {
+      final path = file['path'] as String?;
+      if (path == null || path.trim().isEmpty) continue;
+      final intent = file['intent'] as String? ?? '';
+      plannedFiles.add(intent.trim().isEmpty ? path : '$path — $intent');
+      final content = file['content'] as String? ?? file['after'] as String?;
+      if (content == null) continue;
+      final operation = (file['operation'] as String? ?? 'create')
+          .toLowerCase();
+      edits.add(
+        ProposedFileEdit(
+          path: path,
+          type: switch (operation) {
+            'delete' => ProposedFileEditType.delete,
+            'modify' || 'update' => ProposedFileEditType.modify,
+            _ => ProposedFileEditType.create,
+          },
+          before: file['before'] as String?,
+          after: content,
+          unifiedDiff: file['unified_diff'] as String?,
+        ),
+      );
+    }
+    final patch = ref
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: title,
+          edits: edits,
+          planMarkdown: planMarkdown,
+          plannedFiles: plannedFiles,
+          agentTaskId: entry.taskId,
+          runId: entry.requestId,
+          comparisonSummary: summary.trim().isEmpty ? planMarkdown : summary,
+        );
+    ref.read(studioShellProvider.notifier).openReview();
+    ref
+        .read(studioTurnProvider.notifier)
+        .markProgress(
+          entry.requestId,
+          title: patch.isPlanOnly ? 'Plan ready for review' : 'Patch ready',
+          detail: patch.isPlanOnly
+              ? 'Review the plan, then approve, revise, or reject it.'
+              : '${patch.fileCount} files proposed.',
+          transcriptVisible: true,
         );
   }
 

@@ -35,6 +35,12 @@ class StudioLeftRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final settings = ref.watch(settingsProvider);
+    final history = ref.watch(studioProjectHistoryProvider);
+    final projectPaths = [
+      ...settings.recentProjects,
+      for (final path in history.byPath.keys)
+        if (!settings.recentProjects.contains(path)) path,
+    ];
     return Container(
       width: 236,
       decoration: BoxDecoration(
@@ -78,9 +84,9 @@ class StudioLeftRail extends ConsumerWidget {
                 padding: EdgeInsets.zero,
                 children: [
                   const _RailSectionLabel('Projects'),
-                  for (final path in settings.recentProjects)
+                  for (final path in projectPaths)
                     _RecentProjectGroup(path: path),
-                  if (settings.recentProjects.isEmpty)
+                  if (projectPaths.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: Spacing.lg,
@@ -436,12 +442,14 @@ class _RecentProjectGroup extends ConsumerWidget {
         ? threadState.threads
         : history?.threads ?? [];
     final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
+    final selectedThreadId = threadState.selectedThreadId;
     final projectSummary = StudioRailProjectSummary(
       path: path,
       name: name,
       selected: isSelectedProject,
       taskCount: tasks.length,
     );
+    final taskIds = tasks.map((task) => task.id).toSet();
     final taskSummaries = [
       for (final task in tasks)
         if (query.isEmpty || task.goal.toLowerCase().contains(query))
@@ -458,9 +466,26 @@ class _RecentProjectGroup extends ConsumerWidget {
             ),
           ),
     ];
+    final threadSummaries = [
+      for (final thread in threads)
+        if ((thread.taskId == null || !taskIds.contains(thread.taskId)) &&
+            (query.isEmpty || thread.title.toLowerCase().contains(query)))
+          StudioRailTaskSummary(
+            id: thread.id,
+            title: thread.title,
+            selected:
+                isSelectedProject &&
+                selectedTaskId == null &&
+                selectedThreadId == thread.id,
+            displayState: TaskDisplayState.fromLifecycle(
+              StudioTaskLifecycleState.fromThread(thread),
+            ),
+          ),
+    ];
     if (query.isNotEmpty &&
         !name.toLowerCase().contains(query) &&
-        taskSummaries.isEmpty) {
+        taskSummaries.isEmpty &&
+        threadSummaries.isEmpty) {
       return const SizedBox.shrink();
     }
     return Padding(
@@ -474,6 +499,13 @@ class _RecentProjectGroup extends ConsumerWidget {
               summary: task,
               onTap: () =>
                   unawaited(_openTask(ref, projectPath: path, taskId: task.id)),
+            ),
+          for (final thread in threadSummaries)
+            _ConversationRow(
+              summary: thread,
+              onTap: () => unawaited(
+                _openThread(ref, projectPath: path, threadId: thread.id),
+              ),
             ),
         ],
       ),
@@ -501,6 +533,30 @@ class _RecentProjectGroup extends ConsumerWidget {
     }
     ref.read(agentWorkspaceProvider.notifier).selectTask(taskId);
     ref.read(studioShellProvider.notifier).openTask(taskId);
+  }
+
+  Future<void> _openThread(
+    WidgetRef ref, {
+    required String projectPath,
+    required String threadId,
+  }) async {
+    if (ref.read(fileTreeProvider).rootPath != projectPath) {
+      final result = await ref
+          .read(workspaceSessionProvider.notifier)
+          .openWorkspaceAndBindAgent(projectPath);
+      if (!result.success) {
+        if (result.openResult?.recentProjectStatus ==
+            RecentProjectStatus.missing) {
+          ref.read(settingsProvider.notifier).removeRecentProject(projectPath);
+        }
+        return;
+      }
+      ref.read(settingsProvider.notifier).addRecentProject(projectPath);
+      ref.read(studioShellProvider.notifier).openProject(projectPath);
+      await ref.read(studioThreadProvider.notifier).reload();
+    }
+    ref.read(agentWorkspaceProvider.notifier).selectTask(null);
+    ref.read(studioShellProvider.notifier).openThread(threadId);
   }
 }
 

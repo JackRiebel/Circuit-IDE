@@ -33,6 +33,13 @@ class SettingsNotifier extends Notifier<SettingsModel> {
                 .whereType<ConnectorModelInfo>()
                 .toList() ??
             const <ConnectorModelInfo>[];
+        final loadedRecent =
+            (json['recent_projects'] as List<dynamic>?)?.cast<String>() ?? [];
+        final mergedRecent = [
+          ...state.recentProjects,
+          for (final path in loadedRecent)
+            if (!state.recentProjects.contains(path)) path,
+        ];
         state = SettingsModel(
           activeProvider: AIProviderType.cisco,
           ciscoModel: _coerceCiscoModel(
@@ -57,8 +64,7 @@ class SettingsNotifier extends Notifier<SettingsModel> {
           thinkingMode: json['thinking_mode'] as bool? ?? false,
           streamResponses: json['stream_responses'] as bool? ?? true,
           lastProjectPath: json['last_project_path'] as String?,
-          recentProjects:
-              (json['recent_projects'] as List<dynamic>?)?.cast<String>() ?? [],
+          recentProjects: mergedRecent,
         );
       }
     } catch (_) {}

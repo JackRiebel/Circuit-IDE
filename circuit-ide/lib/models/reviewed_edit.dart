@@ -45,6 +45,8 @@ class ProposedPatchSet {
   final String? conflictMessage;
   final String? revisionPrompt;
   final List<String> changedFiles;
+  final String? planMarkdown;
+  final List<String> plannedFiles;
 
   const ProposedPatchSet({
     required this.id,
@@ -62,10 +64,13 @@ class ProposedPatchSet {
     this.conflictMessage,
     this.revisionPrompt,
     this.changedFiles = const [],
+    this.planMarkdown,
+    this.plannedFiles = const [],
   });
 
-  bool get isEmpty => edits.isEmpty;
-  int get fileCount => edits.length;
+  bool get isEmpty => edits.isEmpty && plannedFiles.isEmpty;
+  bool get isPlanOnly => edits.isEmpty && plannedFiles.isNotEmpty;
+  int get fileCount => edits.isNotEmpty ? edits.length : plannedFiles.length;
 
   ProposedPatchSet copyWith({
     String? workItemId,
@@ -79,6 +84,8 @@ class ProposedPatchSet {
     Object? conflictMessage = _sentinel,
     Object? revisionPrompt = _sentinel,
     List<String>? changedFiles,
+    Object? planMarkdown = _sentinel,
+    List<String>? plannedFiles,
   }) {
     return ProposedPatchSet(
       id: id,
@@ -104,6 +111,10 @@ class ProposedPatchSet {
           ? this.revisionPrompt
           : revisionPrompt as String?,
       changedFiles: changedFiles ?? this.changedFiles,
+      planMarkdown: identical(planMarkdown, _sentinel)
+          ? this.planMarkdown
+          : planMarkdown as String?,
+      plannedFiles: plannedFiles ?? this.plannedFiles,
     );
   }
 }

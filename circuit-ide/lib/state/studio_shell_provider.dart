@@ -34,6 +34,11 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
     state = state.copyWith(mode: StudioMode.task, selectedTaskId: taskId);
   }
 
+  void openThread(String threadId) {
+    ref.read(studioThreadProvider.notifier).selectThread(threadId);
+    state = state.copyWith(mode: StudioMode.task, selectedTaskId: null);
+  }
+
   void openReview({String? taskId}) {
     state = state.copyWith(
       mode: StudioMode.review,

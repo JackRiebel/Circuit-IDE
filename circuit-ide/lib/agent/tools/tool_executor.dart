@@ -377,7 +377,7 @@ class ToolExecutor {
       'Patch proposal: $title',
       if (summary.trim().isNotEmpty) summary.trim(),
       if (fileLines.trim().isNotEmpty) fileLines,
-      'No files were changed. Ask the user to approve the plan before applying edits.',
+      'No files were changed. CircuitCode has captured this as a reviewable plan. Do not ask the user to type approve; wait for the app review controls or user feedback.',
     ].join('\n\n');
   }
 
