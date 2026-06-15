@@ -282,8 +282,7 @@ class _ProgressDrawer extends ConsumerWidget {
             isChatProcessing: chat.isProcessing,
             isChatStreaming: chat.isStreaming,
             hasAssistantResponse: false,
-            hasPendingApproval:
-                chat.pendingConfirmation != null || hasPendingApproval,
+            hasPendingApproval: hasPendingApproval,
             commands: commands,
             chatError: chat.error,
           )
@@ -296,7 +295,7 @@ class _ProgressDrawer extends ConsumerWidget {
         value: displayState.label,
         accent: displayState.isActive || displayState.needsAttention,
       ),
-      if (chat.pendingConfirmation != null || hasPendingApproval)
+      if (hasPendingApproval)
         const StudioProgressRow(
           label: 'Approval',
           value: 'Required',

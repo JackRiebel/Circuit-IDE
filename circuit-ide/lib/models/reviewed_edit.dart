@@ -80,7 +80,7 @@ class ProposedPatchSet {
     Object? supersededBy = _sentinel,
     String? checkpointId,
     PatchApprovalStatus? approvalStatus,
-    PatchApplyStatus? applyStatus,
+    Object? applyStatus = _sentinel,
     Object? conflictMessage = _sentinel,
     Object? revisionPrompt = _sentinel,
     List<String>? changedFiles,
@@ -103,7 +103,9 @@ class ProposedPatchSet {
       createdAt: createdAt,
       checkpointId: checkpointId ?? this.checkpointId,
       approvalStatus: approvalStatus ?? this.approvalStatus,
-      applyStatus: applyStatus ?? this.applyStatus,
+      applyStatus: identical(applyStatus, _sentinel)
+          ? this.applyStatus
+          : applyStatus as PatchApplyStatus?,
       conflictMessage: identical(conflictMessage, _sentinel)
           ? this.conflictMessage
           : conflictMessage as String?,

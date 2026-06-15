@@ -229,7 +229,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     if (patchSet == null) return;
     final updated = patchSet.copyWith(
       approvalStatus: PatchApprovalStatus.approved,
-      applyStatus: PatchApplyStatus.applied,
+      applyStatus: null,
     );
     state = state.copyWith(
       active: state.active?.id == patchSetId ? null : state.active,

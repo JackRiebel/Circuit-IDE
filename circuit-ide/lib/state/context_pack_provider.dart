@@ -16,6 +16,32 @@ import 'settings_provider.dart';
 import 'terminal_provider.dart';
 
 const _uuid = Uuid();
+const _commonContextTerms = {
+  'please',
+  'review',
+  'create',
+  'update',
+  'change',
+  'build',
+  'make',
+  'file',
+  'files',
+  'code',
+  'project',
+  'app',
+  'this',
+  'that',
+  'with',
+  'from',
+};
+
+class _RelevantFileScore {
+  final String path;
+  final String content;
+  final int score;
+
+  const _RelevantFileScore(this.path, this.content, this.score);
+}
 
 class ContextPackController extends Notifier<ContextPack?> {
   @override
@@ -85,6 +111,16 @@ class ContextPackController extends Notifier<ContextPack?> {
     }
 
     items.addAll(_mentionedFileItems(prompt, rootPath));
+    items.addAll(
+      _relevantFileItems(
+        prompt,
+        rootPath,
+        alreadyIncludedSources: {
+          for (final item in items)
+            if (item.source != null) item.source!,
+        },
+      ),
+    );
 
     final changedFiles = {
       ...git.staged.map((change) => change.path),
@@ -293,6 +329,107 @@ class ContextPackController extends Notifier<ContextPack?> {
       );
     }
     return items;
+  }
+
+  List<ContextPackItem> _relevantFileItems(
+    String? prompt,
+    String? rootPath, {
+    required Set<String> alreadyIncludedSources,
+  }) {
+    if (rootPath == null || prompt == null || prompt.trim().isEmpty) {
+      return const [];
+    }
+    final terms = RegExp(r'[A-Za-z0-9_/-]{4,}')
+        .allMatches(prompt.toLowerCase())
+        .map((match) => match.group(0)!)
+        .where((term) => !_commonContextTerms.contains(term))
+        .take(12)
+        .toSet();
+    if (terms.isEmpty) return const [];
+
+    final scored = <_RelevantFileScore>[];
+    var visited = 0;
+    try {
+      final root = Directory(rootPath);
+      if (!root.existsSync()) return const [];
+      for (final entity in root.listSync(recursive: true, followLinks: false)) {
+        if (visited++ > 180) break;
+        if (entity is! File) continue;
+        final relativePath = p.relative(entity.path, from: rootPath);
+        if (alreadyIncludedSources.contains(relativePath)) continue;
+        if (_isIgnoredContextPath(relativePath)) continue;
+        if (!_isRelevantContextExtension(relativePath)) continue;
+        if (entity.lengthSync() > 80 * 1024) continue;
+        final lowerPath = relativePath.toLowerCase();
+        final content = entity.readAsStringSync();
+        final lowerContent = content.toLowerCase();
+        var score = 0;
+        for (final term in terms) {
+          if (lowerPath.contains(term)) score += 4;
+          if (lowerContent.contains(term)) score += 1;
+        }
+        if (score > 0) {
+          scored.add(_RelevantFileScore(relativePath, content, score));
+        }
+      }
+    } catch (_) {
+      return const [];
+    }
+
+    scored.sort((a, b) => b.score.compareTo(a.score));
+    return [
+      for (final file in scored.take(5))
+        ContextPackItem(
+          id: 'relevant-file:${file.path}',
+          type: ContextPackItemType.mentionedFile,
+          title: file.path,
+          detail: _truncate(file.content, 5000),
+          source: file.path,
+          sourceKind: ContextPackSourceKind.editor,
+          estimatedTokens: _estimateTokens(file.content) + 20,
+        ),
+    ];
+  }
+
+  bool _isIgnoredContextPath(String path) {
+    final parts = p.split(path);
+    return parts.any(
+      (part) =>
+          part == '.git' ||
+          part == 'node_modules' ||
+          part == 'build' ||
+          part == 'dist' ||
+          part == '.dart_tool' ||
+          part == '.next' ||
+          part == 'Pods',
+    );
+  }
+
+  bool _isRelevantContextExtension(String path) {
+    const extensions = {
+      '.dart',
+      '.js',
+      '.jsx',
+      '.ts',
+      '.tsx',
+      '.py',
+      '.md',
+      '.json',
+      '.yaml',
+      '.yml',
+      '.html',
+      '.css',
+      '.scss',
+      '.go',
+      '.rs',
+      '.java',
+      '.kt',
+      '.swift',
+      '.sh',
+      '.sql',
+      '.txt',
+    };
+    return extensions.contains(p.extension(path).toLowerCase());
   }
 
   String _gitDiffSnippet(String? rootPath) {

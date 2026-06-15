@@ -1,8 +1,11 @@
 import 'dart:io';
 
+import 'package:circuit_ide/agent/agent.dart';
 import 'package:circuit_ide/agent/config/config.dart';
+import 'package:circuit_ide/agent/providers/provider_interface.dart';
 import 'package:circuit_ide/agent/security/agent_tool_permission_policy.dart';
 import 'package:circuit_ide/agent/tools/tool_registry.dart';
+import 'package:circuit_ide/models/chat_message.dart';
 import 'package:circuit_ide/enums/message_role.dart';
 import 'package:circuit_ide/models/agent_tool_permission.dart';
 import 'package:circuit_ide/models/context_pack.dart';
@@ -12,6 +15,7 @@ import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/editor_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/project_profile_provider.dart';
+import 'package:circuit_ide/services/event_bus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -27,6 +31,44 @@ void main() {
     expect(prompt, contains('Prefer patch proposals'));
     expect(prompt, isNot(contains('FULL file system access')));
     expect(prompt, isNot(contains('NOT in a sandboxed')));
+  });
+
+  test('CircuitAgent keeps Studio history overrides request-local', () async {
+    final root = await Directory.systemTemp.createTemp('agent_history_');
+    addTearDown(() => _delete(root));
+    final agent = CircuitAgent(
+      provider: _EchoProvider(),
+      workingDir: root.path,
+      events: EventBus(),
+      model: 'gpt-5-nano',
+    );
+    await agent.init();
+
+    agent.history.add(
+      ChatMessage(
+        id: 'global-user',
+        role: MessageRole.user,
+        content: 'global chat history',
+        timestamp: DateTime(2026),
+      ),
+    );
+
+    final response = await agent.chat(
+      'studio request',
+      historyOverride: [
+        ChatMessage(
+          id: 'thread-user',
+          role: MessageRole.user,
+          content: 'thread-scoped history',
+          timestamp: DateTime(2026),
+        ),
+      ],
+      toolMode: AgentToolMode.ask,
+    );
+
+    expect(response, contains('studio request'));
+    expect(agent.history, hasLength(1));
+    expect(agent.history.single.content, 'global chat history');
   });
 
   test('tool modes expose only the expected backend capabilities', () {
@@ -170,6 +212,33 @@ void main() {
     );
   });
 
+  test(
+    'context pack adds relevant workspace files from prompt terms',
+    () async {
+      final root = await Directory.systemTemp.createTemp('context_relevance_');
+      addTearDown(() => _delete(root));
+      await Directory(p.join(root.path, 'lib')).create();
+      await File(
+        p.join(root.path, 'lib', 'topology.dart'),
+      ).writeAsString('class NetworkTopologyDiagramBuilder { }\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      await container.read(projectProfileProvider.notifier).refresh();
+
+      final pack = container
+          .read(contextPackProvider.notifier)
+          .buildForCodingTask(prompt: 'Build a topology diagram flow');
+
+      expect(pack.serializePrompt(), contains('NetworkTopologyDiagramBuilder'));
+      expect(
+        pack.visibleItems.map((item) => item.source),
+        contains('lib/topology.dart'),
+      );
+    },
+  );
+
   test('studio thread messages convert to isolated chat history', () {
     final now = DateTime(2026);
     final thread = StudioThread(
@@ -200,5 +269,73 @@ void main() {
 Future<void> _delete(Directory directory) async {
   if (await directory.exists()) {
     await directory.delete(recursive: true);
+  }
+}
+
+class _EchoProvider implements AIProvider {
+  @override
+  String get name => 'Echo';
+
+  @override
+  List<ModelInfo> get availableModels => const [
+    ModelInfo(
+      id: 'gpt-5-nano',
+      displayName: 'GPT-5 nano',
+      contextWindow: 120000,
+    ),
+  ];
+
+  @override
+  ProviderDescriptor get descriptor => const ProviderDescriptor(
+    id: 'echo',
+    displayName: 'Echo',
+    shortName: 'Echo',
+  );
+
+  @override
+  ProviderCapabilities get capabilities => descriptor.capabilities;
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  Future<void> connect(Map<String, String> credentials) async {}
+
+  @override
+  void disconnect() {}
+
+  @override
+  Future<ConnectorHealth> checkHealth() async => ConnectorHealth(
+    status: ConnectorHealthStatus.connected,
+    message: 'ok',
+    checkedAt: DateTime(2026),
+  );
+
+  @override
+  Future<List<ConnectorModelInfo>> refreshModels() async => availableModels
+      .map(
+        (model) => ConnectorModelInfo(
+          id: model.id,
+          displayName: model.displayName,
+          contextWindow: model.contextWindow,
+          supportsTools: model.supportsTools,
+        ),
+      )
+      .toList();
+
+  @override
+  void cancelActiveRequest() {}
+
+  @override
+  Stream<ChatChunk> chat(
+    List<ChatMessage> messages, {
+    required String model,
+    required List<ToolDefinition> tools,
+    String? systemPrompt,
+    double temperature = 0.7,
+    int maxTokens = 4096,
+  }) async* {
+    yield ChatChunk(content: 'echo: ${messages.last.content}');
+    yield const ChatChunk(finishReason: 'stop', isDone: true);
   }
 }

@@ -97,7 +97,7 @@ void main() {
     final state = container.read(patchProposalProvider);
     expect(state.active, isNull);
     expect(state.history.single.approvalStatus, PatchApprovalStatus.approved);
-    expect(state.history.single.applyStatus, PatchApplyStatus.applied);
+    expect(state.history.single.applyStatus, isNull);
   });
 
   testWidgets('Studio Home renders Codex-familiar prompt surface', (

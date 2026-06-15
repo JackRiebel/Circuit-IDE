@@ -118,6 +118,7 @@ class StudioRequestLifecycleController
     on(EventType.confirmationReceived, _handleConfirmationReceived);
     on(EventType.messageCompleted, _handleMessageCompleted);
     on(EventType.messageError, _handleMessageError);
+    on(EventType.agentRunEvent, _handleAgentRunEvent);
   }
 
   StudioRequestLifecycleEntry? _entryFor(Event event) {
@@ -141,6 +142,37 @@ class StudioRequestLifecycleController
           title: 'Connected',
           detail: 'Circuit AI accepted the request.',
           status: StudioTurnStatus.waitingForModel,
+        );
+  }
+
+  void _handleAgentRunEvent(Event event) {
+    final entry = _entryFor(event);
+    if (entry == null) return;
+    if (event.data['event'] != 'provider_lifecycle') return;
+    final kind = event.data['kind'] as String? ?? 'event';
+    final detail = switch (kind) {
+      'request_sent' => 'Request sent to provider.',
+      'first_delta' => 'Provider started responding.',
+      'first_text_delta' => 'Circuit AI started writing.',
+      'first_tool_delta' => 'Circuit AI started a tool call.',
+      _ => 'Provider event: $kind',
+    };
+    _touch(
+      entry,
+      StudioRequestLifecycleEventKind.waitingForModel,
+      detail: detail,
+    );
+    ref
+        .read(studioTurnProvider.notifier)
+        .markProgress(
+          entry.requestId,
+          title: 'Provider',
+          detail: detail,
+          status: switch (kind) {
+            'first_text_delta' => StudioTurnStatus.streaming,
+            'first_tool_delta' => StudioTurnStatus.toolRunning,
+            _ => StudioTurnStatus.waitingForModel,
+          },
         );
   }
 

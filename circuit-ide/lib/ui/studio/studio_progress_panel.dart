@@ -6,6 +6,7 @@ import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/studio_shell.dart';
 import '../../models/studio_thread.dart';
+import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
@@ -27,6 +28,15 @@ class StudioProgressPanel extends ConsumerWidget {
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
+    final hasPendingApproval = thread == null
+        ? chat.pendingConfirmation != null
+        : thread.turns.any(
+            (turn) => turn.events.any(
+              (event) =>
+                  event.type == StudioTurnEventType.approvalRequest &&
+                  event.approvalState == ApprovalRequestState.pending,
+            ),
+          );
     final runningCommand = commands
         .where((command) => command.status == CommandRunStatus.running)
         .firstOrNull;
@@ -36,7 +46,7 @@ class StudioProgressPanel extends ConsumerWidget {
             isChatProcessing: chat.isProcessing,
             isChatStreaming: chat.isStreaming,
             hasAssistantResponse: false,
-            hasPendingApproval: chat.pendingConfirmation != null,
+            hasPendingApproval: hasPendingApproval,
             commands: commands,
             chatError: chat.error,
           )
@@ -49,7 +59,7 @@ class StudioProgressPanel extends ConsumerWidget {
         value: displayState.label,
         accent: displayState.isActive || displayState.needsAttention,
       ),
-      if (chat.pendingConfirmation != null)
+      if (hasPendingApproval)
         const StudioProgressRow(
           label: 'Approval',
           value: 'Required',

@@ -106,9 +106,7 @@ class _TaskTranscript extends ConsumerWidget {
       sourceArtifacts: thread?.sourceArtifacts ?? const [],
       commands: commands.take(4).toList(),
       patch: patch,
-      confirmation: (thread?.isActive ?? false)
-          ? chat.pendingConfirmation
-          : null,
+      confirmation: null,
       error: thread?.lastError,
       thread: thread,
       fallbackUserText: title,
@@ -166,15 +164,12 @@ class _TaskTranscript extends ConsumerWidget {
                       ),
                     },
                 if ((thread?.isActive ?? false) &&
-                    (thread?.status == StudioThreadStatus.streaming ||
-                        chat.isStreaming))
+                    thread?.status == StudioThreadStatus.streaming)
                   _ChatTranscriptLine(
                     isUser: false,
-                    text:
-                        (thread?.streamingContent ?? chat.streamingContent)
-                            .isEmpty
+                    text: (thread?.streamingContent ?? '').isEmpty
                         ? 'Circuit AI is responding...'
-                        : thread?.streamingContent ?? chat.streamingContent,
+                        : thread!.streamingContent,
                   ),
               ],
             ),

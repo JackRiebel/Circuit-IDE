@@ -127,11 +127,9 @@ class CircuitAgent {
 
       // Begin a new checkpoint turn
       _toolExecutor.beginTurn();
-      if (historyOverride != null) {
-        history
-          ..clear()
-          ..addAll(historyOverride);
-      }
+      final requestHistory = historyOverride == null
+          ? history
+          : List<ChatMessage>.of(historyOverride);
 
       // Add user message to history
       final userMsg = ChatMessage(
@@ -140,7 +138,7 @@ class CircuitAgent {
         content: userMessage,
         timestamp: DateTime.now(),
       );
-      history.add(userMsg);
+      requestHistory.add(userMsg);
 
       String fullResponse = '';
       List<ToolCallInfo> allToolCalls = [];
@@ -154,7 +152,7 @@ class CircuitAgent {
         iteration < AppConstants.maxToolCallIterations;
         iteration++
       ) {
-        final optimized = _contextManager.optimizeContext(history);
+        final optimized = _contextManager.optimizeContext(requestHistory);
         final response = StreamingResponse();
 
         // Stream the response
@@ -175,7 +173,16 @@ class CircuitAgent {
           'mode': toolMode.name,
           'tools': allTools.map((tool) => tool.name).toList(),
         });
+        events.emit(EventType.agentRunEvent, {
+          'requestId': ?requestId,
+          'event': 'provider_lifecycle',
+          'kind': 'request_sent',
+          'model': model,
+        });
 
+        var sawFirstDelta = false;
+        var sawFirstText = false;
+        var sawFirstTool = false;
         await for (final chunk in provider.chat(
           optimized,
           model: model,
@@ -185,7 +192,26 @@ class CircuitAgent {
         )) {
           if (_isCancelled) break;
 
+          if (!sawFirstDelta) {
+            sawFirstDelta = true;
+            events.emit(EventType.agentRunEvent, {
+              'requestId': ?requestId,
+              'event': 'provider_lifecycle',
+              'kind': 'first_delta',
+              'model': model,
+            });
+          }
+
           if (chunk.content != null) {
+            if (!sawFirstText && chunk.content!.isNotEmpty) {
+              sawFirstText = true;
+              events.emit(EventType.agentRunEvent, {
+                'requestId': ?requestId,
+                'event': 'provider_lifecycle',
+                'kind': 'first_text_delta',
+                'model': model,
+              });
+            }
             response.addContent(chunk.content!);
             onContent?.call(chunk.content!);
             events.emit(EventType.messageChunk, {
@@ -195,6 +221,15 @@ class CircuitAgent {
           }
 
           if (chunk.toolCallIndex != null) {
+            if (!sawFirstTool) {
+              sawFirstTool = true;
+              events.emit(EventType.agentRunEvent, {
+                'requestId': ?requestId,
+                'event': 'provider_lifecycle',
+                'kind': 'first_tool_delta',
+                'model': model,
+              });
+            }
             response.addToolCallChunk(
               index: chunk.toolCallIndex!,
               id: chunk.toolCallId,
@@ -252,7 +287,7 @@ class CircuitAgent {
           timestamp: DateTime.now(),
           toolCalls: toolCallInfos,
         );
-        history.add(assistantMsg);
+        requestHistory.add(assistantMsg);
 
         fullResponse += response.content;
         allToolCalls.addAll(toolCallInfos);
@@ -275,7 +310,7 @@ class CircuitAgent {
           fullResponse = fullResponse.trim().isEmpty
               ? stopMessage
               : '$fullResponse\n\n$stopMessage';
-          history.add(
+          requestHistory.add(
             ChatMessage(
               id: _uuid.v4(),
               role: MessageRole.assistant,
@@ -299,7 +334,7 @@ class CircuitAgent {
             timestamp: DateTime.now(),
             toolCallId: result.toolCallId,
           );
-          history.add(toolMsg);
+          requestHistory.add(toolMsg);
 
           await _auditLogger.logToolCall(
             toolCallInfos.firstWhere((tc) => tc.id == result.toolCallId).name,
