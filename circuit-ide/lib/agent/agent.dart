@@ -161,6 +161,7 @@ class CircuitAgent {
         final allTools = [
           ...baseTools,
           if (toolMode != AgentToolMode.ask &&
+              toolMode != AgentToolMode.plan &&
               toolMode != AgentToolMode.review &&
               toolMode != AgentToolMode.handoff)
             ..._mcpTools,

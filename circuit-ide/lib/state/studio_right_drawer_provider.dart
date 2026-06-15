@@ -32,6 +32,17 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     );
   }
 
+  void openPatchFile(String patchSetId, String path) {
+    state = state.copyWith(
+      mode: StudioDrawerMode.diff,
+      collapsed: false,
+      diffId: patchSetId,
+      patchFilePath: path,
+      filePath: path,
+      selectedArtifactId: null,
+    );
+  }
+
   void openBrowser(String url) {
     state = state.copyWith(
       mode: StudioDrawerMode.browser,

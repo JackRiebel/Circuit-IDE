@@ -18,6 +18,7 @@ class StudioRightDrawerState {
   final String? localUrl;
   final String? filePath;
   final String? diffId;
+  final String? patchFilePath;
   final String? commandRunId;
 
   const StudioRightDrawerState({
@@ -28,6 +29,7 @@ class StudioRightDrawerState {
     this.localUrl,
     this.filePath,
     this.diffId,
+    this.patchFilePath,
     this.commandRunId,
   });
 
@@ -50,6 +52,7 @@ class StudioRightDrawerState {
     Object? localUrl = _sentinel,
     Object? filePath = _sentinel,
     Object? diffId = _sentinel,
+    Object? patchFilePath = _sentinel,
     Object? commandRunId = _sentinel,
   }) {
     return StudioRightDrawerState(
@@ -66,6 +69,9 @@ class StudioRightDrawerState {
           ? this.filePath
           : filePath as String?,
       diffId: identical(diffId, _sentinel) ? this.diffId : diffId as String?,
+      patchFilePath: identical(patchFilePath, _sentinel)
+          ? this.patchFilePath
+          : patchFilePath as String?,
       commandRunId: identical(commandRunId, _sentinel)
           ? this.commandRunId
           : commandRunId as String?,

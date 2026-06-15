@@ -67,6 +67,16 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(
+      studioShellProvider.select((state) => state.composerText),
+      (previous, next) {
+        if (next == _controller.text) return;
+        _controller.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+      },
+    );
     final tokens = ref.watch(themeProvider);
     final studio = ref.watch(studioShellProvider);
     final rootPath = ref.watch(fileTreeProvider).rootPath;
@@ -128,6 +138,12 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                         hintText: widget.hintText,
                         hintStyle: TextStyle(color: tokens.textMuted),
                         border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        filled: false,
                         isCollapsed: true,
                       ),
                       onSubmitted: (_) => _submit(),
@@ -146,6 +162,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             ),
                             const SizedBox(width: Spacing.md),
                             _ComposerModeSelector(value: studio.promptMode),
+                            const SizedBox(width: Spacing.md),
+                            _PlanModeToggle(enabled: studio.planModeEnabled),
                             const SizedBox(width: Spacing.md),
                             if (widget.compact) ...[
                               _SpecialistAgentSelector(
@@ -282,6 +300,30 @@ class _ComposerModeSelector extends ConsumerWidget {
         icon: Icons.route_outlined,
         label: value.label,
         trailing: Icons.expand_more,
+      ),
+    );
+  }
+}
+
+class _PlanModeToggle extends ConsumerWidget {
+  final bool enabled;
+
+  const _PlanModeToggle({required this.enabled});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Tooltip(
+      message: enabled
+          ? 'Plan Mode is on'
+          : 'Create a plan before making changes',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.lg),
+        onTap: () => ref.read(studioShellProvider.notifier).togglePlanMode(),
+        child: _ComposerPill(
+          icon: Icons.alt_route_outlined,
+          label: 'Plan',
+          active: enabled,
+        ),
       ),
     );
   }
@@ -592,7 +634,8 @@ final _slashCommands = <_SlashCommand>[
     detail: 'Create an implementation plan first.',
     prompt: 'Create a short implementation plan before making changes.',
     icon: Icons.alt_route_outlined,
-    run: (_) {},
+    run: (ref) =>
+        ref.read(studioShellProvider.notifier).setPlanModeEnabled(true),
   ),
   _SlashCommand(
     name: 'init',
@@ -626,35 +669,55 @@ class _ComposerPill extends ConsumerWidget {
   final IconData? icon;
   final String label;
   final IconData? trailing;
+  final bool active;
 
-  const _ComposerPill({this.icon, required this.label, this.trailing});
+  const _ComposerPill({
+    this.icon,
+    required this.label,
+    this.trailing,
+    this.active = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null) ...[
-          Icon(icon, color: tokens.textMuted, size: 14),
-          const SizedBox(width: Spacing.sm),
-        ],
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xs,
-            height: 1.1,
-            fontWeight: FontWeight.w500,
+    return Container(
+      padding: active
+          ? const EdgeInsets.symmetric(horizontal: 7, vertical: 3)
+          : EdgeInsets.zero,
+      decoration: BoxDecoration(
+        color: active ? tokens.studioControl : Colors.transparent,
+        borderRadius: BorderRadius.circular(Radii.lg),
+        border: active ? Border.all(color: tokens.studioDivider) : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(
+              icon,
+              color: active ? tokens.textSecondary : tokens.textMuted,
+              size: 14,
+            ),
+            const SizedBox(width: Spacing.sm),
+          ],
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: active ? tokens.textSecondary : tokens.textMuted,
+              fontSize: FontSizes.xs,
+              height: 1.1,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+            ),
           ),
-        ),
-        if (trailing != null) ...[
-          const SizedBox(width: Spacing.xs),
-          Icon(trailing, color: tokens.textMuted, size: 14),
+          if (trailing != null) ...[
+            const SizedBox(width: Spacing.xs),
+            Icon(trailing, color: tokens.textMuted, size: 14),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

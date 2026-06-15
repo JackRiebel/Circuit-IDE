@@ -117,6 +117,19 @@ class StudioThreadController extends Notifier<StudioThreadState> {
 
   Future<void> reload() => _load();
 
+  StudioThread createBlankThread({String title = 'New thread', String? model}) {
+    final now = DateTime.now();
+    final thread = StudioThread(
+      id: _uuid.v4().substring(0, 8),
+      title: title,
+      model: model,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _upsert(thread, select: true);
+    return thread;
+  }
+
   StudioThread ensureThread({
     String? taskId,
     required String title,

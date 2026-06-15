@@ -144,7 +144,9 @@ Future<StudioSendResult> sendStudioMessage(
     );
   }
   ref.read(workspaceSessionProvider.notifier).syncFromCurrentWorkspace();
-  final promptMode = ref.read(studioShellProvider).promptMode;
+  final studio = ref.read(studioShellProvider);
+  final promptMode = studio.promptMode;
+  final planModeEnabled = studio.planModeEnabled;
   final model = ref.read(settingsProvider).ciscoModel;
   var rootPath = ref.read(fileTreeProvider).rootPath;
   var workspace = ref.read(workspaceSessionProvider);
@@ -164,6 +166,7 @@ Future<StudioSendResult> sendStudioMessage(
     }
   }
   final payload = buildStudioContextPayload(ref, text);
+  final outboundText = planModeEnabled ? _planModePrompt(text) : text;
   final thread = ref
       .read(studioThreadProvider.notifier)
       .ensureThread(taskId: taskId, title: text, model: model);
@@ -250,10 +253,12 @@ Future<StudioSendResult> sendStudioMessage(
   await ref
       .read(chatProvider.notifier)
       .sendMessage(
-        text,
+        outboundText,
         attachments: payload.attachments,
         historyOverride: priorThreadMessages,
-        toolMode: _toolModeForPrompt(promptMode),
+        toolMode: planModeEnabled
+            ? AgentToolMode.plan
+            : _toolModeForPrompt(promptMode),
         requestId: requestId,
       );
 
@@ -341,6 +346,23 @@ Future<StudioSendResult> sendStudioMessage(
     contextSummary: payload.summary,
     registeredRequest: lifecycleEntry != null,
   );
+}
+
+String _planModePrompt(String userPrompt) {
+  return '''
+Plan Mode is enabled for this turn.
+
+User request:
+$userPrompt
+
+Create a reviewable implementation plan before making changes. Inspect the project as needed, then call the `propose_patch` tool with:
+- `title`
+- `summary`
+- `plan_markdown`
+- `files` containing planned paths and intents
+
+Do not ask the user to type "approve". Do not call write, edit, command, or git mutation tools in this planning turn. CircuitCode will render the plan with Implement / Revise / Dismiss controls.
+''';
 }
 
 AgentToolMode _toolModeForPrompt(StudioPromptMode mode) {

@@ -17,6 +17,13 @@ void main() {
     addTearDown(container.dispose);
 
     expect(container.read(studioShellProvider).mode, StudioMode.home);
+    expect(container.read(studioShellProvider).planModeEnabled, isFalse);
+
+    container.read(studioShellProvider.notifier).togglePlanMode();
+    expect(container.read(studioShellProvider).planModeEnabled, isTrue);
+
+    container.read(studioShellProvider.notifier).setPlanModeEnabled(false);
+    expect(container.read(studioShellProvider).planModeEnabled, isFalse);
 
     container.read(studioShellProvider.notifier).openProject('/tmp/project');
     expect(container.read(studioShellProvider).mode, StudioMode.home);
@@ -60,6 +67,7 @@ void main() {
     expect(find.text('What should we build in Circuit-IDE?'), findsOneWidget);
     expect(find.text('Do anything'), findsOneWidget);
     expect(find.text('Review first'), findsOneWidget);
+    expect(find.text('Plan'), findsOneWidget);
     expect(find.text('Default permissions'), findsNothing);
     expect(find.text('gpt-5-nano'), findsOneWidget);
     expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
@@ -75,6 +83,9 @@ void main() {
   testWidgets('Studio composer menus expose only working controls', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     await tester.pumpWidget(
       const ProviderScope(
         child: MaterialApp(home: Scaffold(body: StudioShell())),
@@ -88,7 +99,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Auto approve tools'), findsOneWidget);
 
-    await tester.tap(find.text('gpt-5-nano'));
+    await tester.tap(find.byTooltip('Choose model'));
     await tester.pumpAndSettle();
     expect(find.text('gemini-3.1-flash-lite'), findsOneWidget);
     expect(find.textContaining('120.0K context'), findsWidgets);

@@ -33,6 +33,9 @@ void main() {
     final askTools = ToolRegistry.toolsForMode(
       AgentToolMode.ask,
     ).map((tool) => tool.name);
+    final planTools = ToolRegistry.toolsForMode(
+      AgentToolMode.plan,
+    ).map((tool) => tool.name);
     final codeTools = ToolRegistry.toolsForMode(
       AgentToolMode.code,
     ).map((tool) => tool.name);
@@ -43,6 +46,10 @@ void main() {
     expect(askTools, contains('read_file'));
     expect(askTools, isNot(contains('write_file')));
     expect(askTools, isNot(contains('run_command')));
+    expect(planTools, contains('propose_patch'));
+    expect(planTools, contains('read_file'));
+    expect(planTools, isNot(contains('write_file')));
+    expect(planTools, isNot(contains('run_command')));
     expect(codeTools, contains('propose_patch'));
     expect(codeTools, contains('run_command'));
     expect(reviewTools, contains('git_diff'));

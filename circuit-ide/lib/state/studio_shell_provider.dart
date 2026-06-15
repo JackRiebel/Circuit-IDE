@@ -75,6 +75,14 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
       rightProgressPanelVisible: !state.rightProgressPanelVisible,
     );
   }
+
+  void setPlanModeEnabled(bool value) {
+    state = state.copyWith(planModeEnabled: value);
+  }
+
+  void togglePlanMode() {
+    state = state.copyWith(planModeEnabled: !state.planModeEnabled);
+  }
 }
 
 final studioShellProvider =

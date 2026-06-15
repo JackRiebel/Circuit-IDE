@@ -217,13 +217,14 @@ class StudioActivityRow extends ConsumerWidget {
   }
 }
 
-class StudioRailRow extends ConsumerWidget {
+class StudioRailRow extends ConsumerStatefulWidget {
   final IconData? icon;
   final String label;
   final VoidCallback? onTap;
   final bool selected;
   final bool project;
   final Widget? trailing;
+  final Widget? hoverTrailing;
   final double leftIndent;
 
   const StudioRailRow({
@@ -234,64 +235,88 @@ class StudioRailRow extends ConsumerWidget {
     this.selected = false,
     this.project = false,
     this.trailing,
+    this.hoverTrailing,
     this.leftIndent = 0,
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StudioRailRow> createState() => _StudioRailRowState();
+}
+
+class _StudioRailRowState extends ConsumerState<StudioRailRow> {
+  bool _hovered = false;
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
+    final showHoverTrailing =
+        widget.hoverTrailing != null &&
+        (_hovered || _focused || widget.selected);
     return Padding(
       padding: EdgeInsets.only(
-        left: Spacing.sm + leftIndent,
+        left: Spacing.sm + widget.leftIndent,
         right: Spacing.sm,
         bottom: 1,
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
-        child: Container(
-          height: 31,
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-          decoration: BoxDecoration(
-            color: selected
-                ? (project
-                      ? tokens.studioRailSelected
-                      : tokens.studioTaskSelected)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(Radii.lg),
-          ),
-          child: Row(
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  color: selected ? tokens.textPrimary : tokens.textMuted,
-                  size: 15,
-                ),
-                const SizedBox(width: Spacing.md),
-              ],
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: selected ? tokens.textPrimary : tokens.textSecondary,
-                    fontSize: FontSizes.sm,
-                    height: 1.15,
-                    fontWeight: selected
-                        ? FontWeight.w600
-                        : project
-                        ? FontWeight.w500
-                        : FontWeight.w400,
+      child: FocusableActionDetector(
+        onShowHoverHighlight: (value) => setState(() => _hovered = value),
+        onShowFocusHighlight: (value) => setState(() => _focused = value),
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(Radii.lg),
+          child: Container(
+            height: 31,
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+            decoration: BoxDecoration(
+              color: widget.selected
+                  ? (widget.project
+                        ? tokens.studioRailSelected
+                        : tokens.studioTaskSelected)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(Radii.lg),
+            ),
+            child: Row(
+              children: [
+                if (widget.icon != null) ...[
+                  Icon(
+                    widget.icon,
+                    color: widget.selected
+                        ? tokens.textPrimary
+                        : tokens.textMuted,
+                    size: 15,
+                  ),
+                  const SizedBox(width: Spacing.md),
+                ],
+                Expanded(
+                  child: Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: widget.selected
+                          ? tokens.textPrimary
+                          : tokens.textSecondary,
+                      fontSize: FontSizes.sm,
+                      height: 1.15,
+                      fontWeight: widget.selected
+                          ? FontWeight.w600
+                          : widget.project
+                          ? FontWeight.w500
+                          : FontWeight.w400,
+                    ),
                   ),
                 ),
-              ),
-              if (trailing != null) ...[
-                const SizedBox(width: Spacing.sm),
-                trailing!,
+                if (widget.trailing != null) ...[
+                  const SizedBox(width: Spacing.sm),
+                  widget.trailing!,
+                ],
+                if (showHoverTrailing) ...[
+                  const SizedBox(width: Spacing.xs),
+                  widget.hoverTrailing!,
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

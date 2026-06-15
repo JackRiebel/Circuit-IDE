@@ -43,6 +43,7 @@ class ToolRegistry {
   static List<ToolDefinition> toolsForMode(AgentToolMode mode) {
     final allowedNames = switch (mode) {
       AgentToolMode.ask => _askToolNames,
+      AgentToolMode.plan => _planToolNames,
       AgentToolMode.code => _codeToolNames,
       AgentToolMode.fix => _codeToolNames,
       AgentToolMode.review => _reviewToolNames,
@@ -475,7 +476,7 @@ class ToolRegistry {
   ];
 }
 
-enum AgentToolMode { ask, code, fix, review, handoff }
+enum AgentToolMode { ask, plan, code, fix, review, handoff }
 
 const _askToolNames = {
   'read_file',
@@ -494,6 +495,8 @@ const _codeToolNames = {
   'run_command',
   'git_branch',
 };
+
+const _planToolNames = {..._askToolNames, 'propose_patch'};
 
 const _reviewToolNames = {
   'read_file',

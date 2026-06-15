@@ -116,7 +116,7 @@ class _TaskTranscript extends ConsumerWidget {
       fallbackCreatedAt: task?.createdAt,
     );
     final turnWidgets = thread?.turns.isNotEmpty == true
-        ? _buildTurnWidgets(context, ref, thread!.turns)
+        ? _buildTurnWidgets(context, ref, thread!.turns, patch)
         : null;
     return Column(
       children: [
@@ -166,7 +166,7 @@ class _TaskTranscript extends ConsumerWidget {
                         iconFor: _artifactIcon,
                       ),
                     },
-                if (patch != null)
+                if (patch != null && turnWidgets == null)
                   Align(
                     alignment: Alignment.centerLeft,
                     child: Padding(
@@ -239,6 +239,7 @@ class _TaskTranscript extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     List<StudioTurn> turns,
+    ProposedPatchSet? patch,
   ) {
     final orderedTurns = turns.toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -246,7 +247,14 @@ class _TaskTranscript extends ConsumerWidget {
         ? orderedTurns.sublist(orderedTurns.length - 8)
         : orderedTurns;
     final widgets = <Widget>[];
-    for (final turn in recentTurns) {
+    for (var i = 0; i < recentTurns.length; i++) {
+      final turn = recentTurns[i];
+      final turnPatch = _patchForTurn(
+        patch,
+        turn,
+        isLatestTurn: i == recentTurns.length - 1,
+      );
+      var patchAdded = false;
       widgets.add(_ChatTranscriptLine(isUser: true, text: turn.prompt));
       final events = turn.events.toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
@@ -266,6 +274,11 @@ class _TaskTranscript extends ConsumerWidget {
               ),
             );
           case StudioTurnEventType.progress:
+            if (turnPatch != null &&
+                (event.title == 'Plan ready for review' ||
+                    event.title == 'Patch ready')) {
+              break;
+            }
             if (event.transcriptVisible) {
               widgets.add(
                 _TranscriptEvent(
@@ -293,6 +306,10 @@ class _TaskTranscript extends ConsumerWidget {
               widgets.add(
                 _ChatTranscriptLine(isUser: false, text: event.content!),
               );
+              if (turnPatch != null && !patchAdded) {
+                widgets.add(_PatchSummaryCard(patch: turnPatch));
+                patchAdded = true;
+              }
             }
           case StudioTurnEventType.error:
             widgets.add(
@@ -320,8 +337,22 @@ class _TaskTranscript extends ConsumerWidget {
           _ChatTranscriptLine(isUser: false, text: turn.assistantDraft),
         );
       }
+      if (turnPatch != null && !patchAdded) {
+        widgets.add(_PatchSummaryCard(patch: turnPatch));
+      }
     }
     return widgets;
+  }
+
+  ProposedPatchSet? _patchForTurn(
+    ProposedPatchSet? patch,
+    StudioTurn turn, {
+    required bool isLatestTurn,
+  }) {
+    if (patch == null) return null;
+    if (patch.runId == turn.requestId) return patch;
+    if (patch.runId == null && isLatestTurn) return patch;
+    return null;
   }
 
   IconData _iconForTurnTool(String? toolName) {
@@ -840,14 +871,8 @@ class _ActivityItem extends ConsumerWidget {
             .read(studioRightDrawerProvider.notifier)
             .openMode(StudioDrawerMode.sources),
       ),
-      StudioTranscriptItemType.patchReview => _TranscriptEvent(
-        icon: Icons.rate_review_outlined,
-        title: 'Patch ready for review',
-        detail: '${item.patch!.fileCount} files proposed',
-        elevated: true,
-        onTap: () => ref
-            .read(studioRightDrawerProvider.notifier)
-            .openMode(StudioDrawerMode.diff),
+      StudioTranscriptItemType.patchReview => _PatchSummaryCard(
+        patch: item.patch!,
       ),
       StudioTranscriptItemType.commandRun => _TranscriptEvent(
         icon: Icons.terminal_outlined,
@@ -862,6 +887,315 @@ class _ActivityItem extends ConsumerWidget {
       _ => const SizedBox.shrink(),
     };
   }
+}
+
+class _PatchSummaryCard extends ConsumerWidget {
+  final ProposedPatchSet patch;
+
+  const _PatchSummaryCard({required this.patch});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final isPlan = patch.isPlanOnly;
+    final delta = _patchDelta(patch);
+    final title = isPlan
+        ? 'Plan ready'
+        : patch.applyStatus == PatchApplyStatus.applied
+        ? 'Edited ${patch.fileCount} files'
+        : 'Prepared ${patch.fileCount} files';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 706),
+        margin: const EdgeInsets.only(bottom: Spacing.xl),
+        decoration: BoxDecoration(
+          color: tokens.studioActivityRow.withValues(alpha: 0.86),
+          borderRadius: BorderRadius.circular(Radii.xl),
+          border: Border.all(color: tokens.studioDivider),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.lg,
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: tokens.bgDark.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(Radii.lg),
+                    ),
+                    child: Icon(
+                      isPlan
+                          ? Icons.alt_route_outlined
+                          : Icons.difference_outlined,
+                      color: tokens.textMuted,
+                      size: 18,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: tokens.textPrimary,
+                            fontSize: FontSizes.sm,
+                            height: 1.2,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (delta.additions > 0 || delta.deletions > 0) ...[
+                          const SizedBox(height: 2),
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '+${delta.additions}',
+                                  style: TextStyle(color: tokens.success),
+                                ),
+                                const TextSpan(text: ' '),
+                                TextSpan(
+                                  text: '-${delta.deletions}',
+                                  style: TextStyle(color: tokens.error),
+                                ),
+                              ],
+                            ),
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xs,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: () =>
+                        ref.read(studioShellProvider.notifier).openReview(),
+                    child: Text(isPlan ? 'Review plan' : 'Review'),
+                  ),
+                ],
+              ),
+            ),
+            Divider(color: tokens.studioDivider, height: 1),
+            for (final file in _patchFiles(patch))
+              _PatchFileRow(patch: patch, file: file),
+            if (isPlan) ...[
+              Divider(color: tokens.studioDivider, height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  Spacing.md,
+                  Spacing.lg,
+                  Spacing.lg,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if ((patch.planMarkdown ?? '').trim().isNotEmpty)
+                      MarkdownWidget(
+                        data: patch.planMarkdown!,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        config: buildChatMarkdownConfig(tokens),
+                      ),
+                    const SizedBox(height: Spacing.md),
+                    Wrap(
+                      spacing: Spacing.sm,
+                      runSpacing: Spacing.sm,
+                      children: [
+                        FilledButton(
+                          onPressed: () => _implementPlan(ref),
+                          child: const Text('Implement this plan'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => ref
+                              .read(studioShellProvider.notifier)
+                              .setComposerText('Revise this plan: '),
+                          child: const Text('Tell Circuit what to change'),
+                        ),
+                        TextButton(
+                          onPressed: () => ref
+                              .read(patchProposalProvider.notifier)
+                              .rejectActive(),
+                          child: const Text('Dismiss'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _implementPlan(WidgetRef ref) {
+    final shell = ref.read(studioShellProvider);
+    final workspace = ref.read(agentWorkspaceProvider);
+    final taskId = shell.selectedTaskId ?? workspace.selectedTask?.id;
+    ref.read(studioShellProvider.notifier).setPlanModeEnabled(false);
+    final prompt = [
+      'Implement this approved plan.',
+      if ((patch.planMarkdown ?? '').trim().isNotEmpty) patch.planMarkdown!,
+      if (patch.plannedFiles.isNotEmpty)
+        'Planned files:\n${patch.plannedFiles.map((file) => '- $file').join('\n')}',
+    ].join('\n\n');
+    unawaited(
+      sendStudioMessage(
+        ref,
+        prompt,
+        taskId: taskId,
+        finishTask: taskId != null,
+      ),
+    );
+  }
+}
+
+class _PatchFileRow extends ConsumerWidget {
+  final ProposedPatchSet patch;
+  final _PatchFileSummary file;
+
+  const _PatchFileRow({required this.patch, required this.file});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return InkWell(
+      onTap: () {
+        if (file.hasDiff) {
+          ref
+              .read(studioRightDrawerProvider.notifier)
+              .openPatchFile(patch.id, file.path);
+        } else {
+          ref.read(studioRightDrawerProvider.notifier).openFile(file.path);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.lg,
+          vertical: Spacing.sm,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                file.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: FontSizes.sm,
+                ),
+              ),
+            ),
+            if (file.additions > 0 || file.deletions > 0) ...[
+              Text(
+                '+${file.additions}',
+                style: TextStyle(
+                  color: tokens.success,
+                  fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: Spacing.xs),
+              Text(
+                '-${file.deletions}',
+                style: TextStyle(
+                  color: tokens.error,
+                  fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(width: Spacing.sm),
+            Icon(Icons.expand_more, color: tokens.textMuted, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PatchFileSummary {
+  final String path;
+  final int additions;
+  final int deletions;
+  final bool hasDiff;
+
+  const _PatchFileSummary({
+    required this.path,
+    this.additions = 0,
+    this.deletions = 0,
+    this.hasDiff = false,
+  });
+}
+
+_PatchFileSummary _patchDelta(ProposedPatchSet patch) {
+  final files = _patchFiles(patch);
+  return _PatchFileSummary(
+    path: '',
+    additions: files.fold(0, (total, file) => total + file.additions),
+    deletions: files.fold(0, (total, file) => total + file.deletions),
+  );
+}
+
+List<_PatchFileSummary> _patchFiles(ProposedPatchSet patch) {
+  if (patch.edits.isNotEmpty) {
+    return [
+      for (final edit in patch.edits)
+        _PatchFileSummary(
+          path: edit.path,
+          additions: _lineDelta(edit).additions,
+          deletions: _lineDelta(edit).deletions,
+          hasDiff: true,
+        ),
+    ];
+  }
+  return [
+    for (final file in patch.plannedFiles)
+      _PatchFileSummary(path: file.split(' — ').first.trim()),
+  ];
+}
+
+_PatchFileSummary _lineDelta(ProposedFileEdit edit) {
+  if ((edit.unifiedDiff ?? '').trim().isNotEmpty) {
+    var additions = 0;
+    var deletions = 0;
+    for (final line in edit.unifiedDiff!.split('\n')) {
+      if (line.startsWith('+++') || line.startsWith('---')) continue;
+      if (line.startsWith('+')) additions++;
+      if (line.startsWith('-')) deletions++;
+    }
+    return _PatchFileSummary(
+      path: edit.path,
+      additions: additions,
+      deletions: deletions,
+    );
+  }
+  final before = edit.before?.split('\n').length ?? 0;
+  final after = edit.after?.split('\n').length ?? 0;
+  return _PatchFileSummary(
+    path: edit.path,
+    additions: after > before ? after - before : after,
+    deletions: before > after ? before - after : 0,
+  );
 }
 
 class _TranscriptEvent extends ConsumerWidget {

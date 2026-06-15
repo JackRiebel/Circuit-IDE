@@ -597,6 +597,13 @@ class _ProjectRow extends ConsumerWidget {
       selected: selected,
       project: true,
       onTap: () => unawaited(_open(ref)),
+      hoverTrailing: StudioChromeIconButton(
+        icon: Icons.edit_square,
+        tooltip: 'New thread in ${summary.name}',
+        width: 24,
+        height: 24,
+        onTap: () => unawaited(_newThread(ref)),
+      ),
     );
   }
 
@@ -613,6 +620,26 @@ class _ProjectRow extends ConsumerWidget {
     }
     ref.read(settingsProvider.notifier).addRecentProject(summary.path);
     ref.read(studioShellProvider.notifier).openProject(summary.path);
+  }
+
+  Future<void> _newThread(WidgetRef ref) async {
+    final result = await ref
+        .read(workspaceSessionProvider.notifier)
+        .openWorkspaceAndBindAgent(summary.path);
+    if (!result.success) {
+      if (result.openResult?.recentProjectStatus ==
+          RecentProjectStatus.missing) {
+        ref.read(settingsProvider.notifier).removeRecentProject(summary.path);
+      }
+      return;
+    }
+    ref.read(settingsProvider.notifier).addRecentProject(summary.path);
+    ref.read(studioShellProvider.notifier).openProject(summary.path);
+    final thread = ref
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(model: ref.read(settingsProvider).ciscoModel);
+    ref.read(agentWorkspaceProvider.notifier).selectTask(null);
+    ref.read(studioShellProvider.notifier).openThread(thread.id);
   }
 }
 

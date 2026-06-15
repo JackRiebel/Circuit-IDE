@@ -862,6 +862,7 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final drawer = ref.watch(studioRightDrawerProvider);
     final patch = ref.watch(patchProposalProvider).active;
     if (patch == null) {
       return _GitReviewDrawer(
@@ -875,11 +876,28 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
         },
       );
     }
-    return _TextDocumentView(title: patch.title, text: _diffPreview(patch));
+    final selectedPath = drawer.patchFilePath;
+    return _TextDocumentView(
+      title: selectedPath ?? patch.title,
+      text: _diffPreview(patch, selectedPath),
+    );
   }
 
-  String _diffPreview(ProposedPatchSet patch) {
-    return patch.edits
+  String _diffPreview(ProposedPatchSet patch, String? selectedPath) {
+    final edits = selectedPath == null
+        ? patch.edits
+        : patch.edits.where((edit) => edit.path == selectedPath).toList();
+    if (edits.isEmpty) {
+      if (patch.isPlanOnly) {
+        return patch.planMarkdown ??
+            patch.comparisonSummary ??
+            'This plan does not include a file diff yet.';
+      }
+      return selectedPath == null
+          ? 'No diff available yet.'
+          : 'No diff available for $selectedPath.';
+    }
+    return edits
         .map((edit) {
           return [
             '--- ${edit.path}',

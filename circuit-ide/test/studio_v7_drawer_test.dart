@@ -59,5 +59,13 @@ void main() {
       StudioDrawerMode.terminal,
     );
     expect(container.read(studioRightDrawerProvider).commandRunId, 'run-1');
+
+    controller.openPatchFile('patch-1', 'lib/main.dart');
+
+    final state = container.read(studioRightDrawerProvider);
+    expect(state.mode, StudioDrawerMode.diff);
+    expect(state.diffId, 'patch-1');
+    expect(state.patchFilePath, 'lib/main.dart');
+    expect(state.filePath, 'lib/main.dart');
   });
 }

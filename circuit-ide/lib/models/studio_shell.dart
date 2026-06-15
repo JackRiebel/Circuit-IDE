@@ -16,6 +16,7 @@ class StudioShellState {
   final SpecialistAgentId specialistAgentId;
   final String composerText;
   final bool rightProgressPanelVisible;
+  final bool planModeEnabled;
 
   const StudioShellState({
     this.mode = StudioMode.home,
@@ -26,6 +27,7 @@ class StudioShellState {
     this.specialistAgentId = SpecialistAgentId.auto,
     this.composerText = '',
     this.rightProgressPanelVisible = true,
+    this.planModeEnabled = false,
   });
 
   StudioShellState copyWith({
@@ -37,6 +39,7 @@ class StudioShellState {
     SpecialistAgentId? specialistAgentId,
     String? composerText,
     bool? rightProgressPanelVisible,
+    bool? planModeEnabled,
   }) {
     return StudioShellState(
       mode: mode ?? this.mode,
@@ -52,6 +55,7 @@ class StudioShellState {
       composerText: composerText ?? this.composerText,
       rightProgressPanelVisible:
           rightProgressPanelVisible ?? this.rightProgressPanelVisible,
+      planModeEnabled: planModeEnabled ?? this.planModeEnabled,
     );
   }
 }
