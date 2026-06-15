@@ -12,6 +12,7 @@ import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_right_drawer.dart';
+import '../../models/studio_shell.dart';
 import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
@@ -64,11 +65,9 @@ class _TaskTranscript extends ConsumerWidget {
     final threadState = ref.watch(studioThreadProvider);
     final thread =
         threadState.threadForTask(task?.id) ?? threadState.selectedThread;
-    final activePatch = ref.watch(patchProposalProvider).active;
-    final patch =
-        activePatch?.agentTaskId == null || activePatch?.agentTaskId == task?.id
-        ? activePatch
-        : null;
+    final patchState = ref.watch(patchProposalProvider);
+    final patches = _visiblePatchesForTask(patchState, task?.id);
+    final patch = patches.lastOrNull;
     final allCommands = ref.watch(commandRunProvider).values.toList();
     final taskCommandIds = task?.commandRunIds.toSet() ?? const <String>{};
     final commands = taskCommandIds.isEmpty
@@ -116,7 +115,7 @@ class _TaskTranscript extends ConsumerWidget {
       fallbackCreatedAt: task?.createdAt,
     );
     final turnWidgets = thread?.turns.isNotEmpty == true
-        ? _buildTurnWidgets(context, ref, thread!.turns, patch)
+        ? _buildTurnWidgets(context, ref, thread!.turns, patches)
         : null;
     return Column(
       children: [
@@ -166,18 +165,6 @@ class _TaskTranscript extends ConsumerWidget {
                         iconFor: _artifactIcon,
                       ),
                     },
-                if (patch != null && turnWidgets == null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: Spacing.md),
-                      child: OutlinedButton(
-                        onPressed: () =>
-                            ref.read(studioShellProvider.notifier).openReview(),
-                        child: const Text('Review changes'),
-                      ),
-                    ),
-                  ),
                 if ((thread?.isActive ?? false) &&
                     (thread?.status == StudioThreadStatus.streaming ||
                         chat.isStreaming))
@@ -239,7 +226,7 @@ class _TaskTranscript extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     List<StudioTurn> turns,
-    ProposedPatchSet? patch,
+    List<ProposedPatchSet> patches,
   ) {
     final orderedTurns = turns.toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
@@ -250,7 +237,7 @@ class _TaskTranscript extends ConsumerWidget {
     for (var i = 0; i < recentTurns.length; i++) {
       final turn = recentTurns[i];
       final turnPatch = _patchForTurn(
-        patch,
+        patches,
         turn,
         isLatestTurn: i == recentTurns.length - 1,
       );
@@ -263,42 +250,18 @@ class _TaskTranscript extends ConsumerWidget {
           case StudioTurnEventType.userMessage:
             break;
           case StudioTurnEventType.context:
-            widgets.add(
-              _TranscriptEvent(
-                icon: Icons.dataset_linked_outlined,
-                title: event.title,
-                detail: event.detail,
-                onTap: () => ref
-                    .read(studioRightDrawerProvider.notifier)
-                    .openMode(StudioDrawerMode.sources),
-              ),
-            );
+            // Routine context details stay in the progress drawer. Keeping them
+            // out of chat prevents every request from becoming a stack of bars.
+            break;
           case StudioTurnEventType.progress:
             if (turnPatch != null &&
                 (event.title == 'Plan ready for review' ||
                     event.title == 'Patch ready')) {
               break;
             }
-            if (event.transcriptVisible) {
-              widgets.add(
-                _TranscriptEvent(
-                  icon: Icons.pending_outlined,
-                  title: event.title,
-                  detail: event.detail,
-                ),
-              );
-            }
+            break;
           case StudioTurnEventType.tool:
-            widgets.add(
-              _TranscriptEvent(
-                icon: _iconForTurnTool(event.toolName),
-                title: event.title,
-                detail: event.detail,
-                onTap: () => ref
-                    .read(studioRightDrawerProvider.notifier)
-                    .openMode(StudioDrawerMode.sources),
-              ),
-            );
+            break;
           case StudioTurnEventType.approvalRequest:
             widgets.add(_StudioTurnApprovalCard(event: event));
           case StudioTurnEventType.assistantMessage:
@@ -320,13 +283,7 @@ class _TaskTranscript extends ConsumerWidget {
               ),
             );
           case StudioTurnEventType.completionSummary:
-            widgets.add(
-              _TranscriptEvent(
-                icon: Icons.check_circle_outline,
-                title: event.title,
-                detail: event.detail,
-              ),
-            );
+            break;
         }
       }
       final hasFinalAssistant = events.any(
@@ -345,27 +302,37 @@ class _TaskTranscript extends ConsumerWidget {
   }
 
   ProposedPatchSet? _patchForTurn(
-    ProposedPatchSet? patch,
+    List<ProposedPatchSet> patches,
     StudioTurn turn, {
     required bool isLatestTurn,
   }) {
-    if (patch == null) return null;
-    if (patch.runId == turn.requestId) return patch;
-    if (patch.runId == null && isLatestTurn) return patch;
-    return null;
+    return patches
+            .where((patch) => patch.runId == turn.requestId)
+            .firstOrNull ??
+        (isLatestTurn
+            ? patches.where((patch) => patch.runId == null).firstOrNull
+            : null);
   }
 
-  IconData _iconForTurnTool(String? toolName) {
-    return switch (toolName) {
-      'run_command' => Icons.terminal_outlined,
-      'read_file' ||
-      'list_files' ||
-      'search_files' => Icons.fact_check_outlined,
-      'write_file' || 'edit_file' => Icons.edit_document,
-      'propose_patch' => Icons.rate_review_outlined,
-      'git_status' || 'git_diff' => Icons.account_tree_outlined,
-      _ => Icons.task_alt_outlined,
-    };
+  List<ProposedPatchSet> _visiblePatchesForTask(
+    PatchProposalState state,
+    String? taskId,
+  ) {
+    final byId = <String, ProposedPatchSet>{};
+
+    void addPatch(ProposedPatchSet? patch) {
+      if (patch == null) return;
+      if (patch.approvalStatus == PatchApprovalStatus.rejected) return;
+      if (patch.agentTaskId != null && patch.agentTaskId != taskId) return;
+      byId[patch.id] = patch;
+    }
+
+    addPatch(state.active);
+    for (final patch in state.history) {
+      addPatch(patch);
+    }
+    return byId.values.toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
   List<StudioTranscriptItem> _buildTranscriptItems({
@@ -391,10 +358,6 @@ class _TaskTranscript extends ConsumerWidget {
         ? visibleMessages.sublist(visibleMessages.length - 12)
         : visibleMessages;
     final items = <StudioTranscriptItem>[];
-    final lastUserMessageId = recentMessages
-        .where((message) => message.role == MessageRole.user)
-        .lastOrNull
-        ?.id;
     if (recentMessages.isEmpty) {
       items.add(
         StudioTranscriptItem.userMessage(
@@ -416,24 +379,6 @@ class _TaskTranscript extends ConsumerWidget {
               requestId: thread?.requestId,
             ),
           );
-          if (message.id == lastUserMessageId &&
-              thread?.contextSummary != null) {
-            items.add(
-              StudioTranscriptItem.activity(
-                AgentTaskArtifact(
-                  id: 'context-${thread!.id}-${message.id}',
-                  type: AgentTaskArtifactType.contextPack,
-                  title: thread.contextSummary!.title,
-                  detail: thread.contextSummary!.detail,
-                  createdAt: message.timestamp,
-                ),
-                threadId: thread.id,
-                requestId: thread.requestId,
-                relatedMessageId: message.id,
-                contextSummary: thread.contextSummary,
-              ),
-            );
-          }
         } else {
           items.add(
             StudioTranscriptItem.assistantMarkdown(
@@ -454,51 +399,10 @@ class _TaskTranscript extends ConsumerWidget {
         ),
       );
     }
-    final earliestVisible = recentMessages.firstOrNull?.timestamp;
-    for (final source in _compactSourceArtifacts(
-      sourceArtifacts,
-      earliestVisible: earliestVisible,
-    )) {
-      items.add(
-        StudioTranscriptItem.activity(
-          AgentTaskArtifact(
-            id: source.id,
-            type: _artifactTypeForSource(source.kind),
-            title: source.title,
-            detail: source.subtitle.isEmpty ? source.value : source.subtitle,
-            createdAt: source.createdAt,
-          ),
-          threadId: thread?.id,
-          requestId: source.requestId ?? thread?.requestId,
-          relatedMessageId: source.relatedMessageId,
-          sourceArtifactId: source.id,
-          filePath: source.filePath,
-          localUrl: source.localUrl,
-        ),
-      );
-    }
-    for (final artifact in artifacts) {
-      items.add(
-        StudioTranscriptItem.activity(
-          artifact,
-          threadId: thread?.id,
-          requestId: thread?.requestId,
-        ),
-      );
-    }
     if (patch != null) {
       items.add(
         StudioTranscriptItem.patchReview(
           patch,
-          threadId: thread?.id,
-          requestId: thread?.requestId,
-        ),
-      );
-    }
-    for (final command in commands) {
-      items.add(
-        StudioTranscriptItem.commandRun(
-          command,
           threadId: thread?.id,
           requestId: thread?.requestId,
         ),
@@ -517,56 +421,6 @@ class _TaskTranscript extends ConsumerWidget {
     return items;
   }
 
-  List<StudioSourceArtifact> _compactSourceArtifacts(
-    List<StudioSourceArtifact> artifacts, {
-    DateTime? earliestVisible,
-  }) {
-    final visible = artifacts.where((artifact) {
-      if (earliestVisible != null &&
-          artifact.createdAt.isBefore(earliestVisible)) {
-        return false;
-      }
-      if (artifact.kind == StudioSourceArtifactKind.toolResult &&
-          const {'Request sent', 'Completed'}.contains(artifact.title)) {
-        return false;
-      }
-      return true;
-    }).toList();
-    final completedKeys = visible
-        .where((artifact) => artifact.subtitle.toLowerCase() == 'completed')
-        .map(_artifactDedupKey)
-        .toSet();
-    final byId = <String, StudioSourceArtifact>{};
-    for (final artifact in visible) {
-      if (artifact.subtitle.toLowerCase() == 'running' &&
-          completedKeys.contains(_artifactDedupKey(artifact))) {
-        continue;
-      }
-      byId[artifact.id] = artifact;
-    }
-    final compact = byId.values.toList()
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    return compact.take(48).toList();
-  }
-
-  String _artifactDedupKey(StudioSourceArtifact artifact) {
-    final title = artifact.title
-        .toLowerCase()
-        .replaceAll('_', ' ')
-        .replaceFirst(RegExp(r'^(reading|read) '), 'read ')
-        .replaceFirst(RegExp(r'^(listing|listed) '), 'list ')
-        .replaceFirst(RegExp(r'^(checking|checked) '), 'check ')
-        .replaceFirst(RegExp(r'^(preparing|prepared) '), 'prepare ')
-        .replaceFirst(RegExp(r'^(editing|edited) '), 'edit ');
-    return [
-      artifact.requestId ?? '',
-      artifact.kind.name,
-      title,
-      artifact.filePath ?? '',
-      artifact.localUrl ?? '',
-    ].join('|');
-  }
-
   int _compareTranscriptItems(StudioTranscriptItem a, StudioTranscriptItem b) {
     final time = (a.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0))
         .compareTo(b.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0));
@@ -583,32 +437,6 @@ class _TaskTranscript extends ConsumerWidget {
       StudioTranscriptItemType.approval => 4,
       StudioTranscriptItemType.assistantMarkdown => 5,
       StudioTranscriptItemType.error => 6,
-    };
-  }
-
-  AgentTaskArtifactType _artifactTypeForSource(StudioSourceArtifactKind kind) {
-    return switch (kind) {
-      StudioSourceArtifactKind.command ||
-      StudioSourceArtifactKind.terminalLog ||
-      StudioSourceArtifactKind.terminalSession =>
-        AgentTaskArtifactType.commandRun,
-      StudioSourceArtifactKind.patch ||
-      StudioSourceArtifactKind.diff ||
-      StudioSourceArtifactKind.gitChange ||
-      StudioSourceArtifactKind.gitHunk ||
-      StudioSourceArtifactKind.reviewComment =>
-        AgentTaskArtifactType.patchProposal,
-      StudioSourceArtifactKind.localUrl ||
-      StudioSourceArtifactKind.file ||
-      StudioSourceArtifactKind.webSource ||
-      StudioSourceArtifactKind.toolResult ||
-      StudioSourceArtifactKind.browserComment ||
-      StudioSourceArtifactKind.topology ||
-      StudioSourceArtifactKind.sizing ||
-      StudioSourceArtifactKind.lifecycle ||
-      StudioSourceArtifactKind.chart ||
-      StudioSourceArtifactKind.businessUseCase ||
-      StudioSourceArtifactKind.evidence => AgentTaskArtifactType.diagnostic,
     };
   }
 }
@@ -889,18 +717,30 @@ class _ActivityItem extends ConsumerWidget {
   }
 }
 
-class _PatchSummaryCard extends ConsumerWidget {
+class _PatchSummaryCard extends ConsumerStatefulWidget {
   final ProposedPatchSet patch;
 
   const _PatchSummaryCard({required this.patch});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PatchSummaryCard> createState() => _PatchSummaryCardState();
+}
+
+class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
+    final patch = widget.patch;
     final isPlan = patch.isPlanOnly;
+    final isAcceptedPlan =
+        isPlan && patch.approvalStatus == PatchApprovalStatus.approved;
     final delta = _patchDelta(patch);
     final title = isPlan
-        ? 'Plan ready'
+        ? isAcceptedPlan
+              ? 'Plan accepted'
+              : 'Plan ready'
         : patch.applyStatus == PatchApplyStatus.applied
         ? 'Edited ${patch.fileCount} files'
         : 'Prepared ${patch.fileCount} files';
@@ -984,9 +824,10 @@ class _PatchSummaryCard extends ConsumerWidget {
                     ),
                   ),
                   OutlinedButton(
-                    onPressed: () =>
-                        ref.read(studioShellProvider.notifier).openReview(),
-                    child: Text(isPlan ? 'Review plan' : 'Review'),
+                    onPressed: isPlan
+                        ? () => setState(() => _expanded = true)
+                        : () => _openPatchReview(ref),
+                    child: Text(isPlan ? 'View plan' : 'Review'),
                   ),
                 ],
               ),
@@ -1006,26 +847,51 @@ class _PatchSummaryCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if ((patch.planMarkdown ?? '').trim().isNotEmpty)
-                      MarkdownWidget(
-                        data: patch.planMarkdown!,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        config: buildChatMarkdownConfig(tokens),
+                    if ((patch.comparisonSummary ?? '').trim().isNotEmpty) ...[
+                      Text(
+                        patch.comparisonSummary!.trim(),
+                        maxLines: _expanded ? null : 3,
+                        overflow: _expanded
+                            ? TextOverflow.visible
+                            : TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textSecondary,
+                          fontSize: FontSizes.sm,
+                          height: 1.35,
+                        ),
                       ),
+                      const SizedBox(height: Spacing.md),
+                    ],
+                    if ((patch.planMarkdown ?? '').trim().isNotEmpty)
+                      _PlanMarkdownPreview(
+                        markdown: patch.planMarkdown!,
+                        expanded: _expanded,
+                      ),
+                    if ((patch.planMarkdown ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: Spacing.sm),
+                      TextButton.icon(
+                        onPressed: () => setState(() => _expanded = !_expanded),
+                        icon: Icon(
+                          _expanded ? Icons.unfold_less : Icons.unfold_more,
+                          size: 15,
+                        ),
+                        label: Text(
+                          _expanded ? 'Collapse plan' : 'Expand plan',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: Spacing.md),
                     Wrap(
                       spacing: Spacing.sm,
                       runSpacing: Spacing.sm,
                       children: [
-                        FilledButton(
-                          onPressed: () => _implementPlan(ref),
-                          child: const Text('Implement this plan'),
-                        ),
+                        if (!isAcceptedPlan)
+                          FilledButton(
+                            onPressed: () => _implementPlan(ref),
+                            child: const Text('Implement this plan'),
+                          ),
                         OutlinedButton(
-                          onPressed: () => ref
-                              .read(studioShellProvider.notifier)
-                              .setComposerText('Revise this plan: '),
+                          onPressed: () => _revisePlan(ref),
                           child: const Text('Tell Circuit what to change'),
                         ),
                         TextButton(
@@ -1050,13 +916,11 @@ class _PatchSummaryCard extends ConsumerWidget {
     final shell = ref.read(studioShellProvider);
     final workspace = ref.read(agentWorkspaceProvider);
     final taskId = shell.selectedTaskId ?? workspace.selectedTask?.id;
-    ref.read(studioShellProvider.notifier).setPlanModeEnabled(false);
-    final prompt = [
-      'Implement this approved plan.',
-      if ((patch.planMarkdown ?? '').trim().isNotEmpty) patch.planMarkdown!,
-      if (patch.plannedFiles.isNotEmpty)
-        'Planned files:\n${patch.plannedFiles.map((file) => '- $file').join('\n')}',
-    ].join('\n\n');
+    final shellNotifier = ref.read(studioShellProvider.notifier);
+    ref.read(patchProposalProvider.notifier).markPlanAccepted(widget.patch.id);
+    shellNotifier.setPlanModeEnabled(false);
+    shellNotifier.setPromptMode(StudioPromptMode.code);
+    final prompt = buildPlanImplementationPrompt(widget.patch);
     unawaited(
       sendStudioMessage(
         ref,
@@ -1066,6 +930,71 @@ class _PatchSummaryCard extends ConsumerWidget {
       ),
     );
   }
+
+  void _revisePlan(WidgetRef ref) {
+    final shellNotifier = ref.read(studioShellProvider.notifier);
+    shellNotifier.setPlanModeEnabled(true);
+    shellNotifier.setComposerText('Revise this plan. Change: ');
+  }
+
+  void _openPatchReview(WidgetRef ref) {
+    final firstEdit = widget.patch.edits.firstOrNull;
+    if (firstEdit != null) {
+      ref
+          .read(studioRightDrawerProvider.notifier)
+          .openPatchFile(widget.patch.id, firstEdit.path);
+      return;
+    }
+    ref
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.diff);
+  }
+}
+
+class _PlanMarkdownPreview extends ConsumerWidget {
+  final String markdown;
+  final bool expanded;
+
+  const _PlanMarkdownPreview({required this.markdown, required this.expanded});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final maxHeight = expanded
+        ? (screenHeight * 0.45).clamp(280.0, 460.0).toDouble()
+        : 180.0;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxHeight),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tokens.surfaceInset.withValues(alpha: 0.56),
+          borderRadius: BorderRadius.circular(Radii.lg),
+          border: Border.all(color: tokens.studioDivider),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(Spacing.md),
+          child: MarkdownWidget(
+            data: markdown,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            config: buildChatMarkdownConfig(tokens),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String buildPlanImplementationPrompt(ProposedPatchSet patch) {
+  return [
+    'Implement this approved plan.',
+    'Use the plan below as the source of truth. Inspect files as needed, then propose or apply the appropriate code changes under the current review-first tool policy.',
+    if ((patch.planMarkdown ?? '').trim().isNotEmpty)
+      'Approved plan:\n${patch.planMarkdown!.trim()}',
+    if (patch.plannedFiles.isNotEmpty)
+      'Planned files:\n${patch.plannedFiles.map((file) => '- $file').join('\n')}',
+  ].join('\n\n');
 }
 
 class _PatchFileRow extends ConsumerWidget {

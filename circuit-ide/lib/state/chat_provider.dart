@@ -185,11 +185,13 @@ class ChatNotifier extends Notifier<ChatState> {
     });
 
     service.events.on(EventType.confirmationNeeded, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       final request = event.data['request'] as ConfirmationRequest;
       state = state.copyWith(pendingConfirmation: request);
     });
 
     service.events.on(EventType.confirmationReceived, (event) {
+      if (!_eventBelongsToActiveRequest(event.data)) return;
       state = state.copyWith(pendingConfirmation: null);
     });
 
@@ -475,6 +477,7 @@ class ChatNotifier extends Notifier<ChatState> {
     _cancelSafetyTimer();
     _safetyTimer = Timer(const Duration(minutes: 4), () {
       if (state.isProcessing) {
+        ref.read(agentServiceProvider).cancelCurrentOperation();
         ref
             .read(agentRunProvider.notifier)
             .finishRun(

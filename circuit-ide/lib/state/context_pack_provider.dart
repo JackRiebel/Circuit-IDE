@@ -84,6 +84,8 @@ class ContextPackController extends Notifier<ContextPack?> {
       );
     }
 
+    items.addAll(_mentionedFileItems(prompt, rootPath));
+
     final changedFiles = {
       ...git.staged.map((change) => change.path),
       ...git.unstaged.map((change) => change.path),
@@ -251,6 +253,46 @@ class ContextPackController extends Notifier<ContextPack?> {
     } catch (_) {
       return '';
     }
+  }
+
+  List<ContextPackItem> _mentionedFileItems(String? prompt, String? rootPath) {
+    if (rootPath == null || prompt == null || prompt.trim().isEmpty) {
+      return const [];
+    }
+    final matches = RegExp(
+      r'(?:(?:[\w.-]+/)+)?[\w.-]+\.(?:dart|js|jsx|ts|tsx|py|md|json|yaml|yml|html|css|scss|go|rs|java|kt|swift|sh|sql|txt)',
+      caseSensitive: false,
+    ).allMatches(prompt);
+    final seen = <String>{};
+    final items = <ContextPackItem>[];
+    for (final match in matches) {
+      if (items.length >= 6) break;
+      final rawPath = match.group(0);
+      if (rawPath == null || rawPath.trim().isEmpty) continue;
+      final candidate = p.isAbsolute(rawPath)
+          ? p.normalize(rawPath)
+          : p.normalize(p.join(rootPath, rawPath));
+      if (candidate != p.normalize(rootPath) &&
+          !p.isWithin(rootPath, candidate)) {
+        continue;
+      }
+      if (!seen.add(candidate)) continue;
+      final content = _readFileIfSmall(candidate);
+      if (content.trim().isEmpty) continue;
+      final relativePath = p.relative(candidate, from: rootPath);
+      items.add(
+        ContextPackItem(
+          id: 'mentioned-file:$relativePath',
+          type: ContextPackItemType.mentionedFile,
+          title: relativePath,
+          detail: _truncate(content, 8000),
+          source: relativePath,
+          sourceKind: ContextPackSourceKind.editor,
+          estimatedTokens: _estimateTokens(content) + 20,
+        ),
+      );
+    }
+    return items;
   }
 
   String _gitDiffSnippet(String? rootPath) {

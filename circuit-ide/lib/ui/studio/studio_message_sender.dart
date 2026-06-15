@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
@@ -173,20 +175,6 @@ Future<StudioSendResult> sendStudioMessage(
   final priorThreadMessages = thread.messages
       .map((message) => message.toChatMessage())
       .toList(growable: false);
-  ref
-      .read(studioThreadProvider.notifier)
-      .markPhase(
-        thread.id,
-        status: StudioThreadStatus.buildingContext,
-        phase: StudioSendPhase.buildingContext,
-        model: model,
-        contextSummary: payload.summary,
-      );
-  final userMessageId =
-      ref
-          .read(studioThreadProvider.notifier)
-          .appendUserMessage(thread.id, text) ??
-      _uuid.v4();
 
   if (beforeSend.isProcessing) {
     const message =
@@ -201,6 +189,27 @@ Future<StudioSendResult> sendStudioMessage(
       taskId: taskId,
       contextSummary: payload.summary,
       blockedByActiveRequest: true,
+    );
+  }
+
+  final preflight = await ref
+      .read(chatProvider.notifier)
+      .preflightMessage(outboundText, payload.attachments);
+  if (!preflight.canSend) {
+    final message =
+        preflight.primaryIssue?.message ?? 'Circuit AI is not ready.';
+    ref
+        .read(studioThreadProvider.notifier)
+        .block(thread.id, message, preflight: preflight);
+    if (finishTask && taskId != null) {
+      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+    }
+    return StudioSendResult.blocked(
+      message,
+      threadId: thread.id,
+      taskId: taskId,
+      preflight: preflight,
+      contextSummary: payload.summary,
     );
   }
 
@@ -219,6 +228,21 @@ Future<StudioSendResult> sendStudioMessage(
       contextSummary: payload.summary,
     );
   }
+
+  ref
+      .read(studioThreadProvider.notifier)
+      .markPhase(
+        thread.id,
+        status: StudioThreadStatus.buildingContext,
+        phase: StudioSendPhase.buildingContext,
+        model: model,
+        contextSummary: payload.summary,
+      );
+  final userMessageId =
+      ref
+          .read(studioThreadProvider.notifier)
+          .appendUserMessage(thread.id, text) ??
+      _uuid.v4();
 
   ref
       .read(studioThreadProvider.notifier)
@@ -250,101 +274,59 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
         contextSummary: payload.summary,
       );
-  await ref
-      .read(chatProvider.notifier)
-      .sendMessage(
-        outboundText,
-        attachments: payload.attachments,
-        historyOverride: priorThreadMessages,
-        toolMode: planModeEnabled
-            ? AgentToolMode.plan
-            : _toolModeForPrompt(promptMode),
-        requestId: requestId,
-      );
-
-  final chat = ref.read(chatProvider);
-  ref
-      .read(studioThreadProvider.notifier)
-      .updateTokenUsage(
-        thread.id,
-        chat.lastTokenUsage.isNotEmpty ? chat.lastTokenUsage : chat.tokenUsage,
-      );
-  final preflight = chat.preflight;
-  if (preflight != null && !preflight.canSend) {
-    final message =
-        preflight.primaryIssue?.message ?? 'Circuit AI is not ready.';
+  unawaited(
     ref
-        .read(studioThreadProvider.notifier)
-        .block(thread.id, message, preflight: preflight);
-    ref
-        .read(studioRequestLifecycleProvider.notifier)
-        .failRequest(requestId, message);
-    if (finishTask && taskId != null) {
-      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
-    }
-    return StudioSendResult.blocked(
-      message,
-      requestId: requestId,
-      threadId: thread.id,
-      taskId: taskId,
-      preflight: preflight,
-      contextSummary: payload.summary,
-    );
-  }
-  if (chat.error != null) {
-    ref.read(studioThreadProvider.notifier).fail(thread.id, chat.error!);
-    ref
-        .read(studioRequestLifecycleProvider.notifier)
-        .failRequest(requestId, chat.error!);
-    if (finishTask && taskId != null) {
-      ref.read(agentWorkspaceProvider.notifier).failTask(taskId, chat.error!);
-    }
-    return StudioSendResult.failed(
-      chat.error!,
-      requestId: requestId,
-      threadId: thread.id,
-      taskId: taskId,
-      contextSummary: payload.summary,
-    );
-  }
-  if (chat.isProcessing ||
-      chat.isStreaming ||
-      chat.pendingConfirmation != null) {
-    ref
-        .read(studioThreadProvider.notifier)
-        .markPhase(
-          thread.id,
-          status: chat.pendingConfirmation == null
-              ? StudioThreadStatus.streaming
-              : StudioThreadStatus.waitingForApproval,
-          phase: chat.pendingConfirmation == null
-              ? StudioSendPhase.streaming
-              : StudioSendPhase.waitingForApproval,
+        .read(chatProvider.notifier)
+        .sendMessage(
+          outboundText,
+          attachments: payload.attachments,
+          historyOverride: priorThreadMessages,
+          toolMode: planModeEnabled
+              ? AgentToolMode.plan
+              : _toolModeForPrompt(promptMode),
           requestId: requestId,
-          model: model,
-          contextSummary: payload.summary,
-          streamingContent: chat.streamingContent,
-        );
-    if (chat.pendingConfirmation != null && taskId != null) {
-      ref.read(agentWorkspaceProvider.notifier).markWaitingForApproval(taskId);
-    }
-    return StudioSendResult.sent(
-      requestId: requestId,
-      threadId: thread.id,
-      taskId: taskId,
-      contextSummary: payload.summary,
-      registeredRequest: true,
-    );
-  }
-  final lifecycleEntry = ref
-      .read(studioRequestLifecycleProvider)
-      .find(requestId);
-  return StudioSendResult.completed(
+        )
+        .then((_) {
+          final chat = ref.read(chatProvider);
+          ref
+              .read(studioThreadProvider.notifier)
+              .updateTokenUsage(
+                thread.id,
+                chat.lastTokenUsage.isNotEmpty
+                    ? chat.lastTokenUsage
+                    : chat.tokenUsage,
+              );
+          if (chat.error != null) {
+            ref
+                .read(studioThreadProvider.notifier)
+                .fail(thread.id, chat.error!);
+            ref
+                .read(studioRequestLifecycleProvider.notifier)
+                .failRequest(requestId, chat.error!);
+            if (finishTask && taskId != null) {
+              ref
+                  .read(agentWorkspaceProvider.notifier)
+                  .failTask(taskId, chat.error!);
+            }
+          }
+        })
+        .catchError((Object error, StackTrace stackTrace) {
+          final message = error.toString().replaceFirst('Exception: ', '');
+          ref.read(studioThreadProvider.notifier).fail(thread.id, message);
+          ref
+              .read(studioRequestLifecycleProvider.notifier)
+              .failRequest(requestId, message);
+          if (finishTask && taskId != null) {
+            ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+          }
+        }),
+  );
+  return StudioSendResult.sent(
     requestId: requestId,
     threadId: thread.id,
     taskId: taskId,
     contextSummary: payload.summary,
-    registeredRequest: lifecycleEntry != null,
+    registeredRequest: true,
   );
 }
 

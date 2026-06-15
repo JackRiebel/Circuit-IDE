@@ -487,14 +487,7 @@ const _askToolNames = {
   'git_log',
 };
 
-const _codeToolNames = {
-  ..._askToolNames,
-  'propose_patch',
-  'write_file',
-  'edit_file',
-  'run_command',
-  'git_branch',
-};
+const _codeToolNames = {..._askToolNames, 'propose_patch', 'run_command'};
 
 const _planToolNames = {..._askToolNames, 'propose_patch'};
 

@@ -52,6 +52,8 @@ void main() {
     expect(planTools, isNot(contains('run_command')));
     expect(codeTools, contains('propose_patch'));
     expect(codeTools, contains('run_command'));
+    expect(codeTools, isNot(contains('write_file')));
+    expect(codeTools, isNot(contains('edit_file')));
     expect(reviewTools, contains('git_diff'));
     expect(reviewTools, isNot(contains('edit_file')));
   });
@@ -142,6 +144,31 @@ void main() {
       );
     },
   );
+
+  test('context pack includes explicitly mentioned file contents', () async {
+    final root = await Directory.systemTemp.createTemp('context_mentions_');
+    addTearDown(() => _delete(root));
+    await File(
+      p.join(root.path, 'README.md'),
+    ).writeAsString('# Circuit Test\n\nImportant setup notes.');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+    await container.read(projectProfileProvider.notifier).refresh();
+
+    final pack = container
+        .read(contextPackProvider.notifier)
+        .buildForCodingTask(prompt: 'Please review README.md before planning');
+
+    expect(pack.serializePrompt(), contains('Important setup notes.'));
+    expect(
+      pack.visibleItems
+          .where((item) => item.type == ContextPackItemType.mentionedFile)
+          .map((item) => item.source),
+      contains('README.md'),
+    );
+  });
 
   test('studio thread messages convert to isolated chat history', () {
     final now = DateTime(2026);

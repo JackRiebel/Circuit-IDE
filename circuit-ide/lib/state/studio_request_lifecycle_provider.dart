@@ -20,7 +20,6 @@ import 'agent_run_provider.dart';
 import 'agent_workspace_provider.dart';
 import 'connection_provider.dart';
 import 'patch_proposal_provider.dart';
-import 'studio_shell_provider.dart';
 import 'studio_thread_provider.dart';
 import 'studio_turn_provider.dart';
 
@@ -554,7 +553,6 @@ class StudioRequestLifecycleController
           runId: entry.requestId,
           comparisonSummary: summary.trim().isEmpty ? planMarkdown : summary,
         );
-    ref.read(studioShellProvider.notifier).openReview();
     ref
         .read(studioTurnProvider.notifier)
         .markProgress(

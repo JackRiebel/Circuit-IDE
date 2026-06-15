@@ -76,7 +76,104 @@ class StudioThreadStore {
         .whereType<Map<String, dynamic>>()
         .map(StudioThread.fromJson)
         .nonNulls
+        .map(_normalizeLoadedThread)
         .toList();
+  }
+
+  StudioThread _normalizeLoadedThread(StudioThread thread) {
+    final normalizedTurns = thread.turns.map(_normalizeLoadedTurn).toList();
+    var normalized = thread.copyWith(turns: normalizedTurns);
+    if (!_isLoadedActiveThread(normalized.status)) return normalized;
+
+    final latestTurn = normalizedTurns.fold<StudioTurn?>(
+      null,
+      (latest, turn) =>
+          latest == null || turn.createdAt.isAfter(latest.createdAt)
+          ? turn
+          : latest,
+    );
+    final recoveredStatus = switch (latestTurn?.status) {
+      StudioTurnStatus.completed => StudioThreadStatus.done,
+      StudioTurnStatus.failed => StudioThreadStatus.failed,
+      StudioTurnStatus.cancelled => StudioThreadStatus.cancelled,
+      _ => null,
+    };
+    if (recoveredStatus != null) {
+      return normalized.copyWith(
+        status: recoveredStatus,
+        phase: recoveredStatus == StudioThreadStatus.done
+            ? StudioSendPhase.completed
+            : StudioSendPhase.failed,
+        requestId: null,
+        streamingContent: '',
+        lastError: recoveredStatus == StudioThreadStatus.failed
+            ? (latestTurn?.lastError ?? normalized.lastError)
+            : null,
+      );
+    }
+
+    final hasAssistantMessage = normalized.messages.any(
+      (message) =>
+          message.role == MessageRole.assistant &&
+          message.content.trim().isNotEmpty,
+    );
+    if (hasAssistantMessage) {
+      return normalized.copyWith(
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        requestId: null,
+        streamingContent: '',
+        lastError: null,
+      );
+    }
+    const message = 'Interrupted while CircuitCode was closed.';
+    return normalized.copyWith(
+      status: StudioThreadStatus.failed,
+      phase: StudioSendPhase.failed,
+      requestId: null,
+      streamingContent: '',
+      lastError: normalized.lastError ?? message,
+    );
+  }
+
+  StudioTurn _normalizeLoadedTurn(StudioTurn turn) {
+    if (!_isLoadedActiveTurn(turn.status)) return turn;
+    return turn.expirePendingApprovals().copyWith(
+      status: StudioTurnStatus.failed,
+      assistantDraft: '',
+      completedAt: DateTime.now(),
+      lastError: turn.lastError ?? 'Interrupted while CircuitCode was closed.',
+    );
+  }
+
+  bool _isLoadedActiveThread(StudioThreadStatus status) {
+    return switch (status) {
+      StudioThreadStatus.preflighting ||
+      StudioThreadStatus.buildingContext ||
+      StudioThreadStatus.streaming ||
+      StudioThreadStatus.waitingForApproval ||
+      StudioThreadStatus.runningCommand => true,
+      StudioThreadStatus.idle ||
+      StudioThreadStatus.reviewingPatch ||
+      StudioThreadStatus.done ||
+      StudioThreadStatus.failed ||
+      StudioThreadStatus.cancelled => false,
+    };
+  }
+
+  bool _isLoadedActiveTurn(StudioTurnStatus status) {
+    return switch (status) {
+      StudioTurnStatus.queued ||
+      StudioTurnStatus.buildingContext ||
+      StudioTurnStatus.sent ||
+      StudioTurnStatus.waitingForModel ||
+      StudioTurnStatus.streaming ||
+      StudioTurnStatus.toolRunning ||
+      StudioTurnStatus.waitingForApproval => true,
+      StudioTurnStatus.completed ||
+      StudioTurnStatus.failed ||
+      StudioTurnStatus.cancelled => false,
+    };
   }
 
   Future<void> save(String? rootPath, List<StudioThread> threads) async {

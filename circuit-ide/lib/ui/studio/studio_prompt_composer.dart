@@ -116,19 +116,15 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                 Expanded(
                   child: CallbackShortcuts(
                     bindings: {
-                      const SingleActivator(
-                        LogicalKeyboardKey.enter,
-                        shift: true,
-                      ): _submit,
-                      const SingleActivator(
-                        LogicalKeyboardKey.numpadEnter,
-                        shift: true,
-                      ): _submit,
+                      const SingleActivator(LogicalKeyboardKey.enter): _submit,
+                      const SingleActivator(LogicalKeyboardKey.numpadEnter):
+                          _submit,
                     },
                     child: TextField(
                       controller: _controller,
                       minLines: 1,
                       maxLines: widget.compact ? 3 : 4,
+                      textInputAction: TextInputAction.send,
                       style: TextStyle(
                         color: tokens.textPrimary,
                         fontSize: FontSizes.base,
@@ -146,7 +142,6 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                         filled: false,
                         isCollapsed: true,
                       ),
-                      onSubmitted: (_) => _submit(),
                     ),
                   ),
                 ),

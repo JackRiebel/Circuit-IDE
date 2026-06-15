@@ -1,6 +1,7 @@
 import 'package:circuit_ide/enums/event_type.dart';
 import 'package:circuit_ide/models/confirmation_request.dart';
 import 'package:circuit_ide/models/studio_request_lifecycle.dart';
+import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
@@ -8,6 +9,7 @@ import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/chat_provider.dart';
 import 'package:circuit_ide/state/connection_provider.dart';
 import 'package:circuit_ide/state/studio_request_lifecycle_provider.dart';
+import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -159,38 +161,34 @@ void main() {
     expect(approval.approvalState, ApprovalRequestState.pending);
   });
 
-  test(
-    'typed approval resolves pending confirmation instead of becoming chat',
-    () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      container.read(chatProvider);
+  test('stale approval events do not become global chat approvals', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(chatProvider);
 
-      final request = ConfirmationRequest(
+    final request = ConfirmationRequest(
+      id: 'approval-text',
+      toolCall: const ToolCallInfo(
         id: 'approval-text',
-        toolCall: const ToolCallInfo(
-          id: 'approval-text',
-          name: 'edit_file',
-          arguments: {'path': 'docs/topology.md'},
-        ),
-        preview: 'edit docs/topology.md',
-      );
-      container.read(agentServiceProvider).events.emit(
-        EventType.confirmationNeeded,
-        {'requestId': 'req-approval-text', 'request': request},
-      );
+        name: 'edit_file',
+        arguments: {'path': 'docs/topology.md'},
+      ),
+      preview: 'edit docs/topology.md',
+    );
+    container.read(agentServiceProvider).events.emit(
+      EventType.confirmationNeeded,
+      {'requestId': 'stale-request', 'request': request},
+    );
 
-      expect(container.read(chatProvider).pendingConfirmation?.id, request.id);
-      expect(
-        container
-            .read(chatProvider.notifier)
-            .handlePendingApprovalText('approve'),
-        isTrue,
-      );
-      expect(container.read(chatProvider).pendingConfirmation, isNull);
-      expect(container.read(chatProvider).messages, isEmpty);
-    },
-  );
+    expect(container.read(chatProvider).pendingConfirmation, isNull);
+    expect(
+      container
+          .read(chatProvider.notifier)
+          .handlePendingApprovalText('approve'),
+      isFalse,
+    );
+    expect(container.read(chatProvider).messages, isEmpty);
+  });
 
   test(
     'tool events render Codex-style activity rows and completion recap',
@@ -317,6 +315,7 @@ void main() {
     expect(patch.title, 'Create hello program');
     expect(patch.planMarkdown, contains('Add hello.py'));
     expect(patch.plannedFiles, hasLength(2));
+    expect(container.read(studioShellProvider).mode, isNot(StudioMode.review));
 
     final updated = container
         .read(studioThreadProvider)

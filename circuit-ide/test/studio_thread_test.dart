@@ -166,4 +166,55 @@ void main() {
       expect(state.isActive, isFalse);
     },
   );
+
+  test(
+    'StudioThreadStore marks interrupted active threads as failed on load',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final now = DateTime(2026);
+
+      final interrupted = StudioThread(
+        id: 'thread-interrupted',
+        title: 'Interrupted request',
+        status: StudioThreadStatus.streaming,
+        phase: StudioSendPhase.streaming,
+        requestId: 'request-interrupted',
+        turns: [
+          StudioTurn(
+            id: 'turn-interrupted',
+            threadId: 'thread-interrupted',
+            requestId: 'request-interrupted',
+            userMessageId: 'message-interrupted',
+            prompt: 'review this',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              rootPath: project.path,
+              projectLabel: 'project',
+            ),
+            status: StudioTurnStatus.streaming,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await store.save(project.path, [interrupted]);
+
+      final loaded = await store.load(project.path);
+
+      expect(loaded.single.status, StudioThreadStatus.failed);
+      expect(loaded.single.phase, StudioSendPhase.failed);
+      expect(loaded.single.requestId, isNull);
+      expect(loaded.single.turns.single.status, StudioTurnStatus.failed);
+      expect(
+        loaded.single.turns.single.lastError,
+        contains('Interrupted while CircuitCode was closed'),
+      );
+    },
+  );
 }

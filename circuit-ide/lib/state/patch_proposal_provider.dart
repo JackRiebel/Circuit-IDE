@@ -221,12 +221,18 @@ class PatchProposalController extends Notifier<PatchProposalState> {
   void approvePlanActive() {
     final patchSet = state.active;
     if (patchSet == null) return;
+    markPlanAccepted(patchSet.id);
+  }
+
+  void markPlanAccepted(String patchSetId) {
+    final patchSet = _find(patchSetId);
+    if (patchSet == null) return;
     final updated = patchSet.copyWith(
       approvalStatus: PatchApprovalStatus.approved,
       applyStatus: PatchApplyStatus.applied,
     );
     state = state.copyWith(
-      active: null,
+      active: state.active?.id == patchSetId ? null : state.active,
       history: _replace(updated),
       message: 'Plan approved.',
     );

@@ -144,8 +144,11 @@ class CircuitAgent {
 
       String fullResponse = '';
       List<ToolCallInfo> allToolCalls = [];
+      final seenToolRounds = <String>{};
+      var noProgressRounds = 0;
 
-      // Tool call loop (up to 25 iterations)
+      // Tool call loop. Keep this bounded so weak or slow models cannot
+      // inspect forever without returning useful status to the user.
       for (
         int iteration = 0;
         iteration < AppConstants.maxToolCallIterations;
@@ -256,6 +259,32 @@ class CircuitAgent {
 
         // If no tool calls, we're done
         if (!response.hasToolCalls) break;
+
+        final roundKey = toolCallInfos
+            .map((call) => '${call.name}:${call.arguments}')
+            .join('|');
+        final repeatedRound = !seenToolRounds.add(roundKey);
+        if (response.content.trim().isEmpty && repeatedRound) {
+          noProgressRounds++;
+        } else {
+          noProgressRounds = 0;
+        }
+        if (noProgressRounds >= 2) {
+          const stopMessage =
+              'I’m stopping here because the same tool step repeated without new progress. Tell me what to inspect next, or switch to Plan mode for a smaller reviewable plan.';
+          fullResponse = fullResponse.trim().isEmpty
+              ? stopMessage
+              : '$fullResponse\n\n$stopMessage';
+          history.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.assistant,
+              content: stopMessage,
+              timestamp: DateTime.now(),
+            ),
+          );
+          break;
+        }
 
         // Execute tool calls
         _toolExecutor.autoApprove = autoApprove;
