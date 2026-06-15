@@ -12,7 +12,7 @@ import '../../models/specialist_agent.dart';
 import '../../models/studio_shell.dart';
 import '../../models/studio_thread.dart';
 import '../../state/agent_workspace_provider.dart';
-import '../../state/chat_provider.dart';
+import '../../state/agent_turn_runtime_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
@@ -121,9 +121,9 @@ Future<StudioSendResult> sendStudioMessage(
   String? taskId,
   bool finishTask = false,
 }) async {
-  final beforeSend = ref.read(chatProvider);
-  if (beforeSend.pendingConfirmation != null &&
-      ref.read(chatProvider.notifier).handlePendingApprovalText(text)) {
+  final runtime = ref.read(agentTurnRuntimeProvider.notifier);
+  final beforeSend = ref.read(agentTurnRuntimeProvider);
+  if (runtime.handlePendingApprovalText(text)) {
     final thread = ref.read(studioThreadProvider).selectedThread;
     if (thread != null) {
       ref
@@ -176,7 +176,7 @@ Future<StudioSendResult> sendStudioMessage(
       .map((message) => message.toChatMessage())
       .toList(growable: false);
 
-  if (beforeSend.isProcessing) {
+  if (beforeSend.hasActiveStudioRequest) {
     const message =
         'A request is already running. Wait for it to finish or cancel it before sending another.';
     ref.read(studioThreadProvider.notifier).block(thread.id, message);
@@ -192,9 +192,10 @@ Future<StudioSendResult> sendStudioMessage(
     );
   }
 
-  final preflight = await ref
-      .read(chatProvider.notifier)
-      .preflightMessage(outboundText, payload.attachments);
+  final preflight = await runtime.preflightMessage(
+    outboundText,
+    payload.attachments,
+  );
   if (!preflight.canSend) {
     final message =
         preflight.primaryIssue?.message ?? 'Circuit AI is not ready.';
@@ -275,51 +276,20 @@ Future<StudioSendResult> sendStudioMessage(
         contextSummary: payload.summary,
       );
   unawaited(
-    ref
-        .read(chatProvider.notifier)
-        .sendMessage(
-          outboundText,
-          attachments: payload.attachments,
-          historyOverride: priorThreadMessages,
-          toolMode: planModeEnabled
-              ? AgentToolMode.plan
-              : _toolModeForPrompt(promptMode),
-          requestId: requestId,
-        )
-        .then((_) {
-          final chat = ref.read(chatProvider);
-          ref
-              .read(studioThreadProvider.notifier)
-              .updateTokenUsage(
-                thread.id,
-                chat.lastTokenUsage.isNotEmpty
-                    ? chat.lastTokenUsage
-                    : chat.tokenUsage,
-              );
-          if (chat.error != null) {
-            ref
-                .read(studioThreadProvider.notifier)
-                .fail(thread.id, chat.error!);
-            ref
-                .read(studioRequestLifecycleProvider.notifier)
-                .failRequest(requestId, chat.error!);
-            if (finishTask && taskId != null) {
-              ref
-                  .read(agentWorkspaceProvider.notifier)
-                  .failTask(taskId, chat.error!);
-            }
-          }
-        })
-        .catchError((Object error, StackTrace stackTrace) {
-          final message = error.toString().replaceFirst('Exception: ', '');
-          ref.read(studioThreadProvider.notifier).fail(thread.id, message);
-          ref
-              .read(studioRequestLifecycleProvider.notifier)
-              .failRequest(requestId, message);
-          if (finishTask && taskId != null) {
-            ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
-          }
-        }),
+    runtime.startTurn(
+      requestId: requestId,
+      threadId: thread.id,
+      taskId: taskId,
+      outboundText: outboundText,
+      attachments: payload.attachments,
+      historyOverride: priorThreadMessages,
+      toolMode: planModeEnabled
+          ? AgentToolMode.plan
+          : _toolModeForPrompt(promptMode),
+      model: model,
+      retryPrompt: text,
+      finishTask: finishTask,
+    ),
   );
   return StudioSendResult.sent(
     requestId: requestId,

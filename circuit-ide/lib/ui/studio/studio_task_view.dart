@@ -18,6 +18,7 @@ import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
+import '../../state/agent_turn_runtime_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/patch_proposal_provider.dart';
@@ -225,16 +226,13 @@ class _TaskTranscript extends ConsumerWidget {
   ) {
     final orderedTurns = turns.toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    final recentTurns = orderedTurns.length > 8
-        ? orderedTurns.sublist(orderedTurns.length - 8)
-        : orderedTurns;
     final widgets = <Widget>[];
-    for (var i = 0; i < recentTurns.length; i++) {
-      final turn = recentTurns[i];
+    for (var i = 0; i < orderedTurns.length; i++) {
+      final turn = orderedTurns[i];
       final turnPatch = _patchForTurn(
         patches,
         turn,
-        isLatestTurn: i == recentTurns.length - 1,
+        isLatestTurn: i == orderedTurns.length - 1,
       );
       var patchAdded = false;
       widgets.add(_ChatTranscriptLine(isUser: true, text: turn.prompt));
@@ -520,21 +518,21 @@ class _StudioConfirmationCard extends ConsumerWidget {
               children: [
                 TextButton(
                   onPressed: () => ref
-                      .read(chatProvider.notifier)
-                      .rejectConfirmation(request.id),
+                      .read(agentTurnRuntimeProvider.notifier)
+                      .rejectApproval(request.id),
                   child: const Text('Reject'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => ref
-                      .read(chatProvider.notifier)
-                      .approveConfirmationForCurrentTask(request.id),
+                      .read(agentTurnRuntimeProvider.notifier)
+                      .approveForTurn(request.id),
                   icon: const Icon(Icons.task_alt_outlined, size: 15),
                   label: const Text('Approve this task'),
                 ),
                 FilledButton(
                   onPressed: () => ref
-                      .read(chatProvider.notifier)
-                      .approveConfirmation(request.id),
+                      .read(agentTurnRuntimeProvider.notifier)
+                      .approveOnce(request.id),
                   child: const Text('Approve once'),
                 ),
               ],
@@ -646,16 +644,16 @@ class _StudioTurnApprovalCard extends ConsumerWidget {
                 TextButton(
                   onPressed: isPending && approvalId != null
                       ? () => ref
-                            .read(chatProvider.notifier)
-                            .rejectConfirmation(approvalId)
+                            .read(agentTurnRuntimeProvider.notifier)
+                            .rejectApproval(approvalId)
                       : null,
                   child: const Text('Reject'),
                 ),
                 OutlinedButton.icon(
                   onPressed: isPending && approvalId != null
                       ? () => ref
-                            .read(chatProvider.notifier)
-                            .approveConfirmationForCurrentTask(approvalId)
+                            .read(agentTurnRuntimeProvider.notifier)
+                            .approveForTurn(approvalId)
                       : null,
                   icon: const Icon(Icons.task_alt_outlined, size: 15),
                   label: const Text('Approve this task'),
@@ -663,8 +661,8 @@ class _StudioTurnApprovalCard extends ConsumerWidget {
                 FilledButton(
                   onPressed: isPending && approvalId != null
                       ? () => ref
-                            .read(chatProvider.notifier)
-                            .approveConfirmation(approvalId)
+                            .read(agentTurnRuntimeProvider.notifier)
+                            .approveOnce(approvalId)
                       : null,
                   child: const Text('Approve once'),
                 ),
