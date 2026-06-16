@@ -1,5 +1,5 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../models/context_pack.dart';
 import 'editor_provider.dart';
+import 'file_indexer_provider.dart';
 import 'file_tree_provider.dart';
 import 'git_provider.dart';
 import 'memories_provider.dart';
@@ -33,6 +34,21 @@ const _commonContextTerms = {
   'that',
   'with',
   'from',
+};
+const _importantContextFiles = {
+  'readme.md',
+  'package.json',
+  'pubspec.yaml',
+  'pyproject.toml',
+  'requirements.txt',
+  'cargo.toml',
+  'go.mod',
+  'pom.xml',
+  'build.gradle',
+  'settings.gradle',
+  'tsconfig.json',
+  'vite.config.ts',
+  'next.config.js',
 };
 
 class _RelevantFileScore {
@@ -348,29 +364,61 @@ class ContextPackController extends Notifier<ContextPack?> {
     if (terms.isEmpty) return const [];
 
     final scored = <_RelevantFileScore>[];
+    final scoredPaths = <String>{};
+    final indexedCandidates = <String>{};
+    final indexer = ref.read(fileIndexerProvider.notifier);
+    for (final term in terms) {
+      for (final file in indexer.search(term, limit: 12)) {
+        if (!file.isDirectory) indexedCandidates.add(file.relativePath);
+      }
+    }
+    for (final important in _importantContextFiles) {
+      indexedCandidates.add(important);
+    }
+
+    void scoreFile(String relativePath, File file, {int boost = 0}) {
+      if (!scoredPaths.add(relativePath)) return;
+      if (alreadyIncludedSources.contains(relativePath)) return;
+      if (_isIgnoredContextPath(relativePath)) return;
+      if (!_isRelevantContextExtension(relativePath)) return;
+      if (!file.existsSync() || file.lengthSync() > 80 * 1024) return;
+      final lowerPath = relativePath.toLowerCase();
+      final lowerName = p.basename(relativePath).toLowerCase();
+      final importantFileBoost = _importantContextFiles.contains(lowerName)
+          ? 3
+          : 0;
+      final content = file.readAsStringSync();
+      final lowerContent = content.toLowerCase();
+      var score = boost + importantFileBoost;
+      for (final term in terms) {
+        if (lowerName.contains(term)) score += 6;
+        if (lowerPath.contains(term)) score += 4;
+        if (lowerContent.contains(term)) score += 1;
+      }
+      if (score > 0) {
+        scored.add(_RelevantFileScore(relativePath, content, score));
+      }
+    }
+
     var visited = 0;
+    var scanned = 0;
     try {
       final root = Directory(rootPath);
       if (!root.existsSync()) return const [];
+      for (final relativePath in indexedCandidates) {
+        if (scanned > 120) break;
+        final file = File(p.join(rootPath, relativePath));
+        final before = scored.length;
+        scoreFile(relativePath, file, boost: 8);
+        if (scored.length > before) scanned++;
+      }
       for (final entity in root.listSync(recursive: true, followLinks: false)) {
-        if (visited++ > 180) break;
+        if (visited++ > 1500 || scanned > 300) break;
         if (entity is! File) continue;
         final relativePath = p.relative(entity.path, from: rootPath);
-        if (alreadyIncludedSources.contains(relativePath)) continue;
-        if (_isIgnoredContextPath(relativePath)) continue;
-        if (!_isRelevantContextExtension(relativePath)) continue;
-        if (entity.lengthSync() > 80 * 1024) continue;
-        final lowerPath = relativePath.toLowerCase();
-        final content = entity.readAsStringSync();
-        final lowerContent = content.toLowerCase();
-        var score = 0;
-        for (final term in terms) {
-          if (lowerPath.contains(term)) score += 4;
-          if (lowerContent.contains(term)) score += 1;
-        }
-        if (score > 0) {
-          scored.add(_RelevantFileScore(relativePath, content, score));
-        }
+        final before = scored.length;
+        scoreFile(relativePath, entity);
+        if (scored.length > before) scanned++;
       }
     } catch (_) {
       return const [];

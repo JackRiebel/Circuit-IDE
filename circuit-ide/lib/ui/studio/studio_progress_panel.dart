@@ -8,7 +8,6 @@ import '../../models/studio_shell.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
-import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
@@ -23,32 +22,31 @@ class StudioProgressPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final chat = ref.watch(chatProvider);
     final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
-    final hasPendingApproval = thread == null
-        ? chat.pendingConfirmation != null
-        : thread.turns.any(
-            (turn) => turn.events.any(
-              (event) =>
-                  event.type == StudioTurnEventType.approvalRequest &&
-                  event.approvalState == ApprovalRequestState.pending,
-            ),
-          );
+    final hasPendingApproval =
+        thread?.turns.any(
+          (turn) => turn.events.any(
+            (event) =>
+                event.type == StudioTurnEventType.approvalRequest &&
+                event.approvalState == ApprovalRequestState.pending,
+          ),
+        ) ??
+        false;
     final runningCommand = commands
         .where((command) => command.status == CommandRunStatus.running)
         .firstOrNull;
     final displayState = thread == null
         ? TaskDisplayState.derive(
             task: task,
-            isChatProcessing: chat.isProcessing,
-            isChatStreaming: chat.isStreaming,
+            isChatProcessing: false,
+            isChatStreaming: false,
             hasAssistantResponse: false,
             hasPendingApproval: hasPendingApproval,
             commands: commands,
-            chatError: chat.error,
+            chatError: null,
           )
         : TaskDisplayState.fromLifecycle(
             StudioTaskLifecycleState.fromThread(thread),

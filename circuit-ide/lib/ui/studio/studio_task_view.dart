@@ -5,22 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../../core/constants/design_tokens.dart';
-import '../../enums/message_role.dart';
 import '../../models/agent_workspace.dart';
-import '../../models/chat_message.dart';
-import '../../models/command_run.dart';
-import '../../models/confirmation_request.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
-import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/agent_turn_runtime_provider.dart';
-import '../../state/chat_provider.dart';
-import '../../state/command_run_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
@@ -62,60 +55,16 @@ class _TaskTranscript extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final chat = ref.watch(chatProvider);
     final threadState = ref.watch(studioThreadProvider);
     final thread =
         threadState.threadForTask(task?.id) ?? threadState.selectedThread;
     final patchState = ref.watch(patchProposalProvider);
     final patches = _visiblePatchesForTask(patchState, task?.id);
-    final patch = patches.lastOrNull;
-    final allCommands = ref.watch(commandRunProvider).values.toList();
-    final taskCommandIds = task?.commandRunIds.toSet() ?? const <String>{};
-    final commands = taskCommandIds.isEmpty
-        ? const <CommandRun>[]
-        : allCommands
-              .where((command) => taskCommandIds.contains(command.id))
-              .toList();
-    final commandIds = commands.map((command) => command.id).toSet();
-    final artifacts =
-        task?.artifacts
-            .where(
-              (artifact) =>
-                  artifact.type != AgentTaskArtifactType.commandRun ||
-                  !commandIds.contains(artifact.id),
-            )
-            .toList() ??
-        const <AgentTaskArtifact>[];
     final title = task?.goal ?? thread?.title ?? 'New Circuit task';
     final lifecycle = StudioTaskLifecycleState.fromThread(thread);
-    final displayState = thread == null
-        ? TaskDisplayState.derive(
-            task: task,
-            isChatProcessing: chat.isProcessing,
-            isChatStreaming: chat.isStreaming,
-            hasAssistantResponse: false,
-            hasPendingApproval: chat.pendingConfirmation != null,
-            commands: commands,
-            chatError: chat.error,
-          )
-        : TaskDisplayState.fromLifecycle(lifecycle);
-    final transcriptItems = _buildTranscriptItems(
-      messages:
-          thread?.messages.map((message) => message.toChatMessage()).toList() ??
-          const [],
-      artifacts: artifacts,
-      sourceArtifacts: thread?.sourceArtifacts ?? const [],
-      commands: commands.take(4).toList(),
-      patch: patch,
-      confirmation: null,
-      error: thread?.lastError,
-      thread: thread,
-      fallbackUserText: title,
-      fallbackCreatedAt: task?.createdAt,
-    );
-    final turnWidgets = thread?.turns.isNotEmpty == true
-        ? _buildTurnWidgets(context, ref, thread!.turns, patches)
-        : null;
+    final displayState = TaskDisplayState.fromLifecycle(lifecycle);
+    final turns = thread?.turns ?? const <StudioTurn>[];
+    final turnWidgets = _buildTurnWidgets(context, ref, turns, patches);
     return Column(
       children: [
         Expanded(
@@ -135,35 +84,10 @@ class _TaskTranscript extends ConsumerWidget {
                 const SizedBox(height: Spacing.sm),
                 Divider(color: tokens.studioDivider.withValues(alpha: 0.82)),
                 const SizedBox(height: Spacing.lg),
-                if (turnWidgets != null)
-                  ...turnWidgets
+                if (turnWidgets.isEmpty)
+                  _EmptyThreadState(title: title)
                 else
-                  for (final item in transcriptItems)
-                    switch (item.type) {
-                      StudioTranscriptItemType.userMessage =>
-                        _ChatTranscriptLine(
-                          isUser: true,
-                          text: item.message!.content,
-                        ),
-                      StudioTranscriptItemType.assistantMarkdown =>
-                        _ChatTranscriptLine(
-                          isUser: false,
-                          text: item.message!.content,
-                        ),
-                      StudioTranscriptItemType.approval =>
-                        _StudioConfirmationCard(request: item.confirmation!),
-                      StudioTranscriptItemType.error => _TranscriptEvent(
-                        icon: Icons.error_outline,
-                        title: 'Circuit AI needs attention',
-                        detail: item.error!,
-                      ),
-                      StudioTranscriptItemType.activity ||
-                      StudioTranscriptItemType.patchReview ||
-                      StudioTranscriptItemType.commandRun => _ActivityItem(
-                        item: item,
-                        iconFor: _artifactIcon,
-                      ),
-                    },
+                  ...turnWidgets,
                 if ((thread?.isActive ?? false) &&
                     thread?.status == StudioThreadStatus.streaming)
                   _ChatTranscriptLine(
@@ -205,17 +129,6 @@ class _TaskTranscript extends ConsumerWidget {
   String _statusLabel(AgentTask? task, TaskDisplayState displayState) {
     final elapsed = task == null ? '' : ' for ${_elapsed(task.createdAt)}';
     return '${displayState.label}$elapsed';
-  }
-
-  IconData _artifactIcon(AgentTaskArtifactType type) {
-    return switch (type) {
-      AgentTaskArtifactType.contextPack => Icons.dataset_linked_outlined,
-      AgentTaskArtifactType.patchProposal => Icons.rate_review_outlined,
-      AgentTaskArtifactType.commandRun => Icons.terminal_outlined,
-      AgentTaskArtifactType.checkpoint => Icons.restore_outlined,
-      AgentTaskArtifactType.verification => Icons.playlist_add_check_outlined,
-      AgentTaskArtifactType.diagnostic => Icons.fact_check_outlined,
-    };
   }
 
   List<Widget> _buildTurnWidgets(
@@ -326,221 +239,6 @@ class _TaskTranscript extends ConsumerWidget {
     }
     return byId.values.toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-  }
-
-  List<StudioTranscriptItem> _buildTranscriptItems({
-    required List<ChatMessage> messages,
-    required List<AgentTaskArtifact> artifacts,
-    required List<StudioSourceArtifact> sourceArtifacts,
-    required List<CommandRun> commands,
-    required ProposedPatchSet? patch,
-    required ConfirmationRequest? confirmation,
-    required String? error,
-    required StudioThread? thread,
-    required String fallbackUserText,
-    required DateTime? fallbackCreatedAt,
-  }) {
-    final visibleMessages = messages
-        .where(
-          (message) =>
-              message.role == MessageRole.user ||
-              message.role == MessageRole.assistant,
-        )
-        .toList();
-    final recentMessages = visibleMessages.length > 12
-        ? visibleMessages.sublist(visibleMessages.length - 12)
-        : visibleMessages;
-    final items = <StudioTranscriptItem>[];
-    if (recentMessages.isEmpty) {
-      items.add(
-        StudioTranscriptItem.userMessage(
-          ChatMessage(
-            id: 'studio-fallback-user-message',
-            role: MessageRole.user,
-            content: fallbackUserText,
-            timestamp: fallbackCreatedAt ?? DateTime.now(),
-          ),
-        ),
-      );
-    } else {
-      for (final message in recentMessages) {
-        if (message.role == MessageRole.user) {
-          items.add(
-            StudioTranscriptItem.userMessage(
-              message,
-              threadId: thread?.id,
-              requestId: thread?.requestId,
-            ),
-          );
-        } else {
-          items.add(
-            StudioTranscriptItem.assistantMarkdown(
-              message,
-              threadId: thread?.id,
-              requestId: thread?.requestId,
-            ),
-          );
-        }
-      }
-    }
-    if (confirmation != null) {
-      items.add(
-        StudioTranscriptItem.approval(
-          confirmation,
-          threadId: thread?.id,
-          requestId: thread?.requestId,
-        ),
-      );
-    }
-    if (patch != null) {
-      items.add(
-        StudioTranscriptItem.patchReview(
-          patch,
-          threadId: thread?.id,
-          requestId: thread?.requestId,
-        ),
-      );
-    }
-    if (error != null) {
-      items.add(
-        StudioTranscriptItem.error(
-          error,
-          threadId: thread?.id,
-          requestId: thread?.requestId,
-        ),
-      );
-    }
-    items.sort(_compareTranscriptItems);
-    return items;
-  }
-
-  int _compareTranscriptItems(StudioTranscriptItem a, StudioTranscriptItem b) {
-    final time = (a.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0))
-        .compareTo(b.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0));
-    if (time != 0) return time;
-    return _transcriptPriority(a).compareTo(_transcriptPriority(b));
-  }
-
-  int _transcriptPriority(StudioTranscriptItem item) {
-    return switch (item.type) {
-      StudioTranscriptItemType.userMessage => 0,
-      StudioTranscriptItemType.activity => 1,
-      StudioTranscriptItemType.commandRun => 2,
-      StudioTranscriptItemType.patchReview => 3,
-      StudioTranscriptItemType.approval => 4,
-      StudioTranscriptItemType.assistantMarkdown => 5,
-      StudioTranscriptItemType.error => 6,
-    };
-  }
-}
-
-class _StudioConfirmationCard extends ConsumerWidget {
-  final ConfirmationRequest request;
-
-  const _StudioConfirmationCard({required this.request});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    final command = request.toolCall.arguments['command'] as String?;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: Spacing.lg),
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 660),
-        padding: const EdgeInsets.all(Spacing.lg),
-        decoration: BoxDecoration(
-          color: tokens.studioPanel,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: tokens.warning.withValues(alpha: 0.34)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.shield_outlined, color: tokens.warning, size: 16),
-                const SizedBox(width: Spacing.sm),
-                Text(
-                  'Approval needed',
-                  style: TextStyle(
-                    color: tokens.textPrimary,
-                    fontSize: FontSizes.sm,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: Spacing.md),
-            Text(
-              command == null
-                  ? 'Circuit wants to run a protected tool.'
-                  : 'Circuit wants to run this command:',
-              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
-            ),
-            const SizedBox(height: Spacing.sm),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(Spacing.md),
-              decoration: BoxDecoration(
-                color: tokens.surfaceInset,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: tokens.studioDivider),
-              ),
-              child: SelectableText(
-                command ?? request.preview,
-                style: TextStyle(
-                  color: tokens.textSecondary,
-                  fontSize: FontSizes.xs,
-                  height: 1.45,
-                  fontFamily: EditorDefaults.fallbackFontFamily,
-                ),
-              ),
-            ),
-            if (request.warnings.isNotEmpty) ...[
-              const SizedBox(height: Spacing.md),
-              for (final warning in request.warnings)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    warning,
-                    style: TextStyle(
-                      color: tokens.error,
-                      fontSize: FontSizes.xs,
-                    ),
-                  ),
-                ),
-            ],
-            const SizedBox(height: Spacing.lg),
-            Wrap(
-              alignment: WrapAlignment.end,
-              runSpacing: Spacing.sm,
-              spacing: Spacing.sm,
-              children: [
-                TextButton(
-                  onPressed: () => ref
-                      .read(agentTurnRuntimeProvider.notifier)
-                      .rejectApproval(request.id),
-                  child: const Text('Reject'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => ref
-                      .read(agentTurnRuntimeProvider.notifier)
-                      .approveForTurn(request.id),
-                  icon: const Icon(Icons.task_alt_outlined, size: 15),
-                  label: const Text('Approve this task'),
-                ),
-                FilledButton(
-                  onPressed: () => ref
-                      .read(agentTurnRuntimeProvider.notifier)
-                      .approveOnce(request.id),
-                  child: const Text('Approve once'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -675,38 +373,53 @@ class _StudioTurnApprovalCard extends ConsumerWidget {
   }
 }
 
-class _ActivityItem extends ConsumerWidget {
-  final StudioTranscriptItem item;
-  final IconData Function(AgentTaskArtifactType type) iconFor;
+class _EmptyThreadState extends ConsumerWidget {
+  final String title;
 
-  const _ActivityItem({required this.item, required this.iconFor});
+  const _EmptyThreadState({required this.title});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return switch (item.type) {
-      StudioTranscriptItemType.activity => _TranscriptEvent(
-        icon: iconFor(item.artifact!.type),
-        title: item.artifact!.title,
-        detail: item.artifact!.detail,
-        onTap: () => ref
-            .read(studioRightDrawerProvider.notifier)
-            .openMode(StudioDrawerMode.sources),
+    final tokens = ref.watch(themeProvider);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 660),
+        margin: const EdgeInsets.only(bottom: Spacing.xl),
+        padding: const EdgeInsets.all(Spacing.lg),
+        decoration: BoxDecoration(
+          color: tokens.studioPanel.withValues(alpha: 0.52),
+          borderRadius: BorderRadius.circular(Radii.xl),
+          border: Border.all(color: tokens.studioDivider),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (title != 'New Circuit task') ...[
+              Text(
+                title,
+                style: TextStyle(
+                  color: tokens.textPrimary,
+                  fontSize: FontSizes.sm,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: Spacing.xs),
+            ],
+            Text(
+              title == 'New Circuit task'
+                  ? 'Start a new message below.'
+                  : 'This thread has no saved turns yet. Start a follow-up below.',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.sm,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       ),
-      StudioTranscriptItemType.patchReview => _PatchSummaryCard(
-        patch: item.patch!,
-      ),
-      StudioTranscriptItemType.commandRun => _TranscriptEvent(
-        icon: Icons.terminal_outlined,
-        title: item.commandRun!.command,
-        detail:
-            '${item.commandRun!.status.name} · ${item.commandRun!.elapsed.inSeconds}s',
-        elevated: true,
-        onTap: () => ref
-            .read(studioRightDrawerProvider.notifier)
-            .openCommand(item.commandRun!.id),
-      ),
-      _ => const SizedBox.shrink(),
-    };
+    );
   }
 }
 
@@ -729,6 +442,11 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
     final isPlan = patch.isPlanOnly;
     final isAcceptedPlan =
         isPlan && patch.approvalStatus == PatchApprovalStatus.approved;
+    final canApply =
+        !isPlan &&
+        patch.edits.isNotEmpty &&
+        patch.applyStatus != PatchApplyStatus.applied &&
+        patch.applyStatus != PatchApplyStatus.rejected;
     final delta = _patchDelta(patch);
     final title = isPlan
         ? isAcceptedPlan
@@ -816,18 +534,53 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
                       ],
                     ),
                   ),
-                  OutlinedButton(
-                    onPressed: isPlan
-                        ? () => setState(() => _expanded = true)
-                        : () => _openPatchReview(ref),
-                    child: Text(isPlan ? 'View plan' : 'Review'),
-                  ),
+                  if (canApply) ...[
+                    TextButton(
+                      onPressed: () => _rejectPatch(ref),
+                      child: const Text('Reject'),
+                    ),
+                    OutlinedButton(
+                      onPressed: () => _revisePatch(ref),
+                      child: const Text('Ask for revision'),
+                    ),
+                    FilledButton(
+                      onPressed: () => _applyPatch(ref),
+                      child: const Text('Apply changes'),
+                    ),
+                  ] else
+                    OutlinedButton(
+                      onPressed: isPlan
+                          ? () => setState(() => _expanded = true)
+                          : () => _openPatchReview(ref),
+                      child: Text(isPlan ? 'View plan' : 'Review'),
+                    ),
                 ],
               ),
             ),
             Divider(color: tokens.studioDivider, height: 1),
             for (final file in _patchFiles(patch))
               _PatchFileRow(patch: patch, file: file),
+            if (!isPlan && _patchStatusDetail(patch) != null) ...[
+              Divider(color: tokens.studioDivider, height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  Spacing.md,
+                  Spacing.lg,
+                  Spacing.lg,
+                ),
+                child: Text(
+                  _patchStatusDetail(patch)!,
+                  style: TextStyle(
+                    color: patch.applyStatus == PatchApplyStatus.conflict
+                        ? tokens.warning
+                        : tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
             if (isPlan) ...[
               Divider(color: tokens.studioDivider, height: 1),
               Padding(
@@ -942,6 +695,48 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
         .read(studioRightDrawerProvider.notifier)
         .openMode(StudioDrawerMode.diff);
   }
+
+  Future<void> _applyPatch(WidgetRef ref) async {
+    final result = await ref
+        .read(patchProposalProvider.notifier)
+        .apply(widget.patch.id);
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(
+          result.applied
+              ? result.message ?? 'Applied ${result.changedFiles.length} files.'
+              : result.conflictMessage ??
+                    result.message ??
+                    'Patch not applied.',
+        ),
+      ),
+    );
+  }
+
+  void _rejectPatch(WidgetRef ref) {
+    ref.read(patchProposalProvider.notifier).reject(widget.patch.id);
+  }
+
+  void _revisePatch(WidgetRef ref) {
+    final shellNotifier = ref.read(studioShellProvider.notifier);
+    shellNotifier.setPromptMode(StudioPromptMode.code);
+    shellNotifier.setComposerText('Revise these proposed changes. Change: ');
+  }
+}
+
+String? _patchStatusDetail(ProposedPatchSet patch) {
+  return switch (patch.applyStatus) {
+    PatchApplyStatus.applied =>
+      'Applied successfully${patch.checkpointId == null ? '' : ' · checkpoint ${patch.checkpointId}'}.',
+    PatchApplyStatus.conflict =>
+      patch.conflictMessage ?? 'Patch has a conflict and was not applied.',
+    PatchApplyStatus.failed =>
+      patch.conflictMessage ?? 'Patch failed and was not applied.',
+    PatchApplyStatus.rejected => 'Rejected.',
+    null => null,
+  };
 }
 
 class _PlanMarkdownPreview extends ConsumerWidget {
@@ -1124,26 +919,16 @@ class _TranscriptEvent extends ConsumerWidget {
   final IconData icon;
   final String title;
   final String detail;
-  final bool elevated;
-  final VoidCallback? onTap;
 
   const _TranscriptEvent({
     required this.icon,
     required this.title,
     required this.detail,
-    this.elevated = false,
-    this.onTap,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return StudioActivityRow(
-      icon: icon,
-      title: title,
-      detail: detail,
-      onTap: onTap,
-      elevated: elevated,
-    );
+    return StudioActivityRow(icon: icon, title: title, detail: detail);
   }
 }
 

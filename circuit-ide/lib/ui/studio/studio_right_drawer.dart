@@ -17,7 +17,6 @@ import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
-import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/git_provider.dart';
@@ -265,7 +264,6 @@ class _ProgressDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final chat = ref.watch(chatProvider);
     final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
     final latestTurn = _latestTurn(thread);
     final latestEvent = _latestEvent(latestTurn);
@@ -279,12 +277,12 @@ class _ProgressDrawer extends ConsumerWidget {
     final displayState = thread == null
         ? TaskDisplayState.derive(
             task: task,
-            isChatProcessing: chat.isProcessing,
-            isChatStreaming: chat.isStreaming,
+            isChatProcessing: false,
+            isChatStreaming: false,
             hasAssistantResponse: false,
             hasPendingApproval: hasPendingApproval,
             commands: commands,
-            chatError: chat.error,
+            chatError: null,
           )
         : TaskDisplayState.fromLifecycle(
             StudioTaskLifecycleState.fromThread(thread),

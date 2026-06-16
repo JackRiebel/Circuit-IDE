@@ -14,7 +14,6 @@ import '../../models/studio_thread.dart';
 import '../../models/studio_view_models.dart';
 import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
-import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
@@ -435,7 +434,6 @@ class _RecentProjectGroup extends ConsumerWidget {
     final workspace = ref.watch(agentWorkspaceProvider);
     final threadState = ref.watch(studioThreadProvider);
     final history = ref.watch(studioProjectHistoryProvider).byPath[path];
-    final chat = ref.watch(chatProvider);
     final commands = ref.watch(commandRunProvider).values;
     final tasks = isSelectedProject ? workspace.tasks : history?.tasks ?? [];
     final threads = isSelectedProject
@@ -461,7 +459,6 @@ class _RecentProjectGroup extends ConsumerWidget {
               task,
               threads.where((thread) => thread.taskId == task.id).firstOrNull,
               isSelected: isSelectedProject && task.id == selectedTaskId,
-              chat: chat,
               commands: commands,
             ),
           ),
@@ -564,7 +561,6 @@ TaskDisplayState _displayStateForTask(
   AgentTask task,
   StudioThread? thread, {
   required bool isSelected,
-  required ChatState chat,
   required Iterable<CommandRun> commands,
 }) {
   if (thread != null) {
@@ -574,12 +570,12 @@ TaskDisplayState _displayStateForTask(
   }
   return TaskDisplayState.derive(
     task: task,
-    isChatProcessing: isSelected && chat.isProcessing,
-    isChatStreaming: isSelected && chat.isStreaming,
-    hasAssistantResponse: isSelected && hasAssistantResponse(chat.messages),
-    hasPendingApproval: isSelected && chat.pendingConfirmation != null,
+    isChatProcessing: false,
+    isChatStreaming: false,
+    hasAssistantResponse: false,
+    hasPendingApproval: false,
     commands: isSelected ? commands : const [],
-    chatError: isSelected ? chat.error : null,
+    chatError: null,
   );
 }
 

@@ -1,4 +1,5 @@
 import '../../models/chat_message.dart';
+import '../../models/provider_lifecycle_event.dart';
 
 class ModelInfo {
   final String id;
@@ -176,6 +177,8 @@ class ChatChunk {
   final int completionTokens;
   final String? finishReason;
   final bool isDone;
+  final ProviderLifecycleEventKind? lifecycleKind;
+  final String? lifecycleDetail;
 
   const ChatChunk({
     this.content,
@@ -187,6 +190,8 @@ class ChatChunk {
     this.completionTokens = 0,
     this.finishReason,
     this.isDone = false,
+    this.lifecycleKind,
+    this.lifecycleDetail,
   });
 }
 

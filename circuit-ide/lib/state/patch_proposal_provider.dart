@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,7 +90,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     );
     state = state.copyWith(
       active: patchSet,
-      history: [patchSet, ...state.history].take(20).toList(),
+      history: [patchSet, ...state.history],
       message: 'Patch ready for review.',
     );
     _showDiffPreview(patchSet);
@@ -204,6 +205,8 @@ class PatchProposalController extends Notifier<PatchProposalState> {
           changedFiles: changedFiles,
           checkpointId: checkpoint.id,
           message: 'Applied ${changedFiles.length} files.',
+          diffSummary: _diffSummary(patchSet),
+          verificationSuggestions: _verificationSuggestions(rootPath),
         ),
         checkpoint: checkpoint,
       );
@@ -243,12 +246,18 @@ class PatchProposalController extends Notifier<PatchProposalState> {
   void rejectActive() {
     final patchSet = state.active;
     if (patchSet == null) return;
+    reject(patchSet.id);
+  }
+
+  void reject(String patchSetId) {
+    final patchSet = _find(patchSetId);
+    if (patchSet == null) return;
     final updated = patchSet.copyWith(
       approvalStatus: PatchApprovalStatus.rejected,
       applyStatus: PatchApplyStatus.rejected,
     );
     state = state.copyWith(
-      active: null,
+      active: state.active?.id == patchSetId ? null : state.active,
       history: _replace(updated),
       message: 'Patch rejected.',
     );
@@ -401,7 +410,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       updated,
       ...state.history.where((patchSet) => patchSet.id != updated.id),
     ];
-    return replaced.take(20).toList();
+    return replaced;
   }
 
   void _syncAgentTask(ProposedPatchSet patchSet) {
@@ -418,6 +427,60 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       return null;
     }
     return normalized;
+  }
+
+  String _diffSummary(ProposedPatchSet patchSet) {
+    if (patchSet.edits.isEmpty) return 'No file edits were included.';
+    return patchSet.edits
+        .map((edit) {
+          final beforeLines = edit.before?.split('\n').length ?? 0;
+          final afterLines = edit.after?.split('\n').length ?? 0;
+          final verb = switch (edit.type) {
+            ProposedFileEditType.create => 'Created',
+            ProposedFileEditType.modify => 'Modified',
+            ProposedFileEditType.delete => 'Deleted',
+          };
+          final delta = afterLines - beforeLines;
+          final suffix = delta == 0
+              ? ''
+              : delta > 0
+              ? ' (+$delta lines)'
+              : ' ($delta lines)';
+          return '- $verb ${edit.path}$suffix';
+        })
+        .join('\n');
+  }
+
+  List<String> _verificationSuggestions(String rootPath) {
+    final suggestions = <String>[];
+    final packageJson = File(p.join(rootPath, 'package.json'));
+    if (packageJson.existsSync()) {
+      try {
+        final json = jsonDecode(packageJson.readAsStringSync());
+        if (json is Map<String, dynamic>) {
+          final scripts = json['scripts'];
+          if (scripts is Map) {
+            if (scripts.containsKey('test')) suggestions.add('npm test');
+            if (scripts.containsKey('lint')) suggestions.add('npm run lint');
+            if (scripts.containsKey('build')) suggestions.add('npm run build');
+          }
+        }
+      } catch (_) {}
+    }
+    if (File(p.join(rootPath, 'pubspec.yaml')).existsSync()) {
+      suggestions.addAll(['flutter analyze', 'flutter test']);
+    }
+    if (File(p.join(rootPath, 'pyproject.toml')).existsSync() ||
+        File(p.join(rootPath, 'pytest.ini')).existsSync()) {
+      suggestions.add('python -m pytest');
+    }
+    if (File(p.join(rootPath, 'Cargo.toml')).existsSync()) {
+      suggestions.add('cargo test');
+    }
+    if (suggestions.isEmpty) {
+      suggestions.add('Review the changed files and run the project checks.');
+    }
+    return suggestions.toSet().take(5).toList();
   }
 }
 

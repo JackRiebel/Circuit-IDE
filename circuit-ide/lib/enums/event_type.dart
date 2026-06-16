@@ -36,6 +36,7 @@ enum EventType {
   thinkingStarted,
   thinkingCompleted,
   agentRunEvent,
+  providerLifecycle,
 
   // Checkpoint events
   checkpointCreated,

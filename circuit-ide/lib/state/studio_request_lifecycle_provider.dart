@@ -7,6 +7,7 @@ import '../enums/event_type.dart';
 import '../models/agent_request.dart';
 import '../models/agent_run.dart';
 import '../models/confirmation_request.dart';
+import '../models/provider_lifecycle_event.dart';
 import '../models/studio_request_lifecycle.dart';
 import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
@@ -118,6 +119,7 @@ class StudioRequestLifecycleController
     on(EventType.confirmationReceived, _handleConfirmationReceived);
     on(EventType.messageCompleted, _handleMessageCompleted);
     on(EventType.messageError, _handleMessageError);
+    on(EventType.providerLifecycle, _handleProviderLifecycle);
     on(EventType.agentRunEvent, _handleAgentRunEvent);
   }
 
@@ -171,6 +173,59 @@ class StudioRequestLifecycleController
           status: switch (kind) {
             'first_text_delta' => StudioTurnStatus.streaming,
             'first_tool_delta' => StudioTurnStatus.toolRunning,
+            _ => StudioTurnStatus.waitingForModel,
+          },
+        );
+  }
+
+  void _handleProviderLifecycle(Event event) {
+    final entry = _entryFor(event);
+    if (entry == null) return;
+    final lifecycle = event.data['event'] as ProviderLifecycleEvent?;
+    if (lifecycle == null) return;
+    final detail =
+        lifecycle.detail ??
+        switch (lifecycle.kind) {
+          ProviderLifecycleEventKind.requestSent => 'Request sent to provider.',
+          ProviderLifecycleEventKind.connected => 'Provider connected.',
+          ProviderLifecycleEventKind.firstByte =>
+            'Circuit AI started responding.',
+          ProviderLifecycleEventKind.firstTextDelta =>
+            'Circuit AI started writing.',
+          ProviderLifecycleEventKind.firstToolDelta =>
+            'Circuit AI started a tool call.',
+          ProviderLifecycleEventKind.jsonFallback =>
+            'Circuit returned a non-streaming response.',
+          ProviderLifecycleEventKind.completed => 'Provider completed.',
+          ProviderLifecycleEventKind.failed => 'Provider failed.',
+          ProviderLifecycleEventKind.cancelled => 'Provider request cancelled.',
+        };
+    _touch(entry, switch (lifecycle.kind) {
+      ProviderLifecycleEventKind.firstTextDelta =>
+        StudioRequestLifecycleEventKind.streaming,
+      ProviderLifecycleEventKind.firstToolDelta =>
+        StudioRequestLifecycleEventKind.toolRunning,
+      ProviderLifecycleEventKind.completed =>
+        StudioRequestLifecycleEventKind.completed,
+      ProviderLifecycleEventKind.failed =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.cancelled =>
+        StudioRequestLifecycleEventKind.cancelled,
+      _ => StudioRequestLifecycleEventKind.waitingForModel,
+    }, detail: detail);
+    ref
+        .read(studioTurnProvider.notifier)
+        .markProgress(
+          entry.requestId,
+          title: 'Provider',
+          detail: detail,
+          status: switch (lifecycle.kind) {
+            ProviderLifecycleEventKind.firstTextDelta =>
+              StudioTurnStatus.streaming,
+            ProviderLifecycleEventKind.firstToolDelta =>
+              StudioTurnStatus.toolRunning,
+            ProviderLifecycleEventKind.failed => StudioTurnStatus.failed,
+            ProviderLifecycleEventKind.cancelled => StudioTurnStatus.cancelled,
             _ => StudioTurnStatus.waitingForModel,
           },
         );

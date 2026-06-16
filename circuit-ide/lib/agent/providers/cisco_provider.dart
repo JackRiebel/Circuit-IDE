@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/logger.dart';
 import '../../models/chat_message.dart';
+import '../../models/provider_lifecycle_event.dart';
 import '../config/models_config.dart';
 import 'provider_interface.dart';
 
@@ -437,6 +438,10 @@ class CiscoProvider implements AIProvider {
       Logger.info(
         'No SSE events found, attempting JSON fallback parse',
         'CiscoProvider',
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.jsonFallback,
+        lifecycleDetail: 'Circuit returned a non-streaming JSON response.',
       );
       yield* _parseJsonResponse(buffer.trim());
       return;

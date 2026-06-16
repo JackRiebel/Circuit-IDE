@@ -127,6 +127,8 @@ class PatchApplyResult {
   final String? checkpointId;
   final String? conflictMessage;
   final String? message;
+  final String? diffSummary;
+  final List<String> verificationSuggestions;
 
   const PatchApplyResult({
     required this.status,
@@ -134,9 +136,13 @@ class PatchApplyResult {
     this.checkpointId,
     this.conflictMessage,
     this.message,
+    this.diffSummary,
+    this.verificationSuggestions = const [],
   });
 
   bool get applied => status == PatchApplyStatus.applied;
 }
+
+typedef PatchTransactionResult = PatchApplyResult;
 
 const _sentinel = Object();

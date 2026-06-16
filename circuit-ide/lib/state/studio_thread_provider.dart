@@ -182,7 +182,7 @@ class StudioThreadStore {
     await file.writeAsString(
       const JsonEncoder.withIndent(
         '  ',
-      ).convert(threads.take(50).map((thread) => thread.toJson()).toList()),
+      ).convert(threads.map((thread) => thread.toJson()).toList()),
     );
   }
 }
@@ -342,7 +342,7 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     final turns = [
       turn,
       ...thread.turns.where((candidate) => candidate.id != turn.id),
-    ].take(80).toList()..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     _upsert(thread.copyWith(turns: turns), select: select);
   }
 
@@ -479,7 +479,7 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     final threads = [
       thread,
       ...state.threads.where((candidate) => candidate.id != thread.id),
-    ].take(50).toList();
+    ];
     state = state.copyWith(
       threads: threads,
       selectedThreadId: select ? thread.id : state.selectedThreadId,

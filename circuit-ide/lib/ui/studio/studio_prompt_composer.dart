@@ -160,7 +160,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             const SizedBox(width: Spacing.md),
                             _PlanModeToggle(enabled: studio.planModeEnabled),
                             const SizedBox(width: Spacing.md),
-                            if (widget.compact) ...[
+                            if (widget.compact &&
+                                _studioSpecialistsEnabled) ...[
                               _SpecialistAgentSelector(
                                 value: studio.specialistAgentId,
                               ),
@@ -231,7 +232,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                     label: branch.isEmpty ? 'main' : branch,
                   ),
                   const SizedBox(width: Spacing.lg),
-                  _SpecialistAgentSelector(value: studio.specialistAgentId),
+                  if (_studioSpecialistsEnabled)
+                    _SpecialistAgentSelector(value: studio.specialistAgentId),
                 ],
               ),
             ),
@@ -270,6 +272,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
     }
   }
 }
+
+const _studioSpecialistsEnabled = false;
 
 class _ComposerModeSelector extends ConsumerWidget {
   final StudioPromptMode value;

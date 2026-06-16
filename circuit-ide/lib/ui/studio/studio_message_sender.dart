@@ -340,11 +340,12 @@ class StudioContextPayload {
 
 StudioContextPayload buildStudioContextPayload(WidgetRef ref, String prompt) {
   final rootPath = ref.read(fileTreeProvider).rootPath;
-  final studio = ref.read(studioShellProvider);
   const registry = SpecialistAgentRegistry();
-  final selection = const SpecialistAgentRouter().route(
-    prompt,
-    explicitAgentId: studio.specialistAgentId,
+  const selection = SpecialistAgentSelection(
+    requestedAgentId: SpecialistAgentId.auto,
+    resolvedAgentIds: [],
+    isAuto: true,
+    rationale: 'Specialist routing is disabled for the core runtime.',
   );
   final contextPack = ref
       .read(contextPackProvider.notifier)

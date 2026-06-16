@@ -101,7 +101,7 @@ class AgentWorkspaceStore {
     await file.writeAsString(
       const JsonEncoder.withIndent(
         '  ',
-      ).convert(tasks.take(50).map((task) => task.toJson()).toList()),
+      ).convert(tasks.map((task) => task.toJson()).toList()),
     );
   }
 }
@@ -328,7 +328,7 @@ class AgentWorkspaceController extends Notifier<AgentWorkspaceState> {
     final tasks = [
       task,
       ...state.tasks.where((candidate) => candidate.id != task.id),
-    ].take(50).toList();
+    ];
     state = state.copyWith(
       tasks: tasks,
       selectedTaskId: task.id,
