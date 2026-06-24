@@ -1,5 +1,6 @@
 import '../enums/message_role.dart';
 import 'chat_message.dart';
+import 'context_pack.dart';
 import 'studio_source_artifact.dart';
 import 'studio_turn.dart';
 import 'token_usage.dart';
@@ -205,6 +206,18 @@ class StudioThread {
       status == StudioThreadStatus.streaming ||
       status == StudioThreadStatus.waitingForApproval ||
       status == StudioThreadStatus.runningCommand;
+
+  ContextRetrievalResult? get latestContextRetrieval {
+    StudioTurn? latestTurnWithContext;
+    for (final turn in turns) {
+      if (turn.contextRetrieval == null) continue;
+      if (latestTurnWithContext == null ||
+          turn.createdAt.isAfter(latestTurnWithContext.createdAt)) {
+        latestTurnWithContext = turn;
+      }
+    }
+    return latestTurnWithContext?.contextRetrieval;
+  }
 
   StudioThread copyWith({
     Object? taskId = _sentinel,
@@ -429,12 +442,7 @@ class StudioTaskLifecycleState {
     final hasCompletedTurn = thread.turns.any(
       (turn) => turn.status == StudioTurnStatus.completed,
     );
-    final hasAssistantMessage = thread.messages.any(
-      (message) =>
-          message.role == MessageRole.assistant &&
-          message.content.trim().isNotEmpty,
-    );
-    if (hasCompletedTurn || hasAssistantMessage) {
+    if (hasCompletedTurn) {
       return StudioThreadStatus.done;
     }
     return thread.status;

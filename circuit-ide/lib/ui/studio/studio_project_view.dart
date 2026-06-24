@@ -1,18 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
-import '../../models/agent_workspace.dart';
-import '../../state/agent_workspace_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/project_profile_provider.dart';
-import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
-import '../../state/work_item_provider.dart';
-import 'studio_task_card.dart';
 
 class StudioProjectView extends ConsumerWidget {
   const StudioProjectView({super.key});
@@ -22,7 +15,6 @@ class StudioProjectView extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final rootPath = ref.watch(fileTreeProvider).rootPath;
     final profile = ref.watch(projectProfileProvider);
-    final workspace = ref.watch(agentWorkspaceProvider);
     final projectName = rootPath == null ? 'Circuit-IDE' : p.basename(rootPath);
 
     return SingleChildScrollView(
@@ -52,69 +44,7 @@ class StudioProjectView extends ConsumerWidget {
               const SizedBox(height: Spacing.xxxl),
               _ProjectSummaryCard(),
               const SizedBox(height: Spacing.xl),
-              Row(
-                children: [
-                  FilledButton.icon(
-                    onPressed: () {
-                      final task = ref
-                          .read(agentWorkspaceProvider.notifier)
-                          .startTask(
-                            goal:
-                                'Investigate this project and propose the safest next coding step.',
-                            profile: AgentTaskProfile.investigate,
-                          );
-                      ref.read(studioShellProvider.notifier).openTask(task.id);
-                    },
-                    icon: const Icon(Icons.play_arrow_outlined, size: 16),
-                    label: const Text('Start task'),
-                  ),
-                  const SizedBox(width: Spacing.md),
-                  OutlinedButton.icon(
-                    onPressed: () => ref
-                        .read(studioShellProvider.notifier)
-                        .openAdvancedEditor(),
-                    icon: const Icon(Icons.code, size: 16),
-                    label: const Text('Open Advanced Editor'),
-                  ),
-                  const SizedBox(width: Spacing.md),
-                  OutlinedButton.icon(
-                    onPressed: () => unawaited(
-                      ref.read(workItemProvider.notifier).runVerification(),
-                    ),
-                    icon: const Icon(Icons.playlist_add_check, size: 16),
-                    label: const Text('Run checks'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Spacing.xxxl),
-              Text(
-                'Active tasks',
-                style: TextStyle(
-                  color: tokens.textPrimary,
-                  fontSize: FontSizes.lg,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              if (workspace.tasks.isEmpty)
-                _EmptyProjectBlock()
-              else
-                for (final task in workspace.tasks.take(8))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: Spacing.md),
-                    child: StudioTaskCard(
-                      task: task,
-                      projectLabel: projectName,
-                      onTap: () {
-                        ref
-                            .read(agentWorkspaceProvider.notifier)
-                            .selectTask(task.id);
-                        ref
-                            .read(studioShellProvider.notifier)
-                            .openTask(task.id);
-                      },
-                    ),
-                  ),
+              const _CoreRuntimeNotice(),
               if (profile.error != null) ...[
                 const SizedBox(height: Spacing.lg),
                 Text(
@@ -208,7 +138,9 @@ class _SummaryStat extends ConsumerWidget {
   }
 }
 
-class _EmptyProjectBlock extends ConsumerWidget {
+class _CoreRuntimeNotice extends ConsumerWidget {
+  const _CoreRuntimeNotice();
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
@@ -220,7 +152,7 @@ class _EmptyProjectBlock extends ConsumerWidget {
         border: Border.all(color: tokens.studioDivider),
       ),
       child: Text(
-        'No active Circuit tasks yet. Start with a plain-English request.',
+        'Use the Studio composer to start work. Studio now routes prompts through the turn runtime so intent, context, approvals, plans, patches, and verification stay scoped to one reliable request.',
         style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.base),
       ),
     );

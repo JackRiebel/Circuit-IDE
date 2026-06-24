@@ -99,19 +99,19 @@ class ThemeTokens {
   Color get studioPanel => surfacePanel;
   Color get studioDrawer =>
       brightness == Brightness.dark ? const Color(0xFF242321) : surfacePanel;
-  Color get studioCard => surfacePopover.withValues(alpha: 0.62);
+  Color get studioCard => surfacePopover.withValues(alpha: 0.54);
   Color get studioComposer =>
-      brightness == Brightness.dark ? const Color(0xFF2A2927) : inputBg;
+      brightness == Brightness.dark ? const Color(0xFF2B2A28) : inputBg;
   Color get studioBubble =>
       brightness == Brightness.dark ? const Color(0xFF2A2928) : userMsgBg;
   Color get studioControl =>
-      brightness == Brightness.dark ? const Color(0xFF343230) : surfacePanel;
+      brightness == Brightness.dark ? const Color(0xFF33312F) : surfacePanel;
   Color get studioActivityRow =>
-      brightness == Brightness.dark ? const Color(0xFF22211F) : surfacePanel;
+      brightness == Brightness.dark ? const Color(0xFF1F1F1D) : surfacePanel;
   Color get studioRailSelected =>
-      brightness == Brightness.dark ? const Color(0xFF36342F) : surfacePressed;
+      brightness == Brightness.dark ? const Color(0xFF34322F) : surfacePressed;
   Color get studioTaskSelected =>
-      brightness == Brightness.dark ? const Color(0xFF293533) : surfacePressed;
+      brightness == Brightness.dark ? const Color(0xFF273330) : surfacePressed;
   Color get studioDivider => outlineSoft;
   Color get studioHover => surfaceHover;
 
@@ -182,15 +182,15 @@ class ThemeTokens {
     name: 'dark',
     displayName: 'Dark',
     brightness: Brightness.dark,
-    bgDark: Color(0xFF141414),
-    bgMain: Color(0xFF1D1C1A),
-    bgLight: Color(0xFF252422),
-    bgLighter: Color(0xFF302E2B),
-    border: Color(0xFF343230),
-    borderLight: Color(0xFF46423E),
-    textPrimary: Color(0xFFE8E4DC),
-    textSecondary: Color(0xFFBDB7AD),
-    textMuted: Color(0xFF8E887F),
+    bgDark: Color(0xFF121211),
+    bgMain: Color(0xFF181716),
+    bgLight: Color(0xFF22211F),
+    bgLighter: Color(0xFF2D2B28),
+    border: Color(0xFF302E2B),
+    borderLight: Color(0xFF403D39),
+    textPrimary: Color(0xFFEDE9E2),
+    textSecondary: Color(0xFFC4BEB5),
+    textMuted: Color(0xFF918B83),
     textDisabled: Color(0xFF5E5953),
     accent: Color(0xFF7EA7A0),
     accentHover: Color(0xFF95BBB4),
@@ -198,7 +198,7 @@ class ThemeTokens {
     warning: Color(0xFFD4B06A),
     error: Color(0xFFE27D73),
     info: Color(0xFF8FAFCE),
-    activityBarBg: Color(0xFF1C1B19),
+    activityBarBg: Color(0xFF1D1C1A),
     activityBarIcon: Color(0xFF8C857B),
     activityBarIconActive: Color(0xFFE7E2DA),
     activityBarBadge: Color(0xFF7EA7A0),
@@ -208,12 +208,12 @@ class ThemeTokens {
     editorCursor: Color(0xFFD8D1C7),
     editorLineNumber: Color(0xFF625D56),
     editorLineNumberActive: Color(0xFFC1B9AE),
-    userMsgBg: Color(0xFF2B302F),
-    agentMsgBg: Color(0xFF1B1B1A),
+    userMsgBg: Color(0xFF2A2A28),
+    agentMsgBg: Color(0xFF181817),
     codeBlockBg: Color(0xFF151514),
     codeBlockBorder: Color(0xFF3E3C39),
-    inputBg: Color(0xFF252423),
-    inputBorder: Color(0xFF423F3B),
+    inputBg: Color(0xFF252421),
+    inputBorder: Color(0xFF3D3A36),
     inputFocusBorder: Color(0xFF7EA7A0),
     tabActive: Color(0xFF171717),
     tabInactive: Color(0xFF242321),
@@ -224,10 +224,10 @@ class ThemeTokens {
     circuitColor: Color(0xFF9AC7C0),
     terminalBg: Color(0xFF151514),
     terminalText: Color(0xFFD8D1C7),
-    surfaceBase: Color(0xFF1D1C1A),
-    surfacePanel: Color(0xFF252422),
-    surfaceInset: Color(0xFF171716),
-    surfacePopover: Color(0xFF302E2B),
+    surfaceBase: Color(0xFF181716),
+    surfacePanel: Color(0xFF22211F),
+    surfaceInset: Color(0xFF141413),
+    surfacePopover: Color(0xFF2D2B28),
     surfaceHover: Color(0x14E7E2DA),
     surfacePressed: Color(0x1F7EA7A0),
     outlineSoft: Color(0x553E3C39),

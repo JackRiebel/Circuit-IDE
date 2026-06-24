@@ -61,6 +61,10 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     );
   }
 
+  void openContext() {
+    state = state.copyWith(mode: StudioDrawerMode.context, collapsed: false);
+  }
+
   void toggleCollapsed() {
     state = state.copyWith(collapsed: !state.collapsed);
   }

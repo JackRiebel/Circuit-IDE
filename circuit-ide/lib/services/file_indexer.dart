@@ -10,12 +10,14 @@ class IndexedFile {
   final String fileName;
   final String extension;
   final bool isDirectory;
+  final Set<String> contentTerms;
 
   const IndexedFile({
     required this.relativePath,
     required this.fileName,
     required this.extension,
     required this.isDirectory,
+    this.contentTerms = const {},
   });
 }
 
@@ -26,15 +28,48 @@ class FileIndexer {
   DateTime? _lastIndexTime;
 
   static const _ignoreDirs = {
-    '.git', '.dart_tool', 'build', 'node_modules', '__pycache__',
-    '.venv', 'venv', '.idea', '.vscode', 'target', '.gradle',
-    '.cache', 'dist', '.next', '.nuxt', 'coverage',
+    '.git',
+    '.dart_tool',
+    'build',
+    'node_modules',
+    '__pycache__',
+    '.venv',
+    'venv',
+    '.idea',
+    '.vscode',
+    'target',
+    '.gradle',
+    '.cache',
+    'dist',
+    '.next',
+    '.nuxt',
+    'coverage',
   };
 
+  static const _allowedHiddenDirs = {'.github'};
+
   static const _ignoreExtensions = {
-    '.lock', '.log', '.cache', '.pyc', '.class', '.o', '.obj',
-    '.exe', '.dll', '.so', '.dylib', '.png', '.jpg', '.jpeg',
-    '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot',
+    '.lock',
+    '.log',
+    '.cache',
+    '.pyc',
+    '.class',
+    '.o',
+    '.obj',
+    '.exe',
+    '.dll',
+    '.so',
+    '.dylib',
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.ico',
+    '.svg',
+    '.woff',
+    '.woff2',
+    '.ttf',
+    '.eot',
   };
 
   FileIndexer({required this.workingDir});
@@ -75,6 +110,10 @@ class FileIndexer {
 
     // Path contains query
     if (path.contains(query)) return 40;
+
+    if (file.contentTerms.contains(query)) {
+      return query.length >= 8 ? 70 : 18;
+    }
 
     // Fuzzy character match in filename
     int matchedChars = 0;
@@ -121,29 +160,38 @@ class FileIndexer {
       await for (final entity in dir.list()) {
         final name = p.basename(entity.path);
 
-        // Skip hidden files and ignored directories
-        if (name.startsWith('.') && name != '.gitignore') continue;
+        // Skip hidden files and ignored directories. `.github` is retained
+        // because CI/workflow files are high-value project context.
+        if (name.startsWith('.') &&
+            name != '.gitignore' &&
+            !(entity is Directory && _allowedHiddenDirs.contains(name))) {
+          continue;
+        }
         if (entity is Directory && _ignoreDirs.contains(name)) continue;
 
-        final relativePath =
-            prefix.isEmpty ? name : '$prefix/$name';
+        final relativePath = prefix.isEmpty ? name : '$prefix/$name';
         final ext = p.extension(name).toLowerCase();
 
         if (entity is Directory) {
-          _files.add(IndexedFile(
-            relativePath: relativePath,
-            fileName: name,
-            extension: '',
-            isDirectory: true,
-          ));
+          _files.add(
+            IndexedFile(
+              relativePath: relativePath,
+              fileName: name,
+              extension: '',
+              isDirectory: true,
+            ),
+          );
           await _indexDirectory(entity, relativePath);
         } else if (!_ignoreExtensions.contains(ext)) {
-          _files.add(IndexedFile(
-            relativePath: relativePath,
-            fileName: name,
-            extension: ext,
-            isDirectory: false,
-          ));
+          _files.add(
+            IndexedFile(
+              relativePath: relativePath,
+              fileName: name,
+              extension: ext,
+              isDirectory: false,
+              contentTerms: await _extractContentTerms(File(entity.path), ext),
+            ),
+          );
         }
       }
     } catch (e) {
@@ -158,4 +206,65 @@ class FileIndexer {
       await index();
     }
   }
+
+  Future<Set<String>> _extractContentTerms(File file, String extension) async {
+    if (!_contentIndexedExtensions.contains(extension)) return const {};
+    try {
+      if (await file.length() > 80 * 1024) return const {};
+      final content = await file.readAsString();
+      final terms = <String>{};
+      for (final match in RegExp(
+        r'[A-Za-z_][A-Za-z0-9_]{2,}',
+      ).allMatches(content)) {
+        final raw = match.group(0)!;
+        void add(String value) {
+          final term = value.toLowerCase();
+          if (term.length < 3) return;
+          terms.add(term);
+        }
+
+        add(raw);
+        for (final part
+            in raw
+                .replaceAllMapped(
+                  RegExp(r'([a-z0-9])([A-Z])'),
+                  (match) => '${match.group(1)} ${match.group(2)}',
+                )
+                .split(RegExp(r'\s+'))) {
+          add(part);
+        }
+        if (terms.length >= 160) break;
+      }
+      return terms;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  static const _contentIndexedExtensions = {
+    '.dart',
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.py',
+    '.md',
+    '.json',
+    '.yaml',
+    '.yml',
+    '.html',
+    '.css',
+    '.scss',
+    '.go',
+    '.rs',
+    '.java',
+    '.kt',
+    '.swift',
+    '.sh',
+    '.toml',
+    '.tf',
+    '.hcl',
+    '.sql',
+    '.txt',
+  };
 }

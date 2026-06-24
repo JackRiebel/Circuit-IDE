@@ -15,6 +15,7 @@ enum EventType {
   toolCallStarted,
   toolCallCompleted,
   toolCallError,
+  toolResultRecorded,
 
   // Confirmation events
   confirmationNeeded,

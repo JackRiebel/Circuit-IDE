@@ -46,8 +46,8 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
     );
   }
 
-  void openAdvancedEditor() {
-    state = state.copyWith(mode: StudioMode.advancedEditor);
+  void openSettings() {
+    state = state.copyWith(mode: StudioMode.settings, selectedTaskId: null);
   }
 
   void setPromptMode(StudioPromptMode mode) {

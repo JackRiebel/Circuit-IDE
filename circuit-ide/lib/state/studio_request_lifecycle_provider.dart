@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../agent/turn_completion_summary.dart';
 import '../enums/event_type.dart';
 import '../models/agent_request.dart';
 import '../models/agent_run.dart';
@@ -14,7 +15,9 @@ import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
 import '../models/token_usage.dart';
 import '../models/tool_call_info.dart';
+import '../models/tool_result_envelope.dart';
 import '../models/reviewed_edit.dart';
+import '../models/turn_intent.dart';
 import '../services/event_bus.dart';
 import 'agent_request_provider.dart';
 import 'agent_run_provider.dart';
@@ -103,6 +106,21 @@ class StudioRequestLifecycleController
     _finish(entry, StudioRequestLifecycleEventKind.failed, message);
   }
 
+  void completeRequest(String requestId, {String message = 'Completed.'}) {
+    final entry = state.active(requestId);
+    if (entry == null) return;
+    ref
+        .read(studioTurnProvider.notifier)
+        .complete(requestId, content: '', summary: message);
+    ref.read(studioThreadProvider.notifier).complete(entry.threadId);
+    if (entry.taskId != null) {
+      ref
+          .read(agentWorkspaceProvider.notifier)
+          .completeTask(entry.taskId!, result: message);
+    }
+    _finish(entry, StudioRequestLifecycleEventKind.completed, message);
+  }
+
   void _listenToAgentEvents(EventBus events) {
     void on(EventType type, EventHandler handler) {
       _handlers[type] = handler;
@@ -115,6 +133,7 @@ class StudioRequestLifecycleController
     on(EventType.toolCallStarted, _handleToolStarted);
     on(EventType.toolCallCompleted, _handleToolCompleted);
     on(EventType.toolCallError, _handleToolError);
+    on(EventType.toolResultRecorded, _handleToolResultRecorded);
     on(EventType.confirmationNeeded, _handleConfirmationNeeded);
     on(EventType.confirmationReceived, _handleConfirmationReceived);
     on(EventType.messageCompleted, _handleMessageCompleted);
@@ -127,6 +146,12 @@ class StudioRequestLifecycleController
     final requestId = event.data['requestId'] as String?;
     if (requestId == null) return null;
     return state.active(requestId);
+  }
+
+  StudioRequestLifecycleEntry? _providerEntryFor(Event event) {
+    final requestId = event.data['requestId'] as String?;
+    if (requestId == null) return null;
+    return state.find(requestId);
   }
 
   void _handleMessageStarted(Event event) {
@@ -179,56 +204,187 @@ class StudioRequestLifecycleController
   }
 
   void _handleProviderLifecycle(Event event) {
-    final entry = _entryFor(event);
+    final entry = _providerEntryFor(event);
     if (entry == null) return;
     final lifecycle = event.data['event'] as ProviderLifecycleEvent?;
     if (lifecycle == null) return;
-    final detail =
+    final rawDetail =
         lifecycle.detail ??
         switch (lifecycle.kind) {
           ProviderLifecycleEventKind.requestSent => 'Request sent to provider.',
+          ProviderLifecycleEventKind.toolExposure =>
+            'Runtime exposed phase-specific tools.',
+          ProviderLifecycleEventKind.authFailed =>
+            'Circuit authentication failed.',
           ProviderLifecycleEventKind.connected => 'Provider connected.',
           ProviderLifecycleEventKind.firstByte =>
             'Circuit AI started responding.',
+          ProviderLifecycleEventKind.noFirstByte =>
+            'Circuit AI returned no response bytes.',
           ProviderLifecycleEventKind.firstTextDelta =>
             'Circuit AI started writing.',
           ProviderLifecycleEventKind.firstToolDelta =>
             'Circuit AI started a tool call.',
+          ProviderLifecycleEventKind.nonSseJson =>
+            'Circuit returned a non-streaming JSON response.',
           ProviderLifecycleEventKind.jsonFallback =>
             'Circuit returned a non-streaming response.',
+          ProviderLifecycleEventKind.toolOnly =>
+            'Circuit returned tool calls without assistant text.',
+          ProviderLifecycleEventKind.noTextOrTool =>
+            'Circuit returned no assistant text or tool calls.',
+          ProviderLifecycleEventKind.unavailableTool =>
+            'Circuit requested a tool that is not available in this mode.',
+          ProviderLifecycleEventKind.rateLimited =>
+            'Circuit API rate limit reached.',
+          ProviderLifecycleEventKind.malformedChunk =>
+            'Circuit returned a malformed stream chunk.',
+          ProviderLifecycleEventKind.malformedBytes =>
+            'Circuit returned malformed response bytes.',
+          ProviderLifecycleEventKind.streamEndedWithoutDone =>
+            'Circuit stream ended without a completion marker.',
+          ProviderLifecycleEventKind.outcomeRepair =>
+            'Circuit is repairing an invalid draft response.',
           ProviderLifecycleEventKind.completed => 'Provider completed.',
           ProviderLifecycleEventKind.failed => 'Provider failed.',
           ProviderLifecycleEventKind.cancelled => 'Provider request cancelled.',
+          ProviderLifecycleEventKind.timeout => 'Provider request timed out.',
         };
-    _touch(entry, switch (lifecycle.kind) {
+    final detail = switch (lifecycle.kind) {
+      ProviderLifecycleEventKind.noTextOrTool
+          when !rawDetail.toLowerCase().contains('without text') =>
+        '$rawDetail Completed without text or tool calls.',
+      _ => rawDetail,
+    };
+    final lifecycleEventKind = switch (lifecycle.kind) {
       ProviderLifecycleEventKind.firstTextDelta =>
         StudioRequestLifecycleEventKind.streaming,
       ProviderLifecycleEventKind.firstToolDelta =>
         StudioRequestLifecycleEventKind.toolRunning,
+      ProviderLifecycleEventKind.toolOnly =>
+        StudioRequestLifecycleEventKind.toolRunning,
+      ProviderLifecycleEventKind.toolExposure =>
+        StudioRequestLifecycleEventKind.waitingForModel,
       ProviderLifecycleEventKind.completed =>
         StudioRequestLifecycleEventKind.completed,
       ProviderLifecycleEventKind.failed =>
         StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.authFailed =>
+        StudioRequestLifecycleEventKind.failed,
       ProviderLifecycleEventKind.cancelled =>
         StudioRequestLifecycleEventKind.cancelled,
+      ProviderLifecycleEventKind.timeout =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.noFirstByte =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.noTextOrTool =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.unavailableTool =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.rateLimited =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.malformedBytes =>
+        StudioRequestLifecycleEventKind.failed,
+      ProviderLifecycleEventKind.streamEndedWithoutDone =>
+        StudioRequestLifecycleEventKind.failed,
       _ => StudioRequestLifecycleEventKind.waitingForModel,
-    }, detail: detail);
+    };
+    final terminalProviderEvent =
+        lifecycleEventKind == StudioRequestLifecycleEventKind.failed ||
+        lifecycleEventKind == StudioRequestLifecycleEventKind.cancelled;
+    final isActive = state.active(entry.requestId) != null;
+    if (!isActive) {
+      if (_canRecordArchivedProviderDiagnostic(
+        entry,
+        lifecycleEventKind: lifecycleEventKind,
+      )) {
+        ref
+            .read(studioTurnProvider.notifier)
+            .addProviderDiagnostic(entry.requestId, lifecycle);
+      }
+      return;
+    }
+    ref
+        .read(studioTurnProvider.notifier)
+        .addProviderDiagnostic(entry.requestId, lifecycle);
+    if (terminalProviderEvent) {
+      _finish(entry, lifecycleEventKind, detail);
+    } else {
+      _touch(entry, lifecycleEventKind, detail: detail);
+    }
+    final progressStatus = switch (lifecycle.kind) {
+      ProviderLifecycleEventKind.firstTextDelta => StudioTurnStatus.streaming,
+      ProviderLifecycleEventKind.firstToolDelta => StudioTurnStatus.toolRunning,
+      ProviderLifecycleEventKind.toolOnly => StudioTurnStatus.toolRunning,
+      ProviderLifecycleEventKind.toolExposure =>
+        StudioTurnStatus.waitingForModel,
+      ProviderLifecycleEventKind.completed => null,
+      ProviderLifecycleEventKind.authFailed => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.failed => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.cancelled => StudioTurnStatus.cancelled,
+      ProviderLifecycleEventKind.timeout => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.noFirstByte => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.noTextOrTool => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.unavailableTool => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.rateLimited => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.malformedChunk =>
+        StudioTurnStatus.waitingForModel,
+      ProviderLifecycleEventKind.malformedBytes => StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.streamEndedWithoutDone =>
+        StudioTurnStatus.failed,
+      ProviderLifecycleEventKind.outcomeRepair =>
+        StudioTurnStatus.waitingForModel,
+      _ => StudioTurnStatus.waitingForModel,
+    };
     ref
         .read(studioTurnProvider.notifier)
         .markProgress(
           entry.requestId,
-          title: 'Provider',
+          title: _providerProgressTitle(lifecycle.kind),
           detail: detail,
-          status: switch (lifecycle.kind) {
-            ProviderLifecycleEventKind.firstTextDelta =>
-              StudioTurnStatus.streaming,
-            ProviderLifecycleEventKind.firstToolDelta =>
-              StudioTurnStatus.toolRunning,
-            ProviderLifecycleEventKind.failed => StudioTurnStatus.failed,
-            ProviderLifecycleEventKind.cancelled => StudioTurnStatus.cancelled,
-            _ => StudioTurnStatus.waitingForModel,
-          },
+          status: progressStatus,
         );
+  }
+
+  String _providerProgressTitle(ProviderLifecycleEventKind kind) {
+    return switch (kind) {
+      ProviderLifecycleEventKind.requestSent => 'Provider request sent',
+      ProviderLifecycleEventKind.toolExposure => 'Tools scoped for turn',
+      ProviderLifecycleEventKind.authFailed => 'Authentication failed',
+      ProviderLifecycleEventKind.connected => 'Provider connected',
+      ProviderLifecycleEventKind.firstByte => 'Provider responding',
+      ProviderLifecycleEventKind.noFirstByte => 'No provider bytes',
+      ProviderLifecycleEventKind.firstTextDelta => 'Streaming response',
+      ProviderLifecycleEventKind.firstToolDelta => 'Tool call started',
+      ProviderLifecycleEventKind.nonSseJson => 'Non-streaming response',
+      ProviderLifecycleEventKind.jsonFallback => 'JSON fallback',
+      ProviderLifecycleEventKind.toolOnly => 'Tool-only response',
+      ProviderLifecycleEventKind.noTextOrTool => 'No model output',
+      ProviderLifecycleEventKind.unavailableTool => 'Unavailable tool',
+      ProviderLifecycleEventKind.rateLimited => 'Rate limited',
+      ProviderLifecycleEventKind.malformedChunk => 'Malformed stream chunk',
+      ProviderLifecycleEventKind.malformedBytes => 'Malformed response bytes',
+      ProviderLifecycleEventKind.streamEndedWithoutDone => 'Stream ended early',
+      ProviderLifecycleEventKind.outcomeRepair => 'Repairing response',
+      ProviderLifecycleEventKind.completed => 'Provider completed',
+      ProviderLifecycleEventKind.failed => 'Provider failed',
+      ProviderLifecycleEventKind.cancelled => 'Provider cancelled',
+      ProviderLifecycleEventKind.timeout => 'Provider timed out',
+    };
+  }
+
+  bool _canRecordArchivedProviderDiagnostic(
+    StudioRequestLifecycleEntry entry, {
+    required StudioRequestLifecycleEventKind lifecycleEventKind,
+  }) {
+    final archivedKind = state.recentRequests[entry.requestId]?.lastEventKind;
+    return switch (archivedKind) {
+      StudioRequestLifecycleEventKind.failed =>
+        lifecycleEventKind == StudioRequestLifecycleEventKind.failed,
+      StudioRequestLifecycleEventKind.cancelled =>
+        lifecycleEventKind == StudioRequestLifecycleEventKind.cancelled,
+      _ => false,
+    };
   }
 
   void _handleMessageChunk(Event event) {
@@ -364,6 +520,16 @@ class StudioRequestLifecycleController
     }
   }
 
+  void _handleToolResultRecorded(Event event) {
+    final entry = _entryFor(event);
+    if (entry == null) return;
+    final result = event.data['result'] as ToolResultEnvelope?;
+    if (result == null) return;
+    ref
+        .read(studioTurnProvider.notifier)
+        .addToolResult(entry.requestId, result);
+  }
+
   void _handleConfirmationNeeded(Event event) {
     final entry = _entryFor(event);
     if (entry == null) return;
@@ -417,9 +583,6 @@ class StudioRequestLifecycleController
     final content = event.data['content'] as String? ?? '';
     unawaited(_addCompletionSummary(entry, content: content));
     if (content.trim().isNotEmpty) {
-      ref
-          .read(studioThreadProvider.notifier)
-          .appendAssistantMessage(entry.threadId, content);
       for (final url in detectLocalUrls(content)) {
         ref
             .read(studioThreadProvider.notifier)
@@ -485,6 +648,7 @@ class StudioRequestLifecycleController
     String detail,
   ) {
     _cancelTimers(entry.requestId);
+    _finishRequestInfrastructure(kind, detail);
     final finished = entry.copyWith(
       lastEventAt: DateTime.now(),
       lastEventKind: kind,
@@ -497,9 +661,21 @@ class StudioRequestLifecycleController
       recentRequests: Map.fromEntries(recent.entries.take(30)),
     );
     if (kind == StudioRequestLifecycleEventKind.failed) {
+      ref.read(studioThreadProvider.notifier).fail(entry.threadId, detail);
       ref.read(studioTurnProvider.notifier).fail(entry.requestId, detail);
+      if (entry.taskId != null) {
+        ref
+            .read(agentWorkspaceProvider.notifier)
+            .failTask(entry.taskId!, detail);
+      }
     } else if (kind == StudioRequestLifecycleEventKind.cancelled) {
+      ref
+          .read(studioThreadProvider.notifier)
+          .cancel(entry.threadId, message: detail);
       ref.read(studioTurnProvider.notifier).cancel(entry.requestId, detail);
+      if (entry.taskId != null) {
+        ref.read(agentWorkspaceProvider.notifier).cancelTask(entry.taskId!);
+      }
     } else if (kind == StudioRequestLifecycleEventKind.completed) {
       ref
           .read(studioTurnProvider.notifier)
@@ -509,6 +685,39 @@ class StudioRequestLifecycleController
             detail: detail,
             status: StudioTurnStatus.completed,
           );
+    }
+  }
+
+  void _finishRequestInfrastructure(
+    StudioRequestLifecycleEventKind kind,
+    String detail,
+  ) {
+    switch (kind) {
+      case StudioRequestLifecycleEventKind.completed:
+        ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
+        ref
+            .read(agentRunProvider.notifier)
+            .finishRun(AgentRunKind.chat, outputPreview: _preview(detail));
+      case StudioRequestLifecycleEventKind.failed:
+        ref
+            .read(agentRequestProvider.notifier)
+            .finish(AgentRequestLane.chat, error: detail);
+        ref
+            .read(agentRunProvider.notifier)
+            .finishRun(AgentRunKind.chat, error: detail);
+      case StudioRequestLifecycleEventKind.cancelled:
+        ref
+            .read(agentRequestProvider.notifier)
+            .finish(AgentRequestLane.chat, cancelled: true);
+        ref
+            .read(agentRunProvider.notifier)
+            .finishRun(AgentRunKind.chat, cancelled: true);
+      case StudioRequestLifecycleEventKind.requestStarted:
+      case StudioRequestLifecycleEventKind.waitingForModel:
+      case StudioRequestLifecycleEventKind.streaming:
+      case StudioRequestLifecycleEventKind.toolRunning:
+      case StudioRequestLifecycleEventKind.approvalNeeded:
+        break;
     }
   }
 
@@ -606,23 +815,31 @@ class StudioRequestLifecycleController
         .toList();
     final edits = <ProposedFileEdit>[];
     final plannedFiles = <String>[];
+    final plannedTargets = <PlannedFileTarget>[];
     for (final file in files) {
       final path = file['path'] as String?;
       if (path == null || path.trim().isEmpty) continue;
       final intent = file['intent'] as String? ?? '';
-      plannedFiles.add(intent.trim().isEmpty ? path : '$path — $intent');
-      final content = file['content'] as String? ?? file['after'] as String?;
-      if (content == null) continue;
       final operation = (file['operation'] as String? ?? 'create')
           .toLowerCase();
+      final editType = switch (operation) {
+        'delete' => ProposedFileEditType.delete,
+        'modify' || 'update' => ProposedFileEditType.modify,
+        _ => ProposedFileEditType.create,
+      };
+      final plannedTarget = PlannedFileTarget(
+        path: path,
+        intent: intent,
+        operation: editType,
+      );
+      plannedTargets.add(plannedTarget);
+      plannedFiles.add(plannedTarget.displayString);
+      final content = file['content'] as String? ?? file['after'] as String?;
+      if (content == null && operation != 'delete') continue;
       edits.add(
         ProposedFileEdit(
           path: path,
-          type: switch (operation) {
-            'delete' => ProposedFileEditType.delete,
-            'modify' || 'update' => ProposedFileEditType.modify,
-            _ => ProposedFileEditType.create,
-          },
+          type: editType,
           before: file['before'] as String?,
           after: content,
           unifiedDiff: file['unified_diff'] as String?,
@@ -636,9 +853,11 @@ class StudioRequestLifecycleController
           edits: edits,
           planMarkdown: planMarkdown,
           plannedFiles: plannedFiles,
+          plannedTargets: plannedTargets,
           agentTaskId: entry.taskId,
           runId: entry.requestId,
           comparisonSummary: summary.trim().isEmpty ? planMarkdown : summary,
+          verificationRequested: _verificationRequestedFor(entry.requestId),
         );
     ref
         .read(studioTurnProvider.notifier)
@@ -652,16 +871,78 @@ class StudioRequestLifecycleController
         );
   }
 
+  bool _verificationRequestedFor(String requestId) {
+    final turnRef = ref.read(studioTurnProvider).refForRequest(requestId);
+    if (turnRef == null) return false;
+    final thread = ref
+        .read(studioThreadProvider)
+        .threads
+        .where((candidate) => candidate.id == turnRef.threadId)
+        .firstOrNull;
+    final turn = thread?.turns
+        .where((candidate) => candidate.id == turnRef.turnId)
+        .firstOrNull;
+    if (turn == null) return false;
+    if (IntentClassifier.requestsVerification(turn.prompt)) return true;
+    if (turn.acceptedPlanState != AcceptedPlanState.none) {
+      if (turn.events.any(
+        (event) =>
+            event.title == 'Accepted plan verification requested' ||
+            event.detail.toLowerCase().contains(
+              'accepted plan asked for verification',
+            ),
+      )) {
+        return true;
+      }
+      final lowerPrompt = turn.prompt.toLowerCase();
+      return lowerPrompt.contains('verificationrequested: true') ||
+          IntentClassifier.requestsVerification(lowerPrompt);
+    }
+    return false;
+  }
+
   Future<void> _addCompletionSummary(
     StudioRequestLifecycleEntry entry, {
     required String content,
   }) async {
+    final turn = _turnForRequest(entry.requestId);
     final rootPath = entry.contextSummary.rootPath;
     final gitSummary = await _gitChangeSummary(rootPath);
-    final detail = gitSummary ?? 'Ready for the next prompt.';
+    if (!ref.mounted) return;
+    final detail = const TurnCompletionSummaryBuilder().build(
+      toolResults: turn?.toolResults ?? const [],
+      providerDiagnostics: turn?.providerDiagnostics ?? const [],
+      acceptedPlanState: turn?.acceptedPlanState ?? AcceptedPlanState.none,
+      gitChangeSummary: gitSummary,
+    );
+    final lifecycleEntry = state.find(entry.requestId);
+    final allowArchived =
+        lifecycleEntry?.lastEventKind ==
+        StudioRequestLifecycleEventKind.completed;
+    if (!allowArchived && state.active(entry.requestId) == null) return;
     ref
         .read(studioTurnProvider.notifier)
-        .complete(entry.requestId, content: content, summary: detail);
+        .complete(
+          entry.requestId,
+          content: content,
+          summary: detail,
+          allowArchived: allowArchived,
+        );
+  }
+
+  StudioTurn? _turnForRequest(String requestId) {
+    final turnRef = ref
+        .read(studioTurnProvider)
+        .archivedRefForRequest(requestId);
+    if (turnRef == null) return null;
+    final thread = ref
+        .read(studioThreadProvider)
+        .threads
+        .where((candidate) => candidate.id == turnRef.threadId)
+        .firstOrNull;
+    return thread?.turns
+        .where((candidate) => candidate.id == turnRef.turnId)
+        .firstOrNull;
   }
 
   Future<String?> _gitChangeSummary(String? rootPath) async {

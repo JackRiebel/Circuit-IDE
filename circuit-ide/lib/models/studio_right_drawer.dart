@@ -6,6 +6,7 @@ enum StudioDrawerMode {
   files,
   terminal,
   sources,
+  context,
 }
 
 enum StudioDrawerWidthMode { standard, expanded, split }
@@ -36,7 +37,7 @@ class StudioRightDrawerState {
   double get width {
     if (collapsed) return 52;
     return switch (widthMode) {
-      StudioDrawerWidthMode.standard => 328,
+      StudioDrawerWidthMode.standard => 312,
       StudioDrawerWidthMode.expanded => 520,
       StudioDrawerWidthMode.split => 680,
     };

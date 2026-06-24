@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -19,18 +20,32 @@ class CiscoProvider implements AIProvider {
   DateTime? _tokenExpiry;
   bool _connected = false;
   CancelToken? _activeCancelToken;
+  late final String _chatBaseUrl;
 
   /// Retry config
   static const int _maxRetries = 3;
   static const Duration _baseRetryDelay = Duration(seconds: 1);
 
-  CiscoProvider() {
-    _dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(minutes: 4),
-      ),
-    );
+  CiscoProvider({
+    Dio? dio,
+    String? accessToken,
+    DateTime? tokenExpiry,
+    String? appKey,
+    String? chatBaseUrl,
+  }) {
+    _dio =
+        dio ??
+        Dio(
+          BaseOptions(
+            connectTimeout: const Duration(seconds: 30),
+            receiveTimeout: const Duration(minutes: 4),
+          ),
+        );
+    _accessToken = accessToken;
+    _tokenExpiry = tokenExpiry;
+    _appKey = appKey;
+    _chatBaseUrl = chatBaseUrl ?? AppConstants.ciscoChatBaseUrl;
+    _connected = accessToken != null;
   }
 
   @override
@@ -203,6 +218,11 @@ class CiscoProvider implements AIProvider {
   }
 
   Future<void> _refreshToken() async {
+    if (_clientId == null || _clientSecret == null || _appKey == null) {
+      throw StateError(
+        'Circuit credentials are missing. Reconnect Circuit Company AI before refreshing the token.',
+      );
+    }
     final credentials = base64Encode(utf8.encode('$_clientId:$_clientSecret'));
 
     Exception? lastError;
@@ -251,6 +271,11 @@ class CiscoProvider implements AIProvider {
     if (_accessToken == null ||
         _tokenExpiry == null ||
         DateTime.now().isAfter(_tokenExpiry!)) {
+      if (_clientId == null || _clientSecret == null || _appKey == null) {
+        throw StateError(
+          'Circuit credentials are missing. Connect Circuit Company AI before sending a request.',
+        );
+      }
       await _refreshToken();
     }
     return _accessToken!;
@@ -265,9 +290,24 @@ class CiscoProvider implements AIProvider {
     double temperature = 0.7,
     int maxTokens = 4096,
   }) async* {
-    final token = await _getToken();
+    final String token;
+    try {
+      token = await _getToken();
+    } catch (error) {
+      final errorMsg =
+          'Circuit authentication failed: ${_cleanErrorMessage(error)}';
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.authFailed,
+        lifecycleDetail: errorMsg,
+      );
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: errorMsg,
+      );
+      throw Exception(errorMsg);
+    }
     final url =
-        '${AppConstants.ciscoChatBaseUrl}/$model/chat/completions?api-version=${AppConstants.ciscoApiVersion}';
+        '$_chatBaseUrl/$model/chat/completions?api-version=${AppConstants.ciscoApiVersion}';
 
     final apiMessages = <Map<String, dynamic>>[];
     if (systemPrompt != null) {
@@ -298,6 +338,11 @@ class CiscoProvider implements AIProvider {
     Response<ResponseBody> response;
     final cancelToken = CancelToken();
     _activeCancelToken = cancelToken;
+    yield ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.requestSent,
+      lifecycleDetail:
+          'Circuit API request sent for $model with ${tools.length} exposed tools.',
+    );
     try {
       response = await _dio.post<ResponseBody>(
         url,
@@ -310,11 +355,42 @@ class CiscoProvider implements AIProvider {
       );
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.cancelled,
+          lifecycleDetail: 'Circuit API request was cancelled.',
+        );
         throw Exception('Request cancelled');
+      }
+      if (_isTimeout(e)) {
+        final errorMsg =
+            'Circuit API request timed out: ${e.message ?? e.type.name}';
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.timeout,
+          lifecycleDetail: errorMsg,
+        );
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: errorMsg,
+        );
+        throw Exception(errorMsg);
       }
       final status = e.response?.statusCode;
       if (status == 401) {
-        await _refreshToken();
+        try {
+          await _refreshToken();
+        } catch (refreshError) {
+          final errorMsg =
+              'Circuit authentication failed while refreshing an expired token: ${_cleanErrorMessage(refreshError)}';
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.authFailed,
+            lifecycleDetail: errorMsg,
+          );
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: errorMsg,
+          );
+          throw Exception(errorMsg);
+        }
         yield* chat(
           messages,
           model: model,
@@ -325,39 +401,248 @@ class CiscoProvider implements AIProvider {
         );
         return;
       }
-      String errorMsg = 'Circuit API error $status';
+      if (status != null) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.connected,
+          lifecycleDetail: 'Circuit API responded with HTTP $status.',
+        );
+      }
+      final retryAfterDetail = _retryAfterDetail(e.response?.headers);
+      if (status == 429) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.rateLimited,
+          lifecycleDetail: retryAfterDetail == null
+              ? 'Circuit API rate limit reached.'
+              : 'Circuit API rate limit reached. $retryAfterDetail',
+        );
+      }
+      String errorMsg = status == null
+          ? 'Circuit API request failed: ${e.message ?? e.error ?? e.type}'
+          : 'Circuit API error $status';
+      if (status == 429) {
+        errorMsg = retryAfterDetail == null
+            ? 'Circuit API rate limit reached (HTTP 429)'
+            : 'Circuit API rate limit reached (HTTP 429). $retryAfterDetail';
+      }
       if (e.response?.data != null) {
         try {
           final errBody = await _readStreamBody(e.response!.data);
           if (errBody.isNotEmpty) {
-            final errData = jsonDecode(errBody) as Map<String, dynamic>;
-            final inner = errData['error'] as Map<String, dynamic>?;
-            errorMsg =
-                inner?['message'] as String? ??
-                errData['message'] as String? ??
-                errorMsg;
+            try {
+              final errData = jsonDecode(errBody) as Map<String, dynamic>;
+              final inner = errData['error'] as Map<String, dynamic>?;
+              final parsedMessage =
+                  inner?['message'] as String? ?? errData['message'] as String?;
+              if (parsedMessage?.trim().isNotEmpty == true) {
+                final parsed = status == 429
+                    ? 'Circuit API rate limit reached (HTTP 429): ${parsedMessage!.trim()}'
+                    : null;
+                errorMsg =
+                    parsed ??
+                    (status == null
+                        ? parsedMessage!.trim()
+                        : 'Circuit API error $status: ${parsedMessage!.trim()}');
+                if (status == 429 && retryAfterDetail != null) {
+                  errorMsg = '$errorMsg. $retryAfterDetail';
+                }
+              }
+            } catch (_) {
+              errorMsg = '$errorMsg: ${_truncateErrorBody(errBody)}';
+            }
           }
-        } catch (_) {}
+        } catch (bodyError) {
+          errorMsg =
+              '$errorMsg: unable to read error response body (${_cleanErrorMessage(bodyError)})';
+        }
       }
+      if (status == null) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail:
+              'Circuit API request failed before an HTTP response was received: ${_cleanErrorMessage(e)}',
+        );
+      }
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: errorMsg,
+      );
       throw Exception(errorMsg);
     } catch (e) {
-      throw Exception('Circuit API request failed: $e');
+      final errorMsg = 'Circuit API request failed: $e';
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+        lifecycleDetail:
+            'Circuit API request failed before a response stream was opened: ${_cleanErrorMessage(e)}',
+      );
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: errorMsg,
+      );
+      throw Exception(errorMsg);
     }
 
-    // Read the full stream, then decide if it's SSE or plain JSON.
+    yield ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.connected,
+      lifecycleDetail:
+          'Circuit API accepted the request (${response.statusCode ?? 'stream'}).',
+    );
+
+    final contentType = response.headers
+        .value(Headers.contentTypeHeader)
+        ?.toLowerCase();
+    if (_isJsonContentType(contentType)) {
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.nonSseJson,
+        lifecycleDetail:
+            'Circuit returned ${contentType ?? 'JSON'} instead of SSE.',
+      );
+      final body = StringBuffer();
+      var sawFirstByte = false;
+      var sawRawFirstByte = false;
+      try {
+        await for (final text in _decodeUtf8Stream(
+          response.data!.stream,
+          onFirstByte: () {
+            sawRawFirstByte = true;
+          },
+        )) {
+          if (cancelToken.isCancelled) {
+            throw Exception('Request cancelled');
+          }
+          if (!sawFirstByte) {
+            sawFirstByte = true;
+            yield const ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.firstByte,
+              lifecycleDetail: 'Circuit API returned the first response bytes.',
+            );
+          }
+          body.write(text);
+        }
+      } catch (error) {
+        if (sawRawFirstByte && !sawFirstByte) {
+          sawFirstByte = true;
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.firstByte,
+            lifecycleDetail:
+                'Circuit API returned response bytes before the stream failed.',
+          );
+        }
+        if (_isCancellation(error, cancelToken)) {
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.cancelled,
+            lifecycleDetail: 'Circuit API request was cancelled.',
+          );
+          throw Exception('Request cancelled');
+        }
+        if (_isMalformedBytes(error)) {
+          const detail = 'Circuit API returned malformed UTF-8 response bytes.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.malformedBytes,
+            lifecycleDetail: detail,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        if (_isTimeoutError(error)) {
+          final detail =
+              'Circuit API response stream timed out: ${_timeoutDetail(error)}';
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.timeout,
+            lifecycleDetail: detail,
+          );
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        final detail = 'Circuit API response stream failed: $error';
+        if (!sawFirstByte) {
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+            lifecycleDetail:
+                'Circuit API response stream failed before returning response bytes: ${_cleanErrorMessage(error)}',
+          );
+        }
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      } finally {
+        if (identical(_activeCancelToken, cancelToken)) {
+          _activeCancelToken = null;
+        }
+      }
+      if (sawRawFirstByte && !sawFirstByte) {
+        sawFirstByte = true;
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.firstByte,
+          lifecycleDetail:
+              'Circuit API returned response bytes before decoded text was available.',
+        );
+      }
+      if (!sawFirstByte) {
+        const detail = 'Circuit returned a JSON response with no bytes.';
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail: detail,
+        );
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.jsonFallback,
+        lifecycleDetail: 'Circuit returned a non-streaming JSON response.',
+      );
+      yield* _parseJsonFallbackWithDiagnostics(body.toString().trim());
+      return;
+    }
+
+    // Read the stream as SSE; if no SSE payload appears, fall back to JSON.
     final stream = response.data!.stream;
     String buffer = '';
     int promptTokens = 0;
     int completionTokens = 0;
     String? finishReason;
     bool yieldedAny = false;
+    bool sawFirstByte = false;
+    bool sawRawFirstByte = false;
+    bool sawTextDelta = false;
+    bool sawToolDelta = false;
+    bool sawMalformedSseChunk = false;
+    ChatChunk malformedSseChunk(String detail) {
+      sawMalformedSseChunk = true;
+      return ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+    }
 
     try {
-      await for (final bytes in stream) {
+      await for (final text in _decodeUtf8Stream(
+        stream,
+        onFirstByte: () {
+          sawRawFirstByte = true;
+        },
+      )) {
         if (cancelToken.isCancelled) {
           throw Exception('Request cancelled');
         }
-        buffer += utf8.decode(bytes, allowMalformed: true);
+        if (!sawFirstByte) {
+          sawFirstByte = true;
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.firstByte,
+            lifecycleDetail: 'Circuit API returned the first response bytes.',
+          );
+        }
+        buffer += text;
         // Normalize \r\n to \n for SSE parsing
         buffer = buffer.replaceAll('\r\n', '\n');
 
@@ -367,69 +652,326 @@ class CiscoProvider implements AIProvider {
           final eventBlock = buffer.substring(0, eventEnd);
           buffer = buffer.substring(eventEnd + 2);
 
+          String? eventName;
+          final payloadParts = <String>[];
           for (final line in eventBlock.split('\n')) {
-            if (!line.startsWith('data: ')) continue;
-            final payload = line.substring(6).trim();
-
-            if (payload == '[DONE]') {
-              yield ChatChunk(
-                finishReason: finishReason ?? 'stop',
-                promptTokens: promptTokens,
-                completionTokens: completionTokens,
-                isDone: true,
-              );
-              return;
-            }
-
-            Map<String, dynamic> json;
-            try {
-              json = jsonDecode(payload) as Map<String, dynamic>;
-            } catch (_) {
+            if (line.startsWith('event:')) {
+              eventName = line.substring(6).trim().toLowerCase();
               continue;
             }
-
-            final usage = json['usage'] as Map<String, dynamic>?;
-            if (usage != null) {
-              promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
-              completionTokens =
-                  usage['completion_tokens'] as int? ?? completionTokens;
+            if (line.startsWith('data:')) {
+              payloadParts.add(line.substring(5).trim());
             }
+          }
+          if (payloadParts.isEmpty) continue;
 
-            final choices = json['choices'] as List<dynamic>?;
-            if (choices == null || choices.isEmpty) continue;
+          final payload = payloadParts.join('\n').trim();
 
-            final choice = choices[0] as Map<String, dynamic>;
-            final delta = choice['delta'] as Map<String, dynamic>? ?? {};
-            finishReason = choice['finish_reason'] as String? ?? finishReason;
+          if (eventName == 'error') {
+            final detail =
+                'Circuit SSE error event: ${_sseErrorEventMessage(payload)}';
+            yield ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.failed,
+              lifecycleDetail: detail,
+            );
+            throw Exception(detail);
+          }
 
-            final content = delta['content'] as String?;
-            if (content != null && content.isNotEmpty) {
-              yieldedAny = true;
-              yield ChatChunk(content: content);
+          if (payload == '[DONE]') {
+            if (!sawTextDelta && !sawToolDelta && sawMalformedSseChunk) {
+              const detail =
+                  'Circuit SSE stream completed after malformed chunks without any valid assistant text or tool calls.';
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+                lifecycleDetail:
+                    'Circuit SSE completed without valid assistant text or tool calls.',
+              );
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.failed,
+                lifecycleDetail: detail,
+              );
+              throw Exception(detail);
             }
+            if (!sawTextDelta && !sawToolDelta) {
+              const detail =
+                  'Circuit SSE stream completed without assistant text or tool calls.';
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+                lifecycleDetail: detail,
+              );
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.failed,
+                lifecycleDetail: detail,
+              );
+              throw Exception(detail);
+            }
+            if (!sawTextDelta && sawToolDelta) {
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.toolOnly,
+                lifecycleDetail:
+                    'Circuit returned tool calls without assistant text in SSE.',
+              );
+            }
+            yield const ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.completed,
+              lifecycleDetail: 'Circuit provider stream completed.',
+            );
+            yield ChatChunk(
+              finishReason: finishReason ?? 'stop',
+              promptTokens: promptTokens,
+              completionTokens: completionTokens,
+              isDone: true,
+            );
+            return;
+          }
 
-            final toolCalls = delta['tool_calls'] as List<dynamic>?;
-            if (toolCalls != null) {
-              yieldedAny = true;
-              for (final tc in toolCalls) {
-                final tcMap = tc as Map<String, dynamic>;
-                final function =
-                    tcMap['function'] as Map<String, dynamic>? ?? {};
-                yield ChatChunk(
-                  toolCallIndex: tcMap['index'] as int?,
-                  toolCallId: tcMap['id'] as String?,
-                  toolCallName: function['name'] as String?,
-                  toolCallArguments: function['arguments'] as String?,
+          Map<String, dynamic> json;
+          try {
+            json = jsonDecode(payload) as Map<String, dynamic>;
+          } catch (error) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE JSON chunk: $error',
+            );
+            continue;
+          }
+
+          final errorMessage = _jsonErrorPayloadMessage(json);
+          if (errorMessage != null) {
+            final detail =
+                'Circuit API returned an error payload: $errorMessage';
+            yield ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.failed,
+              lifecycleDetail: detail,
+            );
+            throw Exception(detail);
+          }
+
+          final usage = json['usage'] as Map<String, dynamic>?;
+          if (usage != null) {
+            promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
+            completionTokens =
+                usage['completion_tokens'] as int? ?? completionTokens;
+          }
+
+          final choices = json['choices'] as List<dynamic>?;
+          if (choices == null || choices.isEmpty) continue;
+
+          final rawChoice = choices[0];
+          if (rawChoice is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE choice entry.',
+            );
+            continue;
+          }
+          final choice = rawChoice;
+          final rawDelta = choice['delta'];
+          if (rawDelta != null && rawDelta is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE delta field.',
+            );
+            continue;
+          }
+          final rawMessage = choice['message'];
+          if (rawDelta == null &&
+              rawMessage != null &&
+              rawMessage is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE message field.',
+            );
+            continue;
+          }
+          final delta = rawDelta as Map<String, dynamic>? ?? {};
+          final message = rawMessage as Map<String, dynamic>? ?? {};
+          finishReason = choice['finish_reason'] as String? ?? finishReason;
+
+          final content =
+              delta['content'] as String? ?? message['content'] as String?;
+          if (content != null && content.isNotEmpty) {
+            if (!sawTextDelta) {
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.firstTextDelta,
+                lifecycleDetail:
+                    'Circuit returned the first assistant text delta.',
+              );
+            }
+            yieldedAny = true;
+            sawTextDelta = true;
+            yield ChatChunk(content: content);
+          }
+
+          final rawDeltaToolCalls = delta['tool_calls'];
+          final rawMessageToolCalls = message['tool_calls'];
+          final rawToolCalls = rawDeltaToolCalls ?? rawMessageToolCalls;
+          if (rawToolCalls != null && rawToolCalls is! List<dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE tool_calls field.',
+            );
+            continue;
+          }
+          final toolCallsCameFromMessage =
+              rawDeltaToolCalls == null && rawMessageToolCalls != null;
+          final toolCalls = rawToolCalls as List<dynamic>?;
+          if (toolCalls != null) {
+            for (var toolIndex = 0; toolIndex < toolCalls.length; toolIndex++) {
+              final tc = toolCalls[toolIndex];
+              if (tc is! Map<String, dynamic>) {
+                yield malformedSseChunk(
+                  'Circuit returned a malformed SSE tool-call entry.',
+                );
+                continue;
+              }
+              final rawFunction = tc['function'];
+              if (rawFunction != null && rawFunction is! Map<String, dynamic>) {
+                yield malformedSseChunk(
+                  'Circuit returned a malformed SSE tool-call function.',
+                );
+                continue;
+              }
+              final rawIndex = tc['index'];
+              final resolvedIndex = rawIndex is int
+                  ? rawIndex
+                  : toolCallsCameFromMessage
+                  ? toolIndex
+                  : null;
+              if (resolvedIndex == null) {
+                yield malformedSseChunk(
+                  'Circuit returned an SSE tool-call delta without a numeric index.',
+                );
+                continue;
+              }
+              final function = rawFunction as Map<String, dynamic>? ?? {};
+              final rawName = function['name'];
+              final rawArguments = function['arguments'];
+              if (rawName != null && rawName is! String) {
+                yield malformedSseChunk(
+                  'Circuit returned an SSE tool-call name that was not text.',
+                );
+                continue;
+              }
+              if (rawArguments != null && rawArguments is! String) {
+                yield malformedSseChunk(
+                  'Circuit returned SSE tool-call arguments that were not text.',
+                );
+                continue;
+              }
+              final name = rawName is String && rawName.trim().isNotEmpty
+                  ? rawName
+                  : null;
+              final arguments = rawArguments is String ? rawArguments : null;
+              if (name == null && arguments == null) {
+                yield malformedSseChunk(
+                  'Circuit returned an empty SSE tool-call delta.',
+                );
+                continue;
+              }
+              if (!sawToolDelta) {
+                yield const ChatChunk(
+                  lifecycleKind: ProviderLifecycleEventKind.firstToolDelta,
+                  lifecycleDetail:
+                      'Circuit returned the first tool-call delta.',
                 );
               }
+              yieldedAny = true;
+              sawToolDelta = true;
+              yield ChatChunk(
+                toolCallIndex: resolvedIndex,
+                toolCallId: tc['id'] as String?,
+                toolCallName: name,
+                toolCallArguments: arguments,
+              );
             }
           }
         }
       }
+    } catch (error) {
+      if (sawRawFirstByte && !sawFirstByte) {
+        sawFirstByte = true;
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.firstByte,
+          lifecycleDetail:
+              'Circuit API returned response bytes before the stream failed.',
+        );
+      }
+      if (_isCancellation(error, cancelToken)) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.cancelled,
+          lifecycleDetail: 'Circuit API request was cancelled.',
+        );
+        throw Exception('Request cancelled');
+      }
+      if (_isMalformedBytes(error)) {
+        const detail = 'Circuit API returned malformed UTF-8 response bytes.';
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.malformedBytes,
+          lifecycleDetail: detail,
+        );
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      if (_isTimeoutError(error)) {
+        final detail =
+            'Circuit API response stream timed out: ${_timeoutDetail(error)}';
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.timeout,
+          lifecycleDetail: detail,
+        );
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      final detail = 'Circuit API response stream failed: $error';
+      if (!sawFirstByte) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail:
+              'Circuit API response stream failed before returning response bytes: ${_cleanErrorMessage(error)}',
+        );
+      }
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
     } finally {
       if (identical(_activeCancelToken, cancelToken)) {
         _activeCancelToken = null;
       }
+    }
+
+    if (sawRawFirstByte && !sawFirstByte) {
+      sawFirstByte = true;
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.firstByte,
+        lifecycleDetail:
+            'Circuit API returned response bytes before decoded text was available.',
+      );
+    }
+
+    final trailingBuffer = buffer.trim();
+    if (trailingBuffer.isNotEmpty && _looksLikeSsePayload(trailingBuffer)) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: 'Circuit SSE stream ended with an incomplete event.',
+      );
+      buffer = '';
+    }
+
+    if (!sawFirstByte) {
+      const detail = 'Circuit stream closed with no response bytes.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
     }
 
     // Fallback: if no SSE events were parsed, the API likely returned
@@ -440,72 +982,160 @@ class CiscoProvider implements AIProvider {
         'CiscoProvider',
       );
       yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.nonSseJson,
+        lifecycleDetail: 'Circuit returned JSON instead of SSE.',
+      );
+      yield const ChatChunk(
         lifecycleKind: ProviderLifecycleEventKind.jsonFallback,
         lifecycleDetail: 'Circuit returned a non-streaming JSON response.',
       );
-      yield* _parseJsonResponse(buffer.trim());
+      yield* _parseJsonFallbackWithDiagnostics(buffer.trim());
       return;
     }
 
-    yield ChatChunk(
-      finishReason: finishReason ?? 'stop',
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-      isDone: true,
+    const earlyCloseDetail =
+        'Circuit SSE stream ended without the [DONE] terminator.';
+    yield const ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.streamEndedWithoutDone,
+      lifecycleDetail: earlyCloseDetail,
+    );
+
+    yield* _diagnoseSseOutput(
+      sawTextDelta: sawTextDelta,
+      sawToolDelta: sawToolDelta,
+    );
+    yield const ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.failed,
+      lifecycleDetail: earlyCloseDetail,
+    );
+    throw Exception(earlyCloseDetail);
+  }
+
+  bool _looksLikeSsePayload(String text) {
+    return text.startsWith('data:') ||
+        text.startsWith('event:') ||
+        text.startsWith('id:') ||
+        text.startsWith(':');
+  }
+
+  bool _isJsonContentType(String? contentType) {
+    if (contentType == null) return false;
+    return contentType.contains('application/json') &&
+        !contentType.contains('text/event-stream');
+  }
+
+  bool _isCancellation(Object error, CancelToken cancelToken) {
+    if (cancelToken.isCancelled) return true;
+    if (error is DioException && CancelToken.isCancel(error)) return true;
+    return error.toString().toLowerCase().contains('cancel');
+  }
+
+  Stream<String> _decodeUtf8Stream(
+    Stream<Uint8List> byteStream, {
+    required void Function() onFirstByte,
+  }) {
+    return _withBodyIdleTimeout(byteStream)
+        .map<List<int>>((bytes) {
+          if (bytes.isNotEmpty) onFirstByte();
+          return bytes;
+        })
+        .transform(const Utf8Decoder());
+  }
+
+  Stream<Uint8List> _withBodyIdleTimeout(Stream<Uint8List> byteStream) {
+    final timeout = _dio.options.receiveTimeout;
+    if (timeout == null || timeout <= Duration.zero) return byteStream;
+    return byteStream.timeout(
+      timeout,
+      onTimeout: (sink) {
+        sink.addError(
+          TimeoutException(
+            'no response body data arrived for ${timeout.inMilliseconds}ms',
+            timeout,
+          ),
+        );
+      },
     );
   }
 
-  /// Parse a plain JSON chat completion response (non-streaming fallback).
-  Stream<ChatChunk> _parseJsonResponse(String body) async* {
+  bool _isMalformedBytes(Object error) => error is FormatException;
+
+  bool _isTimeoutError(Object error) {
+    return error is TimeoutException ||
+        (error is DioException && _isTimeout(error));
+  }
+
+  bool _isTimeout(DioException error) {
+    return error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.sendTimeout ||
+        error.type == DioExceptionType.receiveTimeout;
+  }
+
+  String _timeoutDetail(Object error) {
+    if (error is TimeoutException) {
+      return error.message ?? 'response stream stalled';
+    }
+    if (error is DioException) {
+      return error.message ?? error.type.name;
+    }
+    return error.toString();
+  }
+
+  String _cleanErrorMessage(Object error) {
+    return error
+        .toString()
+        .replaceFirst('Exception: ', '')
+        .replaceFirst('Bad state: ', '')
+        .trim();
+  }
+
+  String? _retryAfterDetail(Headers? headers) {
+    final value = headers?.value('retry-after')?.trim();
+    if (value == null || value.isEmpty) return null;
+    final seconds = int.tryParse(value);
+    if (seconds != null && seconds >= 0) {
+      return 'Retry after ${seconds}s.';
+    }
+    return 'Retry after $value.';
+  }
+
+  Stream<ChatChunk> _parseJsonFallbackWithDiagnostics(String body) async* {
     Map<String, dynamic> data;
     try {
       data = jsonDecode(body) as Map<String, dynamic>;
-    } catch (e) {
-      Logger.error('Failed to parse Circuit API response as JSON', e);
-      throw Exception('Invalid response from Circuit API');
+    } catch (error) {
+      Logger.error('Failed to parse Circuit API response as JSON', error);
+      const detail = 'Circuit JSON fallback body was malformed.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: 'Invalid response from Circuit API: $detail',
+      );
+      throw const FormatException('Invalid response from Circuit API: $detail');
     }
+    yield* CiscoResponseParser.parseJsonData(data);
+  }
 
-    final choices = data['choices'] as List<dynamic>?;
-    if (choices == null || choices.isEmpty) {
-      yield const ChatChunk(finishReason: 'stop', isDone: true);
-      return;
+  Stream<ChatChunk> _diagnoseSseOutput({
+    required bool sawTextDelta,
+    required bool sawToolDelta,
+  }) async* {
+    if (!sawTextDelta && sawToolDelta) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.toolOnly,
+        lifecycleDetail:
+            'Circuit returned tool calls without assistant text in SSE.',
+      );
+    } else if (!sawTextDelta && !sawToolDelta) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+        lifecycleDetail:
+            'Circuit SSE completed without assistant text or tool calls.',
+      );
     }
-
-    final choice = choices[0] as Map<String, dynamic>;
-    final message = choice['message'] as Map<String, dynamic>? ?? {};
-    final content = message['content'] as String? ?? '';
-    final finishReason = choice['finish_reason'] as String? ?? 'stop';
-
-    final usage = data['usage'] as Map<String, dynamic>?;
-    final promptTokens = usage?['prompt_tokens'] as int? ?? 0;
-    final completionTokens = usage?['completion_tokens'] as int? ?? 0;
-
-    // Emit content
-    if (content.isNotEmpty) {
-      yield ChatChunk(content: content);
-    }
-
-    // Emit tool calls
-    final toolCalls = message['tool_calls'] as List<dynamic>?;
-    if (toolCalls != null) {
-      for (int i = 0; i < toolCalls.length; i++) {
-        final tc = toolCalls[i] as Map<String, dynamic>;
-        final function = tc['function'] as Map<String, dynamic>?;
-        yield ChatChunk(
-          toolCallIndex: i,
-          toolCallId: tc['id'] as String?,
-          toolCallName: function?['name'] as String?,
-          toolCallArguments: function?['arguments'] as String?,
-        );
-      }
-    }
-
-    yield ChatChunk(
-      finishReason: finishReason,
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-      isDone: true,
-    );
   }
 
   /// Read a stream response body into a string (for error responses).
@@ -519,4 +1149,272 @@ class CiscoProvider implements AIProvider {
     }
     return data.toString();
   }
+
+  String _truncateErrorBody(String body) {
+    final normalized = body.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (normalized.length <= 240) return normalized;
+    return '${normalized.substring(0, 240)}...';
+  }
+
+  String _sseErrorEventMessage(String payload) {
+    final trimmed = payload.trim();
+    if (trimmed.isEmpty) return 'error event without a payload';
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map<String, dynamic>) {
+        return _jsonDiagnosticPayloadMessage(decoded) ?? jsonEncode(decoded);
+      }
+      if (decoded is String && decoded.trim().isNotEmpty) {
+        return decoded.trim();
+      }
+    } catch (_) {
+      // Plain-text SSE error payloads are valid enough to report directly.
+    }
+    return _truncateErrorBody(trimmed);
+  }
+}
+
+class CiscoResponseParser {
+  const CiscoResponseParser._();
+
+  /// Parse a plain JSON chat completion response (non-streaming fallback).
+  static Stream<ChatChunk> parseJsonResponse(String body) async* {
+    Map<String, dynamic> data;
+    try {
+      data = jsonDecode(body) as Map<String, dynamic>;
+    } catch (e) {
+      Logger.error('Failed to parse Circuit API response as JSON', e);
+      throw Exception('Invalid response from Circuit API');
+    }
+
+    yield* parseJsonData(data);
+  }
+
+  static Stream<ChatChunk> parseJsonData(Map<String, dynamic> data) async* {
+    final errorMessage = _jsonErrorPayloadMessage(data);
+    if (errorMessage != null) {
+      final detail =
+          'Circuit JSON fallback returned an error payload: $errorMessage';
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+
+    final choices = data['choices'] as List<dynamic>?;
+    if (choices == null || choices.isEmpty) {
+      const detail =
+          'Circuit JSON fallback contained no choices with assistant text or tool calls.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+
+    final rawChoice = choices[0];
+    if (rawChoice is! Map<String, dynamic>) {
+      const detail =
+          'Circuit JSON fallback contained a malformed choice entry.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+    final choice = rawChoice;
+    final rawMessage = choice['message'];
+    if (rawMessage != null && rawMessage is! Map<String, dynamic>) {
+      const detail = 'Circuit JSON fallback contained a malformed message.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+    final message = rawMessage as Map<String, dynamic>? ?? {};
+    final content = message['content'] as String? ?? '';
+    final finishReason = choice['finish_reason'] as String? ?? 'stop';
+
+    final usage = data['usage'] as Map<String, dynamic>?;
+    final promptTokens = usage?['prompt_tokens'] as int? ?? 0;
+    final completionTokens = usage?['completion_tokens'] as int? ?? 0;
+
+    if (content.isNotEmpty) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.firstTextDelta,
+        lifecycleDetail: 'Circuit returned the first assistant text delta.',
+      );
+      yield ChatChunk(content: content);
+    }
+
+    final rawToolCalls = message['tool_calls'];
+    if (rawToolCalls != null && rawToolCalls is! List<dynamic>) {
+      const detail =
+          'Circuit JSON fallback contained a malformed tool_calls field.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+    final toolCalls = rawToolCalls as List<dynamic>?;
+    final parsedToolCalls = <Map<String, dynamic>>[];
+    if (toolCalls != null) {
+      for (final tc in toolCalls) {
+        if (tc is! Map<String, dynamic>) {
+          const detail =
+              'Circuit JSON fallback contained a malformed tool-call entry.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+            lifecycleDetail: detail,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        final function = tc['function'];
+        if (function is! Map<String, dynamic>) {
+          const detail =
+              'Circuit JSON fallback contained a malformed tool-call function.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+            lifecycleDetail: detail,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        final name = function['name'];
+        final arguments = function['arguments'];
+        if (name is! String || name.trim().isEmpty || arguments is! String) {
+          const detail =
+              'Circuit JSON fallback contained an incomplete tool-call function.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+            lifecycleDetail: detail,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        parsedToolCalls.add(tc);
+      }
+    }
+
+    if (parsedToolCalls.isNotEmpty) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.firstToolDelta,
+        lifecycleDetail: 'Circuit returned the first tool-call delta.',
+      );
+    }
+    if (content.isEmpty && parsedToolCalls.isNotEmpty) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.toolOnly,
+        lifecycleDetail:
+            'Circuit returned tool calls without assistant text in JSON fallback.',
+      );
+    } else if (content.isEmpty && parsedToolCalls.isEmpty) {
+      const detail =
+          'Circuit JSON fallback contained no assistant text or tool calls.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
+    }
+    if (parsedToolCalls.isNotEmpty) {
+      for (int i = 0; i < parsedToolCalls.length; i++) {
+        final tc = parsedToolCalls[i];
+        final function = tc['function'] as Map<String, dynamic>;
+        yield ChatChunk(
+          toolCallIndex: i,
+          toolCallId: tc['id'] as String?,
+          toolCallName: function['name'] as String,
+          toolCallArguments: function['arguments'] as String,
+        );
+      }
+    }
+
+    yield const ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.completed,
+      lifecycleDetail: 'Circuit provider JSON response completed.',
+    );
+    yield ChatChunk(
+      finishReason: finishReason,
+      promptTokens: promptTokens,
+      completionTokens: completionTokens,
+      isDone: true,
+    );
+  }
+}
+
+String? _jsonErrorPayloadMessage(Map<String, dynamic> data) {
+  final error = data['error'];
+  if (error is Map<String, dynamic>) {
+    final message = error['message'] ?? error['detail'] ?? error['error'];
+    if (message is String && message.trim().isNotEmpty) {
+      return message.trim();
+    }
+    final code = error['code'];
+    if (code is String && code.trim().isNotEmpty) return code.trim();
+    return jsonEncode(error);
+  }
+  if (error is String && error.trim().isNotEmpty) return error.trim();
+
+  final type = data['type'];
+  final message = data['message'] ?? data['detail'];
+  if (type is String &&
+      type.toLowerCase().contains('error') &&
+      message is String &&
+      message.trim().isNotEmpty) {
+    return message.trim();
+  }
+  return null;
+}
+
+String? _jsonDiagnosticPayloadMessage(Map<String, dynamic> data) {
+  final errorMessage = _jsonErrorPayloadMessage(data);
+  if (errorMessage != null) return errorMessage;
+
+  for (final key in const [
+    'message',
+    'detail',
+    'error_description',
+    'description',
+    'reason',
+  ]) {
+    final value = data[key];
+    if (value is String && value.trim().isNotEmpty) {
+      return value.trim();
+    }
+  }
+  return null;
 }

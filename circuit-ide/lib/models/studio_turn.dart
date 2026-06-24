@@ -1,7 +1,27 @@
 import '../enums/message_role.dart';
+import 'accepted_plan_context.dart';
 import 'chat_message.dart';
 import 'confirmation_request.dart';
+import 'context_pack.dart';
+import 'provider_lifecycle_event.dart';
 import 'studio_thread.dart';
+import 'tool_result_envelope.dart';
+import 'turn_intent.dart';
+
+enum TurnStep {
+  preflight,
+  contextBuild,
+  providerRequest,
+  streaming,
+  toolDecision,
+  approvalWait,
+  toolExecution,
+  patchProposal,
+  verification,
+  finalSummary,
+}
+
+enum TurnStepStatus { queued, running, completed, failed, skipped }
 
 enum StudioTurnStatus {
   queued,
@@ -27,9 +47,19 @@ enum StudioTurnEventType {
   completionSummary,
 }
 
-enum ApprovalScope { once, task, session }
+enum ApprovalScope { once, turn }
 
 enum ApprovalRequestState { pending, approved, rejected, expired }
+
+enum AcceptedPlanState {
+  none,
+  accepted,
+  implementationStarted,
+  patchProposed,
+  blockedForMissingContext,
+  implemented,
+  failed,
+}
 
 class StudioTurnEvent {
   final String id;
@@ -113,6 +143,7 @@ class StudioTurnEvent {
       title: summary.title,
       detail: summary.detail,
       timestamp: timestamp ?? DateTime.now(),
+      transcriptVisible: false,
     );
   }
 
@@ -231,6 +262,7 @@ class StudioTurnEvent {
   }
 
   factory StudioTurnEvent.completionSummary({
+    String? id,
     required String turnId,
     required String requestId,
     required String threadId,
@@ -239,7 +271,7 @@ class StudioTurnEvent {
     DateTime? timestamp,
   }) {
     return StudioTurnEvent(
-      id: 'completion-$turnId',
+      id: id ?? 'completion-$turnId',
       turnId: turnId,
       requestId: requestId,
       threadId: threadId,
@@ -331,6 +363,7 @@ class StudioTurnEvent {
 
   static StudioTurnEvent? fromJson(Map<String, dynamic> json) {
     try {
+      final approvalStateName = json['approvalState'] as String?;
       return StudioTurnEvent(
         id: json['id'] as String,
         turnId: json['turnId'] as String,
@@ -350,10 +383,12 @@ class StudioTurnEvent {
         toolCallId: json['toolCallId'] as String?,
         toolName: json['toolName'] as String?,
         approvalId: json['approvalId'] as String?,
-        approvalState: ApprovalRequestState.values.firstWhere(
-          (value) => value.name == json['approvalState'],
-          orElse: () => ApprovalRequestState.pending,
-        ),
+        approvalState: approvalStateName == null
+            ? null
+            : ApprovalRequestState.values.firstWhere(
+                (value) => value.name == approvalStateName,
+                orElse: () => ApprovalRequestState.pending,
+              ),
         approvalPreview: json['approvalPreview'] as String?,
         approvalWarnings:
             (json['approvalWarnings'] as List<dynamic>?)?.cast<String>() ??
@@ -361,7 +396,14 @@ class StudioTurnEvent {
         sourceArtifactId: json['sourceArtifactId'] as String?,
         filePath: json['filePath'] as String?,
         localUrl: json['localUrl'] as String?,
-        transcriptVisible: json['transcriptVisible'] as bool? ?? true,
+        transcriptVisible:
+            json['transcriptVisible'] as bool? ??
+            _defaultTranscriptVisibleFor(
+              StudioTurnEventType.values.firstWhere(
+                (value) => value.name == json['type'],
+                orElse: () => StudioTurnEventType.progress,
+              ),
+            ),
       );
     } catch (_) {
       return null;
@@ -375,6 +417,19 @@ class StudioTurnEvent {
   }
 }
 
+bool _defaultTranscriptVisibleFor(StudioTurnEventType type) {
+  return switch (type) {
+    StudioTurnEventType.context ||
+    StudioTurnEventType.progress ||
+    StudioTurnEventType.tool => false,
+    StudioTurnEventType.userMessage ||
+    StudioTurnEventType.assistantMessage ||
+    StudioTurnEventType.approvalRequest ||
+    StudioTurnEventType.error ||
+    StudioTurnEventType.completionSummary => true,
+  };
+}
+
 class StudioTurn {
   final String id;
   final String threadId;
@@ -383,10 +438,16 @@ class StudioTurn {
   final String userMessageId;
   final String prompt;
   final String model;
+  final TurnIntent intent;
   final StudioContextSummary contextSummary;
   final StudioTurnStatus status;
   final String assistantDraft;
   final List<StudioTurnEvent> events;
+  final List<ToolResultEnvelope> toolResults;
+  final List<ProviderLifecycleEvent> providerDiagnostics;
+  final AcceptedPlanState acceptedPlanState;
+  final AcceptedPlanContext? acceptedPlanContext;
+  final ContextRetrievalResult? contextRetrieval;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? completedAt;
@@ -400,10 +461,16 @@ class StudioTurn {
     required this.userMessageId,
     required this.prompt,
     required this.model,
+    this.intent = TurnIntent.code,
     required this.contextSummary,
     this.status = StudioTurnStatus.queued,
     this.assistantDraft = '',
     this.events = const [],
+    this.toolResults = const [],
+    this.providerDiagnostics = const [],
+    this.acceptedPlanState = AcceptedPlanState.none,
+    this.acceptedPlanContext,
+    this.contextRetrieval,
     required this.createdAt,
     required this.updatedAt,
     this.completedAt,
@@ -414,6 +481,11 @@ class StudioTurn {
     StudioTurnStatus? status,
     String? assistantDraft,
     List<StudioTurnEvent>? events,
+    List<ToolResultEnvelope>? toolResults,
+    List<ProviderLifecycleEvent>? providerDiagnostics,
+    AcceptedPlanState? acceptedPlanState,
+    Object? acceptedPlanContext = _sentinel,
+    Object? contextRetrieval = _sentinel,
     DateTime? updatedAt,
     Object? completedAt = _sentinel,
     Object? lastError = _sentinel,
@@ -426,10 +498,20 @@ class StudioTurn {
       userMessageId: userMessageId,
       prompt: prompt,
       model: model,
+      intent: intent,
       contextSummary: contextSummary,
       status: status ?? this.status,
       assistantDraft: assistantDraft ?? this.assistantDraft,
       events: events ?? this.events,
+      toolResults: toolResults ?? this.toolResults,
+      providerDiagnostics: providerDiagnostics ?? this.providerDiagnostics,
+      acceptedPlanState: acceptedPlanState ?? this.acceptedPlanState,
+      acceptedPlanContext: identical(acceptedPlanContext, _sentinel)
+          ? this.acceptedPlanContext
+          : acceptedPlanContext as AcceptedPlanContext?,
+      contextRetrieval: identical(contextRetrieval, _sentinel)
+          ? this.contextRetrieval
+          : contextRetrieval as ContextRetrievalResult?,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
       completedAt: identical(completedAt, _sentinel)
@@ -472,10 +554,18 @@ class StudioTurn {
       'userMessageId': userMessageId,
       'prompt': prompt,
       'model': model,
+      'intent': intent.name,
       'contextSummary': contextSummary.toJson(),
       'status': status.name,
       'assistantDraft': assistantDraft,
       'events': events.map((event) => event.toJson()).toList(),
+      'toolResults': toolResults.map((result) => result.toJson()).toList(),
+      'providerDiagnostics': providerDiagnostics
+          .map((event) => event.toJson())
+          .toList(),
+      'acceptedPlanState': acceptedPlanState.name,
+      'acceptedPlanContext': acceptedPlanContext?.toJson(),
+      'contextRetrieval': contextRetrieval?.toJson(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
@@ -493,6 +583,10 @@ class StudioTurn {
         userMessageId: json['userMessageId'] as String,
         prompt: json['prompt'] as String? ?? '',
         model: json['model'] as String? ?? '',
+        intent: TurnIntent.values.firstWhere(
+          (value) => value.name == json['intent'],
+          orElse: () => TurnIntent.code,
+        ),
         contextSummary: StudioContextSummary.fromJson(
           json['contextSummary'] as Map<String, dynamic>?,
         ),
@@ -506,6 +600,26 @@ class StudioTurn {
             .map(StudioTurnEvent.fromJson)
             .nonNulls
             .toList(),
+        toolResults: (json['toolResults'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(ToolResultEnvelope.fromJson)
+            .toList(),
+        providerDiagnostics:
+            (json['providerDiagnostics'] as List<dynamic>? ?? [])
+                .whereType<Map<String, dynamic>>()
+                .map(ProviderLifecycleEvent.fromJson)
+                .nonNulls
+                .toList(),
+        acceptedPlanState: AcceptedPlanState.values.firstWhere(
+          (value) => value.name == json['acceptedPlanState'],
+          orElse: () => AcceptedPlanState.none,
+        ),
+        acceptedPlanContext: AcceptedPlanContext.fromJson(
+          json['acceptedPlanContext'] as Map<String, dynamic>?,
+        ),
+        contextRetrieval: ContextRetrievalResult.fromJson(
+          json['contextRetrieval'] as Map<String, dynamic>?,
+        ),
         createdAt:
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),

@@ -158,19 +158,17 @@ class CircuitAgent {
         // Stream the response
         events.emit(EventType.thinkingStarted);
 
-        final baseTools = ToolRegistry.toolsForMode(toolMode);
+        final phase = _phaseForToolMode(toolMode, iteration);
+        final baseTools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
         final allTools = [
           ...baseTools,
-          if (toolMode != AgentToolMode.ask &&
-              toolMode != AgentToolMode.plan &&
-              toolMode != AgentToolMode.review &&
-              toolMode != AgentToolMode.handoff)
-            ..._mcpTools,
+          if (phase == AgentToolPhase.verify) ..._mcpTools,
         ];
         events.emit(EventType.agentRunEvent, {
           'requestId': ?requestId,
           'event': 'tool_exposure',
           'mode': toolMode.name,
+          'phase': phase.name,
           'tools': allTools.map((tool) => tool.name).toList(),
         });
         events.emit(EventType.agentRunEvent, {
@@ -279,6 +277,25 @@ class CircuitAgent {
               ),
             )
             .toList();
+        final unavailableToolCalls = _unavailableToolCalls(
+          toolCallInfos,
+          allTools,
+        );
+        if (unavailableToolCalls.isNotEmpty) {
+          final names = unavailableToolCalls
+              .map((call) => call.name)
+              .join(', ');
+          final message =
+              'Circuit AI requested unavailable tool(s) for this ${toolMode.name}/${phase.name} phase: $names. I stopped before running any unavailable action.';
+          events.emit(EventType.agentRunEvent, {
+            'requestId': ?requestId,
+            'event': 'provider_lifecycle',
+            'kind': 'unavailable_tool',
+            'model': model,
+            'detail': message,
+          });
+          throw StateError(message);
+        }
 
         final assistantMsg = ChatMessage(
           id: _uuid.v4(),
@@ -424,6 +441,29 @@ class CircuitAgent {
       'toolCall': toolCall,
       if (_activeRequestId != null) 'requestId': _activeRequestId,
     });
+  }
+
+  AgentToolPhase _phaseForToolMode(AgentToolMode mode, int iteration) {
+    return switch (mode) {
+      AgentToolMode.chat ||
+      AgentToolMode.ask ||
+      AgentToolMode.review ||
+      AgentToolMode.handoff => AgentToolPhase.inspect,
+      AgentToolMode.plan => AgentToolPhase.propose,
+      AgentToolMode.verify => AgentToolPhase.verify,
+      AgentToolMode.code || AgentToolMode.fix =>
+        iteration == 0 ? AgentToolPhase.inspect : AgentToolPhase.propose,
+    };
+  }
+
+  List<ToolCallInfo> _unavailableToolCalls(
+    List<ToolCallInfo> toolCalls,
+    List<ToolDefinition> exposedTools,
+  ) {
+    final exposedNames = exposedTools.map((tool) => tool.name).toSet();
+    return toolCalls
+        .where((call) => !exposedNames.contains(call.name))
+        .toList(growable: false);
   }
 
   void clearHistory() {

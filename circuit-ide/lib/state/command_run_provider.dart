@@ -4,6 +4,7 @@ import '../enums/event_type.dart';
 import '../enums/tool_status.dart';
 import '../models/command_run.dart';
 import '../models/tool_call_info.dart';
+import 'agent_turn_runtime_provider.dart';
 import 'agent_workspace_provider.dart';
 import 'connection_provider.dart';
 import 'work_item_provider.dart';
@@ -37,12 +38,26 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
         ],
       ),
     };
-    final task = ref.read(agentWorkspaceProvider).selectedTask;
-    if (task != null) {
+    final taskId = _taskIdForCommandRun();
+    if (taskId != null) {
       ref
           .read(agentWorkspaceProvider.notifier)
-          .attachCommandRun(task.id, id, command);
+          .attachCommandRun(taskId, id, command);
     }
+  }
+
+  String? _taskIdForCommandRun() {
+    final activeStudioSessions = ref
+        .read(agentTurnRuntimeProvider)
+        .activeSessions
+        .values
+        .toList(growable: false);
+    if (activeStudioSessions.isNotEmpty) {
+      return activeStudioSessions.length == 1
+          ? activeStudioSessions.single.taskId
+          : null;
+    }
+    return ref.read(agentWorkspaceProvider).selectedTask?.id;
   }
 
   void append(String id, CommandRunEventType type, String text) {

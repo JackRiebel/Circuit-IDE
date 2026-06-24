@@ -1,5 +1,8 @@
+import 'package:circuit_ide/core/commands/core_command_registry.dart';
+import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/command_descriptor.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
+import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,4 +82,55 @@ void main() {
       'workspace.refresh',
     );
   });
+
+  testWidgets(
+    'Core Studio command registry quarantines legacy runtime commands',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, child) {
+              return TextButton(
+                onPressed: () => CoreCommandRegistry.register(ref),
+                child: const Text('register'),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('register'));
+    await tester.pump();
+
+    final commandIds = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .map((command) => command.id)
+          .toSet();
+
+      expect(commandIds, contains('studio.home'));
+      expect(commandIds, contains('studio.newTask'));
+      expect(commandIds, contains('settings.open'));
+      expect(commandIds, isNot(contains('file.save')));
+      expect(commandIds, isNot(contains('view.toggleTerminal')));
+      expect(commandIds, isNot(contains('project.startWorkItem')));
+      expect(commandIds, isNot(contains('agentWorkspace.startParallelTask')));
+
+      container
+          .read(commandPaletteProvider.notifier)
+          .execute(
+            container
+                .read(commandPaletteProvider)
+                .allCommands
+                .singleWhere((command) => command.id == 'settings.open'),
+          );
+
+      expect(container.read(studioShellProvider).mode, StudioMode.settings);
+    },
+  );
 }

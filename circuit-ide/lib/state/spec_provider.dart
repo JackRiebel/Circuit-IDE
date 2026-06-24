@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/utils/logger.dart';
@@ -22,6 +23,11 @@ class SpecNotifier extends Notifier<Spec?> {
   void updateContent(String content) {
     if (state == null) return;
     state = state!.copyWith(content: content);
+  }
+
+  @visibleForTesting
+  void loadForTesting(Spec spec) {
+    state = spec;
   }
 
   /// Send the spec to AI and generate executable steps.
@@ -48,10 +54,7 @@ class SpecNotifier extends Notifier<Spec?> {
       }
 
       final steps = _parseSteps(response);
-      state = state!.copyWith(
-        steps: steps,
-        status: SpecStatus.ready,
-      );
+      state = state!.copyWith(steps: steps, status: SpecStatus.ready);
     } catch (e) {
       Logger.error('Spec plan generation failed', e);
       state = state!.copyWith(status: SpecStatus.draft);
@@ -62,40 +65,16 @@ class SpecNotifier extends Notifier<Spec?> {
   Future<void> execute() async {
     if (state == null || state!.steps.isEmpty) return;
 
-    final service = ref.read(agentServiceProvider);
-    if (!service.isConnected) return;
-
-    state = state!.copyWith(status: SpecStatus.executing);
-
-    for (int i = 0; i < state!.steps.length; i++) {
-      final step = state!.steps[i];
-      if (step.isCompleted) continue;
-
-      // Mark current step as running
-      _updateStep(step.id, (s) => s.copyWith(isRunning: true));
-
-      try {
-        final result = await service.sendMessage(step.executionPrompt);
-
-        _updateStep(step.id, (s) => s.copyWith(
-          isCompleted: true,
-          isRunning: false,
-          result: result ?? 'Completed',
-        ));
-      } catch (e) {
-        _updateStep(step.id, (s) => s.copyWith(
-          isRunning: false,
-          error: e.toString(),
-        ));
-        state = state!.copyWith(status: SpecStatus.failed);
-        return;
-      }
-    }
-
-    state = state!.copyWith(
-      status: SpecStatus.completed,
-      completedAt: DateTime.now(),
+    final step = state!.steps.firstWhere(
+      (candidate) => !candidate.isCompleted,
+      orElse: () => state!.steps.first,
     );
+    _updateStep(
+      step.id,
+      (s) =>
+          s.copyWith(isRunning: false, error: _legacyExecutionDisabledMessage),
+    );
+    state = state!.copyWith(status: SpecStatus.failed);
   }
 
   void pauseExecution() {
@@ -109,34 +88,21 @@ class SpecNotifier extends Notifier<Spec?> {
   }
 
   void skipStep(String stepId) {
-    _updateStep(stepId, (s) => s.copyWith(
-      isCompleted: true,
-      isRunning: false,
-      result: 'Skipped',
-    ));
+    _updateStep(
+      stepId,
+      (s) => s.copyWith(isCompleted: true, isRunning: false, result: 'Skipped'),
+    );
   }
 
   Future<void> retryStep(String stepId) async {
-    final service = ref.read(agentServiceProvider);
-    if (!service.isConnected || state == null) return;
+    if (state == null) return;
 
-    final step = state!.steps.firstWhere((s) => s.id == stepId);
-    _updateStep(stepId, (s) => s.copyWith(isRunning: true, error: null));
-
-    try {
-      final result = await service.sendMessage(step.executionPrompt);
-      _updateStep(stepId, (s) => s.copyWith(
-        isCompleted: true,
-        isRunning: false,
-        result: result ?? 'Completed',
-        error: null,
-      ));
-    } catch (e) {
-      _updateStep(stepId, (s) => s.copyWith(
-        isRunning: false,
-        error: e.toString(),
-      ));
-    }
+    _updateStep(
+      stepId,
+      (s) =>
+          s.copyWith(isRunning: false, error: _legacyExecutionDisabledMessage),
+    );
+    state = state!.copyWith(status: SpecStatus.failed);
   }
 
   void removeStep(String stepId) {
@@ -173,23 +139,27 @@ class SpecNotifier extends Notifier<Spec?> {
       final match = RegExp(r'^(\d+\.\s*|- )(.+)').firstMatch(trimmed);
       if (match != null) {
         final description = match.group(2)!.trim();
-        steps.add(SpecStep(
-          id: _uuid.v4().substring(0, 8),
-          description: description,
-          executionPrompt: description,
-          order: order++,
-        ));
+        steps.add(
+          SpecStep(
+            id: _uuid.v4().substring(0, 8),
+            description: description,
+            executionPrompt: description,
+            order: order++,
+          ),
+        );
       }
     }
 
     // If no structured steps found, treat entire response as a single step
     if (steps.isEmpty && response.trim().isNotEmpty) {
-      steps.add(SpecStep(
-        id: _uuid.v4().substring(0, 8),
-        description: response.trim().split('\n').first,
-        executionPrompt: response.trim(),
-        order: 0,
-      ));
+      steps.add(
+        SpecStep(
+          id: _uuid.v4().substring(0, 8),
+          description: response.trim().split('\n').first,
+          executionPrompt: response.trim(),
+          order: 0,
+        ),
+      );
     }
 
     return steps;
@@ -212,8 +182,9 @@ Example output:
 4. Wire up the repository to the screen via Riverpod provider
 5. Add input validation for email format and required fields
 ''';
+
+  static const _legacyExecutionDisabledMessage =
+      'Spec execution is paused while Studio uses the request-local turn runtime. Start this implementation from the Studio composer so intent, context, approvals, patches, and verification stay scoped to one Studio turn.';
 }
 
-final specProvider = NotifierProvider<SpecNotifier, Spec?>(
-  SpecNotifier.new,
-);
+final specProvider = NotifierProvider<SpecNotifier, Spec?>(SpecNotifier.new);

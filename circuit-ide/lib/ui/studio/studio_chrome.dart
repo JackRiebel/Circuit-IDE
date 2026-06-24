@@ -18,8 +18,8 @@ class StudioChromeIconButton extends ConsumerWidget {
     required this.tooltip,
     this.onTap,
     this.active = false,
-    this.width = 32,
-    this.height = 28,
+    this.width = 30,
+    this.height = 26,
   });
 
   @override
@@ -29,20 +29,26 @@ class StudioChromeIconButton extends ConsumerWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
+        borderRadius: BorderRadius.circular(Radii.md),
         child: Container(
           width: width,
           height: height,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: active ? tokens.studioControl : Colors.transparent,
-            borderRadius: BorderRadius.circular(Radii.lg),
-            border: active ? Border.all(color: tokens.studioDivider) : null,
+            color: active
+                ? tokens.studioControl.withValues(alpha: 0.68)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: active
+                ? Border.all(
+                    color: tokens.studioDivider.withValues(alpha: 0.54),
+                  )
+                : null,
           ),
           child: Icon(
             icon,
             color: active ? tokens.textSecondary : tokens.textMuted,
-            size: 16,
+            size: 15,
           ),
         ),
       ),
@@ -68,7 +74,7 @@ class StudioMiniChip extends ConsumerWidget {
       decoration: BoxDecoration(
         color: attention
             ? tokens.warning.withValues(alpha: 0.13)
-            : tokens.studioControl.withValues(alpha: 0.78),
+            : tokens.studioControl.withValues(alpha: 0.54),
         borderRadius: BorderRadius.circular(Radii.pill),
       ),
       child: Text(
@@ -110,7 +116,9 @@ class StudioTonalButton extends ConsumerWidget {
         decoration: BoxDecoration(
           color: tokens.studioControl,
           borderRadius: BorderRadius.circular(Radii.lg),
-          border: Border.all(color: tokens.studioDivider),
+          border: Border.all(
+            color: tokens.studioDivider.withValues(alpha: 0.7),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -154,28 +162,30 @@ class StudioActivityRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      padding: const EdgeInsets.only(bottom: 3),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
+        borderRadius: BorderRadius.circular(Radii.md),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 706),
           padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.lg,
-            vertical: Spacing.md,
+            horizontal: Spacing.md,
+            vertical: 7,
           ),
           decoration: BoxDecoration(
             color: elevated
-                ? tokens.studioActivityRow.withValues(alpha: 0.86)
-                : tokens.studioActivityRow.withValues(alpha: 0.42),
-            borderRadius: BorderRadius.circular(Radii.lg),
-            border: Border.all(color: tokens.studioDivider),
+                ? tokens.studioActivityRow.withValues(alpha: 0.62)
+                : tokens.studioActivityRow.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(Radii.md),
+            border: Border.all(
+              color: tokens.studioDivider.withValues(alpha: 0.48),
+            ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(icon, color: tokens.textMuted, size: 15),
-              const SizedBox(width: Spacing.md),
+              Icon(icon, color: tokens.textMuted, size: 13),
+              const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,13 +196,13 @@ class StudioActivityRow extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: tokens.textSecondary,
-                        fontSize: FontSizes.sm,
-                        height: 1.2,
+                        fontSize: FontSizes.xs,
+                        height: 1.15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     if (detail.trim().isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 1),
                       Text(
                         detail,
                         maxLines: 1,
@@ -200,7 +210,7 @@ class StudioActivityRow extends ConsumerWidget {
                         style: TextStyle(
                           color: tokens.textMuted,
                           fontSize: FontSizes.xs,
-                          height: 1.2,
+                          height: 1.15,
                         ),
                       ),
                     ],
@@ -208,7 +218,7 @@ class StudioActivityRow extends ConsumerWidget {
                 ),
               ),
               if (onTap != null)
-                Icon(Icons.chevron_right, color: tokens.textMuted, size: 16),
+                Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
             ],
           ),
         ),
@@ -264,17 +274,19 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
         onShowFocusHighlight: (value) => setState(() => _focused = value),
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(Radii.lg),
+          borderRadius: BorderRadius.circular(Radii.md),
           child: Container(
-            height: 31,
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+            height: widget.project ? 29 : 28,
+            padding: EdgeInsets.symmetric(horizontal: widget.project ? 9 : 8),
             decoration: BoxDecoration(
               color: widget.selected
                   ? (widget.project
-                        ? tokens.studioRailSelected
-                        : tokens.studioTaskSelected)
+                        ? tokens.studioRailSelected.withValues(alpha: 0.78)
+                        : tokens.studioTaskSelected.withValues(alpha: 0.78))
+                  : _hovered || _focused
+                  ? tokens.studioHover.withValues(alpha: 0.48)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(Radii.lg),
+              borderRadius: BorderRadius.circular(Radii.md),
             ),
             child: Row(
               children: [
@@ -284,9 +296,9 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
                     color: widget.selected
                         ? tokens.textPrimary
                         : tokens.textMuted,
-                    size: 15,
+                    size: widget.project ? 15 : 14,
                   ),
-                  const SizedBox(width: Spacing.md),
+                  const SizedBox(width: 7),
                 ],
                 Expanded(
                   child: Text(

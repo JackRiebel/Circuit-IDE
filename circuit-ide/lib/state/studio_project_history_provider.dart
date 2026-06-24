@@ -54,6 +54,7 @@ class StudioProjectHistoryController
 
   Future<void> _load() async {
     final paths = await _projectPaths();
+    if (!ref.mounted) return;
     if (paths.isEmpty) {
       state = const StudioProjectHistoryState();
       return;
@@ -69,7 +70,9 @@ class StudioProjectHistoryController
       } catch (_) {
         next[path] = const StudioProjectHistory();
       }
+      if (!ref.mounted) return;
     }
+    if (!ref.mounted) return;
     state = StudioProjectHistoryState(byPath: next);
     _mergeLiveProject();
   }

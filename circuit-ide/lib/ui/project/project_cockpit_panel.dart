@@ -12,19 +12,21 @@ import '../../models/context_pack.dart';
 import '../../models/project_profile.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/suggested_learning.dart';
+import '../../models/studio_shell.dart';
 import '../../models/work_item.dart';
 import '../../state/agent_workspace_provider.dart';
-import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/context_pack_provider.dart';
-import '../../state/layout_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/project_profile_provider.dart';
 import '../../state/suggested_learning_provider.dart';
+import '../../state/studio_shell_provider.dart';
+import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/work_item_provider.dart';
 import '../../theme/theme_tokens.dart';
 import '../common/circuit_primitives.dart';
+import '../studio/studio_message_sender.dart';
 
 class ProjectCockpitPanel extends ConsumerStatefulWidget {
   const ProjectCockpitPanel({super.key});
@@ -174,31 +176,36 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
         unawaited(ref.read(workItemProvider.notifier).runVerification());
         break;
       case ProjectRecommendationKind.explainProject:
-        ref.read(chatPanelVisibleProvider.notifier).set(true);
-        unawaited(
-          ref
-              .read(chatProvider.notifier)
-              .sendMessage(
-                'Explain this project using the project profile and visible context. '
-                'Cover stack, entrypoints, architecture, and safest next steps.',
-              ),
+        _startStudioAskTurn(
+          title: 'Explain this project',
+          prompt:
+              'Explain this project using the project profile and visible context. '
+              'Cover stack, entrypoints, architecture, and safest next steps.',
         );
         break;
       case ProjectRecommendationKind.summarizeChanges:
-        ref.read(chatPanelVisibleProvider.notifier).set(true);
-        unawaited(
-          ref
-              .read(chatProvider.notifier)
-              .sendMessage(
-                'Summarize the current working tree changes as a clean handoff. '
-                'Include files changed, risks, and verification to run.',
-              ),
+        _startStudioAskTurn(
+          title: 'Summarize current changes',
+          prompt:
+              'Summarize the current working tree changes as a clean handoff. '
+              'Include files changed, risks, and verification to run.',
         );
         break;
       case ProjectRecommendationKind.startWork:
         FocusScope.of(context).nextFocus();
         break;
     }
+  }
+
+  void _startStudioAskTurn({required String title, required String prompt}) {
+    ref.read(studioShellProvider.notifier)
+      ..setPromptMode(StudioPromptMode.ask)
+      ..setPlanModeEnabled(false);
+    final thread = ref
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: title);
+    ref.read(studioShellProvider.notifier).openThread(thread.id);
+    unawaited(sendStudioMessage(ref, prompt));
   }
 
   void _copyHandoff() {
@@ -1236,8 +1243,8 @@ class _WorkItemCard extends ConsumerWidget {
             children: [
               OutlinedButton.icon(
                 onPressed: _canSend(item!) ? onSend : null,
-                icon: const Icon(Icons.send_outlined, size: 16),
-                label: const Text('Send'),
+                icon: const Icon(Icons.shield_outlined, size: 16),
+                label: const Text('Use Studio'),
               ),
               OutlinedButton.icon(
                 onPressed: _canVerify(item!) ? onVerify : null,

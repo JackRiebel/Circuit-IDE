@@ -2,13 +2,20 @@ import 'dart:io';
 
 import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
+import 'package:circuit_ide/models/spec_models.dart';
+import 'package:circuit_ide/models/studio_thread.dart';
+import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/suggested_learning.dart';
 import 'package:circuit_ide/models/work_item.dart';
 import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
+import 'package:circuit_ide/state/chat_provider.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/project_profile_provider.dart';
+import 'package:circuit_ide/state/spec_provider.dart';
 import 'package:circuit_ide/state/suggested_learning_provider.dart';
+import 'package:circuit_ide/state/studio_thread_provider.dart';
+import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:circuit_ide/state/work_item_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -74,10 +81,30 @@ void main() {
       addTearDown(container.dispose);
 
       await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      await _waitForThreadStore(container);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch transaction history');
+      container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'patch-transaction-turn',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'user-patch-transaction-turn',
+            prompt: 'Apply the reviewed patch',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              projectLabel: 'patch',
+              rootPath: root.path,
+            ),
+          );
       final patchSet = container
           .read(patchProposalProvider.notifier)
           .propose(
             title: 'Update readme',
+            runId: 'patch-transaction-turn',
+            verificationRequested: true,
             edits: const [
               ProposedFileEdit(
                 path: 'README.md',
@@ -97,13 +124,1446 @@ void main() {
       expect(result.status, PatchApplyStatus.applied);
       expect(await file.readAsString(), 'new\n');
       expect(result.checkpointId, isNotNull);
+      expect(result.verificationRequested, isTrue);
 
       final restore = await container
           .read(patchProposalProvider.notifier)
           .restoreCheckpoint(result.checkpointId!);
 
-      expect(restore.status, PatchApplyStatus.applied);
+      expect(restore.status, PatchApplyStatus.restored);
       expect(await file.readAsString(), 'old\n');
+      final restoredPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(restoredPatch.applyStatus, PatchApplyStatus.restored);
+      expect(restoredPatch.changedFiles, ['README.md']);
+      expect(restoredPatch.diffSummary, contains('Modified README.md'));
+      expect(restoredPatch.verificationSuggestions, isEmpty);
+      expect(restoredPatch.verificationRequested, isTrue);
+
+      final updatedThread = container
+          .read(studioThreadProvider)
+          .threads
+          .firstWhere((candidate) => candidate.id == thread.id);
+      final transactionEvents = updatedThread.turns.single.events
+          .where(
+            (event) =>
+                event.type == StudioTurnEventType.completionSummary &&
+                event.id.contains('patch-transaction'),
+          )
+          .toList();
+      expect(transactionEvents, hasLength(2));
+      expect(transactionEvents.map((event) => event.title), [
+        'Applied changes',
+        'Restored checkpoint',
+      ]);
+      expect(transactionEvents.first.detail, contains('Applied 1 files.'));
+      expect(transactionEvents.first.detail, contains('Modified README.md'));
+      expect(transactionEvents.first.detail, contains('Checkpoint:'));
+      expect(transactionEvents.last.detail, contains('Restored 1 files.'));
+      expect(transactionEvents.last.detail, contains('README.md'));
+    },
+  );
+
+  test(
+    'PatchProposalController records rejected and revision-requested patches on the originating turn',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_review_outcomes_',
+      );
+      addTearDown(() => _delete(root));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      await _waitForThreadStore(container);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch review outcome history');
+      container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'patch-review-turn',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'user-patch-review-turn',
+            prompt: 'Review the proposed patch',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              projectLabel: 'patch',
+              rootPath: root.path,
+            ),
+          );
+
+      final rejectedPatch = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Add rejected file',
+            runId: 'patch-review-turn',
+            edits: const [
+              ProposedFileEdit(
+                path: 'rejected.txt',
+                type: ProposedFileEditType.create,
+                after: 'not this\n',
+              ),
+            ],
+          );
+
+      container.read(patchProposalProvider.notifier).reject(rejectedPatch.id);
+
+      final revisionPatch = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Add file needing revision',
+            runId: 'patch-review-turn',
+            edits: const [
+              ProposedFileEdit(
+                path: 'needs_revision.txt',
+                type: ProposedFileEditType.create,
+                after: 'almost\n',
+              ),
+            ],
+          );
+      container
+          .read(patchProposalProvider.notifier)
+          .requestRevision(
+            PatchProposalRevisionRequest(
+              patchSetId: revisionPatch.id,
+              prompt: 'Use the customer-safe wording instead.',
+            ),
+          );
+
+      final updatedThread = container
+          .read(studioThreadProvider)
+          .threads
+          .firstWhere((candidate) => candidate.id == thread.id);
+      final transactionEvents = updatedThread.turns.single.events
+          .where(
+            (event) =>
+                event.type == StudioTurnEventType.completionSummary &&
+                event.id.contains('patch-transaction'),
+          )
+          .toList();
+      expect(transactionEvents, hasLength(2));
+      expect(transactionEvents.map((event) => event.title), [
+        'Patch rejected',
+        'Patch revision requested',
+      ]);
+      expect(transactionEvents.first.detail, contains('Patch rejected.'));
+      expect(
+        transactionEvents.first.detail,
+        contains('Patch: Add rejected file'),
+      );
+      expect(
+        transactionEvents.last.detail,
+        contains('Patch revision requested.'),
+      );
+      expect(
+        transactionEvents.last.detail,
+        contains('Use the customer-safe wording instead.'),
+      );
+      expect(
+        transactionEvents.last.detail,
+        contains('Patch: Add file needing revision'),
+      );
+    },
+  );
+
+  test(
+    'PatchProposalController blocks proposed patches containing secrets',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_secret_v3_');
+      addTearDown(() => _delete(root));
+      final file = File(p.join(root.path, 'token.txt'));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Add token',
+            edits: const [
+              ProposedFileEdit(
+                path: 'token.txt',
+                type: ProposedFileEditType.create,
+                after:
+                    'GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .applyActive();
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('possible critical'));
+      expect(await file.exists(), isFalse);
+    },
+  );
+
+  test(
+    'PatchProposalController reloads active proposals and checkpoints by project',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_reload_v3_');
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'patch_reload_store_v3_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(storeRoot));
+      final target = File(p.join(root.path, 'hello.txt'));
+      final store = PatchProposalStore(baseDir: storeRoot.path);
+
+      final firstContainer = ProviderContainer(
+        overrides: [patchProposalStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(firstContainer.dispose);
+      await firstContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      final proposed = firstContainer
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Add greeting',
+            edits: const [
+              ProposedFileEdit(
+                path: 'hello.txt',
+                type: ProposedFileEditType.create,
+                after: 'hello\n',
+              ),
+            ],
+            planMarkdown: '# Plan\n\n- Add hello.txt',
+            plannedTargets: const [
+              PlannedFileTarget(
+                path: 'hello.txt',
+                intent: 'Add a greeting file.',
+                operation: ProposedFileEditType.create,
+              ),
+            ],
+          );
+      await _waitForPatchStore(
+        store,
+        root.path,
+        (state) => state.active?.id == proposed.id,
+      );
+
+      final secondContainer = ProviderContainer(
+        overrides: [patchProposalStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(secondContainer.dispose);
+      await secondContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      secondContainer.read(patchProposalProvider);
+      await _waitForPatchProvider(
+        secondContainer,
+        (state) => state.active?.id == proposed.id,
+      );
+
+      final reloaded = secondContainer.read(patchProposalProvider);
+      expect(reloaded.active?.id, proposed.id);
+      expect(reloaded.active?.title, 'Add greeting');
+      expect(reloaded.active?.edits.single.after, 'hello\n');
+      expect(
+        reloaded.active?.plannedTargets.single.intent,
+        contains('greeting'),
+      );
+
+      final applyResult = await secondContainer
+          .read(patchProposalProvider.notifier)
+          .apply(proposed.id);
+      expect(applyResult.status, PatchApplyStatus.applied);
+      expect(applyResult.checkpointId, isNotNull);
+      expect(await target.readAsString(), 'hello\n');
+
+      final thirdContainer = ProviderContainer(
+        overrides: [patchProposalStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(thirdContainer.dispose);
+      await thirdContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      thirdContainer.read(patchProposalProvider);
+      await _waitForPatchProvider(
+        thirdContainer,
+        (state) =>
+            state.history.any(
+              (patch) =>
+                  patch.id == proposed.id &&
+                  patch.applyStatus == PatchApplyStatus.applied,
+            ) &&
+            state.checkpoints.containsKey(applyResult.checkpointId),
+      );
+
+      final reloadedApplied = thirdContainer.read(patchProposalProvider);
+      expect(reloadedApplied.active, isNull);
+      final appliedPatch = reloadedApplied.history
+          .where((patch) => patch.id == proposed.id)
+          .single;
+      expect(appliedPatch.applyStatus, PatchApplyStatus.applied);
+      expect(appliedPatch.changedFiles, ['hello.txt']);
+      expect(appliedPatch.checkpointId, applyResult.checkpointId);
+      expect(
+        reloadedApplied.checkpoints.containsKey(applyResult.checkpointId),
+        isTrue,
+      );
+
+      final restoreResult = await thirdContainer
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applyResult.checkpointId!);
+      expect(restoreResult.status, PatchApplyStatus.restored);
+      expect(await target.exists(), isFalse);
+    },
+  );
+
+  test(
+    'PatchProposalController blocks proposed patches targeting secret paths',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_secret_path_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final envFile = File(p.join(root.path, '.env'));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Add env',
+            edits: const [
+              ProposedFileEdit(
+                path: '.env',
+                type: ProposedFileEditType.create,
+                after: 'FEATURE_FLAG=true\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .applyActive();
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('Secret or environment file'));
+      expect(await envFile.exists(), isFalse);
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController blocks root and nested sensitive patch paths',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_sensitive_paths_v3_',
+      );
+      addTearDown(() => _delete(root));
+
+      Future<PatchApplyResult> applySingle(String path) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container
+            .read(fileTreeProvider.notifier)
+            .openDirectory(root.path);
+        final patchSet = container
+            .read(patchProposalProvider.notifier)
+            .propose(
+              title: 'Sensitive target',
+              edits: [
+                ProposedFileEdit(
+                  path: path,
+                  type: ProposedFileEditType.create,
+                  after: 'token=value\n',
+                ),
+              ],
+            );
+        final result = await container
+            .read(patchProposalProvider.notifier)
+            .apply(patchSet.id);
+        expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+        return result;
+      }
+
+      for (final path in [
+        '.npmrc',
+        '.netrc',
+        'id_rsa',
+        'id_ed25519',
+        '.aws/config',
+        'nested/.npmrc',
+        '.ssh/id_ed25519',
+      ]) {
+        final result = await applySingle(path);
+        expect(result.status, PatchApplyStatus.conflict, reason: path);
+        expect(
+          result.conflictMessage,
+          contains('Secret or environment file'),
+          reason: path,
+        );
+        expect(await File(p.join(root.path, path)).exists(), isFalse);
+      }
+    },
+  );
+
+  test(
+    'PatchProposalController applies mixed create modify delete transaction and restores checkpoint',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_mixed_v3_');
+      addTearDown(() => _delete(root));
+      await File(
+        p.join(root.path, 'pubspec.yaml'),
+      ).writeAsString('name: patch_mixed\n');
+      final readme = File(p.join(root.path, 'README.md'));
+      await readme.writeAsString('old readme\n');
+      final obsolete = File(p.join(root.path, 'obsolete.txt'));
+      await obsolete.writeAsString('remove me\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Mixed transaction',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'old readme\n',
+                after: 'new readme\n',
+              ),
+              ProposedFileEdit(
+                path: 'lib/generated.dart',
+                type: ProposedFileEditType.create,
+                after: 'const generated = true;\n',
+              ),
+              ProposedFileEdit(
+                path: 'obsolete.txt',
+                type: ProposedFileEditType.delete,
+                before: 'remove me\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.applied);
+      expect(result.changedFiles, [
+        'README.md',
+        'lib/generated.dart',
+        'obsolete.txt',
+      ]);
+      expect(result.diffSummary, contains('Modified README.md'));
+      expect(result.diffSummary, contains('Created lib/generated.dart'));
+      expect(result.diffSummary, contains('Deleted obsolete.txt'));
+      expect(result.verificationSuggestions, contains('flutter analyze'));
+      expect(result.verificationSuggestions, contains('flutter test'));
+      expect(await readme.readAsString(), 'new readme\n');
+      expect(
+        await File(p.join(root.path, 'lib', 'generated.dart')).readAsString(),
+        'const generated = true;\n',
+      );
+      expect(await obsolete.exists(), isFalse);
+
+      final restore = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(result.checkpointId!);
+
+      expect(restore.status, PatchApplyStatus.restored);
+      expect(await readme.readAsString(), 'old readme\n');
+      expect(
+        await File(p.join(root.path, 'lib', 'generated.dart')).exists(),
+        isFalse,
+      );
+      expect(await Directory(p.join(root.path, 'lib')).exists(), isFalse);
+      expect(await obsolete.readAsString(), 'remove me\n');
+      final restoredPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(restoredPatch.applyStatus, PatchApplyStatus.restored);
+      expect(restoredPatch.changedFiles, [
+        'README.md',
+        'lib/generated.dart',
+        'obsolete.txt',
+      ]);
+      expect(restoredPatch.diffSummary, contains('Modified README.md'));
+      expect(restoredPatch.diffSummary, contains('Created lib/generated.dart'));
+      expect(restoredPatch.diffSummary, contains('Deleted obsolete.txt'));
+      expect(
+        restoredPatch.verificationSuggestions,
+        contains('flutter analyze'),
+      );
+      expect(restoredPatch.verificationSuggestions, contains('flutter test'));
+    },
+  );
+
+  test(
+    'PatchProposalController leaves earlier files untouched when a later edit conflicts',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_conflict_v3_');
+      addTearDown(() => _delete(root));
+      final first = File(p.join(root.path, 'first.txt'));
+      await first.writeAsString('first old\n');
+      final second = File(p.join(root.path, 'second.txt'));
+      await second.writeAsString('second changed\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Late conflict',
+            edits: const [
+              ProposedFileEdit(
+                path: 'first.txt',
+                type: ProposedFileEditType.modify,
+                before: 'first old\n',
+                after: 'first new\n',
+              ),
+              ProposedFileEdit(
+                path: 'second.txt',
+                type: ProposedFileEditType.modify,
+                before: 'second old\n',
+                after: 'second new\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('second.txt'));
+      expect(await first.readAsString(), 'first old\n');
+      expect(await second.readAsString(), 'second changed\n');
+    },
+  );
+
+  test(
+    'PatchProposalController refuses to apply plan-only proposals',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_plan_only_v3_');
+      addTearDown(() => _delete(root));
+      final marker = File(p.join(root.path, 'marker.txt'));
+      await marker.writeAsString('unchanged\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Plan only',
+            planMarkdown: '# Plan\n\nCreate a README update.',
+            plannedFiles: const ['README.md — update docs'],
+            edits: const [],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('Plan-only proposals'));
+      expect(result.conflictMessage, contains('concrete patch'));
+      expect(await marker.readAsString(), 'unchanged\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+      final updatedPatch = container.read(patchProposalProvider).active!;
+      expect(updatedPatch.id, patchSet.id);
+      expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+      expect(updatedPatch.changedFiles, isEmpty);
+    },
+  );
+
+  test('PatchProposalController refuses empty patch proposals', () async {
+    final root = await Directory.systemTemp.createTemp('patch_empty_v3_');
+    addTearDown(() => _delete(root));
+    final marker = File(p.join(root.path, 'marker.txt'));
+    await marker.writeAsString('unchanged\n');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+    final patchSet = container
+        .read(patchProposalProvider.notifier)
+        .propose(title: 'Empty patch', edits: const []);
+
+    final result = await container
+        .read(patchProposalProvider.notifier)
+        .apply(patchSet.id);
+
+    expect(result.status, PatchApplyStatus.conflict);
+    expect(result.conflictMessage, contains('no concrete file edits'));
+    expect(await marker.readAsString(), 'unchanged\n');
+    expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    final updatedPatch = container.read(patchProposalProvider).active!;
+    expect(updatedPatch.id, patchSet.id);
+    expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+    expect(updatedPatch.changedFiles, isEmpty);
+  });
+
+  test(
+    'PatchProposalController only suggests runnable verification commands',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_verify_commands_',
+      );
+      addTearDown(() => _delete(root));
+      await File(
+        p.join(root.path, 'main.go'),
+      ).writeAsString('package main\nfunc main() {}\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Update Go file',
+            edits: const [
+              ProposedFileEdit(
+                path: 'main.go',
+                type: ProposedFileEditType.modify,
+                before: 'package main\nfunc main() {}\n',
+                after: 'package main\nfunc main() { println("ok") }\n',
+              ),
+            ],
+          );
+
+      final noConfigResult = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+      expect(noConfigResult.verificationSuggestions, isEmpty);
+
+      await File(
+        p.join(root.path, 'go.mod'),
+      ).writeAsString('module example.com/app\n\ngo 1.22\n');
+      await File(
+        p.join(root.path, 'main.go'),
+      ).writeAsString('package main\nfunc main() {}\n');
+      final withGoMod = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Update Go file again',
+            edits: const [
+              ProposedFileEdit(
+                path: 'main.go',
+                type: ProposedFileEditType.modify,
+                before: 'package main\nfunc main() {}\n',
+                after: 'package main\nfunc main() { println("ok") }\n',
+              ),
+            ],
+          );
+      final goResult = await container
+          .read(patchProposalProvider.notifier)
+          .apply(withGoMod.id);
+      expect(goResult.verificationSuggestions, contains('go test ./...'));
+    },
+  );
+
+  test(
+    'PatchProposalController rejects duplicate file targets before writing',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_duplicate_v3_');
+      addTearDown(() => _delete(root));
+      final readme = File(p.join(root.path, 'README.md'));
+      await readme.writeAsString('old\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Duplicate target',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'first change\n',
+              ),
+              ProposedFileEdit(
+                path: './README.md',
+                type: ProposedFileEditType.modify,
+                before: 'first change\n',
+                after: 'second change\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('multiple edits'));
+      expect(await readme.readAsString(), 'old\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+      final updatedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+      expect(updatedPatch.changedFiles, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects duplicate targets with Windows separators',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_windows_dupe_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final file = File(p.join(root.path, 'lib', 'main.dart'));
+      await file.parent.create(recursive: true);
+      await file.writeAsString('old\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Duplicate Windows-style target',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/main.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'first change\n',
+              ),
+              ProposedFileEdit(
+                path: r'lib\main.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'second change\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('multiple edits'));
+      expect(await file.readAsString(), 'old\n');
+      expect(File(p.join(root.path, r'lib\main.dart')).existsSync(), isFalse);
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects paths that traverse symlinks',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_symlink_root_v3_',
+      );
+      final outside = await Directory.systemTemp.createTemp(
+        'patch_symlink_outside_v3_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(outside));
+      final outsideFile = File(p.join(outside.path, 'target.txt'));
+      await outsideFile.writeAsString('outside\n');
+      await Link(p.join(root.path, 'linked')).create(outside.path);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Unsafe symlink edit',
+            edits: const [
+              ProposedFileEdit(
+                path: 'linked/target.txt',
+                type: ProposedFileEditType.modify,
+                before: 'outside\n',
+                after: 'escaped\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('symlink'));
+      expect(await outsideFile.readAsString(), 'outside\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+      final updatedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+      expect(updatedPatch.changedFiles, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController refuses checkpoint restore through symlinks',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_restore_symlink_root_v3_',
+      );
+      final outside = await Directory.systemTemp.createTemp(
+        'patch_restore_symlink_outside_v3_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(outside));
+      final targetDir = Directory(p.join(root.path, 'safe'));
+      await targetDir.create();
+      final targetFile = File(p.join(targetDir.path, 'target.txt'));
+      await targetFile.writeAsString('old\n');
+      final outsideFile = File(p.join(outside.path, 'target.txt'));
+      await outsideFile.writeAsString('outside\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Safe edit',
+            edits: const [
+              ProposedFileEdit(
+                path: 'safe/target.txt',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'new\n',
+              ),
+            ],
+          );
+      final applyResult = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+      expect(applyResult.status, PatchApplyStatus.applied);
+      expect(applyResult.checkpointId, isNotNull);
+
+      await targetDir.delete(recursive: true);
+      await Link(p.join(root.path, 'safe')).create(outside.path);
+
+      final restoreResult = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applyResult.checkpointId!);
+
+      expect(restoreResult.status, PatchApplyStatus.failed);
+      expect(restoreResult.message, contains('symlink'));
+      expect(await outsideFile.readAsString(), 'outside\n');
+    },
+  );
+
+  test(
+    'PatchProposalController preflights checkpoint restore before mutating files',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_restore_preflight_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final first = File(p.join(root.path, 'first.txt'));
+      final second = File(p.join(root.path, 'second.txt'));
+      await first.writeAsString('first old\n');
+      await second.writeAsString('second old\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Update two files',
+            edits: const [
+              ProposedFileEdit(
+                path: 'first.txt',
+                type: ProposedFileEditType.modify,
+                before: 'first old\n',
+                after: 'first new\n',
+              ),
+              ProposedFileEdit(
+                path: 'second.txt',
+                type: ProposedFileEditType.modify,
+                before: 'second old\n',
+                after: 'second new\n',
+              ),
+            ],
+          );
+      final applyResult = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+      expect(applyResult.status, PatchApplyStatus.applied);
+      expect(applyResult.checkpointId, isNotNull);
+      expect(await first.readAsString(), 'first new\n');
+      expect(await second.readAsString(), 'second new\n');
+
+      await second.delete();
+      await Directory(second.path).create();
+
+      final restoreResult = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applyResult.checkpointId!);
+
+      expect(restoreResult.status, PatchApplyStatus.failed);
+      expect(restoreResult.message, contains('second.txt'));
+      expect(restoreResult.message, contains('directory'));
+      expect(await first.readAsString(), 'first new\n');
+      expect(await Directory(second.path).exists(), isTrue);
+      final restoredPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(restoredPatch.applyStatus, PatchApplyStatus.applied);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects empty and workspace-root patch targets',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_bad_target_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final marker = File(p.join(root.path, 'marker.txt'));
+      await marker.writeAsString('unchanged\n');
+
+      Future<PatchApplyResult> applySingle(String path) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container
+            .read(fileTreeProvider.notifier)
+            .openDirectory(root.path);
+        final patchSet = container
+            .read(patchProposalProvider.notifier)
+            .propose(
+              title: 'Bad target',
+              edits: [
+                ProposedFileEdit(
+                  path: path,
+                  type: ProposedFileEditType.create,
+                  after: 'bad\n',
+                ),
+              ],
+            );
+        final result = await container
+            .read(patchProposalProvider.notifier)
+            .apply(patchSet.id);
+        expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+        return result;
+      }
+
+      final blankResult = await applySingle('   ');
+      expect(blankResult.status, PatchApplyStatus.conflict);
+      expect(blankResult.conflictMessage, contains('outside the workspace'));
+      expect(await marker.readAsString(), 'unchanged\n');
+
+      final dotResult = await applySingle('.');
+      expect(dotResult.status, PatchApplyStatus.conflict);
+      expect(dotResult.conflictMessage, contains('outside the workspace'));
+      expect(await marker.readAsString(), 'unchanged\n');
+    },
+  );
+
+  test(
+    'PatchProposalController rejects control characters in patch targets',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_control_target_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final marker = File(p.join(root.path, 'marker.txt'));
+      await marker.writeAsString('unchanged\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Bad control target',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/bad\nname.dart',
+                type: ProposedFileEditType.create,
+                after: 'bad\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('control characters'));
+      expect(await marker.readAsString(), 'unchanged\n');
+      expect(await File(p.join(root.path, 'lib')).exists(), isFalse);
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects directory targets before writing',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_directory_target_v3_',
+      );
+      addTearDown(() => _delete(root));
+      await Directory(p.join(root.path, 'docs')).create();
+      final marker = File(p.join(root.path, 'marker.txt'));
+      await marker.writeAsString('unchanged\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Directory target',
+            edits: const [
+              ProposedFileEdit(
+                path: 'docs',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'new\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('target is a directory'));
+      expect(await marker.readAsString(), 'unchanged\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects non-directory parents before writing',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_non_directory_parent_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final parent = File(p.join(root.path, 'parent'));
+      await parent.writeAsString('not a directory\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Non-directory parent',
+            edits: const [
+              ProposedFileEdit(
+                path: 'parent/child.txt',
+                type: ProposedFileEditType.create,
+                after: 'child\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(
+        result.conflictMessage,
+        contains('parent path is not a directory'),
+      );
+      expect(await parent.readAsString(), 'not a directory\n');
+      expect(
+        await File(p.join(root.path, 'parent', 'child.txt')).exists(),
+        isFalse,
+      );
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects obstructing ancestor paths before writing',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_obstructing_ancestor_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final blocker = File(p.join(root.path, 'lib'));
+      await blocker.writeAsString('not a directory\n');
+      final marker = File(p.join(root.path, 'marker.txt'));
+      await marker.writeAsString('unchanged\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Obstructed nested create',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/generated/file.dart',
+                type: ProposedFileEditType.create,
+                after: 'const generated = true;\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(
+        result.conflictMessage,
+        contains('parent path is not a directory'),
+      );
+      expect(result.conflictMessage, contains('lib'));
+      expect(await blocker.readAsString(), 'not a directory\n');
+      expect(await marker.readAsString(), 'unchanged\n');
+      expect(
+        await File(p.join(root.path, 'lib', 'generated', 'file.dart')).exists(),
+        isFalse,
+      );
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test('PatchProposalController rejects no-op modify patches', () async {
+    final root = await Directory.systemTemp.createTemp('patch_noop_v3_');
+    addTearDown(() => _delete(root));
+    final readme = File(p.join(root.path, 'README.md'));
+    await readme.writeAsString('same\n');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+    container.read(patchProposalProvider);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    final patchSet = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'No-op modify',
+          edits: const [
+            ProposedFileEdit(
+              path: 'README.md',
+              type: ProposedFileEditType.modify,
+              before: 'same\n',
+              after: 'same\n',
+            ),
+          ],
+        );
+
+    final result = await container
+        .read(patchProposalProvider.notifier)
+        .apply(patchSet.id);
+
+    expect(result.status, PatchApplyStatus.conflict);
+    expect(result.conflictMessage, contains('does not change'));
+    expect(await readme.readAsString(), 'same\n');
+    expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    final updatedPatch = container.read(patchProposalProvider).active!;
+    expect(updatedPatch.id, patchSet.id);
+    expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+    expect(updatedPatch.changedFiles, isEmpty);
+  });
+
+  test('PatchProposalController rejects empty create patches', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'patch_empty_create_v3_',
+    );
+    addTearDown(() => _delete(root));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+    final patchSet = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Empty create',
+          edits: const [
+            ProposedFileEdit(
+              path: 'lib/generated.dart',
+              type: ProposedFileEditType.create,
+              after: '',
+            ),
+          ],
+        );
+
+    final result = await container
+        .read(patchProposalProvider.notifier)
+        .apply(patchSet.id);
+
+    expect(result.status, PatchApplyStatus.conflict);
+    expect(result.conflictMessage, contains('leaves lib/generated.dart empty'));
+    expect(File(p.join(root.path, 'lib/generated.dart')).existsSync(), isFalse);
+    expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    final updatedPatch = container.read(patchProposalProvider).active!;
+    expect(updatedPatch.id, patchSet.id);
+    expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+    expect(updatedPatch.changedFiles, isEmpty);
+  });
+
+  test(
+    'PatchProposalController rejects binary or non-UTF8 patch targets clearly',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_binary_v3_');
+      addTearDown(() => _delete(root));
+      final asset = File(p.join(root.path, 'asset.bin'));
+      await asset.writeAsBytes([0xff, 0xfe, 0xfd]);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Unsafe binary edit',
+            edits: const [
+              ProposedFileEdit(
+                path: 'asset.bin',
+                type: ProposedFileEditType.modify,
+                before: 'old text\n',
+                after: 'new text\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('not readable as UTF-8 text'));
+      expect(result.conflictMessage, contains('asset.bin'));
+      expect(await asset.readAsBytes(), [0xff, 0xfe, 0xfd]);
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController rejects create modify delete existence mismatches',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_existence_v3_');
+      addTearDown(() => _delete(root));
+      final existing = File(p.join(root.path, 'existing.txt'));
+      await existing.writeAsString('keep me\n');
+
+      Future<PatchApplyResult> applySingle(ProposedFileEdit edit) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        await container
+            .read(fileTreeProvider.notifier)
+            .openDirectory(root.path);
+        final patchSet = container
+            .read(patchProposalProvider.notifier)
+            .propose(title: 'Unsafe edit', edits: [edit]);
+        return container
+            .read(patchProposalProvider.notifier)
+            .apply(patchSet.id);
+      }
+
+      final createResult = await applySingle(
+        const ProposedFileEdit(
+          path: 'existing.txt',
+          type: ProposedFileEditType.create,
+          after: 'overwrite\n',
+        ),
+      );
+      expect(createResult.status, PatchApplyStatus.conflict);
+      expect(createResult.conflictMessage, contains('already exists'));
+      expect(await existing.readAsString(), 'keep me\n');
+
+      final modifyResult = await applySingle(
+        const ProposedFileEdit(
+          path: 'missing.txt',
+          type: ProposedFileEditType.modify,
+          after: 'new\n',
+        ),
+      );
+      expect(modifyResult.status, PatchApplyStatus.conflict);
+      expect(modifyResult.conflictMessage, contains('missing for modify'));
+      expect(await File(p.join(root.path, 'missing.txt')).exists(), isFalse);
+
+      final deleteResult = await applySingle(
+        const ProposedFileEdit(
+          path: 'also-missing.txt',
+          type: ProposedFileEditType.delete,
+        ),
+      );
+      expect(deleteResult.status, PatchApplyStatus.conflict);
+      expect(deleteResult.conflictMessage, contains('missing for delete'));
+    },
+  );
+
+  test(
+    'PatchProposalController rejects diff-only edits without writing empty files',
+    () async {
+      final root = await Directory.systemTemp.createTemp('patch_diff_only_v3_');
+      addTearDown(() => _delete(root));
+      final readme = File(p.join(root.path, 'README.md'));
+      await readme.writeAsString('old\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Diff-only patch',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                unifiedDiff: '-old\n+new\n',
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('missing full target content'));
+      expect(await readme.readAsString(), 'old\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+      final updatedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+      expect(updatedPatch.changedFiles, isEmpty);
+    },
+  );
+
+  test(
+    'PatchProposalController normalizes workspace absolute paths to relative paths',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_absolute_paths_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final readme = File(p.join(root.path, 'README.md'));
+      await readme.writeAsString('old\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Absolute path patch',
+            plannedFiles: [p.join(root.path, 'lib', 'new.dart')],
+            edits: [
+              ProposedFileEdit(
+                path: p.join(root.path, 'README.md'),
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'new\n',
+              ),
+            ],
+          );
+
+      expect(patchSet.edits.single.path, 'README.md');
+      expect(patchSet.plannedFiles, ['lib/new.dart']);
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.applied);
+      expect(result.changedFiles, ['README.md']);
+      expect(result.diffSummary, contains('Modified README.md'));
+      expect(await readme.readAsString(), 'new\n');
+    },
+  );
+
+  test(
+    'PatchProposalController requires prior content for modify and delete',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_missing_before_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final readme = File(p.join(root.path, 'README.md'));
+      final obsolete = File(p.join(root.path, 'obsolete.txt'));
+      await readme.writeAsString('old\n');
+      await obsolete.writeAsString('remove me\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Unsafe stale-blind patch',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                after: 'new\n',
+              ),
+              ProposedFileEdit(
+                path: 'obsolete.txt',
+                type: ProposedFileEditType.delete,
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(
+        result.conflictMessage,
+        contains('missing expected prior content'),
+      );
+      expect(await readme.readAsString(), 'old\n');
+      expect(await obsolete.readAsString(), 'remove me\n');
+      expect(container.read(patchProposalProvider).checkpoints, isEmpty);
+      final updatedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(updatedPatch.applyStatus, PatchApplyStatus.conflict);
+      expect(updatedPatch.changedFiles, isEmpty);
     },
   );
 
@@ -138,6 +1598,152 @@ void main() {
     expect(loaded.single.artifacts.single.type, WorkItemArtifactType.context);
   });
 
+  test('WorkItemStore preserves more than thirty history items', () async {
+    final root = await Directory.systemTemp.createTemp('work_store_v3_');
+    final storeRoot = await Directory.systemTemp.createTemp('work_config_v3_');
+    addTearDown(() => _delete(root));
+    addTearDown(() => _delete(storeRoot));
+    final store = WorkItemStore(baseDir: storeRoot.path);
+    final now = DateTime(2026);
+    final items = [
+      for (var index = 0; index < 35; index++)
+        WorkItem(
+          id: 'work-$index',
+          prompt: 'Task $index',
+          status: WorkItemStatus.ready,
+          createdAt: now.add(Duration(minutes: index)),
+        ),
+    ];
+
+    await store.save(root.path, items);
+
+    final loaded = await store.load(root.path);
+
+    expect(loaded, hasLength(35));
+    expect(loaded.map((item) => item.id), contains('work-0'));
+    expect(loaded.map((item) => item.id), contains('work-34'));
+  });
+
+  test('WorkItem execution does not bypass Studio turn runtime', () async {
+    final container = ProviderContainer(
+      overrides: [
+        workItemHistoryProvider.overrideWith(
+          _FakeWorkItemHistoryController.new,
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    container.read(workItemProvider.notifier).start('Fix login safely');
+    await container.read(workItemProvider.notifier).sendToChat();
+
+    final item = container.read(workItemProvider)!;
+    expect(item.status, WorkItemStatus.failed);
+    expect(item.result, contains('request-local turn runtime'));
+    expect(item.steps[1].error, contains('Legacy global chat execution'));
+    expect(container.read(chatProvider).messages, isEmpty);
+  });
+
+  test('Spec execution does not use the legacy blocking agent loop', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container
+        .read(specProvider.notifier)
+        .loadForTesting(
+          Spec(
+            id: 'spec-1',
+            name: 'Spec',
+            status: SpecStatus.ready,
+            createdAt: DateTime(2026),
+            steps: const [
+              SpecStep(
+                id: 'step-1',
+                description: 'Implement auth fix',
+                executionPrompt: 'Fix auth',
+                order: 0,
+              ),
+            ],
+          ),
+        );
+
+    await container.read(specProvider.notifier).execute();
+
+    final spec = container.read(specProvider)!;
+    expect(spec.status, SpecStatus.failed);
+    expect(spec.steps.single.error, contains('request-local turn runtime'));
+    expect(container.read(chatProvider).messages, isEmpty);
+  });
+
+  test(
+    'Studio-adjacent providers do not call legacy blocking sendMessage',
+    () async {
+      final files = [
+        'lib/state/work_item_provider.dart',
+        'lib/state/spec_provider.dart',
+        'lib/state/vericoding_provider.dart',
+      ];
+
+      for (final path in files) {
+        final source = await File(path).readAsString();
+        expect(
+          source,
+          isNot(contains('sendMessage(')),
+          reason: '$path must not bypass AgentTurnRuntime.',
+        );
+      }
+    },
+  );
+
+  test('Studio-adjacent project shortcuts do not use legacy chat', () async {
+    final source = await File(
+      'lib/ui/project/project_cockpit_panel.dart',
+    ).readAsString();
+
+    expect(source, isNot(contains('chatProvider')));
+    expect(source, isNot(contains('agentServiceProvider')));
+    expect(source, contains('sendStudioMessage('));
+  });
+
+  test(
+    'Studio turn runtime does not load legacy global agent config',
+    () async {
+      final source = await File(
+        'lib/state/agent_turn_runtime_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('AgentConfig.load')));
+      expect(source, isNot(contains('loadSystemPrompt')));
+    },
+  );
+
+  test('Git commit message helper uses stateless generation', () async {
+    final source = await File('lib/ui/git/git_panel.dart').readAsString();
+
+    expect(source, contains('sendOneShot('));
+    expect(source, isNot(contains('sendMessage(')));
+  });
+
+  test('Advanced agents are quarantined outside Studio runtime', () async {
+    final sources = {
+      'lib/state/agent_manager_provider.dart':
+          '_advancedAgentsEnabled => false',
+      'lib/state/ghost_mode_provider.dart': '_ghostModeEnabled => false',
+      'lib/state/background_agent_provider.dart':
+          '_backgroundAgentsEnabled => false',
+    };
+
+    for (final entry in sources.entries) {
+      final source = await File(entry.key).readAsString();
+      expect(source, contains(entry.value), reason: entry.key);
+      expect(
+        source,
+        contains('request-local turn runtime'),
+        reason: '${entry.key} should explain why execution is paused.',
+      );
+    }
+  });
+
   test('SuggestedLearningController reviews memories before saving', () async {
     final root = await _sampleFlutterProject();
     addTearDown(() => _delete(root));
@@ -158,6 +1764,16 @@ void main() {
   });
 }
 
+class _FakeWorkItemHistoryController extends WorkItemHistoryController {
+  @override
+  WorkItemHistory build() => const WorkItemHistory();
+
+  @override
+  Future<void> upsert(WorkItem item) async {
+    state = WorkItemHistory(items: [item]);
+  }
+}
+
 Future<Directory> _sampleFlutterProject() async {
   final root = await Directory.systemTemp.createTemp('context_pack_v3_');
   await File(p.join(root.path, 'pubspec.yaml')).writeAsString('''
@@ -176,5 +1792,33 @@ dependencies:
 Future<void> _delete(Directory directory) async {
   if (await directory.exists()) {
     await directory.delete(recursive: true);
+  }
+}
+
+Future<void> _waitForThreadStore(ProviderContainer container) async {
+  for (var i = 0; i < 20; i++) {
+    if (!container.read(studioThreadProvider).isLoading) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+Future<void> _waitForPatchProvider(
+  ProviderContainer container,
+  bool Function(PatchProposalState state) ready,
+) async {
+  for (var i = 0; i < 40; i++) {
+    if (ready(container.read(patchProposalProvider))) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+}
+
+Future<void> _waitForPatchStore(
+  PatchProposalStore store,
+  String rootPath,
+  bool Function(PatchProposalState state) ready,
+) async {
+  for (var i = 0; i < 40; i++) {
+    if (ready(await store.load(rootPath))) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 }

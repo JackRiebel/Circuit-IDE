@@ -8,7 +8,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
+import '../../models/context_pack.dart';
 import '../../models/git_models.dart';
+import '../../models/provider_lifecycle_event.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_browser.dart';
 import '../../models/studio_right_drawer.dart';
@@ -18,6 +20,7 @@ import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../state/command_run_provider.dart';
+import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
@@ -27,7 +30,6 @@ import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
-import '../terminal/terminal_panel.dart';
 import 'studio_chrome.dart';
 
 class StudioRightDrawer extends ConsumerWidget {
@@ -45,11 +47,18 @@ class StudioRightDrawer extends ConsumerWidget {
       duration: AnimationDurations.panel,
       curve: AnimationCurves.smooth,
       width: width,
-      margin: const EdgeInsets.fromLTRB(0, 52, Spacing.md, Spacing.md),
+      margin: const EdgeInsets.fromLTRB(0, 66, Spacing.md, Spacing.lg),
       decoration: BoxDecoration(
         color: tokens.studioDrawer,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.78)),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.52)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: drawer.collapsed
@@ -65,6 +74,16 @@ class StudioRightDrawer extends ConsumerWidget {
   }
 }
 
+const _visibleDrawerModes = <StudioDrawerMode>[
+  StudioDrawerMode.progress,
+  StudioDrawerMode.code,
+  StudioDrawerMode.diff,
+  StudioDrawerMode.files,
+  StudioDrawerMode.terminal,
+  StudioDrawerMode.sources,
+  StudioDrawerMode.context,
+];
+
 class _CollapsedDrawer extends ConsumerWidget {
   const _CollapsedDrawer();
 
@@ -79,7 +98,7 @@ class _CollapsedDrawer extends ConsumerWidget {
               ref.read(studioRightDrawerProvider.notifier).toggleCollapsed(),
           icon: Icon(Icons.chevron_left, color: tokens.textMuted, size: 18),
         ),
-        for (final mode in StudioDrawerMode.values)
+        for (final mode in _visibleDrawerModes)
           _ModeIconButton(mode: mode, active: false, compact: true),
       ],
     );
@@ -96,20 +115,15 @@ class _DrawerHeader extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final drawer = ref.watch(studioRightDrawerProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Spacing.lg,
-        Spacing.md,
-        Spacing.md,
-        Spacing.xs,
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 13, 8, 7),
       child: Row(
         children: [
           Expanded(
             child: Text(
               _titleFor(drawer.mode),
               style: TextStyle(
-                color: tokens.textSecondary,
-                fontSize: FontSizes.lg,
+                color: tokens.textSecondary.withValues(alpha: 0.96),
+                fontSize: FontSizes.base,
                 height: 1.2,
                 fontWeight: FontWeight.w600,
               ),
@@ -143,6 +157,7 @@ class _DrawerHeader extends ConsumerWidget {
       StudioDrawerMode.files => 'Files',
       StudioDrawerMode.terminal => 'Terminal',
       StudioDrawerMode.sources => 'Sources',
+      StudioDrawerMode.context => 'Context',
     };
   }
 }
@@ -157,18 +172,17 @@ class _DrawerModeTabs extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Container(
       height: 38,
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: tokens.studioDivider.withValues(alpha: 0.72),
+            color: tokens.studioDivider.withValues(alpha: 0.5),
           ),
-          top: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.72)),
         ),
       ),
       child: Row(
         children: [
-          for (final mode in StudioDrawerMode.values)
+          for (final mode in _visibleDrawerModes)
             _ModeIconButton(mode: mode, active: mode == active),
         ],
       ),
@@ -190,22 +204,27 @@ class _ModeIconButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final color = active ? tokens.textPrimary : tokens.textMuted;
+    final color = active ? tokens.textSecondary : tokens.textMuted;
     return Tooltip(
       message: _label(mode),
       child: InkWell(
         onTap: () =>
             ref.read(studioRightDrawerProvider.notifier).openMode(mode),
-        borderRadius: BorderRadius.circular(Radii.lg),
+        borderRadius: BorderRadius.circular(Radii.md),
         child: Container(
-          width: compact ? 40 : 34,
+          width: compact ? 38 : 30,
           height: 28,
-          margin: EdgeInsets.only(right: compact ? 0 : Spacing.xs),
+          margin: EdgeInsets.only(right: compact ? 0 : 5),
           decoration: BoxDecoration(
-            color: active ? tokens.studioControl : Colors.transparent,
+            color: active
+                ? tokens.studioControl.withValues(alpha: 0.66)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(Radii.md),
+            border: active
+                ? Border.all(color: tokens.studioDivider.withValues(alpha: 0.5))
+                : null,
           ),
-          child: Icon(_icon(mode), color: color, size: 16),
+          child: Icon(_icon(mode), color: color, size: 14),
         ),
       ),
     );
@@ -220,6 +239,7 @@ class _ModeIconButton extends ConsumerWidget {
       StudioDrawerMode.files => Icons.folder_outlined,
       StudioDrawerMode.terminal => Icons.terminal_outlined,
       StudioDrawerMode.sources => Icons.travel_explore,
+      StudioDrawerMode.context => Icons.inventory_2_outlined,
     };
   }
 
@@ -232,6 +252,7 @@ class _ModeIconButton extends ConsumerWidget {
       StudioDrawerMode.files => 'Files',
       StudioDrawerMode.terminal => 'Terminal output',
       StudioDrawerMode.sources => 'Sources',
+      StudioDrawerMode.context => 'Context details',
     };
   }
 }
@@ -251,7 +272,8 @@ class _DrawerBody extends ConsumerWidget {
       StudioDrawerMode.diff => const _DiffDrawer(),
       StudioDrawerMode.files => const _FilesDrawer(),
       StudioDrawerMode.terminal => const _TerminalDrawer(),
-      StudioDrawerMode.sources => const _SourcesDrawer(),
+      StudioDrawerMode.sources => _SourcesDrawer(task: task),
+      StudioDrawerMode.context => _ContextDrawer(task: task),
     };
   }
 }
@@ -264,9 +286,15 @@ class _ProgressDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
+    final threadState = ref.watch(studioThreadProvider);
+    final thread = threadState.threadForTaskView(task?.id);
     final latestTurn = _latestTurn(thread);
     final latestEvent = _latestEvent(latestTurn);
+    final latestDiagnostic = _latestDiagnostic(latestTurn);
+    final outcomeRepairCount = _diagnosticCount(
+      latestTurn,
+      ProviderLifecycleEventKind.outcomeRepair,
+    );
     final hasPendingApproval = _hasPendingApproval(latestTurn);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
@@ -274,19 +302,9 @@ class _ProgressDrawer extends ConsumerWidget {
     final runningCommand = commands
         .where((command) => command.status == CommandRunStatus.running)
         .firstOrNull;
-    final displayState = thread == null
-        ? TaskDisplayState.derive(
-            task: task,
-            isChatProcessing: false,
-            isChatStreaming: false,
-            hasAssistantResponse: false,
-            hasPendingApproval: hasPendingApproval,
-            commands: commands,
-            chatError: null,
-          )
-        : TaskDisplayState.fromLifecycle(
-            StudioTaskLifecycleState.fromThread(thread),
-          );
+    final displayState = TaskDisplayState.fromLifecycle(
+      StudioTaskLifecycleState.fromThread(thread),
+    );
     final rows = <StudioProgressRow>[
       StudioProgressRow(
         label: 'Task',
@@ -305,6 +323,14 @@ class _ProgressDrawer extends ConsumerWidget {
           value: '${runningCommand.elapsed.inSeconds}s',
           accent: true,
         ),
+      if (outcomeRepairCount > 0)
+        StudioProgressRow(
+          label: 'Repair',
+          value: outcomeRepairCount == 1
+              ? '1 model retry'
+              : '$outcomeRepairCount model retries',
+          accent: true,
+        ),
       StudioProgressRow(
         label: 'Changes',
         value: patch == null ? 'No pending changes' : '+${patch.fileCount}',
@@ -318,7 +344,7 @@ class _ProgressDrawer extends ConsumerWidget {
     ];
 
     return ListView(
-      padding: const EdgeInsets.all(Spacing.lg),
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
       children: [
         Text(
           'Environment',
@@ -330,9 +356,9 @@ class _ProgressDrawer extends ConsumerWidget {
         ),
         const SizedBox(height: Spacing.md),
         for (final row in rows) _ProgressRow(row: row),
-        const SizedBox(height: Spacing.lg),
-        Divider(color: tokens.studioDivider, height: 1),
-        const SizedBox(height: Spacing.lg),
+        const SizedBox(height: Spacing.xl),
+        Divider(color: tokens.studioDivider.withValues(alpha: 0.52), height: 1),
+        const SizedBox(height: Spacing.xl),
         Text(
           'Latest event',
           style: TextStyle(
@@ -344,8 +370,13 @@ class _ProgressDrawer extends ConsumerWidget {
         const SizedBox(height: Spacing.md),
         _MiniEvent(
           icon: Icons.history,
-          title: latestEvent?.title ?? displayState.label,
+          title:
+              _diagnosticTitle(latestDiagnostic) ??
+              latestEvent?.title ??
+              displayState.label,
           detail:
+              latestDiagnostic?.detail ??
+              _diagnosticDetail(latestDiagnostic) ??
               latestEvent?.detail ??
               thread?.contextSummary?.detail ??
               'Studio is ready.',
@@ -366,6 +397,103 @@ class _ProgressDrawer extends ConsumerWidget {
     final events = turn.events.toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
     return events.first;
+  }
+
+  ProviderLifecycleEvent? _latestDiagnostic(StudioTurn? turn) {
+    if (turn == null || turn.providerDiagnostics.isEmpty) return null;
+    final diagnostics = turn.providerDiagnostics.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    if (turn.status == StudioTurnStatus.failed ||
+        turn.status == StudioTurnStatus.cancelled) {
+      return diagnostics.where(_isRootCauseDiagnostic).firstOrNull ??
+          diagnostics.first;
+    }
+    return diagnostics.first;
+  }
+
+  bool _isRootCauseDiagnostic(ProviderLifecycleEvent diagnostic) {
+    return switch (diagnostic.kind) {
+      ProviderLifecycleEventKind.authFailed ||
+      ProviderLifecycleEventKind.noFirstByte ||
+      ProviderLifecycleEventKind.noTextOrTool ||
+      ProviderLifecycleEventKind.unavailableTool ||
+      ProviderLifecycleEventKind.rateLimited ||
+      ProviderLifecycleEventKind.malformedChunk ||
+      ProviderLifecycleEventKind.malformedBytes ||
+      ProviderLifecycleEventKind.streamEndedWithoutDone ||
+      ProviderLifecycleEventKind.timeout ||
+      ProviderLifecycleEventKind.cancelled => true,
+      _ => false,
+    };
+  }
+
+  int _diagnosticCount(StudioTurn? turn, ProviderLifecycleEventKind kind) {
+    if (turn == null) return 0;
+    return turn.providerDiagnostics
+        .where((diagnostic) => diagnostic.kind == kind)
+        .length;
+  }
+
+  String? _diagnosticTitle(ProviderLifecycleEvent? diagnostic) {
+    if (diagnostic == null) return null;
+    return switch (diagnostic.kind) {
+      ProviderLifecycleEventKind.requestSent => 'Request sent',
+      ProviderLifecycleEventKind.toolExposure => 'Tools exposed',
+      ProviderLifecycleEventKind.authFailed => 'Authentication failed',
+      ProviderLifecycleEventKind.connected => 'Provider connected',
+      ProviderLifecycleEventKind.firstByte => 'Response started',
+      ProviderLifecycleEventKind.noFirstByte => 'No provider response bytes',
+      ProviderLifecycleEventKind.firstTextDelta => 'Writing response',
+      ProviderLifecycleEventKind.firstToolDelta => 'Tool call started',
+      ProviderLifecycleEventKind.nonSseJson => 'Non-streaming response',
+      ProviderLifecycleEventKind.jsonFallback => 'JSON fallback',
+      ProviderLifecycleEventKind.toolOnly => 'Tool-only response',
+      ProviderLifecycleEventKind.noTextOrTool => 'No model output',
+      ProviderLifecycleEventKind.unavailableTool => 'Unavailable tool',
+      ProviderLifecycleEventKind.rateLimited => 'Rate limited',
+      ProviderLifecycleEventKind.malformedChunk => 'Malformed stream chunk',
+      ProviderLifecycleEventKind.malformedBytes => 'Malformed response bytes',
+      ProviderLifecycleEventKind.streamEndedWithoutDone => 'Stream ended early',
+      ProviderLifecycleEventKind.outcomeRepair => 'Repairing response',
+      ProviderLifecycleEventKind.completed => 'Provider completed',
+      ProviderLifecycleEventKind.failed => 'Provider failed',
+      ProviderLifecycleEventKind.cancelled => 'Provider cancelled',
+      ProviderLifecycleEventKind.timeout => 'Provider timed out',
+    };
+  }
+
+  String? _diagnosticDetail(ProviderLifecycleEvent? diagnostic) {
+    if (diagnostic == null) return null;
+    return switch (diagnostic.kind) {
+      ProviderLifecycleEventKind.outcomeRepair =>
+        'Circuit rejected a vague draft and requested one structured repair.',
+      ProviderLifecycleEventKind.toolOnly =>
+        'Circuit returned tool calls without assistant text.',
+      ProviderLifecycleEventKind.noTextOrTool =>
+        'Circuit returned neither assistant text nor tool calls.',
+      ProviderLifecycleEventKind.noFirstByte =>
+        'Circuit did not return response bytes before the request ended.',
+      ProviderLifecycleEventKind.nonSseJson ||
+      ProviderLifecycleEventKind.jsonFallback =>
+        'Circuit returned a non-streaming JSON response.',
+      ProviderLifecycleEventKind.malformedChunk =>
+        'Circuit returned a malformed stream chunk.',
+      ProviderLifecycleEventKind.malformedBytes =>
+        'Circuit returned response bytes that were not valid UTF-8.',
+      ProviderLifecycleEventKind.streamEndedWithoutDone =>
+        'Circuit closed the SSE stream without the normal completion marker.',
+      ProviderLifecycleEventKind.unavailableTool =>
+        'Circuit requested a tool that is hidden for this mode or phase.',
+      ProviderLifecycleEventKind.rateLimited =>
+        'Circuit API is rate limited. Wait for the retry window or try again later.',
+      ProviderLifecycleEventKind.authFailed =>
+        'Circuit credentials or token refresh failed.',
+      ProviderLifecycleEventKind.timeout =>
+        'Circuit did not finish before the timeout.',
+      ProviderLifecycleEventKind.cancelled => 'The request was cancelled.',
+      ProviderLifecycleEventKind.failed => 'The provider reported a failure.',
+      _ => null,
+    };
   }
 
   bool _hasPendingApproval(StudioTurn? turn) {
@@ -708,11 +836,7 @@ class _CodeDrawer extends ConsumerWidget {
         detail: editor.error!,
       );
     }
-    return _EditableCodeView(
-      title: path,
-      resolvedPath: resolved,
-      state: editor,
-    );
+    return _CodePreviewView(title: path, resolvedPath: resolved, state: editor);
   }
 
   StudioSourceArtifact? _selectedArtifact(WidgetRef ref) {
@@ -724,12 +848,12 @@ class _CodeDrawer extends ConsumerWidget {
   }
 }
 
-class _EditableCodeView extends ConsumerWidget {
+class _CodePreviewView extends ConsumerWidget {
   final String title;
   final String resolvedPath;
   final StudioCodeEditState state;
 
-  const _EditableCodeView({
+  const _CodePreviewView({
     required this.title,
     required this.resolvedPath,
     required this.state,
@@ -739,58 +863,64 @@ class _EditableCodeView extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.all(Spacing.lg),
+      padding: const EdgeInsets.all(Spacing.md),
       child: Container(
         decoration: BoxDecoration(
-          color: tokens.surfaceInset,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: tokens.studioDivider),
+          color: tokens.surfaceInset.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: tokens.studioDivider.withValues(alpha: 0.68),
+          ),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.all(Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.sm,
+                Spacing.sm,
+                Spacing.sm,
+              ),
               child: Row(
                 children: [
                   Expanded(
                     child: Tooltip(
                       message: resolvedPath,
                       child: Text(
-                        state.isDirty ? '$title *' : title,
+                        title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: tokens.textSecondary,
                           fontSize: FontSizes.xs,
-                          fontWeight: FontWeight.w800,
+                          height: 1.2,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                   ),
-                  if (state.isEditing) ...[
-                    TextButton(
-                      onPressed: state.isSaving
-                          ? null
-                          : ref.read(studioCodeEditProvider.notifier).revert,
-                      child: const Text('Revert'),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.sm,
+                      vertical: 3,
                     ),
-                    FilledButton(
-                      onPressed: state.isSaving || !state.isDirty
-                          ? null
-                          : () => ref
-                                .read(studioCodeEditProvider.notifier)
-                                .save(),
-                      child: Text(state.isSaving ? 'Saving' : 'Save'),
+                    decoration: BoxDecoration(
+                      color: tokens.studioControl.withValues(alpha: 0.44),
+                      borderRadius: BorderRadius.circular(Radii.sm),
                     ),
-                  ] else
-                    TextButton.icon(
-                      onPressed: ref
-                          .read(studioCodeEditProvider.notifier)
-                          .startEditing,
-                      icon: const Icon(Icons.edit_outlined, size: 14),
-                      label: const Text('Edit'),
+                    child: Text(
+                      'Read only',
+                      style: TextStyle(
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xs,
+                        height: 1.1,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                  ),
+                  const SizedBox(width: Spacing.xs),
                   IconButton(
                     tooltip: 'Copy',
                     onPressed: () =>
@@ -800,44 +930,28 @@ class _EditableCodeView extends ConsumerWidget {
                 ],
               ),
             ),
-            Divider(color: tokens.studioDivider, height: 1),
+            Divider(
+              color: tokens.studioDivider.withValues(alpha: 0.72),
+              height: 1,
+            ),
             Expanded(
-              child: state.isEditing
-                  ? TextField(
-                      controller: TextEditingController(text: state.draft)
-                        ..selection = TextSelection.collapsed(
-                          offset: state.draft.length,
-                        ),
-                      expands: true,
-                      maxLines: null,
-                      minLines: null,
-                      keyboardType: TextInputType.multiline,
-                      style: TextStyle(
-                        color: tokens.textSecondary,
-                        fontSize: FontSizes.xs,
-                        height: 1.42,
-                        fontFamily: EditorDefaults.fallbackFontFamily,
-                      ),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(Spacing.md),
-                      ),
-                      onChanged: ref
-                          .read(studioCodeEditProvider.notifier)
-                          .updateDraft,
-                    )
-                  : SingleChildScrollView(
-                      padding: const EdgeInsets.all(Spacing.md),
-                      child: SelectableText(
-                        state.draft.isEmpty ? '(empty)' : state.draft,
-                        style: TextStyle(
-                          color: tokens.textSecondary,
-                          fontSize: FontSizes.xs,
-                          height: 1.42,
-                          fontFamily: EditorDefaults.fallbackFontFamily,
-                        ),
-                      ),
-                    ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.md,
+                  Spacing.sm,
+                  Spacing.md,
+                  Spacing.lg,
+                ),
+                child: SelectableText(
+                  state.draft.isEmpty ? '(empty)' : state.draft,
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: FontSizes.xs,
+                    height: 1.42,
+                    fontFamily: EditorDefaults.fallbackFontFamily,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -978,7 +1092,7 @@ class _GitReviewDrawer extends ConsumerWidget {
             onTap: () => onSelect(change.change.path, change.staged),
           ),
         const SizedBox(height: Spacing.lg),
-        _GitFileActions(change: selected),
+        _GitReviewNotice(path: selected.change.path),
         const SizedBox(height: Spacing.md),
         FutureBuilder<String>(
           future: ref
@@ -1028,10 +1142,10 @@ class _GitChangeRow extends ConsumerWidget {
   }
 }
 
-class _GitFileActions extends ConsumerWidget {
-  final _ReviewChange change;
+class _GitReviewNotice extends ConsumerWidget {
+  final String path;
 
-  const _GitFileActions({required this.change});
+  const _GitReviewNotice({required this.path});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1047,7 +1161,7 @@ class _GitFileActions extends ConsumerWidget {
         children: [
           Expanded(
             child: Text(
-              change.change.path,
+              path,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1057,19 +1171,19 @@ class _GitFileActions extends ConsumerWidget {
               ),
             ),
           ),
-          if (change.staged)
-            TextButton(
-              onPressed: () => ref
-                  .read(gitProvider.notifier)
-                  .unstageFile(change.change.path),
-              child: const Text('Unstage'),
-            )
-          else
-            TextButton(
-              onPressed: () =>
-                  ref.read(gitProvider.notifier).stageFile(change.change.path),
-              child: const Text('Stage'),
+          const SizedBox(width: Spacing.md),
+          Flexible(
+            child: Text(
+              'Review only',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+                fontWeight: FontWeight.w700,
+              ),
             ),
+          ),
         ],
       ),
     );
@@ -1124,50 +1238,44 @@ class _TerminalDrawer extends ConsumerWidget {
         .where((command) => command.id == drawer.commandRunId)
         .firstOrNull;
     final command = selected ?? commands.firstOrNull;
-    return Column(
+    if (commands.isEmpty) {
+      return const _EmptyDrawerState(
+        icon: Icons.terminal_outlined,
+        title: 'No command logs',
+        detail:
+            'Approved verification commands and tool-run output will appear here. Studio does not expose an interactive terminal in the core agent loop.',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.all(Spacing.lg),
       children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: const TerminalPanel(),
+        Text(
+          'Command logs',
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        if (commands.isNotEmpty) ...[
-          Divider(color: tokens.studioDivider, height: 1),
-          SizedBox(
-            height: 220,
-            child: ListView(
-              padding: const EdgeInsets.all(Spacing.lg),
-              children: [
-                Text(
-                  'Command logs',
-                  style: TextStyle(
-                    color: tokens.textMuted,
-                    fontSize: FontSizes.xs,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: Spacing.sm),
-                for (final candidate in commands.take(4))
-                  _SourceListRow(
-                    icon: Icons.terminal_outlined,
-                    title: candidate.command,
-                    subtitle: candidate.status.name,
-                    selected: candidate.id == command?.id,
-                    onTap: () => ref
-                        .read(studioRightDrawerProvider.notifier)
-                        .openCommand(candidate.id),
-                  ),
-                if (command != null) ...[
-                  const SizedBox(height: Spacing.sm),
-                  _TextDocumentView(
-                    title: command.command,
-                    text: command.combinedOutput,
-                    embedded: true,
-                  ),
-                ],
-              ],
-            ),
+        const SizedBox(height: Spacing.sm),
+        for (final candidate in commands.take(12))
+          _SourceListRow(
+            icon: Icons.terminal_outlined,
+            title: candidate.command,
+            subtitle: candidate.status.name,
+            selected: candidate.id == command?.id,
+            onTap: () => ref
+                .read(studioRightDrawerProvider.notifier)
+                .openCommand(candidate.id),
+          ),
+        if (command != null) ...[
+          const SizedBox(height: Spacing.md),
+          _TextDocumentView(
+            title: command.command,
+            text: command.combinedOutput.isEmpty
+                ? 'No output captured yet.'
+                : command.combinedOutput,
+            embedded: true,
           ),
         ],
       ],
@@ -1176,11 +1284,13 @@ class _TerminalDrawer extends ConsumerWidget {
 }
 
 class _SourcesDrawer extends ConsumerWidget {
-  const _SourcesDrawer();
+  final AgentTask? task;
+
+  const _SourcesDrawer({this.task});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final thread = ref.watch(studioThreadProvider).selectedThread;
+    final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
     final artifacts = ref
         .watch(studioSourceArtifactProvider)
         .forThread(thread?.id);
@@ -1233,6 +1343,420 @@ class _SourcesDrawer extends ConsumerWidget {
   }
 }
 
+class _ContextDrawer extends ConsumerWidget {
+  final AgentTask? task;
+
+  const _ContextDrawer({this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
+    final pack = task == null || thread != null
+        ? ref.watch(contextPackProvider)
+        : null;
+    final persistedRetrieval = thread?.latestContextRetrieval;
+    final retrieval = pack?.retrievalResult ?? persistedRetrieval;
+    final canPersistContextPreference =
+        ref.watch(fileTreeProvider).rootPath != null;
+    if (pack == null && retrieval == null) {
+      return const _EmptyDrawerState(
+        icon: Icons.inventory_2_outlined,
+        title: 'No context yet',
+        detail:
+            'Context details appear here after Circuit builds a task context.',
+      );
+    }
+
+    final removedIds = pack?.removedItemIds.toSet() ?? const <String>{};
+    final included =
+        retrieval?.includedCandidates
+            .where((candidate) => !removedIds.contains(candidate.id))
+            .toList() ??
+        const [];
+    final omitted = retrieval?.omittedCandidates ?? const [];
+    final visibleIds =
+        pack?.visibleItems.map((item) => item.id).toSet() ?? const <String>{};
+    final visibleItems = pack?.visibleItems ?? const <ContextPackItem>[];
+
+    return ListView(
+      padding: const EdgeInsets.all(Spacing.lg),
+      children: [
+        Text(
+          'Context budget',
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: Spacing.sm),
+        if (pack != null)
+          _ContextBudgetCard(pack: pack)
+        else
+          _ContextBudgetSnapshot(retrieval: retrieval!),
+        if (retrieval?.warnings.isNotEmpty == true) ...[
+          const SizedBox(height: Spacing.md),
+          for (final warning in retrieval!.warnings)
+            _ContextWarning(message: warning.message),
+        ],
+        const SizedBox(height: Spacing.lg),
+        _ContextSectionTitle(
+          title: 'Included',
+          count: included.isEmpty ? visibleItems.length : included.length,
+        ),
+        const SizedBox(height: Spacing.sm),
+        if (included.isEmpty)
+          for (final item in visibleItems)
+            _ContextItemRow(
+              title: item.title,
+              subtitle: _contextSubtitle(
+                path: item.source,
+                reason: item.sourceKind.name,
+                tokens: item.estimatedTokens,
+              ),
+              score: null,
+              removable: item.removable,
+              onRemove: item.removable && pack != null
+                  ? () => ref
+                        .read(contextPackProvider.notifier)
+                        .removeItem(item.id)
+                  : null,
+            )
+        else
+          for (final candidate in included)
+            _ContextItemRow(
+              title: candidate.title,
+              subtitle: _contextSubtitle(
+                path: candidate.path,
+                reason: candidate.reason,
+                tokens: candidate.estimatedTokens,
+              ),
+              score: candidate.score,
+              removable: visibleIds.contains(candidate.id),
+              onRemove: visibleIds.contains(candidate.id)
+                  ? () => ref
+                        .read(contextPackProvider.notifier)
+                        .removeItem(candidate.id)
+                  : null,
+            ),
+        if (omitted.isNotEmpty) ...[
+          const SizedBox(height: Spacing.lg),
+          _ContextSectionTitle(title: 'Omitted', count: omitted.length),
+          const SizedBox(height: Spacing.sm),
+          for (final candidate in omitted.take(20))
+            _ContextItemRow(
+              title: candidate.title,
+              subtitle: _contextSubtitle(
+                path: candidate.path,
+                reason: candidate.reason,
+                tokens: candidate.estimatedTokens,
+              ),
+              score: candidate.score,
+              removable: false,
+              muted: true,
+              actionLabel: candidate.path != null && canPersistContextPreference
+                  ? 'Include next'
+                  : null,
+              onAction: candidate.path != null && canPersistContextPreference
+                  ? () => ref
+                        .read(contextPackProvider.notifier)
+                        .includeNextTime(candidate.path!)
+                  : null,
+            ),
+        ],
+      ],
+    );
+  }
+
+  String _contextSubtitle({
+    required String? path,
+    required String reason,
+    required int tokens,
+  }) {
+    return [
+      if (path != null && path.trim().isNotEmpty) path,
+      reason,
+      '~$tokens tokens',
+    ].join(' · ');
+  }
+}
+
+class _ContextBudgetCard extends ConsumerWidget {
+  final ContextPack pack;
+
+  const _ContextBudgetCard({required this.pack});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final budget = pack.retrievalResult?.budget;
+    final used = pack.estimatedTokens;
+    final available = budget?.availableForContext;
+    final label = available == null
+        ? '~$used tokens'
+        : '~$used / ~$available context tokens';
+    final percent = available == null || available == 0
+        ? 0.0
+        : (used / available).clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.studioPanel.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.sm,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              minHeight: 4,
+              value: percent,
+              backgroundColor: tokens.surfaceInset,
+              color: percent > 0.92 ? tokens.warning : tokens.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextBudgetSnapshot extends ConsumerWidget {
+  final ContextRetrievalResult retrieval;
+
+  const _ContextBudgetSnapshot({required this.retrieval});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final budget = retrieval.budget;
+    final label =
+        '~${budget.usedTokens} / ~${budget.availableForContext} context tokens';
+    final percent = budget.availableForContext == 0
+        ? 0.0
+        : (budget.usedTokens / budget.availableForContext).clamp(0.0, 1.0);
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: tokens.studioPanel.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$label · saved with turn',
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.sm,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              minHeight: 4,
+              value: percent,
+              backgroundColor: tokens.surfaceInset,
+              color: percent > 0.92 ? tokens.warning : tokens.success,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextSectionTitle extends ConsumerWidget {
+  final String title;
+  final int count;
+
+  const _ContextSectionTitle({required this.title, required this.count});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Text(
+          '$count',
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ContextWarning extends ConsumerWidget {
+  final String message;
+
+  const _ContextWarning({required this.message});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, size: 14, color: tokens.warning),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: tokens.warning, fontSize: FontSizes.xs),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContextItemRow extends ConsumerWidget {
+  final String title;
+  final String subtitle;
+  final int? score;
+  final bool removable;
+  final bool muted;
+  final VoidCallback? onRemove;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  const _ContextItemRow({
+    required this.title,
+    required this.subtitle,
+    required this.score,
+    required this.removable,
+    this.muted = false,
+    this.onRemove,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = muted ? tokens.textMuted : tokens.textSecondary;
+    return Container(
+      margin: const EdgeInsets.only(bottom: Spacing.sm),
+      padding: const EdgeInsets.all(Spacing.sm),
+      decoration: BoxDecoration(
+        color: tokens.studioHover.withValues(alpha: muted ? 0.22 : 0.42),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.72)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            muted ? Icons.remove_circle_outline : Icons.check_circle_outline,
+            color: muted ? tokens.textMuted : tokens.success,
+            size: 14,
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (score != null)
+            Padding(
+              padding: const EdgeInsets.only(left: Spacing.sm),
+              child: Text(
+                '$score',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          if (removable)
+            IconButton(
+              tooltip: 'Remove from next send',
+              onPressed: onRemove,
+              icon: Icon(Icons.close, color: tokens.textMuted, size: 14),
+              visualDensity: VisualDensity.compact,
+            ),
+          if (actionLabel != null && onAction != null)
+            Padding(
+              padding: const EdgeInsets.only(left: Spacing.sm),
+              child: TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  foregroundColor: tokens.textSecondary,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.sm,
+                    vertical: 0,
+                  ),
+                  minimumSize: const Size(0, 28),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: Text(actionLabel!),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProgressRow extends ConsumerWidget {
   final StudioProgressRow row;
 
@@ -1246,14 +1770,14 @@ class _ProgressRow extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          Icon(_iconFor(row.label), color: color, size: 14),
+          Icon(_iconFor(row.label), color: color, size: 12),
           const SizedBox(width: Spacing.md),
           Expanded(
             child: Text(
               row.label,
               style: TextStyle(
                 color: color,
-                fontSize: FontSizes.sm,
+                fontSize: FontSizes.xs,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1262,7 +1786,7 @@ class _ProgressRow extends ConsumerWidget {
             row.value,
             style: TextStyle(
               color: row.accent ? tokens.success : tokens.textMuted,
-              fontSize: FontSizes.sm,
+              fontSize: FontSizes.xs,
               fontWeight: row.accent ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
@@ -1297,7 +1821,53 @@ class _MiniEvent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _SourceListRow(icon: icon, title: title, subtitle: detail);
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: tokens.studioActivityRow.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: tokens.textMuted, size: 14),
+          const SizedBox(width: Spacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w600,
+                    height: 1.15,
+                  ),
+                ),
+                if (detail.trim().isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    detail,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                      height: 1.25,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1320,27 +1890,34 @@ class _SourceListRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      padding: const EdgeInsets.only(bottom: 3),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.lg),
+        borderRadius: BorderRadius.circular(Radii.md),
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: Spacing.md,
-            vertical: Spacing.sm,
+            vertical: 7,
           ),
           decoration: BoxDecoration(
-            color: selected ? tokens.studioControl : tokens.studioActivityRow,
-            borderRadius: BorderRadius.circular(Radii.lg),
+            color: selected
+                ? tokens.studioControl.withValues(alpha: 0.62)
+                : tokens.studioActivityRow.withValues(alpha: 0.38),
+            borderRadius: BorderRadius.circular(Radii.md),
             border: Border.all(
-              color: tokens.studioDivider.withValues(alpha: 0.78),
+              color: tokens.studioDivider.withValues(
+                alpha: selected ? 0.72 : 0.42,
+              ),
             ),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: tokens.textMuted, size: 15),
-              const SizedBox(width: Spacing.md),
+              Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Icon(icon, color: tokens.textMuted, size: 13),
+              ),
+              const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1351,11 +1928,12 @@ class _SourceListRow extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: tokens.textSecondary,
-                        fontSize: FontSizes.sm,
+                        fontSize: FontSizes.xs,
+                        height: 1.15,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       subtitle,
                       maxLines: 2,
@@ -1363,7 +1941,7 @@ class _SourceListRow extends ConsumerWidget {
                       style: TextStyle(
                         color: tokens.textMuted,
                         fontSize: FontSizes.xs,
-                        height: 1.3,
+                        height: 1.22,
                       ),
                     ),
                   ],
@@ -1393,17 +1971,37 @@ class _TextDocumentView extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final view = Container(
       decoration: BoxDecoration(
-        color: tokens.surfaceInset,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: tokens.studioDivider),
+        color: tokens.surfaceInset.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.68)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.sm,
+              Spacing.sm,
+            ),
             child: Row(
               children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: tokens.bgDark.withValues(alpha: 0.48),
+                    borderRadius: BorderRadius.circular(Radii.md),
+                  ),
+                  child: Icon(
+                    Icons.difference_outlined,
+                    color: tokens.textMuted,
+                    size: 13,
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
                 Expanded(
                   child: Text(
                     title,
@@ -1412,10 +2010,31 @@ class _TextDocumentView extends ConsumerWidget {
                     style: TextStyle(
                       color: tokens.textSecondary,
                       fontSize: FontSizes.xs,
-                      fontWeight: FontWeight.w800,
+                      height: 1.2,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.sm,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: tokens.studioControl.withValues(alpha: 0.44),
+                    borderRadius: BorderRadius.circular(Radii.sm),
+                  ),
+                  child: Text(
+                    'Read only',
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Spacing.xs),
                 IconButton(
                   tooltip: 'Copy',
                   onPressed: () => Clipboard.setData(ClipboardData(text: text)),
@@ -1424,10 +2043,18 @@ class _TextDocumentView extends ConsumerWidget {
               ],
             ),
           ),
-          Divider(color: tokens.studioDivider, height: 1),
+          Divider(
+            color: tokens.studioDivider.withValues(alpha: 0.72),
+            height: 1,
+          ),
           Expanded(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.lg,
+              ),
               child: SelectableText(
                 text.isEmpty ? '(empty)' : text,
                 style: TextStyle(
@@ -1443,7 +2070,7 @@ class _TextDocumentView extends ConsumerWidget {
       ),
     );
     if (embedded) return SizedBox(height: 280, child: view);
-    return Padding(padding: const EdgeInsets.all(Spacing.lg), child: view);
+    return Padding(padding: const EdgeInsets.all(Spacing.md), child: view);
   }
 }
 
@@ -1463,29 +2090,44 @@ class _EmptyDrawerState extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
-        child: Column(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: tokens.textMuted, size: 28),
-            const SizedBox(height: Spacing.lg),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: tokens.textSecondary,
-                fontSize: FontSizes.base,
-                fontWeight: FontWeight.w800,
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(
+                icon,
+                color: tokens.textMuted.withValues(alpha: 0.72),
+                size: 14,
               ),
             ),
-            const SizedBox(height: Spacing.sm),
-            Text(
-              detail,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-                height: 1.35,
+            const SizedBox(width: Spacing.sm),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontSize: FontSizes.xs,
+                      height: 1.25,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    detail,
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                      height: 1.28,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

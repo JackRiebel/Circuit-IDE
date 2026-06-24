@@ -179,7 +179,6 @@ class SettingsNotifier extends Notifier<SettingsModel> {
     final projects = List<String>.from(state.recentProjects);
     projects.remove(path);
     projects.insert(0, path);
-    if (projects.length > 10) projects.removeLast();
     state = state.copyWith(recentProjects: projects, lastProjectPath: path);
     _save();
   }

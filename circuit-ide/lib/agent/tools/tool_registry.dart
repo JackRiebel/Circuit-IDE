@@ -42,12 +42,37 @@ class ToolRegistry {
 
   static List<ToolDefinition> toolsForMode(AgentToolMode mode) {
     final allowedNames = switch (mode) {
+      AgentToolMode.chat => const <String>{},
       AgentToolMode.ask => _askToolNames,
       AgentToolMode.plan => _planToolNames,
       AgentToolMode.code => _codeToolNames,
       AgentToolMode.fix => _codeToolNames,
       AgentToolMode.review => _reviewToolNames,
+      AgentToolMode.verify => _verifyToolNames,
       AgentToolMode.handoff => _handoffToolNames,
+    };
+    return allTools.where((tool) => allowedNames.contains(tool.name)).toList();
+  }
+
+  static List<ToolDefinition> toolsForModeAndPhase(
+    AgentToolMode mode,
+    AgentToolPhase phase,
+  ) {
+    final allowedNames = switch ((mode, phase)) {
+      (AgentToolMode.chat, _) => const <String>{},
+      (AgentToolMode.ask, _) => _askToolNames,
+      (AgentToolMode.review, _) => _reviewToolNames,
+      (AgentToolMode.handoff, _) => _handoffToolNames,
+      (AgentToolMode.plan, _) => _planToolNames,
+      (AgentToolMode.verify, _) => _verifyToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.inspect) =>
+        _askToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.propose) =>
+        _codeProposalToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.apply) =>
+        _codeApplyToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.verify) =>
+        _verifyToolNames,
     };
     return allTools.where((tool) => allowedNames.contains(tool.name)).toList();
   }
@@ -76,6 +101,18 @@ class ToolRegistry {
             'description':
                 'Markdown plan shown in the Studio review panel. Include implementation steps, files, and verification.',
           },
+          'assumptions': {
+            'type': 'array',
+            'description':
+                'Explicit assumptions the user should review before implementation.',
+            'items': {'type': 'string'},
+          },
+          'verification_steps': {
+            'type': 'array',
+            'description':
+                'Specific checks CircuitCode should suggest after the patch is applied.',
+            'items': {'type': 'string'},
+          },
           'files': {
             'type': 'array',
             'items': {
@@ -86,16 +123,26 @@ class ToolRegistry {
                 'operation': {
                   'type': 'string',
                   'enum': ['create', 'modify', 'delete'],
+                  'description':
+                      'Required for plan-only and applyable proposals. Use create for new files, modify for existing-file changes, and delete only when the user/accepted plan explicitly asks to remove a file.',
                 },
                 'content': {
                   'type': 'string',
                   'description':
-                      'Full target file content when the plan is ready to apply. Omit for plan-only proposals.',
+                      'Full target file content when the proposal is ready for app-side apply. Required for applyable create/modify proposals. Omit only for plan-only proposals.',
                 },
-                'before': {'type': 'string'},
-                'unified_diff': {'type': 'string'},
+                'before': {
+                  'type': 'string',
+                  'description':
+                      'Expected current file content. Required for applyable modify/delete proposals so CircuitCode can detect stale-file conflicts.',
+                },
+                'unified_diff': {
+                  'type': 'string',
+                  'description':
+                      'Optional preview/explanation diff. CircuitCode cannot apply diff-only create/modify proposals; include content for app-side apply.',
+                },
               },
-              'required': ['path', 'intent'],
+              'required': ['path', 'intent', 'operation'],
             },
           },
         },
@@ -476,7 +523,9 @@ class ToolRegistry {
   ];
 }
 
-enum AgentToolMode { ask, plan, code, fix, review, handoff }
+enum AgentToolMode { chat, ask, plan, code, fix, review, verify, handoff }
+
+enum AgentToolPhase { inspect, propose, apply, verify }
 
 const _askToolNames = {
   'read_file',
@@ -487,7 +536,15 @@ const _askToolNames = {
   'git_log',
 };
 
-const _codeToolNames = {..._askToolNames, 'propose_patch', 'run_command'};
+const _codeToolNames = _codeProposalToolNames;
+
+const _codeProposalToolNames = {..._askToolNames, 'propose_patch'};
+
+// Patch application is app-owned. The model can propose patch data, but
+// Studio review UI invokes apply_patch_set internally after user approval.
+const _codeApplyToolNames = _codeProposalToolNames;
+
+const _verifyToolNames = {..._askToolNames, 'run_command'};
 
 const _planToolNames = {..._askToolNames, 'propose_patch'};
 

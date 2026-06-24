@@ -9,16 +9,21 @@ import 'agent_manager_provider.dart';
 import 'connection_provider.dart';
 import 'editor_provider.dart';
 
+const _ghostPausedMessage =
+    'Ghost Mode is paused while Studio uses the request-local turn runtime. '
+    'Run this task from Studio so it inherits intent routing, scoped approvals, and deterministic patch review.';
+
 class GhostModeState {
   final List<GhostTask> tasks;
 
   const GhostModeState({this.tasks = const []});
 
-  int get runningCount => tasks.where((t) => t.status == GhostStatus.running).length;
+  int get runningCount =>
+      tasks.where((t) => t.status == GhostStatus.running).length;
   GhostTask? get latestCompleted => tasks.cast<GhostTask?>().firstWhere(
-        (t) => t!.status == GhostStatus.completed,
-        orElse: () => null,
-      );
+    (t) => t!.status == GhostStatus.completed,
+    orElse: () => null,
+  );
 
   GhostModeState copyWith({List<GhostTask>? tasks}) =>
       GhostModeState(tasks: tasks ?? this.tasks);
@@ -27,16 +32,39 @@ class GhostModeState {
 class GhostModeNotifier extends Notifier<GhostModeState> {
   @override
   GhostModeState build() => const GhostModeState();
+  bool get _ghostModeEnabled => false;
 
   Future<void> startGhost(String description) async {
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
 
     final task = GhostTask(description: description);
-    state = state.copyWith(tasks: [
-      task.copyWith(status: GhostStatus.running),
-      ...state.tasks,
-    ]);
+    if (!_ghostModeEnabled) {
+      state = state.copyWith(
+        tasks: [
+          task.copyWith(
+            status: GhostStatus.failed,
+            completedAt: DateTime.now(),
+            error: _ghostPausedMessage,
+          ),
+          ...state.tasks,
+        ],
+      );
+
+      service.events.emit(EventType.ghostFailed, {
+        'taskId': task.id,
+        'error': _ghostPausedMessage,
+      });
+      Logger.info('Ghost Mode launch paused', 'GhostMode');
+      return;
+    }
+
+    state = state.copyWith(
+      tasks: [
+        task.copyWith(status: GhostStatus.running),
+        ...state.tasks,
+      ],
+    );
 
     service.events.emit(EventType.ghostStarted, {'taskId': task.id});
 
@@ -70,12 +98,15 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
           ? 'No files changed'
           : '${diffs.length} file${diffs.length > 1 ? 's' : ''} (+$totalAdds -$totalDels)';
 
-      _updateTask(task.id, (t) => t.copyWith(
-            status: GhostStatus.completed,
-            completedAt: DateTime.now(),
-            diffs: diffs,
-            summary: summaryText,
-          ));
+      _updateTask(
+        task.id,
+        (t) => t.copyWith(
+          status: GhostStatus.completed,
+          completedAt: DateTime.now(),
+          diffs: diffs,
+          summary: summaryText,
+        ),
+      );
 
       service.events.emit(EventType.ghostCompleted, {
         'taskId': task.id,
@@ -85,11 +116,14 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
 
       Logger.info('Ghost completed: $summaryText', 'GhostMode');
     } catch (e) {
-      _updateTask(task.id, (t) => t.copyWith(
-            status: GhostStatus.failed,
-            completedAt: DateTime.now(),
-            error: e.toString(),
-          ));
+      _updateTask(
+        task.id,
+        (t) => t.copyWith(
+          status: GhostStatus.failed,
+          completedAt: DateTime.now(),
+          error: e.toString(),
+        ),
+      );
 
       service.events.emit(EventType.ghostFailed, {
         'taskId': task.id,
@@ -158,8 +192,9 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
   Future<Map<String, String>> _snapshotDir(String dir) async {
     final snapshots = <String, String>{};
     try {
-      await for (final entity
-          in Directory(dir).list(recursive: true, followLinks: false)) {
+      await for (final entity in Directory(
+        dir,
+      ).list(recursive: true, followLinks: false)) {
         if (entity is File) {
           final relPath = entity.path.substring(dir.length + 1);
           // Skip hidden dirs, build artifacts, etc.
@@ -211,15 +246,17 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
 
       if (adds == 0 && dels == 0) continue;
 
-      diffs.add(GhostFileDiff(
-        filePath: path,
-        beforeContent: beforeContent ?? '',
-        afterContent: afterContent ?? '',
-        additions: adds,
-        deletions: dels,
-        isNew: beforeContent == null,
-        isDeleted: afterContent == null,
-      ));
+      diffs.add(
+        GhostFileDiff(
+          filePath: path,
+          beforeContent: beforeContent ?? '',
+          afterContent: afterContent ?? '',
+          additions: adds,
+          deletions: dels,
+          isNew: beforeContent == null,
+          isDeleted: afterContent == null,
+        ),
+      );
     }
 
     return diffs;
@@ -227,9 +264,26 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
 
   bool _isTextFile(String path) {
     const textExtensions = {
-      '.dart', '.yaml', '.yml', '.json', '.md', '.txt', '.xml',
-      '.html', '.css', '.js', '.ts', '.py', '.sh', '.toml',
-      '.lock', '.gradle', '.properties', '.cfg', '.ini', '.env',
+      '.dart',
+      '.yaml',
+      '.yml',
+      '.json',
+      '.md',
+      '.txt',
+      '.xml',
+      '.html',
+      '.css',
+      '.js',
+      '.ts',
+      '.py',
+      '.sh',
+      '.toml',
+      '.lock',
+      '.gradle',
+      '.properties',
+      '.cfg',
+      '.ini',
+      '.env',
     };
     for (final ext in textExtensions) {
       if (path.endsWith(ext)) return true;
@@ -238,5 +292,6 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
   }
 }
 
-final ghostModeProvider =
-    NotifierProvider<GhostModeNotifier, GhostModeState>(GhostModeNotifier.new);
+final ghostModeProvider = NotifierProvider<GhostModeNotifier, GhostModeState>(
+  GhostModeNotifier.new,
+);

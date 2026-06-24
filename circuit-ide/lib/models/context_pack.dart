@@ -34,6 +34,8 @@ class ContextPackItem {
   final int estimatedTokens;
   final bool removable;
   final bool includedByDefault;
+  final int? retrievalScore;
+  final String? retrievalReason;
 
   const ContextPackItem({
     required this.id,
@@ -45,6 +47,8 @@ class ContextPackItem {
     this.estimatedTokens = 0,
     this.removable = true,
     this.includedByDefault = true,
+    this.retrievalScore,
+    this.retrievalReason,
   });
 
   String get promptBlock {
@@ -63,6 +67,8 @@ class ContextPackItem {
       'estimatedTokens': estimatedTokens,
       'removable': removable,
       'includedByDefault': includedByDefault,
+      'retrievalScore': retrievalScore,
+      'retrievalReason': retrievalReason,
     };
   }
 
@@ -84,6 +90,8 @@ class ContextPackItem {
         estimatedTokens: json['estimatedTokens'] as int? ?? 0,
         removable: json['removable'] as bool? ?? true,
         includedByDefault: json['includedByDefault'] as bool? ?? true,
+        retrievalScore: json['retrievalScore'] as int?,
+        retrievalReason: json['retrievalReason'] as String?,
       );
     } catch (_) {
       return null;
@@ -109,6 +117,15 @@ class ContextPackWarning {
   final String? itemId;
 
   const ContextPackWarning({required this.message, this.itemId});
+
+  Map<String, dynamic> toJson() => {'message': message, 'itemId': itemId};
+
+  static ContextPackWarning fromJson(Map<String, dynamic> json) {
+    return ContextPackWarning(
+      message: json['message'] as String? ?? '',
+      itemId: json['itemId'] as String?,
+    );
+  }
 }
 
 class ContextPackSource {
@@ -119,6 +136,136 @@ class ContextPackSource {
   const ContextPackSource({required this.kind, required this.label, this.path});
 }
 
+class ContextCandidate {
+  final String id;
+  final String title;
+  final String? path;
+  final ContextPackSourceKind sourceKind;
+  final int score;
+  final int estimatedTokens;
+  final bool included;
+  final String reason;
+
+  const ContextCandidate({
+    required this.id,
+    required this.title,
+    this.path,
+    required this.sourceKind,
+    required this.score,
+    required this.estimatedTokens,
+    required this.included,
+    required this.reason,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'path': path,
+    'sourceKind': sourceKind.name,
+    'score': score,
+    'estimatedTokens': estimatedTokens,
+    'included': included,
+    'reason': reason,
+  };
+
+  static ContextCandidate fromJson(Map<String, dynamic> json) {
+    return ContextCandidate(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      path: json['path'] as String?,
+      sourceKind: ContextPackSourceKind.values.firstWhere(
+        (value) => value.name == json['sourceKind'],
+        orElse: () => ContextPackSourceKind.projectProfile,
+      ),
+      score: json['score'] as int? ?? 0,
+      estimatedTokens: json['estimatedTokens'] as int? ?? 0,
+      included: json['included'] as bool? ?? false,
+      reason: json['reason'] as String? ?? '',
+    );
+  }
+}
+
+class ContextBudgetReport {
+  final int maxTokens;
+  final int reservedForResponse;
+  final int availableForContext;
+  final int usedTokens;
+
+  const ContextBudgetReport({
+    required this.maxTokens,
+    required this.reservedForResponse,
+    required this.availableForContext,
+    required this.usedTokens,
+  });
+
+  bool get exceeded => usedTokens > availableForContext;
+
+  Map<String, dynamic> toJson() => {
+    'maxTokens': maxTokens,
+    'reservedForResponse': reservedForResponse,
+    'availableForContext': availableForContext,
+    'usedTokens': usedTokens,
+    'exceeded': exceeded,
+  };
+
+  static ContextBudgetReport fromJson(Map<String, dynamic>? json) {
+    return ContextBudgetReport(
+      maxTokens: json?['maxTokens'] as int? ?? 0,
+      reservedForResponse: json?['reservedForResponse'] as int? ?? 0,
+      availableForContext: json?['availableForContext'] as int? ?? 0,
+      usedTokens: json?['usedTokens'] as int? ?? 0,
+    );
+  }
+}
+
+class ContextRetrievalResult {
+  final List<ContextCandidate> rankedCandidates;
+  final ContextBudgetReport budget;
+  final List<ContextPackWarning> warnings;
+
+  const ContextRetrievalResult({
+    required this.rankedCandidates,
+    required this.budget,
+    this.warnings = const [],
+  });
+
+  List<ContextCandidate> get includedCandidates =>
+      rankedCandidates.where((candidate) => candidate.included).toList();
+
+  List<ContextCandidate> get omittedCandidates =>
+      rankedCandidates.where((candidate) => !candidate.included).toList();
+
+  Map<String, dynamic> toJson() => {
+    'rankedCandidates': rankedCandidates
+        .map((candidate) => candidate.toJson())
+        .toList(),
+    'budget': budget.toJson(),
+    'warnings': warnings.map((warning) => warning.toJson()).toList(),
+  };
+
+  static ContextRetrievalResult? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    try {
+      return ContextRetrievalResult(
+        rankedCandidates:
+            (json['rankedCandidates'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .map(ContextCandidate.fromJson)
+                .toList(),
+        budget: ContextBudgetReport.fromJson(
+          json['budget'] as Map<String, dynamic>?,
+        ),
+        warnings: (json['warnings'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ContextPackWarning.fromJson)
+            .toList(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class ContextPack {
   final String id;
   final String projectKey;
@@ -126,6 +273,7 @@ class ContextPack {
   final List<ContextPackItem> items;
   final List<ContextPackItem> instructionItems;
   final List<String> removedItemIds;
+  final ContextRetrievalResult? retrievalResult;
 
   const ContextPack({
     required this.id,
@@ -134,6 +282,7 @@ class ContextPack {
     this.items = const [],
     this.instructionItems = const [],
     this.removedItemIds = const [],
+    this.retrievalResult,
   });
 
   List<ContextPackItem> get allItems => [...items, ...instructionItems];
@@ -149,6 +298,7 @@ class ContextPack {
     List<ContextPackItem>? items,
     List<ContextPackItem>? instructionItems,
     List<String>? removedItemIds,
+    ContextRetrievalResult? retrievalResult,
   }) {
     return ContextPack(
       id: id,
@@ -157,6 +307,7 @@ class ContextPack {
       items: items ?? this.items,
       instructionItems: instructionItems ?? this.instructionItems,
       removedItemIds: removedItemIds ?? this.removedItemIds,
+      retrievalResult: retrievalResult ?? this.retrievalResult,
     );
   }
 
@@ -178,6 +329,7 @@ class ContextPack {
           .map((item) => item.toJson())
           .toList(),
       'removedItemIds': removedItemIds,
+      'retrievalResult': retrievalResult?.toJson(),
     };
   }
 
@@ -202,6 +354,9 @@ class ContextPack {
         removedItemIds:
             (json['removedItemIds'] as List<dynamic>?)?.cast<String>() ??
             const [],
+        retrievalResult: ContextRetrievalResult.fromJson(
+          json['retrievalResult'] as Map<String, dynamic>?,
+        ),
       );
     } catch (_) {
       return null;

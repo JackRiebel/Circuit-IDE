@@ -1,6 +1,8 @@
 import 'dart:io';
 
 class PlatformUtils {
+  static String? configDirOverride;
+
   static bool get isMacOS => Platform.isMacOS;
   static bool get isWindows => Platform.isWindows;
   static bool get isLinux => Platform.isLinux;
@@ -13,6 +15,8 @@ class PlatformUtils {
   }
 
   static String get configDir {
+    final override = configDirOverride;
+    if (override != null && override.isNotEmpty) return override;
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'] ?? '';
       return '$appData\\CircuitIDE';

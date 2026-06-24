@@ -15,7 +15,6 @@ import '../../models/studio_view_models.dart';
 import '../../models/workspace_open_result.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/command_run_provider.dart';
-import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../state/studio_project_creator.dart';
@@ -41,7 +40,7 @@ class StudioLeftRail extends ConsumerWidget {
         if (!settings.recentProjects.contains(path)) path,
     ];
     return Container(
-      width: 236,
+      width: 238,
       decoration: BoxDecoration(
         color: tokens.studioRail,
         gradient: LinearGradient(
@@ -57,9 +56,9 @@ class StudioLeftRail extends ConsumerWidget {
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: Spacing.xs),
-            _RailTopBar(),
             const SizedBox(height: Spacing.sm),
+            _RailTopBar(),
+            const SizedBox(height: Spacing.md),
             _RailAction(
               icon: Icons.edit_square,
               label: 'New task',
@@ -77,7 +76,7 @@ class StudioLeftRail extends ConsumerWidget {
               onTap: () => unawaited(_createProject(context, ref)),
             ),
             const _RailSearchBox(),
-            const SizedBox(height: Spacing.lg),
+            const SizedBox(height: Spacing.md),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
@@ -95,7 +94,7 @@ class StudioLeftRail extends ConsumerWidget {
                         'No recent projects',
                         style: TextStyle(
                           color: tokens.textMuted,
-                          fontSize: FontSizes.sm,
+                          fontSize: FontSizes.xs,
                         ),
                       ),
                     ),
@@ -105,12 +104,10 @@ class StudioLeftRail extends ConsumerWidget {
             _RailAction(
               icon: Icons.settings_outlined,
               label: 'Settings',
-              onTap: () {
-                ref.read(studioShellProvider.notifier).openAdvancedEditor();
-                ref.read(editorProvider.notifier).openSettingsTab();
-              },
+              onTap: () =>
+                  ref.read(studioShellProvider.notifier).openSettings(),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.sm),
           ],
         ),
       ),
@@ -166,20 +163,40 @@ class _RailTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(
         children: [
-          const SizedBox(width: 74),
+          const _WindowDot(color: Color(0xFFFF5F57)),
+          const SizedBox(width: Spacing.md),
+          const _WindowDot(color: Color(0xFFFFBD2E)),
+          const SizedBox(width: Spacing.md),
+          const _WindowDot(color: Color(0xFF28C840)),
+          const Spacer(),
           StudioChromeIconButton(
             tooltip: 'Open project folder',
             onTap: () => unawaited(_chooseProjectRoot(ref)),
             icon: Icons.download_for_offline,
             active: true,
-            width: 30,
-            height: 28,
+            width: 28,
+            height: 26,
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WindowDot extends StatelessWidget {
+  final Color color;
+
+  const _WindowDot({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -398,18 +415,13 @@ class _RailSectionLabel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Spacing.lg,
-        Spacing.lg,
-        Spacing.md,
-        Spacing.xs,
-      ),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, Spacing.md, Spacing.md, 3),
       child: Text(
         label,
         style: TextStyle(
-          color: tokens.textMuted,
+          color: tokens.textMuted.withValues(alpha: 0.78),
           fontSize: FontSizes.xs,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -441,20 +453,27 @@ class _RecentProjectGroup extends ConsumerWidget {
         : history?.threads ?? [];
     final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
     final selectedThreadId = threadState.selectedThreadId;
+    final threadTaskIds = threads
+        .map((thread) => thread.taskId)
+        .whereType<String>()
+        .toSet();
     final projectSummary = StudioRailProjectSummary(
       path: path,
       name: name,
       selected: isSelectedProject,
-      taskCount: tasks.length,
+      taskCount:
+          threads.length +
+          tasks.where((task) => !threadTaskIds.contains(task.id)).length,
     );
-    final taskIds = tasks.map((task) => task.id).toSet();
     final taskSummaries = [
       for (final task in tasks)
-        if (query.isEmpty || task.goal.toLowerCase().contains(query))
+        if (!threadTaskIds.contains(task.id) &&
+            (query.isEmpty || task.goal.toLowerCase().contains(query)))
           StudioRailTaskSummary(
             id: task.id,
             title: task.goal,
             selected: isSelectedProject && task.id == selectedTaskId,
+            updatedAt: task.completedAt ?? task.createdAt,
             displayState: _displayStateForTask(
               task,
               threads.where((thread) => thread.taskId == task.id).firstOrNull,
@@ -465,8 +484,7 @@ class _RecentProjectGroup extends ConsumerWidget {
     ];
     final threadSummaries = [
       for (final thread in threads)
-        if ((thread.taskId == null || !taskIds.contains(thread.taskId)) &&
-            (query.isEmpty || thread.title.toLowerCase().contains(query)))
+        if (query.isEmpty || thread.title.toLowerCase().contains(query))
           StudioRailTaskSummary(
             id: thread.id,
             title: thread.title,
@@ -474,6 +492,7 @@ class _RecentProjectGroup extends ConsumerWidget {
                 isSelectedProject &&
                 selectedTaskId == null &&
                 selectedThreadId == thread.id,
+            updatedAt: thread.updatedAt,
             displayState: TaskDisplayState.fromLifecycle(
               StudioTaskLifecycleState.fromThread(thread),
             ),
@@ -649,14 +668,60 @@ class _ConversationRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = summary.selected;
     final display = summary.displayState;
+    final showStatusChip = studioRailShouldShowStatusChip(display);
+    final ageLabel = studioRailAgeLabel(summary.updatedAt);
     return StudioRailRow(
       label: summary.title,
       selected: selected,
       leftIndent: Spacing.xxl,
       onTap: onTap,
-      trailing: StudioMiniChip(
-        label: display.label,
-        attention: display.needsAttention,
+      trailing: showStatusChip
+          ? StudioMiniChip(
+              label: display.label,
+              attention: display.needsAttention,
+            )
+          : ageLabel == null
+          ? null
+          : _RailAgeLabel(label: ageLabel),
+    );
+  }
+}
+
+bool studioRailShouldShowStatusChip(TaskDisplayState display) {
+  return display.isActive || display.needsAttention;
+}
+
+String? studioRailAgeLabel(DateTime? updatedAt, {DateTime? now}) {
+  if (updatedAt == null) return null;
+  final current = now ?? DateTime.now();
+  final delta = current.difference(updatedAt);
+  if (delta.isNegative) return 'now';
+  if (delta.inMinutes < 1) return 'now';
+  if (delta.inHours < 1) return '${delta.inMinutes}m';
+  if (delta.inDays < 1) return '${delta.inHours}h';
+  if (delta.inDays < 7) return '${delta.inDays}d';
+  if (delta.inDays < 30) return '${(delta.inDays / 7).floor()}w';
+  if (delta.inDays < 365) return '${(delta.inDays / 30).floor()}mo';
+  return '${(delta.inDays / 365).floor()}y';
+}
+
+class _RailAgeLabel extends ConsumerWidget {
+  final String label;
+
+  const _RailAgeLabel({required this.label});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: tokens.textMuted.withValues(alpha: 0.78),
+        fontSize: FontSizes.xs,
+        height: 1.1,
+        fontWeight: FontWeight.w500,
       ),
     );
   }

@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../agent/studio_turn_runner.dart';
-import '../agent/config/config.dart';
+import '../agent/studio_agent_environment.dart';
 import '../agent/config/models_config.dart';
+import '../agent/providers/provider_interface.dart';
+import '../agent/security/agent_tool_permission_policy.dart';
 import '../agent/tools/tool_executor.dart';
 import '../agent/tools/tool_registry.dart';
 import '../enums/ai_provider.dart';
@@ -13,16 +16,21 @@ import '../enums/event_type.dart';
 import '../models/agent_preflight.dart';
 import '../models/agent_request.dart';
 import '../models/agent_run.dart';
+import '../models/agent_tool_permission.dart';
+import '../models/accepted_plan_context.dart';
 import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
 import '../models/context_attachment.dart';
+import '../models/provider_lifecycle_event.dart';
 import '../models/studio_turn.dart';
 import '../models/workspace_context.dart';
+import '../models/turn_intent.dart';
 import 'agent_request_provider.dart';
 import 'agent_run_provider.dart';
 import 'agent_workspace_provider.dart';
 import 'connection_provider.dart';
 import 'settings_provider.dart';
+import 'patch_proposal_provider.dart';
 import 'studio_request_lifecycle_provider.dart';
 import 'studio_thread_provider.dart';
 import 'studio_turn_provider.dart';
@@ -44,11 +52,19 @@ enum AgentTurnPhase {
   cancelled,
 }
 
+final studioAgentEnvironmentOverrideProvider =
+    Provider<StudioAgentEnvironment?>((ref) => null);
+
+final studioTurnTimeoutProvider = Provider<Duration>(
+  (ref) => const Duration(minutes: 4),
+);
+
 class AgentTurnSession {
   final String requestId;
   final String threadId;
   final String? taskId;
   final String model;
+  final TurnIntent intent;
   final AgentTurnPhase phase;
   final DateTime startedAt;
   final String? lastError;
@@ -58,6 +74,7 @@ class AgentTurnSession {
     required this.threadId,
     this.taskId,
     required this.model,
+    required this.intent,
     required this.phase,
     required this.startedAt,
     this.lastError,
@@ -69,6 +86,7 @@ class AgentTurnSession {
       threadId: threadId,
       taskId: taskId,
       model: model,
+      intent: intent,
       phase: phase ?? this.phase,
       startedAt: startedAt,
       lastError: lastError ?? this.lastError,
@@ -136,17 +154,25 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     }
 
     if (connectionStatus != ConnectionStatus.connected) {
-      final config = await AgentConfig.load();
-      final hasCredentials = config.hasCiscoCredentials;
+      final looksCredentialRelated =
+          settings.connectorHealthStatus ==
+              ConnectorHealthStatus.credentialsMissing ||
+          settings.connectorHealthStatus == ConnectorHealthStatus.tokenFailed ||
+          (settings.connectorHealthMessage ?? '').toLowerCase().contains(
+            'credential',
+          ) ||
+          (settings.connectorHealthMessage ?? '').toLowerCase().contains(
+            'auth',
+          );
       issues.add(
         AgentPreflightIssue(
           severity: AgentPreflightSeverity.blocking,
-          message: hasCredentials
-              ? 'AI is not connected. Reconnect before sending.'
-              : 'Circuit credentials are missing. Add them in Settings.',
-          recoveryAction: hasCredentials
-              ? AgentPreflightRecoveryAction.reconnect
-              : AgentPreflightRecoveryAction.openSettings,
+          message: looksCredentialRelated
+              ? 'Circuit credentials need attention. Check Settings before sending.'
+              : 'AI is not connected. Reconnect before sending.',
+          recoveryAction: looksCredentialRelated
+              ? AgentPreflightRecoveryAction.openSettings
+              : AgentPreflightRecoveryAction.reconnect,
         ),
       );
     }
@@ -227,27 +253,44 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
   bool handlePendingApprovalText(String text) {
     final pending = _activePendingApproval();
     if (pending == null) return false;
-    final normalized = text.trim().toLowerCase();
-    if (normalized.isEmpty) return false;
-    final compact = normalized.replaceAll(RegExp(r'[^a-z ]+'), ' ');
-    if (RegExp(r'\b(reject|deny|cancel|stop)\b').hasMatch(compact)) {
+    final compact = text
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9 ]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (compact.isEmpty) return false;
+    if (_isSimpleApprovalRejection(compact)) {
       rejectApproval(pending.approvalId!);
       return true;
     }
-    if (RegExp(
-          r'\b(always|auto|all|this task|this turn)\b',
-        ).hasMatch(compact) &&
-        RegExp(r'\b(approve|yes|ok|proceed|continue)\b').hasMatch(compact)) {
+    if (_isSimpleTurnApproval(compact)) {
       approveForTurn(pending.approvalId!);
       return true;
     }
-    if (RegExp(
-      r'^(approve|approved|yes|y|ok|okay|proceed|continue|do it|go ahead)( please)?$',
-    ).hasMatch(compact.trim())) {
+    if (_isSimpleOneShotApproval(compact)) {
       approveOnce(pending.approvalId!);
       return true;
     }
     return false;
+  }
+
+  bool _isSimpleApprovalRejection(String text) {
+    return RegExp(
+      r'^(reject|deny|decline|cancel|stop)( (it|this|request|action))?( please)?$',
+    ).hasMatch(text);
+  }
+
+  bool _isSimpleTurnApproval(String text) {
+    return RegExp(
+      r'^(approve|approved|yes|y|ok|okay|proceed|continue|do it|go ahead)( (for )?(this )?turn)( please)?$',
+    ).hasMatch(text);
+  }
+
+  bool _isSimpleOneShotApproval(String text) {
+    return RegExp(
+      r'^(approve|approved|yes|y|ok|okay|proceed|continue|do it|go ahead)( (it|this|request|action))?( please)?$',
+    ).hasMatch(text);
   }
 
   Future<void> startTurn({
@@ -258,24 +301,69 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     required List<ContextAttachment> attachments,
     required List<ChatMessage> historyOverride,
     required AgentToolMode toolMode,
+    required TurnIntent intent,
+    AcceptedPlanContext? acceptedPlan,
     required String model,
     required String retryPrompt,
     required bool finishTask,
   }) async {
+    if (state.activeSessions.containsKey(requestId)) {
+      return;
+    }
+    if (state.activeSessions.isNotEmpty) {
+      const message =
+          'A request is already running. Wait for it to finish or cancel it before sending another.';
+      _failBeforeStart(
+        requestId: requestId,
+        threadId: threadId,
+        taskId: taskId,
+        finishTask: finishTask,
+        message: message,
+      );
+      return;
+    }
     final service = ref.read(agentServiceProvider);
-    final provider = service.provider;
-    final workingDir = service.state.workingDir;
+    final environmentOverride = ref.read(
+      studioAgentEnvironmentOverrideProvider,
+    );
+    final provider = environmentOverride?.provider ?? service.provider;
+    final workingDir =
+        environmentOverride?.workspaceRoot ?? service.state.workingDir.trim();
+    final effectiveWorkingDir =
+        workingDir.isEmpty && toolMode == AgentToolMode.chat
+        ? Directory.systemTemp.path
+        : workingDir;
     final finalContent = _buildMessageWithContext(outboundText, attachments);
-    if (provider == null || workingDir.trim().isEmpty) {
+    if (provider == null || effectiveWorkingDir.trim().isEmpty) {
       final message = provider == null
           ? 'Circuit AI is not connected.'
           : 'No workspace is bound to this Studio turn.';
-      ref.read(studioThreadProvider.notifier).fail(threadId, message);
-      ref
-          .read(studioRequestLifecycleProvider.notifier)
-          .failRequest(requestId, message);
+      _failBeforeStart(
+        requestId: requestId,
+        threadId: threadId,
+        taskId: taskId,
+        finishTask: finishTask,
+        message: message,
+      );
       return;
     }
+    final environment =
+        environmentOverride ??
+        StudioAgentEnvironment(
+          provider: provider,
+          model: model,
+          workspaceRoot: effectiveWorkingDir,
+          permissionPolicy: AgentToolPermissionPolicy(
+            workingDir: effectiveWorkingDir,
+          ),
+          events: service.events,
+          onProviderEvent: (event) {
+            service.events.emit(EventType.providerLifecycle, {
+              'event': event,
+              'requestId': event.requestId,
+            });
+          },
+        );
     state = state.copyWith(
       activeSessions: {
         ...state.activeSessions,
@@ -284,6 +372,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           threadId: threadId,
           taskId: taskId,
           model: model,
+          intent: intent,
           phase: AgentTurnPhase.providerRequest,
           startedAt: DateTime.now(),
         ),
@@ -306,8 +395,21 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
         .read(agentRequestProvider.notifier)
         .start(lane: AgentRequestLane.chat, requestId: requestId, model: model);
     final turnRef = ref.read(studioTurnProvider).refForRequest(requestId);
+    if (acceptedPlan != null) {
+      ref
+          .read(studioTurnProvider.notifier)
+          .setAcceptedPlanState(
+            requestId,
+            AcceptedPlanState.implementationStarted,
+          );
+      if (acceptedPlan.verificationRequested) {
+        ref
+            .read(studioTurnProvider.notifier)
+            .markAcceptedPlanVerificationRequested(requestId);
+      }
+    }
     final executor = ToolExecutor(
-      workingDir: workingDir,
+      workingDir: environment.workspaceRoot,
       autoApprove: false,
       onConfirmationNeeded: (request) =>
           _handleConfirmationNeeded(requestId, request),
@@ -318,22 +420,21 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           'cancelled' => EventType.toolCallError,
           _ => EventType.toolCallStarted,
         };
-        service.events.emit(type, {
+        environment.events.emit(type, {
           'toolCall': toolCall,
           'requestId': requestId,
         });
       },
     );
-    final config = await AgentConfig.load();
-    if (config.githubPat != null) {
-      executor.configureGithub(config.githubPat!);
-    }
     final runner = StudioTurnRunner(
-      provider: provider,
-      workingDir: workingDir,
-      events: service.events,
-      model: model,
+      provider: environment.provider,
+      workingDir: environment.workspaceRoot,
+      events: environment.events,
+      model: environment.model,
       toolExecutor: executor,
+      approvalGrantProvider: () => _turnAutoApprove[requestId] == true
+          ? ApprovalGrant.turn
+          : ApprovalGrant.none,
     );
     _runners[requestId] = runner;
 
@@ -345,11 +446,20 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
             userMessage: finalContent,
             history: historyOverride,
             toolMode: toolMode,
+            intent: intent,
+            acceptedPlan: acceptedPlan,
           )
-          .timeout(const Duration(minutes: 4));
+          .timeout(ref.read(studioTurnTimeoutProvider));
+      _setAcceptedPlanState(requestId, turnRef, result.acceptedPlanState);
       ref
           .read(studioThreadProvider.notifier)
           .updateTokenUsage(threadId, result.usage);
+      ref
+          .read(studioThreadProvider.notifier)
+          .complete(threadId, tokenUsage: result.usage);
+      ref
+          .read(studioRequestLifecycleProvider.notifier)
+          .completeRequest(requestId);
       ref
           .read(agentRunProvider.notifier)
           .finishRun(
@@ -361,12 +471,26 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       const message =
           'Request timed out after 4 minutes. Try again or check the Circuit AI connection.';
       runner.cancel();
+      service.events.emit(EventType.providerLifecycle, {
+        'event': ProviderLifecycleEvent(
+          requestId: requestId,
+          turnId: turnRef?.turnId,
+          kind: ProviderLifecycleEventKind.timeout,
+          timestamp: DateTime.now(),
+          model: model,
+          detail: message,
+        ),
+        'requestId': requestId,
+      });
       ref.read(studioThreadProvider.notifier).fail(threadId, message);
       ref
           .read(studioRequestLifecycleProvider.notifier)
           .failRequest(requestId, message);
       if (finishTask && taskId != null) {
         ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+      }
+      if (acceptedPlan != null) {
+        _setAcceptedPlanState(requestId, turnRef, AcceptedPlanState.failed);
       }
       ref
           .read(agentRunProvider.notifier)
@@ -386,6 +510,12 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           .finishRun(AgentRunKind.chat, cancelled: true);
     } catch (error) {
       final message = error.toString().replaceFirst('Exception: ', '');
+      if (error is StudioTurnOutcomeValidationException) {
+        ref.read(patchProposalProvider.notifier).rejectActive();
+      }
+      if (acceptedPlan != null) {
+        _setAcceptedPlanState(requestId, turnRef, AcceptedPlanState.failed);
+      }
       ref.read(studioThreadProvider.notifier).fail(threadId, message);
       ref
           .read(studioRequestLifecycleProvider.notifier)
@@ -409,6 +539,44 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       final active = {...state.activeSessions}..remove(requestId);
       state = state.copyWith(activeSessions: active);
     }
+  }
+
+  void _failBeforeStart({
+    required String requestId,
+    required String threadId,
+    required String? taskId,
+    required bool finishTask,
+    required String message,
+  }) {
+    final lifecycle = ref.read(studioRequestLifecycleProvider);
+    if (lifecycle.active(requestId) != null) {
+      ref
+          .read(studioRequestLifecycleProvider.notifier)
+          .failRequest(requestId, message);
+    } else {
+      ref.read(studioThreadProvider.notifier).fail(threadId, message);
+      ref.read(studioTurnProvider.notifier).fail(requestId, message);
+      if (finishTask && taskId != null) {
+        ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
+      }
+    }
+  }
+
+  void _setAcceptedPlanState(
+    String requestId,
+    StudioTurnRef? turnRef,
+    AcceptedPlanState acceptedPlanState,
+  ) {
+    final activeTurnRef =
+        ref.read(studioTurnProvider).refForRequest(requestId) ?? turnRef;
+    if (activeTurnRef == null) return;
+    ref
+        .read(studioThreadProvider.notifier)
+        .updateTurn(
+          activeTurnRef.threadId,
+          activeTurnRef.turnId,
+          acceptedPlanState: acceptedPlanState,
+        );
   }
 
   Future<bool> _handleConfirmationNeeded(
@@ -448,9 +616,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     _approvalRequestIds.remove(approvalId);
     if (request != null) {
       request.approve();
-      return;
     }
-    ref.read(agentServiceProvider).approveConfirmation(approvalId);
   }
 
   void approveForTurn(String approvalId) {
@@ -466,13 +632,29 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     _approvalRequestIds.remove(approvalId);
     if (request != null) {
       request.reject();
-      return;
     }
-    ref.read(agentServiceProvider).rejectConfirmation(approvalId);
   }
 
   void cancel(String requestId) {
+    final session = state.sessionFor(requestId);
+    ref
+        .read(agentRequestProvider.notifier)
+        .requestCancel(AgentRequestLane.chat);
+    ref.read(agentRunProvider.notifier).requestCancel(AgentRunKind.chat);
     _runners[requestId]?.cancel();
+    if (session != null) {
+      ref.read(agentServiceProvider).events.emit(EventType.providerLifecycle, {
+        'event': ProviderLifecycleEvent(
+          requestId: requestId,
+          turnId: ref.read(studioTurnProvider).refForRequest(requestId)?.turnId,
+          kind: ProviderLifecycleEventKind.cancelled,
+          timestamp: DateTime.now(),
+          model: session.model,
+          detail: 'Studio request cancelled by user.',
+        ),
+        'requestId': requestId,
+      });
+    }
     ref.read(studioRequestLifecycleProvider.notifier).cancelRequest(requestId);
     ref
         .read(agentRequestProvider.notifier)
@@ -492,16 +674,27 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
   StudioTurnEvent? _activePendingApproval() {
     final selected = ref.read(studioThreadProvider).selectedThread;
     if (selected == null) return null;
-    for (final turn in selected.turns.reversed) {
-      for (final event in turn.events.reversed) {
-        if (event.type == StudioTurnEventType.approvalRequest &&
-            event.approvalState == ApprovalRequestState.pending &&
-            event.approvalId != null) {
-          return event;
+    StudioTurnEvent? latest;
+    for (final turn in selected.turns) {
+      for (final event in turn.events) {
+        if (event.type != StudioTurnEventType.approvalRequest ||
+            event.approvalState != ApprovalRequestState.pending ||
+            event.approvalId == null) {
+          continue;
+        }
+        final requestId = _approvalRequestIds[event.approvalId];
+        if (requestId == null ||
+            requestId != event.requestId ||
+            !_pendingApprovals.containsKey(event.approvalId) ||
+            !state.activeSessions.containsKey(requestId)) {
+          continue;
+        }
+        if (latest == null || event.timestamp.isAfter(latest.timestamp)) {
+          latest = event;
         }
       }
     }
-    return null;
+    return latest;
   }
 }
 

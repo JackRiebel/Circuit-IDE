@@ -62,27 +62,53 @@ class CommandTools {
       final stdoutBuffer = StringBuffer();
       final stderrBuffer = StringBuffer();
       final completer = Completer<int>();
+      final stdoutDone = Completer<void>();
+      final stderrDone = Completer<void>();
 
-      final stdoutSub = process.stdout.transform(utf8.decoder).listen((chunk) {
-        stdoutBuffer.write(chunk);
-        onEvent?.call(
-          CommandRunEvent(
-            type: CommandRunEventType.stdout,
-            timestamp: DateTime.now(),
-            text: chunk,
-          ),
-        );
-      });
-      final stderrSub = process.stderr.transform(utf8.decoder).listen((chunk) {
-        stderrBuffer.write(chunk);
-        onEvent?.call(
-          CommandRunEvent(
-            type: CommandRunEventType.stderr,
-            timestamp: DateTime.now(),
-            text: chunk,
-          ),
-        );
-      });
+      final stdoutSub = process.stdout
+          .transform(utf8.decoder)
+          .listen(
+            (chunk) {
+              stdoutBuffer.write(chunk);
+              onEvent?.call(
+                CommandRunEvent(
+                  type: CommandRunEventType.stdout,
+                  timestamp: DateTime.now(),
+                  text: chunk,
+                ),
+              );
+            },
+            onDone: () {
+              if (!stdoutDone.isCompleted) stdoutDone.complete();
+            },
+            onError: (Object error, StackTrace stackTrace) {
+              if (!stdoutDone.isCompleted) {
+                stdoutDone.completeError(error, stackTrace);
+              }
+            },
+          );
+      final stderrSub = process.stderr
+          .transform(utf8.decoder)
+          .listen(
+            (chunk) {
+              stderrBuffer.write(chunk);
+              onEvent?.call(
+                CommandRunEvent(
+                  type: CommandRunEventType.stderr,
+                  timestamp: DateTime.now(),
+                  text: chunk,
+                ),
+              );
+            },
+            onDone: () {
+              if (!stderrDone.isCompleted) stderrDone.complete();
+            },
+            onError: (Object error, StackTrace stackTrace) {
+              if (!stderrDone.isCompleted) {
+                stderrDone.completeError(error, stackTrace);
+              }
+            },
+          );
 
       timer = Timer(Duration(seconds: timeout), () {
         if (completer.isCompleted) return;
@@ -106,6 +132,7 @@ class CommandTools {
       final exitCode = await completer.future;
       if (runId != null) _activeProcesses.remove(runId);
       timer.cancel();
+      await Future.wait([stdoutDone.future, stderrDone.future]);
       await stdoutSub.cancel();
       await stderrSub.cancel();
       onEvent?.call(

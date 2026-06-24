@@ -1,7 +1,7 @@
 import 'agent_workspace.dart';
 import 'specialist_agent.dart';
 
-enum StudioMode { home, project, task, review, advancedEditor }
+enum StudioMode { home, project, task, review, settings }
 
 enum StudioPromptMode { ask, code, fix, review }
 

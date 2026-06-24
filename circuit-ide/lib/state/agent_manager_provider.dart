@@ -15,6 +15,9 @@ import '../services/event_bus.dart';
 import 'connection_provider.dart';
 
 const _uuid = Uuid();
+const _advancedAgentsPausedMessage =
+    'Advanced/subagent execution is paused while Studio uses the request-local turn runtime. '
+    'Run this task from Studio so it inherits intent routing, scoped approvals, and deterministic patch review.';
 
 enum AgentRunStatus { running, completed, error, cancelled }
 
@@ -88,6 +91,7 @@ class AgentManagerState {
 class AgentManagerNotifier extends Notifier<AgentManagerState> {
   final _storage = AgentConfigStorage();
   final _agents = <String, CircuitAgent>{};
+  bool get _advancedAgentsEnabled => false;
 
   @override
   AgentManagerState build() {
@@ -132,6 +136,26 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
 
   Future<void> spawnAgent(String configId, String task) async {
     final config = state.configs.firstWhere((c) => c.id == configId);
+    if (!_advancedAgentsEnabled) {
+      final instanceId = _uuid.v4();
+      final instance = AgentInstance(
+        instanceId: instanceId,
+        configId: configId,
+        name: config.name,
+        events: EventBus(),
+        task: task,
+        status: AgentRunStatus.error,
+        error: _advancedAgentsPausedMessage,
+      );
+      final running = Map<String, AgentInstance>.from(state.running);
+      running[instanceId] = instance;
+      state = state.copyWith(running: running);
+      Logger.info(
+        'Advanced agent launch paused: ${config.name}',
+        'AgentManager',
+      );
+      return;
+    }
     final service = ref.read(agentServiceProvider);
 
     // Clone the provider from the main agent service
@@ -163,7 +187,8 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
   }
 
   Future<void> spawnMultiple(
-      List<(String configId, String task)> agents) async {
+    List<(String configId, String task)> agents,
+  ) async {
     for (final (configId, task) in agents) {
       await spawnAgent(configId, task);
     }
@@ -171,6 +196,9 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
 
   /// Spawn an agent and await its response (for orchestration).
   Future<String> spawnAndAwait(String task, {String? name}) async {
+    if (!_advancedAgentsEnabled) {
+      return 'Error: $_advancedAgentsPausedMessage';
+    }
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) {
       return 'Error: Not connected to AI provider';
@@ -205,18 +233,22 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
 
       final response = await agent.chat(task);
 
-      _updateInstance(instanceId, (i) => i.copyWith(
-        status: AgentRunStatus.completed,
-        streamingContent: '',
-      ));
+      _updateInstance(
+        instanceId,
+        (i) =>
+            i.copyWith(status: AgentRunStatus.completed, streamingContent: ''),
+      );
 
       return response;
     } catch (e) {
-      _updateInstance(instanceId, (i) => i.copyWith(
-        status: AgentRunStatus.error,
-        error: e.toString().replaceFirst('Exception: ', ''),
-        streamingContent: '',
-      ));
+      _updateInstance(
+        instanceId,
+        (i) => i.copyWith(
+          status: AgentRunStatus.error,
+          error: e.toString().replaceFirst('Exception: ', ''),
+          streamingContent: '',
+        ),
+      );
       return 'Error: $e';
     }
   }
@@ -224,9 +256,10 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
   void cancelAgent(String instanceId) {
     final agent = _agents[instanceId];
     agent?.cancel();
-    _updateInstance(instanceId, (i) => i.copyWith(
-      status: AgentRunStatus.cancelled,
-    ));
+    _updateInstance(
+      instanceId,
+      (i) => i.copyWith(status: AgentRunStatus.cancelled),
+    );
   }
 
   void cancelAll() {
@@ -292,28 +325,35 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
           content: response,
           timestamp: DateTime.now(),
         );
-        _updateInstance(instanceId, (i) => i.copyWith(
-          status: AgentRunStatus.completed,
-          messages: [...i.messages, assistantMsg],
-          streamingContent: '',
-        ));
+        _updateInstance(
+          instanceId,
+          (i) => i.copyWith(
+            status: AgentRunStatus.completed,
+            messages: [...i.messages, assistantMsg],
+            streamingContent: '',
+          ),
+        );
       }
     } catch (e) {
       Logger.error('Agent $instanceId failed', e);
-      _updateInstance(instanceId, (i) => i.copyWith(
-        status: AgentRunStatus.error,
-        error: e.toString().replaceFirst('Exception: ', ''),
-        streamingContent: '',
-      ));
+      _updateInstance(
+        instanceId,
+        (i) => i.copyWith(
+          status: AgentRunStatus.error,
+          error: e.toString().replaceFirst('Exception: ', ''),
+          streamingContent: '',
+        ),
+      );
     }
   }
 
   void _wireEvents(String instanceId, EventBus eventBus) {
     eventBus.on(EventType.messageChunk, (event) {
       final content = event.data['content'] as String? ?? '';
-      _updateInstance(instanceId, (i) => i.copyWith(
-        streamingContent: i.streamingContent + content,
-      ));
+      _updateInstance(
+        instanceId,
+        (i) => i.copyWith(streamingContent: i.streamingContent + content),
+      );
     });
 
     eventBus.on(EventType.toolCallStarted, (event) {
@@ -325,18 +365,22 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
         timestamp: DateTime.now(),
         toolCalls: [toolCall],
       );
-      _updateInstance(instanceId, (i) => i.copyWith(
-        messages: [...i.messages, msg],
-      ));
+      _updateInstance(
+        instanceId,
+        (i) => i.copyWith(messages: [...i.messages, msg]),
+      );
     });
 
     eventBus.on(EventType.messageError, (event) {
       final error = event.data['error'] as String? ?? 'Unknown error';
-      _updateInstance(instanceId, (i) => i.copyWith(
-        status: AgentRunStatus.error,
-        error: error,
-        streamingContent: '',
-      ));
+      _updateInstance(
+        instanceId,
+        (i) => i.copyWith(
+          status: AgentRunStatus.error,
+          error: error,
+          streamingContent: '',
+        ),
+      );
     });
   }
 
@@ -364,5 +408,5 @@ class AgentManagerNotifier extends Notifier<AgentManagerState> {
 
 final agentManagerProvider =
     NotifierProvider<AgentManagerNotifier, AgentManagerState>(
-  AgentManagerNotifier.new,
-);
+      AgentManagerNotifier.new,
+    );

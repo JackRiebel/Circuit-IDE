@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
+import '../core/utils/platform_utils.dart';
 import '../models/context_pack.dart';
+import '../services/file_indexer.dart';
 import 'editor_provider.dart';
 import 'file_indexer_provider.dart';
 import 'file_tree_provider.dart';
@@ -49,19 +51,253 @@ const _importantContextFiles = {
   'tsconfig.json',
   'vite.config.ts',
   'next.config.js',
+  'dockerfile',
+  'makefile',
+  'justfile',
+  'procfile',
+  'gemfile',
+  'rakefile',
+  'podfile',
+  'fastfile',
+  'appfile',
+};
+const _workspaceContextFiles = {
+  'pnpm-workspace.yaml',
+  'pnpm-workspace.yml',
+  'turbo.json',
+  'nx.json',
+  'lerna.json',
+  'rush.json',
+  'melos.yaml',
+  'melos.yml',
+  'workspace.yaml',
+  'workspace.yml',
+};
+const _deploymentContextFiles = {
+  'vercel.json',
+  'netlify.toml',
+  'firebase.json',
+  '.firebaserc',
+  'railway.json',
+  'railway.toml',
+  'render.yaml',
+  'render.yml',
+  'fly.toml',
+  'app.yaml',
+  'app.yml',
+  'cloudbuild.yaml',
+  'cloudbuild.yml',
+  'docker-compose.yml',
+  'docker-compose.yaml',
+  'compose.yml',
+  'compose.yaml',
+};
+const _domainContextTerms = {
+  'auth': {
+    'auth',
+    'login',
+    'signin',
+    'sign',
+    'oauth',
+    'sso',
+    'session',
+    'token',
+    'jwt',
+    'redirect',
+    'callback',
+    'permission',
+    'permissions',
+    'role',
+    'roles',
+    'security',
+  },
+  'test': {
+    'test',
+    'tests',
+    'testing',
+    'spec',
+    'failing',
+    'failed',
+    'failure',
+    'pytest',
+    'jest',
+    'vitest',
+    'flutter',
+    'analyze',
+  },
+  'routing': {
+    'route',
+    'routes',
+    'router',
+    'routing',
+    'navigation',
+    'redirect',
+    'screen',
+    'page',
+    'view',
+  },
+  'api': {
+    'api',
+    'endpoint',
+    'request',
+    'response',
+    'client',
+    'server',
+    'http',
+    'graphql',
+    'rest',
+  },
+  'data': {
+    'database',
+    'db',
+    'schema',
+    'model',
+    'models',
+    'migration',
+    'query',
+    'table',
+    'store',
+    'repository',
+  },
+  'state': {
+    'state',
+    'provider',
+    'store',
+    'notifier',
+    'controller',
+    'bloc',
+    'redux',
+    'riverpod',
+  },
+  'ui': {
+    'ui',
+    'ux',
+    'component',
+    'components',
+    'widget',
+    'widgets',
+    'button',
+    'form',
+    'layout',
+    'style',
+  },
 };
 
 class _RelevantFileScore {
   final String path;
   final String content;
   final int score;
+  final String reason;
 
-  const _RelevantFileScore(this.path, this.content, this.score);
+  const _RelevantFileScore(this.path, this.content, this.score, this.reason);
 }
 
+class _RelevantFileResult {
+  final List<ContextPackItem> items;
+  final List<ContextCandidate> omittedCandidates;
+
+  const _RelevantFileResult({
+    required this.items,
+    required this.omittedCandidates,
+  });
+}
+
+class _InstructionFileScore {
+  final ContextPackItem item;
+  final int score;
+  final String relativePath;
+
+  const _InstructionFileScore({
+    required this.item,
+    required this.score,
+    required this.relativePath,
+  });
+}
+
+class ContextPreferenceStore {
+  final String baseDir;
+
+  ContextPreferenceStore({String? baseDir})
+    : baseDir = baseDir ?? p.join(PlatformUtils.configDir, 'context');
+
+  String pathForRoot(String? rootPath) {
+    final key = _projectKey(rootPath);
+    return p.join(baseDir, '$key.preferences.json');
+  }
+
+  Set<String> loadIncludedPaths(String? rootPath) {
+    try {
+      final file = File(pathForRoot(rootPath));
+      if (!file.existsSync()) return const {};
+      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      final paths =
+          (json['include_next_paths'] as List<dynamic>?)?.whereType<String>() ??
+          const Iterable<String>.empty();
+      return paths.map(_normalizePreferencePath).whereType<String>().toSet();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  void saveIncludedPaths(String? rootPath, Set<String> paths) {
+    try {
+      final file = File(pathForRoot(rootPath));
+      if (!file.parent.existsSync()) file.parent.createSync(recursive: true);
+      final safePaths =
+          paths.map(_normalizePreferencePath).whereType<String>().toList()
+            ..sort();
+      file.writeAsStringSync(
+        const JsonEncoder.withIndent(
+          '  ',
+        ).convert({'rootPath': rootPath, 'include_next_paths': safePaths}),
+      );
+    } catch (_) {}
+  }
+
+  static String _projectKey(String? rootPath) {
+    if (rootPath == null || rootPath.isEmpty) return 'scratch';
+    return base64Url.encode(utf8.encode(rootPath)).replaceAll('=', '');
+  }
+
+  static String? _normalizePreferencePath(String path) {
+    final normalized = p.normalize(path).replaceAll('\\', '/');
+    if (normalized.isEmpty ||
+        normalized == '.' ||
+        normalized == '..' ||
+        normalized.startsWith('/') ||
+        normalized.startsWith('//') ||
+        p.isAbsolute(normalized) ||
+        RegExp(r'^[A-Za-z]:/').hasMatch(normalized)) {
+      return null;
+    }
+    final parts = normalized.split('/');
+    if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
+      return null;
+    }
+    return normalized;
+  }
+}
+
+final contextPreferenceStoreProvider = Provider<ContextPreferenceStore>(
+  (ref) => ContextPreferenceStore(),
+);
+
 class ContextPackController extends Notifier<ContextPack?> {
+  final Map<String, Set<String>> _includeNextByRoot = {};
+
   @override
-  ContextPack? build() => null;
+  ContextPack? build() {
+    _includeNextByRoot.clear();
+    return null;
+  }
+
+  Future<ContextPack> buildForCodingTaskWithFreshIndex({String? prompt}) async {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    if (rootPath != null) {
+      await ref.read(fileIndexerProvider.notifier).refreshIfStale();
+    }
+    return buildForCodingTask(prompt: prompt);
+  }
 
   ContextPack buildForCodingTask({String? prompt}) {
     final profile = ref.read(projectProfileProvider);
@@ -127,22 +363,23 @@ class ContextPackController extends Notifier<ContextPack?> {
     }
 
     items.addAll(_mentionedFileItems(prompt, rootPath));
-    items.addAll(
-      _relevantFileItems(
-        prompt,
-        rootPath,
-        alreadyIncludedSources: {
-          for (final item in items)
-            if (item.source != null) item.source!,
-        },
-      ),
-    );
-
     final changedFiles = {
       ...git.staged.map((change) => change.path),
       ...git.unstaged.map((change) => change.path),
       ...git.untracked.map((change) => change.path),
     }.take(8).toList();
+
+    final relevantFiles = _relevantFileItems(
+      prompt,
+      rootPath,
+      changedFiles: changedFiles.toSet(),
+      alreadyIncludedSources: {
+        for (final item in items)
+          if (item.source != null) item.source!,
+      },
+    );
+    items.addAll(relevantFiles.items);
+
     if (changedFiles.isNotEmpty) {
       final diff = _gitDiffSnippet(rootPath);
       items.add(
@@ -220,12 +457,34 @@ class ContextPackController extends Notifier<ContextPack?> {
       );
     }
 
+    final instructionItems = _instructionItems(
+      rootPath,
+      prompt: prompt,
+      contextSources: {
+        for (final item in items)
+          if (item.source != null && item.source != rootPath) item.source!,
+        ...changedFiles,
+      },
+    );
+    final retrievalResult = _buildRetrievalResult(
+      items: items,
+      instructionItems: instructionItems,
+      omittedCandidates: relevantFiles.omittedCandidates,
+      maxTokens:
+          settings.connectorModels
+              .map((model) => model.toModelInfo())
+              .where((model) => model.id == settings.ciscoModel)
+              .firstOrNull
+              ?.contextWindow ??
+          120000,
+    );
     state = ContextPack(
       id: _uuid.v4().substring(0, 8),
       projectKey: rootPath ?? 'scratch',
       createdAt: DateTime.now(),
       items: items,
-      instructionItems: _instructionItems(rootPath),
+      instructionItems: instructionItems,
+      retrievalResult: retrievalResult,
     );
     return state!;
   }
@@ -252,14 +511,140 @@ class ContextPackController extends Notifier<ContextPack?> {
     );
   }
 
+  void includeNextTime(String relativePath) {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    if (rootPath == null) return;
+    final normalized = ContextPreferenceStore._normalizePreferencePath(
+      relativePath,
+    );
+    if (normalized == null) return;
+    if (_isIgnoredContextPath(normalized) ||
+        _isInstructionContextPath(normalized) ||
+        !_isRelevantContextExtension(normalized)) {
+      return;
+    }
+    final file = File(p.join(rootPath, normalized));
+    if (!file.existsSync() || file.lengthSync() > 80 * 1024) return;
+    final rootKey = p.normalize(rootPath);
+    final paths = _includeNextByRoot.putIfAbsent(
+      rootKey,
+      () => ref
+          .read(contextPreferenceStoreProvider)
+          .loadIncludedPaths(rootPath)
+          .toSet(),
+    );
+    paths.add(normalized);
+    ref.read(contextPreferenceStoreProvider).saveIncludedPaths(rootPath, paths);
+  }
+
+  Set<String> includeNextTimePathsForCurrentRoot() {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    if (rootPath == null) return const {};
+    final rootKey = p.normalize(rootPath);
+    return Set.unmodifiable(
+      _includeNextByRoot[rootKey] ??
+          ref.read(contextPreferenceStoreProvider).loadIncludedPaths(rootPath),
+    );
+  }
+
   static int _estimateTokens(String value) => (value.length / 4).ceil();
+
+  ContextRetrievalResult _buildRetrievalResult({
+    required List<ContextPackItem> items,
+    required List<ContextPackItem> instructionItems,
+    List<ContextCandidate> omittedCandidates = const [],
+    required int maxTokens,
+  }) {
+    final allItems = [...items, ...instructionItems];
+    final used = allItems.fold<int>(
+      0,
+      (total, item) => total + item.estimatedTokens,
+    );
+    final budget = ContextBudgetReport(
+      maxTokens: maxTokens,
+      reservedForResponse: 4096,
+      availableForContext: ContextPackBudget(
+        maxTokens: maxTokens,
+      ).availableForContext,
+      usedTokens: used,
+    );
+    final candidates = [
+      for (final item in allItems)
+        ContextCandidate(
+          id: item.id,
+          title: item.title,
+          path: item.source,
+          sourceKind: item.sourceKind,
+          score: _contextScore(item),
+          estimatedTokens: item.estimatedTokens,
+          included: item.includedByDefault,
+          reason: _contextReason(item),
+        ),
+      ...omittedCandidates,
+    ]..sort((a, b) => b.score.compareTo(a.score));
+    return ContextRetrievalResult(
+      rankedCandidates: candidates,
+      budget: budget,
+      warnings: [
+        if (budget.exceeded)
+          const ContextPackWarning(
+            message: 'Context exceeds the selected model token budget.',
+          ),
+        if (omittedCandidates.isNotEmpty)
+          ContextPackWarning(
+            message:
+                '${omittedCandidates.length} high-scoring context candidate${omittedCandidates.length == 1 ? '' : 's'} omitted from this turn.',
+          ),
+      ],
+    );
+  }
+
+  int _contextScore(ContextPackItem item) {
+    final override = item.retrievalScore;
+    if (override != null) return override;
+    return switch (item.type) {
+      ContextPackItemType.mentionedFile => 100,
+      ContextPackItemType.activeFile => 95,
+      ContextPackItemType.selection => 95,
+      ContextPackItemType.gitDiff => 90,
+      ContextPackItemType.instruction => 80,
+      ContextPackItemType.projectProfile => 75,
+      ContextPackItemType.diagnostics => 65,
+      ContextPackItemType.rule => 60,
+      ContextPackItemType.terminal => 45,
+      ContextPackItemType.memory => 35,
+    };
+  }
+
+  String _contextReason(ContextPackItem item) {
+    final override = item.retrievalReason;
+    if (override != null && override.trim().isNotEmpty) return override;
+    return switch (item.type) {
+      ContextPackItemType.mentionedFile =>
+        'Directly referenced or ranked by prompt terms.',
+      ContextPackItemType.activeFile => 'Current editor context.',
+      ContextPackItemType.selection => 'Current editor selection.',
+      ContextPackItemType.gitDiff => 'Current working tree changes.',
+      ContextPackItemType.instruction => 'Project instruction file.',
+      ContextPackItemType.projectProfile =>
+        'Workspace profile and recommended commands.',
+      ContextPackItemType.diagnostics => 'Project scripts or diagnostics.',
+      ContextPackItemType.rule => 'Circuit project rule.',
+      ContextPackItemType.terminal => 'Recent selected terminal output.',
+      ContextPackItemType.memory => 'Saved project or user memory.',
+    };
+  }
 
   static String _truncate(String value, int maxChars) {
     if (value.length <= maxChars) return value;
     return '${value.substring(0, maxChars)}\n... truncated ...';
   }
 
-  List<ContextPackItem> _instructionItems(String? rootPath) {
+  List<ContextPackItem> _instructionItems(
+    String? rootPath, {
+    String? prompt,
+    Set<String> contextSources = const {},
+  }) {
     if (rootPath == null) return const [];
     const candidates = [
       'AGENTS.md',
@@ -269,14 +654,13 @@ class ContextPackController extends Notifier<ContextPack?> {
       '.rules',
       '.cursorrules',
       '.github/copilot-instructions.md',
-      '.circuit/rules',
     ];
     final items = <ContextPackItem>[];
     for (final relativePath in candidates) {
       final file = File(p.join(rootPath, relativePath));
       if (!file.existsSync()) continue;
       try {
-        final content = _stripHtmlComments(file.readAsStringSync());
+        final content = _cleanInstructionContent(file.readAsStringSync());
         if (content.trim().isEmpty) continue;
         items.add(
           ContextPackItem(
@@ -293,8 +677,25 @@ class ContextPackController extends Notifier<ContextPack?> {
         );
       } catch (_) {}
     }
-    items.addAll(_claudeRuleItems(rootPath));
-    return items.take(10).toList();
+    items.addAll(
+      _directoryInstructionItems(
+        rootPath: rootPath,
+        directoryPath: p.join('.claude', 'rules'),
+        prompt: prompt,
+        contextSources: contextSources,
+        limit: 8,
+      ),
+    );
+    items.addAll(
+      _directoryInstructionItems(
+        rootPath: rootPath,
+        directoryPath: p.join('.circuit', 'rules'),
+        prompt: prompt,
+        contextSources: contextSources,
+        limit: 8,
+      ),
+    );
+    return items;
   }
 
   String _readFileIfSmall(String path) {
@@ -315,6 +716,7 @@ class ContextPackController extends Notifier<ContextPack?> {
       r'(?:(?:[\w.-]+/)+)?[\w.-]+\.(?:dart|js|jsx|ts|tsx|py|md|json|yaml|yml|html|css|scss|go|rs|java|kt|swift|sh|sql|txt)',
       caseSensitive: false,
     ).allMatches(prompt);
+    final terms = _contextSearchTerms(prompt);
     final seen = <String>{};
     final items = <ContextPackItem>[];
     for (final match in matches) {
@@ -329,9 +731,18 @@ class ContextPackController extends Notifier<ContextPack?> {
         continue;
       }
       if (!seen.add(candidate)) continue;
-      final content = _readFileIfSmall(candidate);
+      var content = _readFileIfSmall(candidate);
       if (content.trim().isEmpty) continue;
       final relativePath = p.relative(candidate, from: rootPath);
+      if (_isInstructionContextPath(relativePath)) {
+        content = _cleanInstructionContent(content);
+        if (content.trim().isEmpty) continue;
+      }
+      final lowerContent = content.toLowerCase();
+      final contentTerms = [
+        for (final term in terms)
+          if (lowerContent.contains(term)) 'content term "$term"',
+      ];
       items.add(
         ContextPackItem(
           id: 'mentioned-file:$relativePath',
@@ -341,27 +752,41 @@ class ContextPackController extends Notifier<ContextPack?> {
           source: relativePath,
           sourceKind: ContextPackSourceKind.editor,
           estimatedTokens: _estimateTokens(content) + 20,
+          retrievalScore: 190,
+          retrievalReason: _summarizeContextReasons([
+            'explicit path mention',
+            ...contentTerms.take(3),
+          ]),
         ),
       );
     }
     return items;
   }
 
-  List<ContextPackItem> _relevantFileItems(
+  _RelevantFileResult _relevantFileItems(
     String? prompt,
     String? rootPath, {
+    required Set<String> changedFiles,
     required Set<String> alreadyIncludedSources,
   }) {
-    if (rootPath == null || prompt == null || prompt.trim().isEmpty) {
-      return const [];
+    if (rootPath == null) {
+      return const _RelevantFileResult(items: [], omittedCandidates: []);
     }
-    final terms = RegExp(r'[A-Za-z0-9_/-]{4,}')
-        .allMatches(prompt.toLowerCase())
-        .map((match) => match.group(0)!)
-        .where((term) => !_commonContextTerms.contains(term))
-        .take(12)
-        .toSet();
-    if (terms.isEmpty) return const [];
+    final rootKey = p.normalize(rootPath);
+    final pinnedPaths = _includeNextByRoot.putIfAbsent(
+      rootKey,
+      () => ref
+          .read(contextPreferenceStoreProvider)
+          .loadIncludedPaths(rootPath)
+          .toSet(),
+    );
+    if ((prompt == null || prompt.trim().isEmpty) && pinnedPaths.isEmpty) {
+      return const _RelevantFileResult(items: [], omittedCandidates: []);
+    }
+    final terms = _contextSearchTerms(prompt ?? '');
+    if (terms.isEmpty && pinnedPaths.isEmpty) {
+      return const _RelevantFileResult(items: [], omittedCandidates: []);
+    }
 
     final scored = <_RelevantFileScore>[];
     final scoredPaths = <String>{};
@@ -372,39 +797,171 @@ class ContextPackController extends Notifier<ContextPack?> {
         if (!file.isDirectory) indexedCandidates.add(file.relativePath);
       }
     }
+    if (_promptWantsWorkflowContext(prompt ?? '')) {
+      for (final file in ref.read(fileIndexerProvider)?.files ?? const []) {
+        if (!file.isDirectory && _isWorkflowContextPath(file.relativePath)) {
+          indexedCandidates.add(file.relativePath);
+        }
+      }
+    }
+    if (_promptWantsCommandContext(prompt ?? '')) {
+      for (final file in ref.read(fileIndexerProvider)?.files ?? const []) {
+        if (!file.isDirectory && _isCommandContextPath(file.relativePath)) {
+          indexedCandidates.add(file.relativePath);
+        }
+      }
+    }
+    if (_promptWantsDeploymentContext(prompt ?? '')) {
+      for (final file in ref.read(fileIndexerProvider)?.files ?? const []) {
+        if (!file.isDirectory && _isDeploymentContextPath(file.relativePath)) {
+          indexedCandidates.add(file.relativePath);
+        }
+      }
+    }
+    final activeDomains = _activeContextDomains(terms);
+    if (activeDomains.isNotEmpty) {
+      for (final file in ref.read(fileIndexerProvider)?.files ?? const []) {
+        if (!file.isDirectory &&
+            _domainContextBoost(file.relativePath, activeDomains) > 0) {
+          indexedCandidates.add(file.relativePath);
+        }
+      }
+    }
     for (final important in _importantContextFiles) {
       indexedCandidates.add(important);
     }
+    for (final workspaceConfig in _workspaceContextFiles) {
+      indexedCandidates.add(workspaceConfig);
+    }
+    for (final deploymentConfig in _deploymentContextFiles) {
+      indexedCandidates.add(deploymentConfig);
+    }
 
-    void scoreFile(String relativePath, File file, {int boost = 0}) {
+    final lowerPrompt = (prompt ?? '').toLowerCase();
+    final normalizedChangedFiles = {
+      for (final path in changedFiles) p.normalize(path),
+    };
+
+    void scoreFile(
+      String relativePath,
+      File file, {
+      int boost = 0,
+      String? boostReason,
+    }) {
       if (!scoredPaths.add(relativePath)) return;
       if (alreadyIncludedSources.contains(relativePath)) return;
       if (_isIgnoredContextPath(relativePath)) return;
+      if (_isInstructionContextPath(relativePath)) return;
       if (!_isRelevantContextExtension(relativePath)) return;
       if (!file.existsSync() || file.lengthSync() > 80 * 1024) return;
       final lowerPath = relativePath.toLowerCase();
       final lowerName = p.basename(relativePath).toLowerCase();
+      final lowerStem = p.basenameWithoutExtension(relativePath).toLowerCase();
       final importantFileBoost = _importantContextFiles.contains(lowerName)
           ? 3
           : 0;
+      final workflowBoost =
+          _promptWantsWorkflowContext(prompt ?? '') &&
+              _isWorkflowContextPath(relativePath)
+          ? 22
+          : 0;
+      final commandBoost =
+          _promptWantsCommandContext(prompt ?? '') &&
+              _isCommandContextPath(relativePath)
+          ? 20
+          : 0;
+      final workspaceBoost =
+          _promptWantsWorkspaceContext(prompt ?? '') &&
+              _isWorkspaceContextPath(relativePath)
+          ? 45
+          : 0;
+      final deploymentBoost =
+          _promptWantsDeploymentContext(prompt ?? '') &&
+              _isDeploymentContextPath(relativePath)
+          ? 48
+          : 0;
+      final domainBoost = _domainContextBoost(relativePath, activeDomains);
       final content = file.readAsStringSync();
       final lowerContent = content.toLowerCase();
-      var score = boost + importantFileBoost;
+      final reasons = <String>[];
+      var score =
+          boost +
+          importantFileBoost +
+          workflowBoost +
+          commandBoost +
+          workspaceBoost +
+          deploymentBoost +
+          domainBoost;
+      if (boost > 0) reasons.add(boostReason ?? 'file index match');
+      if (importantFileBoost > 0) reasons.add('important project file');
+      if (workflowBoost > 0) reasons.add('CI workflow context');
+      if (commandBoost > 0) reasons.add('command/script context');
+      if (workspaceBoost > 0) reasons.add('workspace config context');
+      if (deploymentBoost > 0) reasons.add('deployment config context');
+      if (domainBoost > 0) {
+        reasons.add(
+          '${_domainContextLabels(relativePath, activeDomains).join('/')} context',
+        );
+      }
+      if (normalizedChangedFiles.contains(p.normalize(relativePath))) {
+        score += 18;
+        reasons.add('changed file');
+      }
+      if (lowerPrompt.contains(lowerPath)) {
+        score += 30;
+        reasons.add('explicit path mention');
+      } else if (lowerPrompt.contains(lowerName)) {
+        score += 18;
+        reasons.add('filename mention');
+      } else if (lowerPrompt.contains(lowerStem)) {
+        score += 14;
+        reasons.add('filename stem mention');
+      }
       for (final term in terms) {
-        if (lowerName.contains(term)) score += 6;
-        if (lowerPath.contains(term)) score += 4;
-        if (lowerContent.contains(term)) score += 1;
+        if (lowerStem == term || lowerName == term) {
+          score += 16;
+          reasons.add('exact filename term "$term"');
+        } else if (lowerName.contains(term)) {
+          score += 8;
+          reasons.add('filename term "$term"');
+        }
+        if (lowerPath.contains(term)) {
+          score += 5;
+          reasons.add('path term "$term"');
+        }
+        if (lowerContent.contains(term)) {
+          score += _contentTermScore(term);
+          reasons.add('content term "$term"');
+        }
       }
       if (score > 0) {
-        scored.add(_RelevantFileScore(relativePath, content, score));
+        scored.add(
+          _RelevantFileScore(
+            relativePath,
+            content,
+            score,
+            _summarizeContextReasons(reasons),
+          ),
+        );
       }
     }
 
-    var visited = 0;
     var scanned = 0;
     try {
       final root = Directory(rootPath);
-      if (!root.existsSync()) return const [];
+      if (!root.existsSync()) {
+        return const _RelevantFileResult(items: [], omittedCandidates: []);
+      }
+      for (final relativePath in pinnedPaths) {
+        final before = scored.length;
+        scoreFile(
+          relativePath,
+          File(p.join(rootPath, relativePath)),
+          boost: 80,
+          boostReason: 'included next time from Context drawer',
+        );
+        if (scored.length > before) scanned++;
+      }
       for (final relativePath in indexedCandidates) {
         if (scanned > 120) break;
         final file = File(p.join(rootPath, relativePath));
@@ -412,31 +969,462 @@ class ContextPackController extends Notifier<ContextPack?> {
         scoreFile(relativePath, file, boost: 8);
         if (scored.length > before) scanned++;
       }
-      for (final entity in root.listSync(recursive: true, followLinks: false)) {
-        if (visited++ > 1500 || scanned > 300) break;
-        if (entity is! File) continue;
-        final relativePath = p.relative(entity.path, from: rootPath);
+
+      final traversalPaths = _rankedTraversalPaths(
+        rootPath: rootPath,
+        promptTerms: terms,
+      );
+      var visited = 0;
+      for (final relativePath in traversalPaths) {
+        if (visited++ > 5000) break;
         final before = scored.length;
-        scoreFile(relativePath, entity);
+        scoreFile(relativePath, File(p.join(rootPath, relativePath)));
         if (scored.length > before) scanned++;
       }
     } catch (_) {
-      return const [];
+      return const _RelevantFileResult(items: [], omittedCandidates: []);
     }
 
     scored.sort((a, b) => b.score.compareTo(a.score));
-    return [
-      for (final file in scored.take(5))
-        ContextPackItem(
-          id: 'relevant-file:${file.path}',
-          type: ContextPackItemType.mentionedFile,
-          title: file.path,
-          detail: _truncate(file.content, 5000),
-          source: file.path,
-          sourceKind: ContextPackSourceKind.editor,
-          estimatedTokens: _estimateTokens(file.content) + 20,
-        ),
-    ];
+    final included = scored.take(5).toList();
+    final omitted = scored.skip(5).take(10).toList();
+    return _RelevantFileResult(
+      items: [
+        for (final file in included)
+          ContextPackItem(
+            id: 'relevant-file:${file.path}',
+            type: ContextPackItemType.mentionedFile,
+            title: file.path,
+            detail: _truncate(file.content, 5000),
+            source: file.path,
+            sourceKind: ContextPackSourceKind.editor,
+            estimatedTokens: _estimateTokens(file.content) + 20,
+            retrievalScore: 70 + file.score,
+            retrievalReason: file.reason,
+          ),
+      ],
+      omittedCandidates: [
+        for (final file in omitted)
+          ContextCandidate(
+            id: 'omitted-relevant-file:${file.path}',
+            title: file.path,
+            path: file.path,
+            sourceKind: ContextPackSourceKind.editor,
+            score: 70 + file.score,
+            estimatedTokens: _estimateTokens(file.content) + 20,
+            included: false,
+            reason: '${file.reason}; omitted from this turn.',
+          ),
+      ],
+    );
+  }
+
+  List<String> _rankedTraversalPaths({
+    required String rootPath,
+    required Set<String> promptTerms,
+  }) {
+    final index = ref.read(fileIndexerProvider);
+    final indexedFiles = index?.workingDir == rootPath
+        ? index!.files.where((file) => !file.isDirectory).toList()
+        : const <IndexedFile>[];
+    if (indexedFiles.isNotEmpty) {
+      final scored = <({String path, int score})>[];
+      final activeDomains = _activeContextDomains(promptTerms);
+      for (final file in indexedFiles) {
+        final relativePath = file.relativePath;
+        if (_isIgnoredContextPath(relativePath) ||
+            !_isRelevantContextExtension(relativePath)) {
+          continue;
+        }
+        final lowerPath = relativePath.toLowerCase();
+        final lowerName = file.fileName.toLowerCase();
+        var score = _importantContextFiles.contains(lowerName) ? 20 : 0;
+        if (_isWorkflowContextPath(relativePath) &&
+            promptTerms.any(_isWorkflowPromptTerm)) {
+          score += 35;
+        }
+        if (_isCommandContextPath(relativePath) &&
+            promptTerms.any(_isCommandPromptTerm)) {
+          score += 32;
+        }
+        if (_isWorkspaceContextPath(relativePath) &&
+            promptTerms.any(_isWorkspacePromptTerm)) {
+          score += 50;
+        }
+        if (_isDeploymentContextPath(relativePath) &&
+            promptTerms.any(_isDeploymentPromptTerm)) {
+          score += 55;
+        }
+        for (final term in promptTerms) {
+          if (lowerName == term) {
+            score += 40;
+          } else if (lowerName.contains(term)) {
+            score += 18;
+          }
+          if (lowerPath.contains(term)) score += 10;
+        }
+        final domainBoost = _domainContextBoost(relativePath, activeDomains);
+        if (domainBoost > 0) score += domainBoost;
+        scored.add((path: relativePath, score: score));
+      }
+      scored.sort((a, b) {
+        final scoreCompare = b.score.compareTo(a.score);
+        if (scoreCompare != 0) return scoreCompare;
+        return a.path.compareTo(b.path);
+      });
+      return [for (final file in scored) file.path];
+    }
+
+    final paths = <String>[];
+    try {
+      for (final entity in Directory(
+        rootPath,
+      ).listSync(recursive: true, followLinks: false)) {
+        if (entity is! File) continue;
+        final relativePath = p.relative(entity.path, from: rootPath);
+        if (_isIgnoredContextPath(relativePath) ||
+            !_isRelevantContextExtension(relativePath)) {
+          continue;
+        }
+        paths.add(relativePath);
+      }
+    } catch (_) {}
+    paths.sort();
+    return paths;
+  }
+
+  Set<String> _contextSearchTerms(String prompt) {
+    final terms = <String>{};
+    for (final match in RegExp(r'[A-Za-z0-9_./-]{3,}').allMatches(prompt)) {
+      final raw = match.group(0)!;
+      void add(String value) {
+        final term = value.toLowerCase();
+        if (term.length < 3) return;
+        if (_commonContextTerms.contains(term)) return;
+        terms.add(term);
+      }
+
+      add(raw);
+      add(p.basename(raw));
+      add(p.basenameWithoutExtension(raw));
+
+      for (final part in raw.split(RegExp(r'[^A-Za-z0-9]+'))) {
+        add(part);
+        for (final camel in _splitCamelCase(part)) {
+          add(camel);
+        }
+      }
+    }
+    return terms.take(32).toSet();
+  }
+
+  int _contentTermScore(String term) {
+    if (term.length >= 16) return 64;
+    if (term.length >= 11) return 32;
+    if (term.length >= 8) return 12;
+    return 2;
+  }
+
+  bool _promptWantsWorkflowContext(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s./_-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return false;
+    return RegExp(
+      r'\b(ci|workflow|workflows|github actions?|action|actions|pipeline|pipelines|build|deploy|deployment|release|releases|check|checks|test|tests|failing|failure|failed)\b',
+    ).hasMatch(normalized);
+  }
+
+  bool _isWorkflowPromptTerm(String term) {
+    return {
+      'ci',
+      'workflow',
+      'workflows',
+      'github',
+      'actions',
+      'action',
+      'pipeline',
+      'pipelines',
+      'build',
+      'deploy',
+      'deployment',
+      'release',
+      'releases',
+      'check',
+      'checks',
+      'test',
+      'tests',
+      'failing',
+      'failure',
+      'failed',
+    }.contains(term);
+  }
+
+  bool _isWorkflowContextPath(String path) {
+    final normalized = path.replaceAll('\\', '/').toLowerCase();
+    return normalized.startsWith('.github/workflows/') &&
+        (normalized.endsWith('.yml') || normalized.endsWith('.yaml'));
+  }
+
+  bool _promptWantsCommandContext(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s./_-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return false;
+    return RegExp(
+      r'\b(script|scripts|command|commands|check|checks|verify|verification|test|tests|lint|build|deploy|deployment|release|ci|pipeline|failing|failure|failed)\b',
+    ).hasMatch(normalized);
+  }
+
+  bool _isCommandPromptTerm(String term) {
+    return {
+      'script',
+      'scripts',
+      'command',
+      'commands',
+      'check',
+      'checks',
+      'verify',
+      'verification',
+      'test',
+      'tests',
+      'lint',
+      'build',
+      'deploy',
+      'deployment',
+      'release',
+      'ci',
+      'pipeline',
+      'failing',
+      'failure',
+      'failed',
+    }.contains(term);
+  }
+
+  bool _isCommandContextPath(String path) {
+    final normalized = path.replaceAll('\\', '/').toLowerCase();
+    final parts = normalized.split('/');
+    if (parts.isEmpty) return false;
+    final first = parts.first;
+    final inCommandDirectory = {
+      'bin',
+      'script',
+      'scripts',
+      'tool',
+      'tools',
+      'task',
+      'tasks',
+    }.contains(first);
+    if (!inCommandDirectory) return false;
+    final ext = p.extension(normalized);
+    if (ext.isEmpty) return true;
+    return {
+      '.sh',
+      '.bash',
+      '.zsh',
+      '.ps1',
+      '.py',
+      '.js',
+      '.mjs',
+      '.cjs',
+      '.ts',
+      '.dart',
+      '.rb',
+      '.pl',
+      '.php',
+      '.yaml',
+      '.yml',
+      '.json',
+      '.md',
+      '.txt',
+    }.contains(ext);
+  }
+
+  bool _promptWantsWorkspaceContext(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s./_-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return false;
+    return RegExp(
+      r'\b(monorepo|workspace|workspaces|package|packages|app|apps|turbo|turborepo|nx|pnpm|yarn|melos|lerna|rush|build|test|deploy|pipeline|ci)\b',
+    ).hasMatch(normalized);
+  }
+
+  bool _isWorkspacePromptTerm(String term) {
+    return {
+      'monorepo',
+      'workspace',
+      'workspaces',
+      'package',
+      'packages',
+      'app',
+      'apps',
+      'turbo',
+      'turborepo',
+      'nx',
+      'pnpm',
+      'yarn',
+      'melos',
+      'lerna',
+      'rush',
+      'build',
+      'test',
+      'deploy',
+      'pipeline',
+      'ci',
+    }.contains(term);
+  }
+
+  bool _isWorkspaceContextPath(String path) {
+    final lowerName = p.basename(path).toLowerCase();
+    return _workspaceContextFiles.contains(lowerName);
+  }
+
+  bool _promptWantsDeploymentContext(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s./_-]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) return false;
+    return RegExp(
+      r'\b(deploy|deployment|hosting|production|preview|release|vercel|netlify|firebase|railway|render|fly|docker|compose|container|containers|kubernetes|k8s|helm|cloudbuild|cloud run|gcp|aws|azure|environment|env|domain|domains)\b',
+    ).hasMatch(normalized);
+  }
+
+  bool _isDeploymentPromptTerm(String term) {
+    return {
+      'deploy',
+      'deployment',
+      'hosting',
+      'production',
+      'preview',
+      'release',
+      'vercel',
+      'netlify',
+      'firebase',
+      'railway',
+      'render',
+      'fly',
+      'docker',
+      'compose',
+      'container',
+      'containers',
+      'kubernetes',
+      'k8s',
+      'helm',
+      'cloudbuild',
+      'gcp',
+      'aws',
+      'azure',
+      'environment',
+      'env',
+      'domain',
+      'domains',
+    }.contains(term);
+  }
+
+  bool _isDeploymentContextPath(String path) {
+    final normalized = path.replaceAll('\\', '/').toLowerCase();
+    final lowerName = p.basename(normalized);
+    if (_deploymentContextFiles.contains(lowerName)) return true;
+    final parts = normalized.split('/');
+    if (parts.isEmpty) return false;
+    final first = parts.first;
+    if ({
+      'deploy',
+      'deployment',
+      'deployments',
+      'k8s',
+      'kubernetes',
+      'helm',
+      'charts',
+      'infra',
+      'infrastructure',
+      'terraform',
+    }.contains(first)) {
+      final ext = p.extension(normalized);
+      return {
+        '.yaml',
+        '.yml',
+        '.json',
+        '.toml',
+        '.tf',
+        '.hcl',
+        '.sh',
+        '.md',
+        '.txt',
+      }.contains(ext);
+    }
+    return false;
+  }
+
+  Set<String> _activeContextDomains(Set<String> terms) {
+    if (terms.isEmpty) return const {};
+    final active = <String>{};
+    for (final entry in _domainContextTerms.entries) {
+      if (terms.any(entry.value.contains)) active.add(entry.key);
+    }
+    return active;
+  }
+
+  int _domainContextBoost(String relativePath, Set<String> activeDomains) {
+    if (activeDomains.isEmpty) return 0;
+    final labels = _domainContextLabels(relativePath, activeDomains);
+    if (labels.isEmpty) return 0;
+    return 42 + (labels.length - 1) * 8;
+  }
+
+  List<String> _domainContextLabels(
+    String relativePath,
+    Set<String> activeDomains,
+  ) {
+    if (activeDomains.isEmpty) return const [];
+    final normalized = relativePath
+        .replaceAll('\\', '/')
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9/._-]+'), ' ');
+    final tokens = normalized
+        .split(RegExp(r'[/._\-\s]+'))
+        .where((token) => token.length >= 2)
+        .toSet();
+    final labels = <String>[];
+    for (final domain in activeDomains) {
+      final domainTerms = _domainContextTerms[domain] ?? const <String>{};
+      if (tokens.any(domainTerms.contains) ||
+          domainTerms
+              .where((term) => term.length >= 6)
+              .any((term) => normalized.contains(term))) {
+        labels.add(domain);
+      }
+    }
+    return labels;
+  }
+
+  Iterable<String> _splitCamelCase(String value) {
+    return value
+        .replaceAllMapped(
+          RegExp(r'([a-z0-9])([A-Z])'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        )
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty);
+  }
+
+  String _summarizeContextReasons(List<String> reasons) {
+    final unique = <String>[];
+    for (final reason in reasons) {
+      if (!unique.contains(reason)) unique.add(reason);
+      if (unique.length >= 4) break;
+    }
+    if (unique.isEmpty) return 'Ranked by file index and prompt terms.';
+    return 'Included by ${unique.join(', ')}.';
   }
 
   bool _isIgnoredContextPath(String path) {
@@ -453,7 +1441,24 @@ class ContextPackController extends Notifier<ContextPack?> {
     );
   }
 
+  bool _isInstructionContextPath(String path) {
+    final normalized = p.normalize(path).replaceAll('\\', '/');
+    return normalized == 'AGENTS.md' ||
+        normalized == 'AGENT.md' ||
+        normalized == 'CLAUDE.md' ||
+        normalized == 'CLAUDE.local.md' ||
+        normalized == '.rules' ||
+        normalized == '.cursorrules' ||
+        normalized == '.github/copilot-instructions.md' ||
+        normalized.startsWith('.claude/rules/') ||
+        normalized.startsWith('.circuit/rules/');
+  }
+
   bool _isRelevantContextExtension(String path) {
+    final lowerName = p.basename(path).toLowerCase();
+    if (_importantContextFiles.contains(lowerName)) return true;
+    if (_workspaceContextFiles.contains(lowerName)) return true;
+    if (_deploymentContextFiles.contains(lowerName)) return true;
     const extensions = {
       '.dart',
       '.js',
@@ -474,6 +1479,15 @@ class ContextPackController extends Notifier<ContextPack?> {
       '.kt',
       '.swift',
       '.sh',
+      '.bash',
+      '.zsh',
+      '.ps1',
+      '.rb',
+      '.pl',
+      '.php',
+      '.toml',
+      '.tf',
+      '.hcl',
       '.sql',
       '.txt',
     };
@@ -508,37 +1522,224 @@ class ContextPackController extends Notifier<ContextPack?> {
     }
   }
 
-  List<ContextPackItem> _claudeRuleItems(String rootPath) {
-    final dir = Directory(p.join(rootPath, '.claude', 'rules'));
+  List<ContextPackItem> _directoryInstructionItems({
+    required String rootPath,
+    required String directoryPath,
+    String? prompt,
+    Set<String> contextSources = const {},
+    required int limit,
+  }) {
+    final dir = Directory(p.join(rootPath, directoryPath));
     if (!dir.existsSync()) return const [];
-    final items = <ContextPackItem>[];
+    final scoredItems = <_InstructionFileScore>[];
+    final terms = _contextSearchTerms(prompt ?? '');
+    final normalizedContextSources = {
+      for (final source in contextSources)
+        if (source.trim().isNotEmpty)
+          p.normalize(source).replaceAll('\\', '/').toLowerCase(),
+    };
     try {
-      for (final entity in dir.listSync(recursive: true).whereType<File>()) {
+      final files =
+          dir
+              .listSync(recursive: true, followLinks: false)
+              .whereType<File>()
+              .where(
+                (entity) => p.extension(entity.path).toLowerCase() == '.md',
+              )
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
+      for (final entity in files) {
         if (p.extension(entity.path).toLowerCase() != '.md') continue;
         final relativePath = p.relative(entity.path, from: rootPath);
-        final content = _stripHtmlComments(entity.readAsStringSync());
+        final rawContent = entity.readAsStringSync();
+        final content = _cleanInstructionContent(rawContent);
         if (content.trim().isEmpty) continue;
-        items.add(
-          ContextPackItem(
-            id: 'instruction:$relativePath',
-            type: ContextPackItemType.instruction,
-            title: p.basename(entity.path),
-            detail: _truncate(content.trim(), 2200),
-            source: relativePath,
-            sourceKind: ContextPackSourceKind.instructionFile,
-            estimatedTokens: _estimateTokens(content),
-            removable: true,
-            includedByDefault: true,
+        final patternMatch = _frontmatterPatternsMatchContext(
+          rawContent,
+          normalizedContextSources,
+        );
+        final contextPathMatch = _instructionPathMatchesContext(
+          relativePath,
+          normalizedContextSources,
+        );
+        final promptTermMatch = _instructionTextMatchesTerms(
+          relativePath,
+          content,
+          terms,
+        );
+        final score = _instructionRuleScore(
+          patternMatch: patternMatch,
+          contextPathMatch: contextPathMatch,
+          promptTermMatch: promptTermMatch,
+        );
+        scoredItems.add(
+          _InstructionFileScore(
+            relativePath: relativePath,
+            score: score,
+            item: ContextPackItem(
+              id: 'instruction:$relativePath',
+              type: ContextPackItemType.instruction,
+              title: p.basename(entity.path),
+              detail: _truncate(content.trim(), 2200),
+              source: relativePath,
+              sourceKind: ContextPackSourceKind.instructionFile,
+              estimatedTokens: _estimateTokens(content),
+              removable: true,
+              includedByDefault: true,
+              retrievalScore: 80 + score,
+              retrievalReason: score > 0
+                  ? _summarizeContextReasons([
+                      if (patternMatch) 'path-scoped rule pattern',
+                      if (contextPathMatch) 'active context path',
+                      if (promptTermMatch) 'prompt terms',
+                    ])
+                  : null,
+            ),
           ),
         );
-        if (items.length >= 5) break;
       }
+      scoredItems.sort((a, b) {
+        final scoreOrder = b.score.compareTo(a.score);
+        if (scoreOrder != 0) return scoreOrder;
+        return a.relativePath.compareTo(b.relativePath);
+      });
     } catch (_) {}
-    return items;
+    return scoredItems.take(limit).map((score) => score.item).toList();
+  }
+
+  int _instructionRuleScore({
+    required bool patternMatch,
+    required bool contextPathMatch,
+    required bool promptTermMatch,
+  }) {
+    var score = 0;
+    if (patternMatch) score += 90;
+    if (contextPathMatch) score += 45;
+    if (promptTermMatch) score += 25;
+    return score;
+  }
+
+  bool _instructionTextMatchesTerms(
+    String relativePath,
+    String content,
+    Set<String> terms,
+  ) {
+    if (terms.isEmpty) return false;
+    final haystack = '${relativePath.toLowerCase()}\n${content.toLowerCase()}';
+    return terms.any(haystack.contains);
+  }
+
+  bool _instructionPathMatchesContext(
+    String relativePath,
+    Set<String> contextSources,
+  ) {
+    if (contextSources.isEmpty) return false;
+    final ruleParts = p
+        .split(relativePath)
+        .map((part) => part.toLowerCase())
+        .where((part) => part.length >= 3)
+        .toSet();
+    if (ruleParts.isEmpty) return false;
+    for (final source in contextSources) {
+      final sourceParts = p
+          .split(source)
+          .map((part) => part.toLowerCase())
+          .where((part) => part.length >= 3)
+          .toSet();
+      if (sourceParts.any(ruleParts.contains)) return true;
+    }
+    return false;
+  }
+
+  bool _frontmatterPatternsMatchContext(
+    String rawContent,
+    Set<String> contextSources,
+  ) {
+    if (contextSources.isEmpty) return false;
+    final frontmatter = _yamlFrontmatter(rawContent);
+    if (frontmatter == null || frontmatter.trim().isEmpty) return false;
+    final patterns = <String>[];
+    for (final line in frontmatter.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.startsWith('- ')) {
+        patterns.add(_unquoteYamlValue(trimmed.substring(2).trim()));
+      } else if (trimmed.contains(':')) {
+        final value = trimmed.substring(trimmed.indexOf(':') + 1).trim();
+        if (value.isNotEmpty && value != '|' && value != '>') {
+          patterns.add(_unquoteYamlValue(value));
+        }
+      }
+    }
+    return patterns.any(
+      (pattern) => contextSources.any(
+        (source) => _globLikePatternMatchesPath(pattern, source),
+      ),
+    );
+  }
+
+  String? _yamlFrontmatter(String content) {
+    final trimmed = content.trimLeft();
+    if (!trimmed.startsWith('---')) return null;
+    final match = RegExp(r'^---\s*\n([\s\S]*?)\n---\s*\n?').firstMatch(trimmed);
+    return match?.group(1);
+  }
+
+  String _unquoteYamlValue(String value) {
+    var normalized = value.trim();
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      normalized = normalized.substring(1, normalized.length - 1);
+    }
+    return normalized
+        .split(',')
+        .first
+        .trim()
+        .replaceAll(RegExp(r'''^['"]|['"]$'''), '');
+  }
+
+  bool _globLikePatternMatchesPath(String pattern, String path) {
+    final normalizedPattern = pattern.trim().replaceAll('\\', '/');
+    if (normalizedPattern.isEmpty || normalizedPattern.contains('\n')) {
+      return false;
+    }
+    final normalizedPath = path.trim().replaceAll('\\', '/');
+    if (normalizedPattern == normalizedPath) return true;
+    final buffer = StringBuffer('^');
+    for (var i = 0; i < normalizedPattern.length; i++) {
+      final char = normalizedPattern[i];
+      if (char == '*') {
+        if (i + 1 < normalizedPattern.length &&
+            normalizedPattern[i + 1] == '*') {
+          buffer.write('.*');
+          i++;
+        } else {
+          buffer.write('[^/]*');
+        }
+      } else {
+        buffer.write(RegExp.escape(char));
+      }
+    }
+    buffer.write(r'$');
+    try {
+      return RegExp(buffer.toString()).hasMatch(normalizedPath);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  String _cleanInstructionContent(String content) {
+    return _stripYamlFrontmatter(_stripHtmlComments(content)).trim();
   }
 
   String _stripHtmlComments(String content) {
     return content.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '').trim();
+  }
+
+  String _stripYamlFrontmatter(String content) {
+    final trimmed = content.trimLeft();
+    if (!trimmed.startsWith('---')) return content;
+    final match = RegExp(r'^---\s*\n[\s\S]*?\n---\s*\n?').firstMatch(trimmed);
+    if (match == null) return content;
+    return trimmed.substring(match.end);
   }
 }
 

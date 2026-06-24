@@ -78,6 +78,77 @@ void main() {
   });
 
   test(
+    'AgentWorkspaceStore marks interrupted active tasks failed on load',
+    () async {
+      final root = await Directory.systemTemp.createTemp('agent_ws_project_');
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'agent_ws_config_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(storeRoot));
+
+      final store = AgentWorkspaceStore(baseDir: storeRoot.path);
+      final task = AgentTask(
+        id: 'task-interrupted',
+        mascotAlias: 'Benny',
+        profile: AgentTaskProfile.investigate,
+        status: AgentTaskStatus.running,
+        goal: 'Investigate startup',
+        activeRunId: 'run-interrupted',
+        createdAt: DateTime(2026),
+      );
+
+      await store.save(root.path, [task]);
+
+      final loaded = await store.load(root.path);
+
+      expect(loaded.single.status, AgentTaskStatus.failed);
+      expect(loaded.single.activeRunId, isNull);
+      expect(loaded.single.completedAt, isNotNull);
+      expect(
+        loaded.single.error,
+        contains('Interrupted while CircuitCode was closed'),
+      );
+    },
+  );
+
+  test(
+    'AgentWorkspaceStore treats stale active tasks with results as completed',
+    () async {
+      final root = await Directory.systemTemp.createTemp('agent_ws_project_');
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'agent_ws_config_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(storeRoot));
+
+      final store = AgentWorkspaceStore(baseDir: storeRoot.path);
+      final completedAt = DateTime(2026, 1, 2);
+      final task = AgentTask(
+        id: 'task-stale-complete',
+        mascotAlias: 'Benny',
+        profile: AgentTaskProfile.patch,
+        status: AgentTaskStatus.running,
+        goal: 'Update readme',
+        activeRunId: 'run-stale',
+        result: 'Finished.',
+        createdAt: DateTime(2026),
+        completedAt: completedAt,
+      );
+
+      await store.save(root.path, [task]);
+
+      final loaded = await store.load(root.path);
+
+      expect(loaded.single.status, AgentTaskStatus.completed);
+      expect(loaded.single.activeRunId, isNull);
+      expect(loaded.single.completedAt, completedAt);
+      expect(loaded.single.result, 'Finished.');
+      expect(loaded.single.error, isNull);
+    },
+  );
+
+  test(
     'ContextPackController discovers approved project instruction files',
     () async {
       final root = await _sampleProject();
@@ -89,9 +160,11 @@ void main() {
       await File(
         p.join(root.path, '.github', 'copilot-instructions.md'),
       ).writeAsString('Prefer small patches.');
-      await Directory(p.join(root.path, '.circuit')).create();
-      await File(
+      await Directory(
         p.join(root.path, '.circuit', 'rules'),
+      ).create(recursive: true);
+      await File(
+        p.join(root.path, '.circuit', 'rules', 'security.md'),
       ).writeAsString('Do not auto-run mutation commands.');
 
       final container = ProviderContainer();
@@ -108,7 +181,7 @@ void main() {
         containsAll([
           'AGENTS.md',
           '.github/copilot-instructions.md',
-          '.circuit/rules',
+          '.circuit/rules/security.md',
         ]),
       );
       expect(

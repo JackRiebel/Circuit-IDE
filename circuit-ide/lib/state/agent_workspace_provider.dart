@@ -92,7 +92,40 @@ class AgentWorkspaceStore {
         .whereType<Map<String, dynamic>>()
         .map(AgentTask.fromJson)
         .nonNulls
+        .map(_normalizeLoadedTask)
         .toList();
+  }
+
+  AgentTask _normalizeLoadedTask(AgentTask task) {
+    if (!_isLoadedActiveTask(task.status)) {
+      return task.activeRunId == null ? task : task.copyWith(activeRunId: null);
+    }
+    final hasResult = task.result?.trim().isNotEmpty ?? false;
+    final hasError = task.error?.trim().isNotEmpty ?? false;
+    if (task.completedAt != null || hasResult) {
+      return task.copyWith(
+        status: hasError ? AgentTaskStatus.failed : AgentTaskStatus.completed,
+        activeRunId: null,
+        error: hasError ? task.error : null,
+      );
+    }
+    return task.copyWith(
+      status: AgentTaskStatus.failed,
+      activeRunId: null,
+      error: task.error ?? 'Interrupted while CircuitCode was closed.',
+      completedAt: DateTime.now(),
+    );
+  }
+
+  bool _isLoadedActiveTask(AgentTaskStatus status) {
+    return switch (status) {
+      AgentTaskStatus.queued ||
+      AgentTaskStatus.running ||
+      AgentTaskStatus.waitingForApproval => true,
+      AgentTaskStatus.completed ||
+      AgentTaskStatus.failed ||
+      AgentTaskStatus.cancelled => false,
+    };
   }
 
   Future<void> save(String? rootPath, List<AgentTask> tasks) async {

@@ -165,7 +165,7 @@ class StudioSourceArtifactController
     final artifacts = [
       artifact,
       ...state.artifacts.where((candidate) => candidate.id != artifact.id),
-    ].take(120).toList();
+    ];
     state = StudioSourceArtifactState(artifacts: artifacts);
     final threadId = artifact.threadId;
     if (!persist || threadId == null) return;

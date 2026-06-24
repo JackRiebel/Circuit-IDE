@@ -64,7 +64,7 @@ class _GitPanelState extends ConsumerState<GitPanel> {
       final truncatedDiff = diff.length > 4000 ? diff.substring(0, 4000) : diff;
 
       final service = ref.read(agentServiceProvider);
-      final response = await service.sendMessage(
+      final response = await service.sendOneShot(
         'Generate a concise git commit message for these changes. '
         'Return ONLY the commit message, no explanation or formatting.\n\n$truncatedDiff',
       );

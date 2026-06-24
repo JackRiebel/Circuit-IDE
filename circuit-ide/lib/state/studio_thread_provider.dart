@@ -8,10 +8,11 @@ import 'package:uuid/uuid.dart';
 import '../core/utils/platform_utils.dart';
 import '../enums/message_role.dart';
 import '../models/agent_preflight.dart';
-import '../models/chat_message.dart';
+import '../models/provider_lifecycle_event.dart';
 import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
+import '../models/tool_result_envelope.dart';
 import '../models/token_usage.dart';
 import 'file_tree_provider.dart';
 import 'work_item_provider.dart';
@@ -39,6 +40,11 @@ class StudioThreadState {
   StudioThread? threadForTask(String? taskId) {
     if (taskId == null) return null;
     return threads.where((thread) => thread.taskId == taskId).firstOrNull;
+  }
+
+  StudioThread? threadForTaskView(String? taskId) {
+    if (taskId != null) return threadForTask(taskId);
+    return selectedThread;
   }
 
   StudioThreadState copyWith({
@@ -81,10 +87,16 @@ class StudioThreadStore {
   }
 
   StudioThread _normalizeLoadedThread(StudioThread thread) {
-    final normalizedTurns = thread.turns.map(_normalizeLoadedTurn).toList();
-    var normalized = thread.copyWith(turns: normalizedTurns);
-    if (!_isLoadedActiveThread(normalized.status)) return normalized;
-
+    final normalizedTurns =
+        (thread.turns.isEmpty && thread.messages.isNotEmpty
+                ? _turnsFromLegacyMessages(thread)
+                : thread.turns)
+            .map(_normalizeLoadedTurn)
+            .toList();
+    var normalized = thread.copyWith(
+      turns: normalizedTurns,
+      updatedAt: thread.updatedAt,
+    );
     final latestTurn = normalizedTurns.fold<StudioTurn?>(
       null,
       (latest, turn) =>
@@ -101,31 +113,20 @@ class StudioThreadStore {
     if (recoveredStatus != null) {
       return normalized.copyWith(
         status: recoveredStatus,
-        phase: recoveredStatus == StudioThreadStatus.done
-            ? StudioSendPhase.completed
-            : StudioSendPhase.failed,
+        phase: _phaseForRecoveredStatus(recoveredStatus),
         requestId: null,
         streamingContent: '',
         lastError: recoveredStatus == StudioThreadStatus.failed
             ? (latestTurn?.lastError ?? normalized.lastError)
             : null,
+        updatedAt: normalized.updatedAt,
       );
     }
 
-    final hasAssistantMessage = normalized.messages.any(
-      (message) =>
-          message.role == MessageRole.assistant &&
-          message.content.trim().isNotEmpty,
-    );
-    if (hasAssistantMessage) {
-      return normalized.copyWith(
-        status: StudioThreadStatus.done,
-        phase: StudioSendPhase.completed,
-        requestId: null,
-        streamingContent: '',
-        lastError: null,
-      );
+    if (!_isLoadedActiveThread(normalized.status)) {
+      return _normalizeInactiveLoadedThread(normalized);
     }
+
     const message = 'Interrupted while CircuitCode was closed.';
     return normalized.copyWith(
       status: StudioThreadStatus.failed,
@@ -133,6 +134,118 @@ class StudioThreadStore {
       requestId: null,
       streamingContent: '',
       lastError: normalized.lastError ?? message,
+      updatedAt: normalized.updatedAt,
+    );
+  }
+
+  List<StudioTurn> _turnsFromLegacyMessages(StudioThread thread) {
+    final messages =
+        thread.messages
+            .where((message) => message.content.trim().isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final turns = <StudioTurn>[];
+    var index = 0;
+    for (var i = 0; i < messages.length; i++) {
+      final message = messages[i];
+      if (message.role != MessageRole.user) continue;
+      final assistantMessages = <StudioThreadMessage>[];
+      var cursor = i + 1;
+      while (cursor < messages.length &&
+          messages[cursor].role != MessageRole.user) {
+        if (messages[cursor].role == MessageRole.assistant &&
+            messages[cursor].content.trim().isNotEmpty) {
+          assistantMessages.add(messages[cursor]);
+        }
+        cursor++;
+      }
+      final assistantContent = assistantMessages
+          .map((assistant) => assistant.content.trim())
+          .where((content) => content.isNotEmpty)
+          .join('\n\n');
+      final requestId = 'legacy-request-${thread.id}-${index + 1}';
+      final turnId = 'legacy-turn-${thread.id}-${index + 1}';
+      final createdAt = message.timestamp;
+      final completedAt = assistantMessages.isEmpty
+          ? null
+          : assistantMessages.last.timestamp;
+      turns.add(
+        StudioTurn(
+          id: turnId,
+          threadId: thread.id,
+          requestId: requestId,
+          userMessageId: message.id,
+          prompt: message.content,
+          model: thread.model ?? 'gpt-5-nano',
+          contextSummary:
+              thread.contextSummary ??
+              const StudioContextSummary(projectLabel: 'Migrated history'),
+          status: assistantContent.isEmpty
+              ? StudioTurnStatus.failed
+              : StudioTurnStatus.completed,
+          events: [
+            StudioTurnEvent.userMessage(
+              id: 'legacy-user-${message.id}',
+              turnId: turnId,
+              requestId: requestId,
+              threadId: thread.id,
+              content: message.content,
+              timestamp: createdAt,
+            ),
+            if (assistantContent.isNotEmpty)
+              StudioTurnEvent.assistantMessage(
+                turnId: turnId,
+                requestId: requestId,
+                threadId: thread.id,
+                content: assistantContent,
+                timestamp: completedAt,
+              )
+            else
+              StudioTurnEvent.error(
+                turnId: turnId,
+                requestId: requestId,
+                threadId: thread.id,
+                detail: 'This saved message did not have an assistant reply.',
+                timestamp: createdAt,
+              ),
+          ],
+          createdAt: createdAt,
+          updatedAt: completedAt ?? createdAt,
+          completedAt: completedAt,
+          lastError: assistantContent.isEmpty
+              ? 'This saved message did not have an assistant reply.'
+              : null,
+        ),
+      );
+      index++;
+      i = cursor - 1;
+    }
+    return turns;
+  }
+
+  StudioSendPhase _phaseForRecoveredStatus(StudioThreadStatus status) {
+    return switch (status) {
+      StudioThreadStatus.done => StudioSendPhase.completed,
+      StudioThreadStatus.cancelled => StudioSendPhase.cancelled,
+      StudioThreadStatus.failed => StudioSendPhase.failed,
+      _ => StudioSendPhase.idle,
+    };
+  }
+
+  StudioThread _normalizeInactiveLoadedThread(StudioThread thread) {
+    if (thread.requestId == null &&
+        thread.streamingContent.isEmpty &&
+        !(thread.status == StudioThreadStatus.done &&
+            thread.lastError != null)) {
+      return thread;
+    }
+    return thread.copyWith(
+      requestId: null,
+      streamingContent: '',
+      lastError: thread.status == StudioThreadStatus.done
+          ? null
+          : thread.lastError,
+      updatedAt: thread.updatedAt,
     );
   }
 
@@ -143,7 +256,20 @@ class StudioThreadStore {
       assistantDraft: '',
       completedAt: DateTime.now(),
       lastError: turn.lastError ?? 'Interrupted while CircuitCode was closed.',
+      acceptedPlanState: _normalizeInterruptedAcceptedPlanState(
+        turn.acceptedPlanState,
+      ),
     );
+  }
+
+  AcceptedPlanState _normalizeInterruptedAcceptedPlanState(
+    AcceptedPlanState state,
+  ) {
+    return switch (state) {
+      AcceptedPlanState.none => AcceptedPlanState.none,
+      AcceptedPlanState.implemented => AcceptedPlanState.implemented,
+      _ => AcceptedPlanState.failed,
+    };
   }
 
   bool _isLoadedActiveThread(StudioThreadStatus status) {
@@ -189,6 +315,7 @@ class StudioThreadStore {
 
 class StudioThreadController extends Notifier<StudioThreadState> {
   final _store = StudioThreadStore();
+  String? _loadedRootPath;
 
   @override
   StudioThreadState build() {
@@ -201,11 +328,34 @@ class StudioThreadController extends Notifier<StudioThreadState> {
 
   Future<void> _load() async {
     if (!ref.mounted) return;
-    state = state.copyWith(isLoading: true, error: null);
+    final targetRootPath = ref.read(fileTreeProvider).rootPath;
+    if (targetRootPath == null) {
+      final wasProjectScoped = _loadedRootPath != null;
+      _loadedRootPath = null;
+      state = wasProjectScoped
+          ? const StudioThreadState()
+          : state.copyWith(isLoading: false, error: null);
+      return;
+    }
+    final rootChanged = targetRootPath != _loadedRootPath;
+    state = rootChanged
+        ? const StudioThreadState(isLoading: true)
+        : state.copyWith(isLoading: true, error: null);
     try {
-      final threads = await _store.load(ref.read(fileTreeProvider).rootPath);
+      final threads = await _store.load(targetRootPath);
       if (!ref.mounted) return;
-      state = StudioThreadState(threads: threads);
+      if (ref.read(fileTreeProvider).rootPath != targetRootPath) return;
+      _loadedRootPath = targetRootPath;
+      final mergedThreads = _mergeLoadedThreads(
+        loaded: threads,
+        current: state.threads,
+      );
+      state = StudioThreadState(
+        threads: mergedThreads,
+        selectedThreadId:
+            state.selectedThreadId ??
+            (mergedThreads.isEmpty ? null : mergedThreads.first.id),
+      );
     } catch (error) {
       if (!ref.mounted) return;
       state = StudioThreadState(error: error.toString());
@@ -290,34 +440,6 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     );
   }
 
-  String? appendUserMessage(String threadId, String content) {
-    return _appendMessage(threadId, MessageRole.user, content);
-  }
-
-  String? appendAssistantMessage(String threadId, String content) {
-    return _appendMessage(threadId, MessageRole.assistant, content);
-  }
-
-  void appendChatMessages(String threadId, Iterable<ChatMessage> messages) {
-    final thread = _find(threadId);
-    if (thread == null) return;
-    final existingIds = thread.messages.map((message) => message.id).toSet();
-    final studioMessages = [
-      ...thread.messages,
-      for (final message in messages)
-        if (!existingIds.contains(message.id) &&
-            (message.role == MessageRole.user ||
-                message.role == MessageRole.assistant))
-          StudioThreadMessage(
-            id: message.id,
-            role: message.role,
-            content: message.content,
-            timestamp: message.timestamp,
-          ),
-    ];
-    _upsert(thread.copyWith(messages: studioMessages), select: true);
-  }
-
   void updateTokenUsage(String threadId, TokenUsage usage) {
     final thread = _find(threadId);
     if (thread == null) return;
@@ -332,7 +454,7 @@ class StudioThreadController extends Notifier<StudioThreadState> {
       ...thread.sourceArtifacts.where(
         (candidate) => candidate.id != artifact.id,
       ),
-    ].take(120).toList();
+    ];
     _upsert(thread.copyWith(sourceArtifacts: artifacts), select: false);
   }
 
@@ -343,7 +465,36 @@ class StudioThreadController extends Notifier<StudioThreadState> {
       turn,
       ...thread.turns.where((candidate) => candidate.id != turn.id),
     ]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    _upsert(thread.copyWith(turns: turns), select: select);
+    final updatedThread = switch (turn.status) {
+      StudioTurnStatus.completed when turn.completedAt != null =>
+        thread.copyWith(
+          turns: turns,
+          status: StudioThreadStatus.done,
+          phase: StudioSendPhase.completed,
+          streamingContent: '',
+          requestId: null,
+          lastError: null,
+        ),
+      StudioTurnStatus.failed when turn.completedAt != null => thread.copyWith(
+        turns: turns,
+        status: StudioThreadStatus.failed,
+        phase: StudioSendPhase.failed,
+        streamingContent: '',
+        requestId: null,
+        lastError: turn.lastError ?? thread.lastError,
+      ),
+      StudioTurnStatus.cancelled when turn.completedAt != null =>
+        thread.copyWith(
+          turns: turns,
+          status: StudioThreadStatus.cancelled,
+          phase: StudioSendPhase.cancelled,
+          streamingContent: '',
+          requestId: null,
+          lastError: null,
+        ),
+      _ => thread.copyWith(turns: turns),
+    };
+    _upsert(updatedThread, select: select);
   }
 
   void upsertTurnEvent(String threadId, String turnId, StudioTurnEvent event) {
@@ -361,6 +512,10 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     String turnId, {
     StudioTurnStatus? status,
     String? assistantDraft,
+    List<ToolResultEnvelope>? toolResults,
+    List<ProviderLifecycleEvent>? providerDiagnostics,
+    AcceptedPlanState? acceptedPlanState,
+    Object? contextRetrieval = _sentinel,
     Object? lastError = _sentinel,
     bool complete = false,
     bool expirePendingApprovals = false,
@@ -376,6 +531,10 @@ class StudioThreadController extends Notifier<StudioThreadState> {
             .copyWith(
               status: status,
               assistantDraft: assistantDraft,
+              toolResults: toolResults,
+              providerDiagnostics: providerDiagnostics,
+              acceptedPlanState: acceptedPlanState,
+              contextRetrieval: contextRetrieval,
               completedAt: complete ? DateTime.now() : _sentinel,
               lastError: lastError,
             );
@@ -429,6 +588,20 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     );
   }
 
+  void cancel(String threadId, {String? message}) {
+    final thread = _find(threadId);
+    if (thread == null) return;
+    _upsert(
+      thread.copyWith(
+        status: StudioThreadStatus.cancelled,
+        phase: StudioSendPhase.failed,
+        streamingContent: '',
+        lastError: message,
+      ),
+      select: true,
+    );
+  }
+
   void waitForApproval(String threadId) {
     final thread = _find(threadId);
     if (thread == null) return;
@@ -459,22 +632,6 @@ class StudioThreadController extends Notifier<StudioThreadState> {
     return state.threads.where((thread) => thread.id == threadId).firstOrNull;
   }
 
-  String? _appendMessage(String threadId, MessageRole role, String content) {
-    final thread = _find(threadId);
-    if (thread == null || content.trim().isEmpty) return null;
-    final message = StudioThreadMessage(
-      id: _uuid.v4(),
-      role: role,
-      content: content.trim(),
-      timestamp: DateTime.now(),
-    );
-    _upsert(
-      thread.copyWith(messages: [...thread.messages, message]),
-      select: true,
-    );
-    return message.id;
-  }
-
   void _upsert(StudioThread thread, {bool select = false}) {
     final threads = [
       thread,
@@ -491,6 +648,20 @@ class StudioThreadController extends Notifier<StudioThreadState> {
 
   Future<void> _persist(List<StudioThread> threads) async {
     await _store.save(ref.read(fileTreeProvider).rootPath, threads);
+  }
+
+  List<StudioThread> _mergeLoadedThreads({
+    required List<StudioThread> loaded,
+    required List<StudioThread> current,
+  }) {
+    if (current.isEmpty) return loaded;
+    final currentIds = current.map((thread) => thread.id).toSet();
+    final merged = [
+      ...current,
+      for (final thread in loaded)
+        if (!currentIds.contains(thread.id)) thread,
+    ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return merged;
   }
 }
 

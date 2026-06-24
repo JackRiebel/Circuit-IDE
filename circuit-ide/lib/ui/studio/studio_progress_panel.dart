@@ -22,7 +22,7 @@ class StudioProgressPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final thread = ref.watch(studioThreadProvider).threadForTask(task?.id);
+    final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
     final git = ref.watch(gitProvider).status;
     final patch = ref.watch(patchProposalProvider).active;
     final commands = ref.watch(commandRunProvider).values.toList();
@@ -38,19 +38,9 @@ class StudioProgressPanel extends ConsumerWidget {
     final runningCommand = commands
         .where((command) => command.status == CommandRunStatus.running)
         .firstOrNull;
-    final displayState = thread == null
-        ? TaskDisplayState.derive(
-            task: task,
-            isChatProcessing: false,
-            isChatStreaming: false,
-            hasAssistantResponse: false,
-            hasPendingApproval: hasPendingApproval,
-            commands: commands,
-            chatError: null,
-          )
-        : TaskDisplayState.fromLifecycle(
-            StudioTaskLifecycleState.fromThread(thread),
-          );
+    final displayState = TaskDisplayState.fromLifecycle(
+      StudioTaskLifecycleState.fromThread(thread),
+    );
     final rows = <StudioProgressRow>[
       StudioProgressRow(
         label: 'Task',

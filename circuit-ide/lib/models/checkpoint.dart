@@ -4,24 +4,32 @@ class FileSnapshot {
   final String path;
   final String? originalContent; // null means file didn't exist before
   final bool wasCreated; // true if this file was newly created by the AI
+  final List<String> createdParentDirs;
 
   const FileSnapshot({
     required this.path,
     required this.originalContent,
     this.wasCreated = false,
+    this.createdParentDirs = const [],
   });
 
   Map<String, dynamic> toJson() => {
-        'path': path,
-        'originalContent': originalContent,
-        'wasCreated': wasCreated,
-      };
+    'path': path,
+    'originalContent': originalContent,
+    'wasCreated': wasCreated,
+    'createdParentDirs': createdParentDirs,
+  };
 
   factory FileSnapshot.fromJson(Map<String, dynamic> json) => FileSnapshot(
-        path: json['path'] as String,
-        originalContent: json['originalContent'] as String?,
-        wasCreated: json['wasCreated'] as bool? ?? false,
-      );
+    path: json['path'] as String,
+    originalContent: json['originalContent'] as String?,
+    wasCreated: json['wasCreated'] as bool? ?? false,
+    createdParentDirs:
+        (json['createdParentDirs'] as List<dynamic>?)
+            ?.whereType<String>()
+            .toList(growable: false) ??
+        const [],
+  );
 }
 
 class Checkpoint {
@@ -40,20 +48,20 @@ class Checkpoint {
   int get fileCount => snapshots.length;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'timestamp': timestamp.toIso8601String(),
-        'description': description,
-        'snapshots': snapshots.map((s) => s.toJson()).toList(),
-      };
+    'id': id,
+    'timestamp': timestamp.toIso8601String(),
+    'description': description,
+    'snapshots': snapshots.map((s) => s.toJson()).toList(),
+  };
 
   factory Checkpoint.fromJson(Map<String, dynamic> json) => Checkpoint(
-        id: json['id'] as String,
-        timestamp: DateTime.parse(json['timestamp'] as String),
-        description: json['description'] as String,
-        snapshots: (json['snapshots'] as List)
-            .map((s) => FileSnapshot.fromJson(s as Map<String, dynamic>))
-            .toList(),
-      );
+    id: json['id'] as String,
+    timestamp: DateTime.parse(json['timestamp'] as String),
+    description: json['description'] as String,
+    snapshots: (json['snapshots'] as List)
+        .map((s) => FileSnapshot.fromJson(s as Map<String, dynamic>))
+        .toList(),
+  );
 
   String toJsonString() => const JsonEncoder.withIndent('  ').convert(toJson());
 }

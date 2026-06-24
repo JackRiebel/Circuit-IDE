@@ -33,7 +33,7 @@ import '../../ui/layout/activity_bar.dart';
 
 class CoreCommandRegistry {
   static void register(WidgetRef ref) {
-    ref.read(commandPaletteProvider.notifier).registerCommands([
+    final commands = <CommandDescriptor>[
       CommandDescriptor(
         id: 'project.openCockpit',
         title: 'Open Project Cockpit',
@@ -70,15 +70,6 @@ class CoreCommandRegistry {
               .setPromptMode(StudioPromptMode.code);
           ref.read(studioShellProvider.notifier).openHome();
         },
-      ),
-      CommandDescriptor(
-        id: 'studio.advancedEditor',
-        title: 'Open Advanced Editor',
-        description: 'Open the full IDE with files, terminal, Git, and tools.',
-        category: 'Studio',
-        icon: Icons.code,
-        priority: 116,
-        run: () => ref.read(studioShellProvider.notifier).openAdvancedEditor(),
       ),
       CommandDescriptor(
         id: 'studio.backToStudio',
@@ -529,9 +520,18 @@ class CoreCommandRegistry {
         title: 'Open Settings',
         category: 'Preferences',
         icon: Icons.settings_outlined,
-        run: () => ref.read(editorProvider.notifier).openSettingsTab(),
+        run: () => ref.read(studioShellProvider.notifier).openSettings(),
       ),
-    ]);
+    ];
+    ref
+        .read(commandPaletteProvider.notifier)
+        .registerCommands(
+          commands
+              .where(
+                (command) => !_studioQuarantinedCommandIds.contains(command.id),
+              )
+              .toList(),
+        );
   }
 
   static void _showSidePanel(WidgetRef ref, ActivityBarItem item) {
@@ -539,3 +539,34 @@ class CoreCommandRegistry {
     ref.read(sidePanelVisibleProvider.notifier).set(true);
   }
 }
+
+const _studioQuarantinedCommandIds = <String>{
+  'project.openCockpit',
+  'project.startWorkItem',
+  'project.runRecommendedChecks',
+  'project.explain',
+  'project.summarizeChanges',
+  'project.copyHandoff',
+  'project.refreshContextPack',
+  'agentWorkspace.open',
+  'agentWorkspace.startParallelTask',
+  'agentWorkspace.approveSelectedProposal',
+  'agentWorkspace.rejectSelectedProposal',
+  'agentWorkspace.compareProposals',
+  'agentWorkspace.runVerification',
+  'agentWorkspace.restoreCheckpoint',
+  'agentWorkspace.copyTaskDiagnostics',
+  'project.approvePatch',
+  'project.rejectPatch',
+  'workspace.health',
+  'file.openQuick',
+  'ai.runConsole',
+  'ai.copyLatestRun',
+  'view.explorer',
+  'view.search',
+  'view.sourceControl',
+  'view.tools',
+  'view.toggleTerminal',
+  'view.toggleAI',
+  'file.save',
+};

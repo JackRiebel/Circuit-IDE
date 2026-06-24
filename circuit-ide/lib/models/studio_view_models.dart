@@ -313,12 +313,14 @@ class StudioRailTaskSummary {
   final String title;
   final bool selected;
   final TaskDisplayState displayState;
+  final DateTime? updatedAt;
 
   const StudioRailTaskSummary({
     required this.id,
     required this.title,
     required this.selected,
     required this.displayState,
+    this.updatedAt,
   });
 }
 
