@@ -6087,6 +6087,68 @@ class AuthFlow$i {
     },
   );
 
+  test('context retrieval prunes stale include-next preferences', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'context_preferences_prune_',
+    );
+    addTearDown(() => _delete(root));
+    await File(
+      p.join(root.path, 'valid.dart'),
+    ).writeAsString('void validContext() {}\n');
+    await File(p.join(root.path, '.env')).writeAsString('SECRET=value\n');
+    await File(
+      p.join(root.path, 'AGENTS.md'),
+    ).writeAsString('Project guidance\n');
+    await File(p.join(root.path, 'image.png')).writeAsBytes([1, 2, 3]);
+    await File(
+      p.join(root.path, 'large.dart'),
+    ).writeAsString('${List.filled(81 * 1024, 'x').join()}\n');
+
+    final preferenceRoot = await Directory.systemTemp.createTemp(
+      'context_preferences_prune_store_',
+    );
+    addTearDown(() => _delete(preferenceRoot));
+    final preferenceStore = ContextPreferenceStore(
+      baseDir: preferenceRoot.path,
+    );
+    preferenceStore.saveIncludedPaths(root.path, {
+      'valid.dart',
+      'missing.dart',
+      '.env',
+      'AGENTS.md',
+      'image.png',
+      'large.dart',
+    });
+
+    final container = ProviderContainer(
+      overrides: [
+        contextPreferenceStoreProvider.overrideWithValue(preferenceStore),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+    final pack = await container
+        .read(contextPackProvider.notifier)
+        .buildForCodingTaskWithFreshIndex(prompt: '');
+    final includedPaths = pack.retrievalResult!.includedCandidates
+        .map((candidate) => candidate.path)
+        .toSet();
+
+    expect(includedPaths, contains('valid.dart'));
+    expect(includedPaths, isNot(contains('missing.dart')));
+    expect(includedPaths, isNot(contains('.env')));
+    expect(includedPaths, isNot(contains('image.png')));
+    expect(includedPaths, isNot(contains('large.dart')));
+    expect(preferenceStore.loadIncludedPaths(root.path), {'valid.dart'});
+    expect(
+      container
+          .read(contextPackProvider.notifier)
+          .includeNextTimePathsForCurrentRoot(),
+      {'valid.dart'},
+    );
+  });
+
   test('ContextPreferenceStore rejects unsafe include-next paths', () async {
     final preferenceRoot = await Directory.systemTemp.createTemp(
       'context_preferences_safety_',

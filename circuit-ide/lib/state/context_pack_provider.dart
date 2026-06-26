@@ -1337,6 +1337,17 @@ class ContextPackController extends Notifier<ContextPack?> {
       if (!root.existsSync()) {
         return const _RelevantFileResult(items: [], omittedCandidates: []);
       }
+      final stalePinnedPaths = [
+        for (final relativePath in pinnedPaths)
+          if (!_includeNextPathStillValid(rootPath, relativePath)) relativePath,
+      ];
+      if (stalePinnedPaths.isNotEmpty) {
+        pinnedPaths.removeAll(stalePinnedPaths);
+        ref
+            .read(contextPreferenceStoreProvider)
+            .saveIncludedPaths(rootPath, pinnedPaths);
+        ref.read(contextPreferenceRevisionProvider.notifier).bump();
+      }
       for (final relativePath in pinnedPaths) {
         final before = scored.length;
         scoreFile(
@@ -1405,6 +1416,20 @@ class ContextPackController extends Notifier<ContextPack?> {
           ),
       ],
     );
+  }
+
+  bool _includeNextPathStillValid(String rootPath, String relativePath) {
+    final normalized = ContextPreferenceStore._normalizePreferencePath(
+      relativePath,
+    );
+    if (normalized == null) return false;
+    if (_isIgnoredContextPath(normalized) ||
+        _isInstructionContextPath(normalized) ||
+        !_isRelevantContextExtension(normalized)) {
+      return false;
+    }
+    final file = File(p.join(rootPath, normalized));
+    return file.existsSync() && file.lengthSync() <= 80 * 1024;
   }
 
   List<String> _rankedTraversalPaths({
