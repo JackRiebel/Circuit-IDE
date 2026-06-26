@@ -2057,6 +2057,9 @@ void main() {
       ).readAsString();
 
       expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('chatProvider')));
+      expect(source, isNot(contains('CircuitAgent')));
+      expect(source, isNot(contains('sendMessage(')));
       expect(source, isNot(contains('service.state.workingDir')));
       expect(source, isNot(contains('service.state.model')));
       expect(source, contains('studioAgentConnectionProvider'));

@@ -764,6 +764,19 @@ void main() {
             ),
             ChatChunk(finishReason: 'tool_calls', isDone: true),
           ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'verify-continuation-files',
+              toolCallName: 'run_command',
+              toolCallArguments: '{"command":"cat hello.txt README.md"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(content: 'Verified both continuation files.'),
+            ChatChunk(finishReason: 'stop', isDone: true),
+          ],
         ],
       );
       addTearDown(harness.dispose);
@@ -940,8 +953,75 @@ void main() {
         isNull,
       );
 
+      const verifyRequestId = 'continuation-verify';
+      harness.registerTurn(
+        requestId: verifyRequestId,
+        prompt: 'Verify the continuation output',
+        intent: TurnIntent.verify,
+      );
+      final verifyFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: verifyRequestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Verify the continuation output',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.verify,
+            intent: TurnIntent.verify,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Verify the continuation output',
+            finishTask: false,
+          );
+
+      await _waitUntil(() {
+        final current = harness.thread(thread.id);
+        return current.turns.any(
+          (turn) =>
+              turn.requestId == verifyRequestId &&
+              turn.events.any(
+                (event) =>
+                    event.type == StudioTurnEventType.approvalRequest &&
+                    event.approvalId == 'verify-continuation-files' &&
+                    event.approvalState == ApprovalRequestState.pending,
+              ),
+        );
+      });
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .approveOnce('verify-continuation-files');
+      await verifyFuture;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final verifiedThread = harness.thread(thread.id);
+      final verifyTurn = verifiedThread.turns.firstWhere(
+        (turn) => turn.requestId == verifyRequestId,
+      );
+      expect(verifyTurn.status, StudioTurnStatus.completed);
+      expect(
+        verifyTurn.toolResults
+            .where((result) => result.toolName == 'run_command')
+            .single
+            .stdout,
+        allOf(
+          contains('hello first batch'),
+          contains('Run the greeting flow.'),
+        ),
+      );
+      expect(
+        verifyTurn.events
+            .where(
+              (event) => event.type == StudioTurnEventType.assistantMessage,
+            )
+            .single
+            .content,
+        'Verified both continuation files.',
+      );
+      expect(verifiedThread.status, StudioThreadStatus.done);
+
       final store = StudioThreadStore(baseDir: storeRoot.path);
-      await store.save(harness.root.path, [completedThread]);
+      await store.save(harness.root.path, [verifiedThread]);
       final reloaded = (await store.load(harness.root.path)).single;
       final reloadedSourceTurn = reloaded.turns.firstWhere(
         (turn) => turn.requestId == firstBatchRequestId,
@@ -954,6 +1034,20 @@ void main() {
         'hello.txt': PlanTargetProgressState.applied,
         'README.md': PlanTargetProgressState.applied,
       });
+      final reloadedVerifyTurn = reloaded.turns.firstWhere(
+        (turn) => turn.requestId == verifyRequestId,
+      );
+      expect(reloadedVerifyTurn.status, StudioTurnStatus.completed);
+      expect(
+        reloadedVerifyTurn.toolResults
+            .where((result) => result.toolName == 'run_command')
+            .single
+            .stdout,
+        allOf(
+          contains('hello first batch'),
+          contains('Run the greeting flow.'),
+        ),
+      );
     },
   );
 
