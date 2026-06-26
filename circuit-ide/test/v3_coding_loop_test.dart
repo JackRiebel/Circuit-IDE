@@ -2013,6 +2013,43 @@ void main() {
     },
   );
 
+  test('Studio runtime surface stays free of legacy global chat state', () async {
+    final files = <File>[
+      ...Directory('lib/ui/studio')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart')),
+      ...Directory('lib/state').listSync().whereType<File>().where(
+        (file) =>
+            p.basename(file.path).startsWith('studio_') &&
+            file.path.endsWith('.dart'),
+      ),
+      File('lib/state/agent_turn_runtime_provider.dart'),
+      File('lib/state/workspace_session_provider.dart'),
+      File('lib/state/command_run_provider.dart'),
+      File('lib/state/memories_provider.dart'),
+    ];
+
+    const legacyMarkers = {
+      'chatProvider',
+      'agentServiceProvider',
+      'pendingConfirmation',
+      'CircuitAgent',
+    };
+
+    for (final file in files) {
+      final source = await file.readAsString();
+      for (final marker in legacyMarkers) {
+        expect(
+          source,
+          isNot(contains(marker)),
+          reason:
+              '${file.path} must stay request-local and must not read legacy global chat/runtime state.',
+        );
+      }
+    }
+  });
+
   test('Studio-adjacent project shortcuts do not use legacy chat', () async {
     final source = await File(
       'lib/ui/project/project_cockpit_panel.dart',
