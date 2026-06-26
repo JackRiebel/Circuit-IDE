@@ -2200,6 +2200,25 @@ void main() {
     expect(tokenSource, contains('studioThreadProvider'));
   });
 
+  test(
+    'legacy chat token state is explicitly quarantined outside Studio',
+    () async {
+      final legacyTokenSource = await File(
+        'lib/state/legacy_chat_token_provider.dart',
+      ).readAsString();
+      final tokenTrackerSource = await File(
+        'lib/ui/chat/token_tracker.dart',
+      ).readAsString();
+
+      expect(legacyTokenSource, contains('legacyChatTokenUsageProvider'));
+      expect(legacyTokenSource, contains('chatProvider'));
+      expect(legacyTokenSource, contains('Legacy Advanced Editor token state'));
+      expect(tokenTrackerSource, contains('legacyChatTokenUsageProvider'));
+      expect(tokenTrackerSource, contains('legacy_chat_token_provider.dart'));
+      expect(File('lib/state/token_provider.dart').existsSync(), isFalse);
+    },
+  );
+
   test('Studio context memory extraction avoids legacy AgentService', () async {
     final source = await File(
       'lib/state/memories_provider.dart',

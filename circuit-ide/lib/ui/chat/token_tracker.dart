@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
-import '../../state/token_provider.dart';
+import '../../state/legacy_chat_token_provider.dart';
 import '../../state/theme_provider.dart';
 
 class TokenTracker extends ConsumerWidget {
@@ -11,9 +11,9 @@ class TokenTracker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final usage = ref.watch(tokenUsageProvider);
-    final lastUsage = ref.watch(lastTokenUsageProvider);
-    final cost = ref.watch(costInfoProvider);
+    final usage = ref.watch(legacyChatTokenUsageProvider);
+    final lastUsage = ref.watch(legacyChatLastTokenUsageProvider);
+    final cost = ref.watch(legacyChatCostInfoProvider);
 
     if (usage.totalTokens == 0) return const SizedBox.shrink();
     final tokenText = lastUsage.isNotEmpty
