@@ -9,6 +9,8 @@ import 'state/command_palette_provider.dart';
 import 'state/project_profile_provider.dart';
 import 'state/settings_provider.dart';
 import 'state/studio_right_drawer_provider.dart';
+import 'state/studio_shell_provider.dart';
+import 'state/studio_thread_provider.dart';
 import 'state/studio_thread_search_provider.dart';
 import 'state/workspace_context_provider.dart';
 import 'theme/app_theme.dart';
@@ -74,6 +76,19 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
                     .read(studioRightDrawerProvider.notifier)
                     .openMode(StudioDrawerMode.terminal),
             const SingleActivator(
+              LogicalKeyboardKey.keyG,
+              control: true,
+              shift: true,
+            ): () =>
+                ref.read(studioShellProvider.notifier).openReview(),
+            const SingleActivator(LogicalKeyboardKey.keyP, meta: true): () =>
+                _openDrawer(StudioDrawerMode.files),
+            const SingleActivator(
+              LogicalKeyboardKey.keyS,
+              meta: true,
+              alt: true,
+            ): _openSideChat,
+            const SingleActivator(
               LogicalKeyboardKey.keyM,
               meta: true,
               shift: true,
@@ -84,5 +99,20 @@ class _CircuitIDEAppState extends ConsumerState<CircuitIDEApp> {
         ),
       ),
     );
+  }
+
+  void _openDrawer(StudioDrawerMode mode) {
+    ref.read(studioShellProvider.notifier).showRightProgressPanel();
+    ref.read(studioRightDrawerProvider.notifier).openMode(mode);
+  }
+
+  void _openSideChat() {
+    final threadId = ref.read(studioThreadProvider).selectedThreadId;
+    final shell = ref.read(studioShellProvider.notifier);
+    if (threadId == null) {
+      shell.openHome();
+    } else {
+      shell.openThread(threadId);
+    }
   }
 }

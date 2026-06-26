@@ -10,7 +10,6 @@ import '../agent/providers/provider_interface.dart';
 import '../agent/security/agent_tool_permission_policy.dart';
 import '../agent/tools/tool_executor.dart';
 import '../agent/tools/tool_registry.dart';
-import '../enums/ai_provider.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
 import '../models/agent_preflight.dart';
@@ -22,12 +21,15 @@ import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
 import '../models/context_attachment.dart';
 import '../models/provider_lifecycle_event.dart';
+import '../models/reviewed_edit.dart';
 import '../models/studio_turn.dart';
 import '../models/workspace_context.dart';
 import '../models/turn_intent.dart';
+import '../services/event_bus.dart';
 import 'agent_request_provider.dart';
 import 'agent_run_provider.dart';
 import 'agent_workspace_provider.dart';
+import 'command_run_provider.dart';
 import 'connection_provider.dart';
 import 'settings_provider.dart';
 import 'patch_proposal_provider.dart';
@@ -65,6 +67,7 @@ class AgentTurnSession {
   final String? taskId;
   final String model;
   final TurnIntent intent;
+  final String workspaceRoot;
   final AgentTurnPhase phase;
   final DateTime startedAt;
   final String? lastError;
@@ -75,6 +78,7 @@ class AgentTurnSession {
     this.taskId,
     required this.model,
     required this.intent,
+    required this.workspaceRoot,
     required this.phase,
     required this.startedAt,
     this.lastError,
@@ -87,6 +91,7 @@ class AgentTurnSession {
       taskId: taskId,
       model: model,
       intent: intent,
+      workspaceRoot: workspaceRoot,
       phase: phase ?? this.phase,
       startedAt: startedAt,
       lastError: lastError ?? this.lastError,
@@ -114,9 +119,11 @@ class AgentTurnRuntimeState {
 
 class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
   final _runners = <String, StudioTurnRunner>{};
+  final _runtimeEvents = <String, EventBus>{};
+  final _ownedRuntimeEvents = <String, EventBus>{};
   final _pendingApprovals = <String, ConfirmationRequest>{};
   final _approvalRequestIds = <String, String>{};
-  final _turnAutoApprove = <String, bool>{};
+  final _turnApprovalGrantKeys = <String, String>{};
 
   @override
   AgentTurnRuntimeState build() => const AgentTurnRuntimeState();
@@ -127,12 +134,9 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
   ) async {
     final issues = <AgentPreflightIssue>[];
     final settings = ref.read(settingsProvider);
-    final service = ref.read(agentServiceProvider);
     final connectionStatus = ref.read(connectionStatusProvider);
     final workspace = ref.read(workspaceContextProvider);
-    final selectedModel = service.activeProviderType == AIProviderType.cisco
-        ? service.state.model
-        : settings.ciscoModel;
+    final selectedModel = settings.ciscoModel;
     final cachedModelInfo = settings.connectorModels
         .map((model) => model.toModelInfo())
         .where((model) => model.id == selectedModel)
@@ -305,6 +309,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     AcceptedPlanContext? acceptedPlan,
     required String model,
     required String retryPrompt,
+    String? displayTitle,
     required bool finishTask,
   }) async {
     if (state.activeSessions.containsKey(requestId)) {
@@ -322,19 +327,21 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       );
       return;
     }
-    final service = ref.read(agentServiceProvider);
+    final connection = ref.read(studioAgentConnectionProvider);
     final environmentOverride = ref.read(
       studioAgentEnvironmentOverrideProvider,
     );
-    final provider = environmentOverride?.provider ?? service.provider;
-    final workingDir =
-        environmentOverride?.workspaceRoot ?? service.state.workingDir.trim();
+    final provider = environmentOverride?.provider ?? connection.provider;
+    final workspace = ref.read(workspaceContextProvider);
+    final workingDir = environmentOverride?.workspaceRoot ?? workspace.rootPath;
     final effectiveWorkingDir =
-        workingDir.isEmpty && toolMode == AgentToolMode.chat
+        (workingDir == null || workingDir.trim().isEmpty) &&
+            toolMode == AgentToolMode.chat
         ? Directory.systemTemp.path
         : workingDir;
+    final normalizedWorkingDir = effectiveWorkingDir?.trim() ?? '';
     final finalContent = _buildMessageWithContext(outboundText, attachments);
-    if (provider == null || effectiveWorkingDir.trim().isEmpty) {
+    if (provider == null || normalizedWorkingDir.isEmpty) {
       final message = provider == null
           ? 'Circuit AI is not connected.'
           : 'No workspace is bound to this Studio turn.';
@@ -347,23 +354,30 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       );
       return;
     }
+    final runtimeEvents = environmentOverride?.events ?? EventBus();
+    final ownsRuntimeEvents = environmentOverride == null;
     final environment =
         environmentOverride ??
         StudioAgentEnvironment(
           provider: provider,
           model: model,
-          workspaceRoot: effectiveWorkingDir,
+          workspaceRoot: normalizedWorkingDir,
           permissionPolicy: AgentToolPermissionPolicy(
-            workingDir: effectiveWorkingDir,
+            workingDir: normalizedWorkingDir,
           ),
-          events: service.events,
-          onProviderEvent: (event) {
-            service.events.emit(EventType.providerLifecycle, {
-              'event': event,
-              'requestId': event.requestId,
-            });
-          },
+          events: runtimeEvents,
+          onProviderEvent: (_) {},
         );
+    ref
+        .read(studioRequestLifecycleProvider.notifier)
+        .attachRuntimeEvents(requestId, environment.events);
+    ref
+        .read(commandRunProvider.notifier)
+        .attachRuntimeEvents(requestId, environment.events);
+    _runtimeEvents[requestId] = environment.events;
+    if (ownsRuntimeEvents) {
+      _ownedRuntimeEvents[requestId] = environment.events;
+    }
     state = state.copyWith(
       activeSessions: {
         ...state.activeSessions,
@@ -373,6 +387,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           taskId: taskId,
           model: model,
           intent: intent,
+          workspaceRoot: environment.workspaceRoot,
           phase: AgentTurnPhase.providerRequest,
           startedAt: DateTime.now(),
         ),
@@ -385,8 +400,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           kind: AgentRunKind.chat,
           model: model,
           message: 'Studio turn sent',
-          title: _preview(retryPrompt),
-          inputPreview: _preview(retryPrompt),
+          title: _preview(displayTitle ?? retryPrompt),
+          inputPreview: _preview(displayTitle ?? retryPrompt),
           retryPrompt: retryPrompt,
           retryAttachments: attachments,
           contextAttachmentCount: attachments.length,
@@ -398,10 +413,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     if (acceptedPlan != null) {
       ref
           .read(studioTurnProvider.notifier)
-          .setAcceptedPlanState(
-            requestId,
-            AcceptedPlanState.implementationStarted,
-          );
+          .startAcceptedPlanImplementation(requestId, acceptedPlan);
       if (acceptedPlan.verificationRequested) {
         ref
             .read(studioTurnProvider.notifier)
@@ -412,7 +424,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       workingDir: environment.workspaceRoot,
       autoApprove: false,
       onConfirmationNeeded: (request) =>
-          _handleConfirmationNeeded(requestId, request),
+          _handleConfirmationNeeded(requestId, request, environment.events),
       onToolCallUpdate: (toolCall) {
         final type = switch (toolCall.status.name) {
           'success' => EventType.toolCallCompleted,
@@ -432,9 +444,10 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       events: environment.events,
       model: environment.model,
       toolExecutor: executor,
-      approvalGrantProvider: () => _turnAutoApprove[requestId] == true
+      approvalGrantProvider: () => _turnApprovalGrantKeys[requestId] != null
           ? ApprovalGrant.turn
           : ApprovalGrant.none,
+      approvalGrantKeyProvider: () => _turnApprovalGrantKeys[requestId],
     );
     _runners[requestId] = runner;
 
@@ -471,7 +484,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       const message =
           'Request timed out after 4 minutes. Try again or check the Circuit AI connection.';
       runner.cancel();
-      service.events.emit(EventType.providerLifecycle, {
+      _rejectPendingApprovalsForRequest(requestId);
+      environment.events.emit(EventType.providerLifecycle, {
         'event': ProviderLifecycleEvent(
           requestId: requestId,
           turnId: turnRef?.turnId,
@@ -499,6 +513,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           .read(agentRequestProvider.notifier)
           .finish(AgentRequestLane.chat, error: message);
     } on StudioTurnCancelledException {
+      _rejectPendingApprovalsForRequest(requestId);
       ref
           .read(studioRequestLifecycleProvider.notifier)
           .cancelRequest(requestId);
@@ -509,9 +524,69 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           .read(agentRunProvider.notifier)
           .finishRun(AgentRunKind.chat, cancelled: true);
     } catch (error) {
+      _rejectPendingApprovalsForRequest(requestId);
       final message = error.toString().replaceFirst('Exception: ', '');
-      if (error is StudioTurnOutcomeValidationException) {
-        ref.read(patchProposalProvider.notifier).rejectActive();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      if (!ref.mounted || !state.activeSessions.containsKey(requestId)) {
+        return;
+      }
+      final activePatch = ref.read(patchProposalProvider).active;
+      final hasActivePatchFromRequest =
+          activePatch != null &&
+          activePatch.runId == requestId &&
+          activePatch.applyStatus == null;
+      final activePatchHasDuplicateTargets =
+          hasActivePatchFromRequest &&
+          _hasDuplicatePatchTargets(activePatch.edits);
+      final shouldRequestPatchRevision =
+          error is StudioTurnOutcomeValidationException &&
+          hasActivePatchFromRequest &&
+          intent != TurnIntent.plan;
+      if (error is StudioTurnOutcomeValidationException &&
+          hasActivePatchFromRequest &&
+          intent == TurnIntent.plan &&
+          (activePatch.isPlanOnly == false ||
+              _isThinPlanOnlyArtifact(activePatch))) {
+        ref
+            .read(patchProposalProvider.notifier)
+            .discardActiveForRequest(
+              requestId,
+              message: 'Plan proposal discarded because it was not reviewable.',
+            );
+      }
+      if (shouldRequestPatchRevision) {
+        ref
+            .read(patchProposalProvider.notifier)
+            .requestRevision(
+              PatchProposalRevisionRequest(
+                patchSetId: activePatch.id,
+                prompt: activePatchHasDuplicateTargets
+                    ? '$message\n\nThis proposal also contains duplicate normalized file targets. Revise it into one edit per file before applying.'
+                    : message,
+              ),
+            );
+        final summary = message.contains('accepted plan')
+            ? 'Prepared changes need revision before they match the accepted plan.'
+            : 'Prepared changes need revision before they can be applied.';
+        if (acceptedPlan != null) {
+          _setAcceptedPlanState(
+            requestId,
+            turnRef,
+            AcceptedPlanState.patchProposed,
+          );
+        }
+        ref
+            .read(studioTurnProvider.notifier)
+            .complete(requestId, content: '', summary: summary);
+        ref.read(studioThreadProvider.notifier).setReviewingPatch(threadId);
+        ref
+            .read(studioRequestLifecycleProvider.notifier)
+            .completeRequest(requestId, message: summary);
+        ref
+            .read(agentRunProvider.notifier)
+            .finishRun(AgentRunKind.chat, outputPreview: summary);
+        ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
+        return;
       }
       if (acceptedPlan != null) {
         _setAcceptedPlanState(requestId, turnRef, AcceptedPlanState.failed);
@@ -531,13 +606,16 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           .finish(AgentRequestLane.chat, error: message);
     } finally {
       _runners.remove(requestId);
-      _turnAutoApprove.remove(requestId);
+      _turnApprovalGrantKeys.remove(requestId);
       _pendingApprovals.removeWhere(
         (id, _) => _approvalRequestIds[id] == requestId,
       );
       _approvalRequestIds.removeWhere((_, value) => value == requestId);
-      final active = {...state.activeSessions}..remove(requestId);
-      state = state.copyWith(activeSessions: active);
+      _releaseRuntimeEvents(requestId);
+      if (ref.mounted) {
+        final active = {...state.activeSessions}..remove(requestId);
+        state = state.copyWith(activeSessions: active);
+      }
     }
   }
 
@@ -582,14 +660,16 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
   Future<bool> _handleConfirmationNeeded(
     String requestId,
     ConfirmationRequest request,
+    EventBus events,
   ) async {
-    final service = ref.read(agentServiceProvider);
-    if (_turnAutoApprove[requestId] == true) {
-      service.events.emit(EventType.confirmationNeeded, {
+    final grantKey = _turnApprovalGrantKeys[requestId];
+    final requestGrantKey = _approvalGrantKeyForRequest(requestId, request);
+    if (grantKey != null && grantKey == requestGrantKey) {
+      events.emit(EventType.confirmationNeeded, {
         'request': request,
         'requestId': requestId,
       });
-      service.events.emit(EventType.confirmationReceived, {
+      events.emit(EventType.confirmationReceived, {
         'id': request.id,
         'approved': true,
         'requestId': requestId,
@@ -598,12 +678,12 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     }
     _pendingApprovals[request.id] = request;
     _approvalRequestIds[request.id] = requestId;
-    service.events.emit(EventType.confirmationNeeded, {
+    events.emit(EventType.confirmationNeeded, {
       'request': request,
       'requestId': requestId,
     });
     final approved = await request.response;
-    service.events.emit(EventType.confirmationReceived, {
+    events.emit(EventType.confirmationReceived, {
       'id': request.id,
       'approved': approved,
       'requestId': requestId,
@@ -621,8 +701,12 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
 
   void approveForTurn(String approvalId) {
     final requestId = _approvalRequestIds[approvalId];
-    if (requestId != null) {
-      _turnAutoApprove[requestId] = true;
+    final request = _pendingApprovals[approvalId];
+    if (requestId != null && request != null) {
+      _turnApprovalGrantKeys[requestId] = _approvalGrantKeyForRequest(
+        requestId,
+        request,
+      );
     }
     approveOnce(approvalId);
   }
@@ -635,6 +719,16 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     }
   }
 
+  String _approvalGrantKeyForRequest(
+    String requestId,
+    ConfirmationRequest request,
+  ) {
+    final session = state.sessionFor(requestId);
+    return AgentToolPermissionPolicy(
+      workingDir: session?.workspaceRoot ?? Directory.systemTemp.path,
+    ).approvalGrantKeyFor(request.toolCall);
+  }
+
   void cancel(String requestId) {
     final session = state.sessionFor(requestId);
     ref
@@ -643,7 +737,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     ref.read(agentRunProvider.notifier).requestCancel(AgentRunKind.chat);
     _runners[requestId]?.cancel();
     if (session != null) {
-      ref.read(agentServiceProvider).events.emit(EventType.providerLifecycle, {
+      _runtimeEvents[requestId]?.emit(EventType.providerLifecycle, {
         'event': ProviderLifecycleEvent(
           requestId: requestId,
           turnId: ref.read(studioTurnProvider).refForRequest(requestId)?.turnId,
@@ -662,13 +756,66 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     ref
         .read(agentRunProvider.notifier)
         .finishRun(AgentRunKind.chat, cancelled: true);
-    _pendingApprovals.removeWhere(
-      (id, _) => _approvalRequestIds[id] == requestId,
-    );
+    _pendingApprovals.removeWhere((id, request) {
+      if (_approvalRequestIds[id] != requestId) return false;
+      request.reject();
+      return true;
+    });
     _approvalRequestIds.removeWhere((_, value) => value == requestId);
-    _turnAutoApprove.remove(requestId);
+    _turnApprovalGrantKeys.remove(requestId);
+    _releaseRuntimeEvents(requestId);
     final active = {...state.activeSessions}..remove(requestId);
     state = state.copyWith(activeSessions: active);
+  }
+
+  void _releaseRuntimeEvents(String requestId) {
+    if (ref.mounted) {
+      ref
+          .read(studioRequestLifecycleProvider.notifier)
+          .detachRuntimeEvents(requestId);
+      ref.read(commandRunProvider.notifier).detachRuntimeEvents(requestId);
+    }
+    _runtimeEvents.remove(requestId);
+    _ownedRuntimeEvents.remove(requestId)?.dispose();
+  }
+
+  void _rejectPendingApprovalsForRequest(String requestId) {
+    final pendingIds = [
+      for (final entry in _approvalRequestIds.entries)
+        if (entry.value == requestId) entry.key,
+    ];
+    for (final approvalId in pendingIds) {
+      final request = _pendingApprovals.remove(approvalId);
+      request?.reject();
+      _approvalRequestIds.remove(approvalId);
+    }
+  }
+
+  bool _hasDuplicatePatchTargets(List<ProposedFileEdit> edits) {
+    final seenPaths = <String>{};
+    for (final edit in edits) {
+      final normalizedPath = edit.path
+          .replaceAll('\\', '/')
+          .split('/')
+          .where((part) => part.isNotEmpty && part != '.')
+          .join('/')
+          .toLowerCase();
+      if (normalizedPath.isEmpty) continue;
+      if (!seenPaths.add(normalizedPath)) return true;
+    }
+    return false;
+  }
+
+  bool _isThinPlanOnlyArtifact(ProposedPatchSet patch) {
+    if (!patch.isPlanOnly || patch.effectivePlannedTargets.isNotEmpty) {
+      return false;
+    }
+    final words = [
+      patch.title,
+      patch.comparisonSummary ?? '',
+      patch.planMarkdown ?? '',
+    ].join(' ').trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty);
+    return words.length < 20;
   }
 
   StudioTurnEvent? _activePendingApproval() {

@@ -109,6 +109,7 @@ class IntentClassifier {
     final normalized = _normalize(prompt);
     if (normalized.isEmpty) return TurnIntent.chat;
     if (_isConversational(normalized)) return TurnIntent.chat;
+    if (_looksLikeProductInceptionRequest(normalized)) return TurnIntent.ask;
     if (planModeEnabled) return TurnIntent.plan;
     if (_looksLikePlanRequest(normalized)) return TurnIntent.plan;
     if (_looksLikeSourceFileOutputRequest(normalized)) return TurnIntent.code;
@@ -150,6 +151,10 @@ class IntentClassifier {
     return _looksLikeDesignOrVisualArtifact(normalized) ||
         _looksLikeKnowledgeArtifactRequest(normalized) ||
         _looksLikeEnterpriseAdvisoryRequest(normalized);
+  }
+
+  static bool requestsBuildDiscovery(String prompt) {
+    return _looksLikeProductInceptionRequest(_normalize(prompt));
   }
 
   static String _normalize(String prompt) {
@@ -417,6 +422,155 @@ class IntentClassifier {
     return RegExp(
       r'\b(explain|summarize|describe|show me|list|find|where is|what does|how does|tell me about|walk me through)\b',
     ).hasMatch(normalized);
+  }
+
+  static bool _looksLikeProductInceptionRequest(String normalized) {
+    if (_requestsChatOnlyOutput(normalized)) return false;
+    if (_hasExplicitFileOutputRequest(normalized)) return false;
+    if (_hasExplicitExistingSurfaceMutation(normalized)) return false;
+    if (_hasImplementationReadySignal(normalized)) return false;
+    if (RegExp(
+      r'\b(build|create|make|design)\s+(the\s+)?(app|application|project|site|website|frontend|backend)\s+(to|for|onto)\s+(my\s+)?(desktop|mac|macos)\b',
+    ).hasMatch(normalized)) {
+      return false;
+    }
+
+    final startsAsIdea = _hasBroadBuildLead(normalized);
+    final namesProductIdea = _namesProductIdea(normalized);
+    final exploresProductIdea = _exploresProductIdea(normalized);
+    final broadObject = _hasBroadProductObject(normalized);
+    final broadScope = _hasBroadScopeRequest(normalized);
+    final discoveryPurpose = RegExp(
+      r'\b(to|for)\s+(help|size|manage|track|plan|design|architect|quote|estimate|recommend|compare|validate|support|automate|analyze|analyse|customers?|clients?|users?|teams?)\b',
+    ).hasMatch(normalized);
+    final thinSpec = normalized.split(' ').length <= 16;
+    final businessAudience = RegExp(
+      r'\b(for|to help|to support)\s+(customers?|clients?|users?|teams?|businesses?|companies?|sales|support|ops|operations|engineers?|admins?)\b',
+    ).hasMatch(normalized);
+    final vagueDomainSpec = RegExp(
+      r'\b(for|to)\s+(manage|track|plan|size|quote|estimate|recommend|compare|validate|support|automate|analyze|analyse|handle|organize|organise)\b',
+    ).hasMatch(normalized);
+
+    return (startsAsIdea || namesProductIdea || exploresProductIdea) &&
+        (broadObject || broadScope || discoveryPurpose || businessAudience) &&
+        (discoveryPurpose ||
+            thinSpec ||
+            businessAudience ||
+            vagueDomainSpec ||
+            broadScope ||
+            !_hasImplementationReadySignal(normalized));
+  }
+
+  static bool _hasBroadBuildLead(String normalized) {
+    return RegExp(
+          r'^(i|we)\s+(want|need|would like|am trying|m trying|are trying)\s+to\s+(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(want|need|would like|am trying|m trying|are trying)\s+to\s+(figure out|scope|plan|design|architect)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(can|could|would|will)\s+you\s+(please\s+)?(help\s+me\s+)?(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(help\s+me|work\s+with\s+me|walk\s+me\s+through)\s+(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(build|create|make|design|develop|prototype)\s+(me\s+)?(a|an|the)?\b',
+        ).hasMatch(normalized);
+  }
+
+  static bool _namesProductIdea(String normalized) {
+    return RegExp(
+          r'^(i|we)\s+(want|need|would like)\s+(a|an|the)?\s*(new\s+)?([a-z0-9]+\s+){0,3}(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(have|had|got)\s+(a|an|the)?\s*(new\s+)?(idea|concept)\s+for\s+(a|an|the)?\s*(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(have|had|got)\s+(a|an|the)?\s*(new\s+)?(idea|concept)\s+for\b.*\b(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(am|are|m|re)?\s*(thinking|considering)\s+(about|of)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(can|could|would|will)\s+you\s+(please\s+)?(help\s+me\s+)?(with|plan|scope|figure out)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized);
+  }
+
+  static bool _exploresProductIdea(String normalized) {
+    return RegExp(
+          r'^(can|could|would|will)\s+you\s+(please\s+)?(help\s+me\s+)?(figure out|scope|plan|think through|work through|talk through|design|architect)\b.*\b(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(help\s+me|work\s+with\s+me|walk\s+me\s+through)\s+(figure out|scope|plan|think through|work through|talk through|design|architect)\b.*\b(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized);
+  }
+
+  static bool _hasBroadProductObject(String normalized) {
+    return RegExp(
+          r'\b(something|app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|internal tool|admin tool|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'\b([a-z0-9]+\s+){0,3}(tracker|planner|manager|assistant|generator|analyzer|analyser|sizer|estimator|recommender|validator|visualizer|visualiser)\b',
+        ).hasMatch(normalized);
+  }
+
+  static bool _hasBroadScopeRequest(String normalized) {
+    return RegExp(
+          r'\b(whole|entire|full|complete|end to end|end-to-end)\s+(app|application|tool|product|platform|system|saas|dashboard|portal|workflow|solution|website|site|web app|mobile app|desktop app|thing)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'\b(the\s+)?(whole|entire|full|complete)\s+(thing|product|project)\b',
+        ).hasMatch(normalized);
+  }
+
+  static bool _hasConcreteImplementationTarget(String normalized) {
+    return RegExp(
+          r'\b(component|screen|page|route|api|endpoint|service|class|function|widget|hook|provider|controller|model|schema|script|test|spec|readme|changelog|config)\b',
+        ).hasMatch(normalized) ||
+        _hasNormalizedFileTargetWithExtension(normalized, const {
+          'md',
+          'txt',
+          'dart',
+          'js',
+          'ts',
+          'tsx',
+          'jsx',
+          'py',
+          'json',
+          'yaml',
+          'yml',
+          'html',
+          'css',
+        });
+  }
+
+  static bool _hasFrameworkSignal(String normalized) {
+    return RegExp(
+      r'\b(flutter|dart|react|nextjs|next js|vue|svelte|angular|swiftui|swift|python|django|fastapi|node|express|typescript|javascript|tailwind|shadcn)\b',
+    ).hasMatch(normalized);
+  }
+
+  static bool _hasImplementationReadySignal(String normalized) {
+    return _hasExplicitFileOutputRequest(normalized) ||
+        _hasExplicitExistingSurfaceMutation(normalized) ||
+        _hasConcreteImplementationTarget(normalized) ||
+        RegExp(
+          r'\b(with|containing|include|including|that has|that includes)\b.*\b(component|screen|page|route|api|endpoint|service|class|function|widget|hook|provider|controller|model|schema|script|test|spec)\b',
+        ).hasMatch(normalized) ||
+        (_hasFrameworkSignal(normalized) &&
+            RegExp(
+              r'\b(component|screen|page|route|api|endpoint|service|class|function|widget|hook|provider|controller|model|schema|script|test|spec|static page|landing page|login page|settings screen|admin page)\b',
+            ).hasMatch(normalized));
+  }
+
+  static bool _hasExplicitExistingSurfaceMutation(String normalized) {
+    return RegExp(
+          r'\b(add|edit|fix|update|change|modify|delete|remove|refactor|patch|implement)\s+(the\s+)?(existing\s+|current\s+)?(login|auth|dashboard|settings|profile|admin|checkout|billing|search|navigation|nav|sidebar|composer|drawer|rail|button|form|table|modal|screen|page|route|api|endpoint|component|widget|function|class|provider|controller|model|schema|tests?|bug|issue|error|failure)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'\b(fix|debug|repair)\s+(the\s+)?[a-z0-9_ -]{0,40}\b(bug|issue|error|failure|crash|regression)\b',
+        ).hasMatch(normalized);
   }
 
   static bool _looksLikeReviewRequest(String normalized) {

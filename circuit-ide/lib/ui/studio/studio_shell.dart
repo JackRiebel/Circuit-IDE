@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
+import '../../state/command_palette_provider.dart';
+import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
@@ -29,11 +32,11 @@ class StudioShell extends ConsumerWidget {
             decoration: BoxDecoration(
               color: tokens.studioCanvas,
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
+                topLeft: Radius.circular(14),
               ),
               border: Border(
                 left: BorderSide(
-                  color: tokens.studioDivider.withValues(alpha: 0.72),
+                  color: tokens.studioDivider.withValues(alpha: 0.48),
                 ),
               ),
             ),
@@ -84,48 +87,70 @@ class _StudioTopBar extends ConsumerWidget {
       StudioMode.review => 'Review changes',
       StudioMode.settings => 'Settings',
     };
+    final showThreadMarker = studio.mode == StudioMode.task;
 
     return Container(
-      height: 46,
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+      height: 40,
+      padding: const EdgeInsets.fromLTRB(14, 0, 7, 0),
       decoration: BoxDecoration(
         color: tokens.studioTopBar,
         border: Border(
           bottom: BorderSide(
-            color: tokens.studioDivider.withValues(alpha: 0.62),
+            color: tokens.studioDivider.withValues(alpha: 0.42),
           ),
         ),
       ),
       child: Row(
         children: [
-          StudioChromeIconButton(
-            tooltip: 'Back',
-            onTap: () => ref.read(studioShellProvider.notifier).openHome(),
-            icon: Icons.arrow_back,
+          Expanded(
+            child: _TopBarTitleCluster(
+              title: title,
+              showThreadMarker: showThreadMarker,
+            ),
           ),
-          const SizedBox(width: Spacing.md),
-          Expanded(child: _TopBarTitle(title: title)),
-          if (title.trim().isNotEmpty) ...[
-            const SizedBox(width: Spacing.sm),
-            const _TopBarOverflowMenu(),
-          ],
-          const SizedBox(width: Spacing.sm),
+          const SizedBox(width: 7),
+          const _TopBarOpenInMenu(),
+          const SizedBox(width: 3),
           StudioChromeIconButton(
-            tooltip: 'Review changes',
+            tooltip: 'Command palette',
+            onTap: () => ref.read(commandPaletteProvider.notifier).open(),
+            icon: Icons.tune_outlined,
+            width: 25,
+            height: 22,
+            iconSize: 13,
+          ),
+          const SizedBox(width: 3),
+          StudioChromeIconButton(
+            tooltip: 'Studio settings',
+            onTap: () => ref.read(studioShellProvider.notifier).openSettings(),
+            icon: Icons.info_outline,
+            width: 25,
+            height: 22,
+            iconSize: 13,
+          ),
+          const SizedBox(width: 3),
+          StudioChromeIconButton(
+            tooltip: 'Open review',
             onTap: () => ref.read(studioShellProvider.notifier).openReview(),
             icon: Icons.rate_review_outlined,
             active: studio.mode == StudioMode.review,
+            width: 25,
+            height: 22,
+            iconSize: 13,
           ),
-          const SizedBox(width: Spacing.xs),
+          const SizedBox(width: 3),
           StudioChromeIconButton(
             tooltip: studio.rightProgressPanelVisible
-                ? 'Hide Environment panel'
-                : 'Show Environment panel',
+                ? 'Hide Progress panel'
+                : 'Show Progress panel',
             onTap: () => ref
                 .read(studioShellProvider.notifier)
                 .toggleRightProgressPanel(),
             icon: Icons.view_sidebar_outlined,
             active: studio.rightProgressPanelVisible,
+            width: 26,
+            height: 22,
+            iconSize: 13,
           ),
         ],
       ),
@@ -133,23 +158,31 @@ class _StudioTopBar extends ConsumerWidget {
   }
 }
 
-class _TopBarTitle extends ConsumerWidget {
+class _TopBarTitleCluster extends ConsumerWidget {
   final String title;
+  final bool showThreadMarker;
 
-  const _TopBarTitle({required this.title});
+  const _TopBarTitleCluster({
+    required this.title,
+    required this.showThreadMarker,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     if (title.trim().isEmpty) return const SizedBox.shrink();
     return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
       children: [
-        Tooltip(
-          message: 'Current thread',
-          child: Icon(Icons.push_pin, color: tokens.textMuted, size: 14),
-        ),
-        const SizedBox(width: Spacing.md),
+        if (showThreadMarker) ...[
+          Tooltip(
+            message: 'Current thread',
+            child: Icon(Icons.push_pin, color: tokens.textMuted, size: 12),
+          ),
+          const SizedBox(width: 7),
+        ],
         Flexible(
+          fit: FlexFit.loose,
           child: Text(
             title,
             maxLines: 1,
@@ -157,12 +190,193 @@ class _TopBarTitle extends ConsumerWidget {
             style: TextStyle(
               color: tokens.textPrimary,
               fontSize: FontSizes.base,
-              height: 1.15,
+              height: 1.12,
               fontWeight: FontWeight.w600,
             ),
           ),
         ),
+        const SizedBox(width: 7),
+        const _TopBarOverflowMenu(),
       ],
+    );
+  }
+}
+
+enum _TopBarOpenInAction { review, files, terminal, sideChat }
+
+class _TopBarOpenInMenu extends ConsumerWidget {
+  const _TopBarOpenInMenu();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return PopupMenuButton<_TopBarOpenInAction>(
+      tooltip: 'Open in',
+      color: tokens.studioPanel,
+      constraints: const BoxConstraints(minWidth: 536, maxWidth: 536),
+      elevation: 4,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(9),
+        side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.42)),
+      ),
+      menuPadding: const EdgeInsets.symmetric(vertical: 5),
+      onSelected: (action) => _open(ref, action),
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: _TopBarOpenInAction.review,
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: _OpenInMenuRow(
+            icon: Icons.rate_review_outlined,
+            label: 'Review',
+            shortcut: '^⇧G',
+          ),
+        ),
+        PopupMenuItem(
+          value: _TopBarOpenInAction.terminal,
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: _OpenInMenuRow(
+            icon: Icons.terminal_outlined,
+            label: 'Terminal',
+          ),
+        ),
+        PopupMenuItem(
+          value: _TopBarOpenInAction.files,
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: _OpenInMenuRow(
+            icon: Icons.folder_outlined,
+            label: 'Files',
+            shortcut: '⌘P',
+          ),
+        ),
+        PopupMenuItem(
+          value: _TopBarOpenInAction.sideChat,
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: _OpenInMenuRow(
+            icon: Icons.add_circle_outline,
+            label: 'Side chat',
+            shortcut: '⌥⌘S',
+          ),
+        ),
+      ],
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.only(left: 8, right: 6),
+        decoration: BoxDecoration(
+          color: tokens.studioControl.withValues(alpha: 0.38),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: tokens.studioDivider.withValues(alpha: 0.46),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.folder_special_outlined,
+              color: tokens.textSecondary,
+              size: 14,
+            ),
+            const SizedBox(width: 5),
+            Text(
+              'Open in',
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.sm,
+                height: 1,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(Icons.expand_more, color: tokens.textMuted, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _open(WidgetRef ref, _TopBarOpenInAction action) {
+    final shell = ref.read(studioShellProvider.notifier);
+    final drawer = ref.read(studioRightDrawerProvider.notifier);
+    switch (action) {
+      case _TopBarOpenInAction.review:
+        shell.openReview();
+      case _TopBarOpenInAction.files:
+        shell.showRightProgressPanel();
+        drawer.openMode(StudioDrawerMode.files);
+      case _TopBarOpenInAction.terminal:
+        shell.showRightProgressPanel();
+        drawer.openMode(StudioDrawerMode.terminal);
+      case _TopBarOpenInAction.sideChat:
+        final threadId = ref.read(studioThreadProvider).selectedThreadId;
+        if (threadId == null) {
+          shell.openHome();
+        } else {
+          shell.openThread(threadId);
+        }
+    }
+  }
+}
+
+class _OpenInMenuRow extends ConsumerWidget {
+  final IconData icon;
+  final String label;
+  final String? shortcut;
+
+  const _OpenInMenuRow({
+    required this.icon,
+    required this.label,
+    this.shortcut,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return SizedBox(
+      width: 520,
+      height: 28,
+      child: Row(
+        children: [
+          Icon(icon, color: tokens.textMuted, size: 13),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          if (shortcut != null) ...[
+            const SizedBox(width: Spacing.lg),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+              decoration: BoxDecoration(
+                color: tokens.studioControl.withValues(alpha: 0.48),
+                borderRadius: BorderRadius.circular(Radii.pill),
+              ),
+              child: Text(
+                shortcut!,
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                  height: 1.15,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -179,12 +393,13 @@ class _TopBarOverflowMenu extends ConsumerWidget {
     return PopupMenuButton<_TopBarOverflowAction>(
       tooltip: 'Thread options',
       color: tokens.studioPanel,
-      elevation: 10,
+      elevation: 6,
       position: PopupMenuPosition.under,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.7)),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.56)),
       ),
+      menuPadding: const EdgeInsets.symmetric(vertical: 4),
       onSelected: (action) {
         final notifier = ref.read(studioShellProvider.notifier);
         switch (action) {
@@ -201,34 +416,84 @@ class _TopBarOverflowMenu extends ConsumerWidget {
       itemBuilder: (context) => [
         const PopupMenuItem(
           value: _TopBarOverflowAction.review,
-          child: Text('Review changes'),
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: _OverflowMenuRow(
+            icon: Icons.rate_review_outlined,
+            label: 'Review changes',
+          ),
         ),
         PopupMenuItem(
           value: _TopBarOverflowAction.toggleEnvironment,
-          child: Text(
-            studio.rightProgressPanelVisible
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: _OverflowMenuRow(
+            icon: Icons.view_sidebar_outlined,
+            label: studio.rightProgressPanelVisible
                 ? 'Hide Progress panel'
                 : 'Show Progress panel',
           ),
         ),
         const PopupMenuItem(
           value: _TopBarOverflowAction.settings,
-          child: Text('Settings'),
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: _OverflowMenuRow(icon: Icons.info_outline, label: 'Settings'),
         ),
         const PopupMenuItem(
           value: _TopBarOverflowAction.home,
-          child: Text('Back to projects'),
+          height: 34,
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: _OverflowMenuRow(
+            icon: Icons.folder_outlined,
+            label: 'Back to projects',
+          ),
         ),
       ],
       child: Container(
-        width: 30,
-        height: 26,
+        width: 26,
+        height: 24,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Colors.transparent,
           borderRadius: BorderRadius.circular(Radii.md),
         ),
-        child: Icon(Icons.more_horiz, color: tokens.textMuted, size: 15),
+        child: Icon(Icons.more_horiz, color: tokens.textMuted, size: 13),
+      ),
+    );
+  }
+}
+
+class _OverflowMenuRow extends ConsumerWidget {
+  final IconData icon;
+  final String label;
+
+  const _OverflowMenuRow({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return SizedBox(
+      width: 190,
+      height: 28,
+      child: Row(
+        children: [
+          Icon(icon, color: tokens.textMuted, size: 13),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.2,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

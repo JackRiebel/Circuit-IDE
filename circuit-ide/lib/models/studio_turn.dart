@@ -4,6 +4,7 @@ import 'chat_message.dart';
 import 'confirmation_request.dart';
 import 'context_pack.dart';
 import 'provider_lifecycle_event.dart';
+import 'reviewed_edit.dart';
 import 'studio_thread.dart';
 import 'tool_result_envelope.dart';
 import 'turn_intent.dart';
@@ -16,12 +17,84 @@ enum TurnStep {
   toolDecision,
   approvalWait,
   toolExecution,
+  commandRun,
   patchProposal,
+  continuation,
   verification,
   finalSummary,
 }
 
 enum TurnStepStatus { queued, running, completed, failed, skipped }
+
+class TurnStepRecord {
+  final TurnStep step;
+  final TurnStepStatus status;
+  final String title;
+  final String detail;
+  final DateTime startedAt;
+  final DateTime? completedAt;
+
+  const TurnStepRecord({
+    required this.step,
+    required this.status,
+    required this.title,
+    this.detail = '',
+    required this.startedAt,
+    this.completedAt,
+  });
+
+  TurnStepRecord copyWith({
+    TurnStepStatus? status,
+    String? title,
+    String? detail,
+    DateTime? startedAt,
+    Object? completedAt = _sentinel,
+  }) {
+    return TurnStepRecord(
+      step: step,
+      status: status ?? this.status,
+      title: title ?? this.title,
+      detail: detail ?? this.detail,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: identical(completedAt, _sentinel)
+          ? this.completedAt
+          : completedAt as DateTime?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'step': step.name,
+    'status': status.name,
+    'title': title,
+    'detail': detail,
+    'startedAt': startedAt.toIso8601String(),
+    'completedAt': completedAt?.toIso8601String(),
+  };
+
+  static TurnStepRecord? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    try {
+      return TurnStepRecord(
+        step: TurnStep.values.firstWhere(
+          (candidate) => candidate.name == json['step'],
+          orElse: () => TurnStep.providerRequest,
+        ),
+        status: TurnStepStatus.values.firstWhere(
+          (candidate) => candidate.name == json['status'],
+          orElse: () => TurnStepStatus.running,
+        ),
+        title: json['title'] as String? ?? '',
+        detail: json['detail'] as String? ?? '',
+        startedAt:
+            DateTime.tryParse(json['startedAt'] as String? ?? '') ??
+            DateTime.now(),
+        completedAt: DateTime.tryParse(json['completedAt'] as String? ?? ''),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
 
 enum StudioTurnStatus {
   queued,
@@ -61,6 +134,102 @@ enum AcceptedPlanState {
   failed,
 }
 
+enum PlanTargetProgressState {
+  pending,
+  proposed,
+  applied,
+  conflict,
+  skipped,
+  blocked,
+}
+
+class PlanTargetProgress {
+  final String path;
+  final String intent;
+  final ProposedFileEditType? operation;
+  final PlanTargetProgressState state;
+  final String? patchSetId;
+  final String? detail;
+  final DateTime updatedAt;
+
+  const PlanTargetProgress({
+    required this.path,
+    required this.intent,
+    this.operation,
+    this.state = PlanTargetProgressState.pending,
+    this.patchSetId,
+    this.detail,
+    required this.updatedAt,
+  });
+
+  factory PlanTargetProgress.fromTarget(PlannedFileTarget target) {
+    return PlanTargetProgress(
+      path: target.path,
+      intent: target.intent,
+      operation: target.operation,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  PlanTargetProgress copyWith({
+    PlanTargetProgressState? state,
+    Object? patchSetId = _sentinel,
+    Object? detail = _sentinel,
+    DateTime? updatedAt,
+  }) {
+    return PlanTargetProgress(
+      path: path,
+      intent: intent,
+      operation: operation,
+      state: state ?? this.state,
+      patchSetId: identical(patchSetId, _sentinel)
+          ? this.patchSetId
+          : patchSetId as String?,
+      detail: identical(detail, _sentinel) ? this.detail : detail as String?,
+      updatedAt: updatedAt ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'path': path,
+    'intent': intent,
+    'operation': operation?.name,
+    'state': state.name,
+    'patchSetId': patchSetId,
+    'detail': detail,
+    'updatedAt': updatedAt.toIso8601String(),
+  };
+
+  static PlanTargetProgress? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    try {
+      final operationName = json['operation'] as String?;
+      final stateName = json['state'] as String?;
+      return PlanTargetProgress(
+        path: json['path'] as String? ?? '',
+        intent: json['intent'] as String? ?? '',
+        operation: operationName == null
+            ? null
+            : ProposedFileEditType.values.firstWhere(
+                (candidate) => candidate.name == operationName,
+                orElse: () => ProposedFileEditType.modify,
+              ),
+        state: PlanTargetProgressState.values.firstWhere(
+          (candidate) => candidate.name == stateName,
+          orElse: () => PlanTargetProgressState.pending,
+        ),
+        patchSetId: json['patchSetId'] as String?,
+        detail: json['detail'] as String?,
+        updatedAt:
+            DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class StudioTurnEvent {
   final String id;
   final String turnId;
@@ -81,6 +250,7 @@ class StudioTurnEvent {
   final String? sourceArtifactId;
   final String? filePath;
   final String? localUrl;
+  final String? patchSetId;
   final bool transcriptVisible;
 
   const StudioTurnEvent({
@@ -103,6 +273,7 @@ class StudioTurnEvent {
     this.sourceArtifactId,
     this.filePath,
     this.localUrl,
+    this.patchSetId,
     this.transcriptVisible = true,
   });
 
@@ -113,6 +284,7 @@ class StudioTurnEvent {
     required String threadId,
     required String content,
     required DateTime timestamp,
+    bool transcriptVisible = true,
   }) {
     return StudioTurnEvent(
       id: id,
@@ -124,6 +296,7 @@ class StudioTurnEvent {
       detail: content,
       content: content,
       timestamp: timestamp,
+      transcriptVisible: transcriptVisible,
     );
   }
 
@@ -192,6 +365,7 @@ class StudioTurnEvent {
       toolCallId: toolCallId,
       toolName: toolName,
       filePath: filePath,
+      transcriptVisible: false,
     );
   }
 
@@ -268,6 +442,7 @@ class StudioTurnEvent {
     required String threadId,
     required String title,
     required String detail,
+    String? patchSetId,
     DateTime? timestamp,
   }) {
     return StudioTurnEvent(
@@ -278,6 +453,7 @@ class StudioTurnEvent {
       type: StudioTurnEventType.completionSummary,
       title: title,
       detail: detail,
+      patchSetId: patchSetId,
       timestamp: timestamp ?? DateTime.now(),
     );
   }
@@ -291,6 +467,7 @@ class StudioTurnEvent {
     Object? sourceArtifactId = _sentinel,
     Object? filePath = _sentinel,
     Object? localUrl = _sentinel,
+    Object? patchSetId = _sentinel,
     bool? transcriptVisible,
   }) {
     return StudioTurnEvent(
@@ -323,6 +500,9 @@ class StudioTurnEvent {
       localUrl: identical(localUrl, _sentinel)
           ? this.localUrl
           : localUrl as String?,
+      patchSetId: identical(patchSetId, _sentinel)
+          ? this.patchSetId
+          : patchSetId as String?,
       transcriptVisible: transcriptVisible ?? this.transcriptVisible,
     );
   }
@@ -357,6 +537,7 @@ class StudioTurnEvent {
       'sourceArtifactId': sourceArtifactId,
       'filePath': filePath,
       'localUrl': localUrl,
+      'patchSetId': patchSetId,
       'transcriptVisible': transcriptVisible,
     };
   }
@@ -396,6 +577,7 @@ class StudioTurnEvent {
         sourceArtifactId: json['sourceArtifactId'] as String?,
         filePath: json['filePath'] as String?,
         localUrl: json['localUrl'] as String?,
+        patchSetId: json['patchSetId'] as String?,
         transcriptVisible:
             json['transcriptVisible'] as bool? ??
             _defaultTranscriptVisibleFor(
@@ -443,10 +625,12 @@ class StudioTurn {
   final StudioTurnStatus status;
   final String assistantDraft;
   final List<StudioTurnEvent> events;
+  final List<TurnStepRecord> steps;
   final List<ToolResultEnvelope> toolResults;
   final List<ProviderLifecycleEvent> providerDiagnostics;
   final AcceptedPlanState acceptedPlanState;
   final AcceptedPlanContext? acceptedPlanContext;
+  final List<PlanTargetProgress> planTargetProgress;
   final ContextRetrievalResult? contextRetrieval;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -466,10 +650,12 @@ class StudioTurn {
     this.status = StudioTurnStatus.queued,
     this.assistantDraft = '',
     this.events = const [],
+    this.steps = const [],
     this.toolResults = const [],
     this.providerDiagnostics = const [],
     this.acceptedPlanState = AcceptedPlanState.none,
     this.acceptedPlanContext,
+    this.planTargetProgress = const [],
     this.contextRetrieval,
     required this.createdAt,
     required this.updatedAt,
@@ -481,10 +667,12 @@ class StudioTurn {
     StudioTurnStatus? status,
     String? assistantDraft,
     List<StudioTurnEvent>? events,
+    List<TurnStepRecord>? steps,
     List<ToolResultEnvelope>? toolResults,
     List<ProviderLifecycleEvent>? providerDiagnostics,
     AcceptedPlanState? acceptedPlanState,
     Object? acceptedPlanContext = _sentinel,
+    List<PlanTargetProgress>? planTargetProgress,
     Object? contextRetrieval = _sentinel,
     DateTime? updatedAt,
     Object? completedAt = _sentinel,
@@ -503,12 +691,14 @@ class StudioTurn {
       status: status ?? this.status,
       assistantDraft: assistantDraft ?? this.assistantDraft,
       events: events ?? this.events,
+      steps: steps ?? this.steps,
       toolResults: toolResults ?? this.toolResults,
       providerDiagnostics: providerDiagnostics ?? this.providerDiagnostics,
       acceptedPlanState: acceptedPlanState ?? this.acceptedPlanState,
       acceptedPlanContext: identical(acceptedPlanContext, _sentinel)
           ? this.acceptedPlanContext
           : acceptedPlanContext as AcceptedPlanContext?,
+      planTargetProgress: planTargetProgress ?? this.planTargetProgress,
       contextRetrieval: identical(contextRetrieval, _sentinel)
           ? this.contextRetrieval
           : contextRetrieval as ContextRetrievalResult?,
@@ -529,6 +719,14 @@ class StudioTurn {
       event,
     ]..sort((a, b) => a.timestamp.compareTo(b.timestamp));
     return copyWith(events: events, updatedAt: DateTime.now());
+  }
+
+  StudioTurn upsertStep(TurnStepRecord step) {
+    final steps = [
+      ...this.steps.where((candidate) => candidate.step != step.step),
+      step,
+    ]..sort((a, b) => a.startedAt.compareTo(b.startedAt));
+    return copyWith(steps: steps, updatedAt: DateTime.now());
   }
 
   StudioTurn expirePendingApprovals() {
@@ -559,12 +757,16 @@ class StudioTurn {
       'status': status.name,
       'assistantDraft': assistantDraft,
       'events': events.map((event) => event.toJson()).toList(),
+      'steps': steps.map((step) => step.toJson()).toList(),
       'toolResults': toolResults.map((result) => result.toJson()).toList(),
       'providerDiagnostics': providerDiagnostics
           .map((event) => event.toJson())
           .toList(),
       'acceptedPlanState': acceptedPlanState.name,
       'acceptedPlanContext': acceptedPlanContext?.toJson(),
+      'planTargetProgress': planTargetProgress
+          .map((target) => target.toJson())
+          .toList(),
       'contextRetrieval': contextRetrieval?.toJson(),
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -575,6 +777,15 @@ class StudioTurn {
 
   static StudioTurn? fromJson(Map<String, dynamic> json) {
     try {
+      final acceptedPlanContext = AcceptedPlanContext.fromJson(
+        json['acceptedPlanContext'] as Map<String, dynamic>?,
+      );
+      final planTargetProgress =
+          (json['planTargetProgress'] as List<dynamic>? ?? [])
+              .whereType<Map<String, dynamic>>()
+              .map(PlanTargetProgress.fromJson)
+              .nonNulls
+              .toList();
       return StudioTurn(
         id: json['id'] as String,
         threadId: json['threadId'] as String,
@@ -600,6 +811,11 @@ class StudioTurn {
             .map(StudioTurnEvent.fromJson)
             .nonNulls
             .toList(),
+        steps: (json['steps'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(TurnStepRecord.fromJson)
+            .nonNulls
+            .toList(),
         toolResults: (json['toolResults'] as List<dynamic>? ?? [])
             .whereType<Map<String, dynamic>>()
             .map(ToolResultEnvelope.fromJson)
@@ -614,9 +830,10 @@ class StudioTurn {
           (value) => value.name == json['acceptedPlanState'],
           orElse: () => AcceptedPlanState.none,
         ),
-        acceptedPlanContext: AcceptedPlanContext.fromJson(
-          json['acceptedPlanContext'] as Map<String, dynamic>?,
-        ),
+        acceptedPlanContext: acceptedPlanContext,
+        planTargetProgress: planTargetProgress.isNotEmpty
+            ? planTargetProgress
+            : _planTargetProgressFromContext(acceptedPlanContext),
         contextRetrieval: ContextRetrievalResult.fromJson(
           json['contextRetrieval'] as Map<String, dynamic>?,
         ),
@@ -636,3 +853,22 @@ class StudioTurn {
 }
 
 const _sentinel = Object();
+
+List<PlanTargetProgress> _planTargetProgressFromContext(
+  AcceptedPlanContext? context,
+) {
+  if (context == null) return const [];
+  final targets = context.plannedTargets.isNotEmpty
+      ? context.plannedTargets
+      : [
+          for (final file in context.plannedFiles)
+            PlannedFileTarget.fromDisplayString(file),
+        ];
+  final seen = <String>{};
+  return [
+    for (final target in targets)
+      if (target.path.trim().isNotEmpty &&
+          seen.add(target.path.trim().replaceAll('\\', '/')))
+        PlanTargetProgress.fromTarget(target),
+  ];
+}

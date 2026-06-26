@@ -11,9 +11,9 @@ import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
 import 'package:circuit_ide/models/tool_result_envelope.dart';
+import 'package:circuit_ide/models/turn_intent.dart';
+import 'package:circuit_ide/services/event_bus.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
-import 'package:circuit_ide/state/chat_provider.dart';
-import 'package:circuit_ide/state/connection_provider.dart';
 import 'package:circuit_ide/state/agent_workspace_provider.dart';
 import 'package:circuit_ide/state/agent_request_provider.dart';
 import 'package:circuit_ide/state/agent_run_provider.dart';
@@ -24,9 +24,123 @@ import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+ProviderContainer _lifecycleContainer() {
+  return ProviderContainer();
+}
+
+final _runtimeEventsByContainer = Expando<Map<String, EventBus>>(
+  'studio-lifecycle-test-events',
+);
+
+EventBus _runtimeEventsFor(ProviderContainer container, String requestId) {
+  final eventsByRequest = _runtimeEventsByContainer[container] ??=
+      <String, EventBus>{};
+  return eventsByRequest.putIfAbsent(requestId, () {
+    final events = EventBus();
+    container
+        .read(studioRequestLifecycleProvider.notifier)
+        .attachRuntimeEvents(requestId, events);
+    return events;
+  });
+}
+
+void _emitRuntimeEvent(
+  ProviderContainer container,
+  String requestId,
+  EventType type,
+  Map<String, dynamic> data,
+) {
+  final eventData = {...data, 'requestId': requestId};
+  _runtimeEventsFor(container, requestId).emit(type, eventData);
+}
+
 void main() {
-  test('streaming chunks update the registered Studio thread live', () {
+  test('unattached runtime events are ignored by Studio lifecycle', () {
     final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .ensureThread(title: 'Review app', model: 'gpt-5-nano');
+    const summary = StudioContextSummary(
+      rootPath: '/tmp/project',
+      projectLabel: 'project',
+      includedItemCount: 2,
+      estimatedTokens: 200,
+    );
+    _registerTurn(container, 'req-global-ignored', thread.id, summary: summary);
+    container
+        .read(studioRequestLifecycleProvider.notifier)
+        .registerRequest(
+          requestId: 'req-global-ignored',
+          threadId: thread.id,
+          model: 'gpt-5-nano',
+          contextSummary: summary,
+        );
+
+    final unattachedEvents = EventBus();
+    unattachedEvents.emit(EventType.messageChunk, {
+      'requestId': 'req-global-ignored',
+      'content': 'legacy chunk',
+    });
+
+    final updated = container.read(studioThreadProvider).selectedThread!;
+    expect(updated.status, StudioThreadStatus.preflighting);
+    expect(updated.streamingContent, isEmpty);
+    expect(updated.turns.single.assistantDraft, isEmpty);
+  });
+
+  test('legacy agent run events are ignored by Studio lifecycle', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .ensureThread(title: 'Review app', model: 'gpt-5-nano');
+    const summary = StudioContextSummary(
+      rootPath: '/tmp/project',
+      projectLabel: 'project',
+      includedItemCount: 2,
+      estimatedTokens: 200,
+    );
+    _registerTurn(
+      container,
+      'req-legacy-agent-run-ignored',
+      thread.id,
+      summary: summary,
+    );
+    container
+        .read(studioRequestLifecycleProvider.notifier)
+        .registerRequest(
+          requestId: 'req-legacy-agent-run-ignored',
+          threadId: thread.id,
+          model: 'gpt-5-nano',
+          contextSummary: summary,
+        );
+
+    _emitRuntimeEvent(
+      container,
+      'req-legacy-agent-run-ignored',
+      EventType.agentRunEvent,
+      {'event': 'provider_lifecycle', 'kind': 'first_text_delta'},
+    );
+
+    final updated = container.read(studioThreadProvider).selectedThread!;
+    expect(updated.status, StudioThreadStatus.preflighting);
+    expect(updated.phase, StudioSendPhase.preflighting);
+    expect(updated.turns.single.status, StudioTurnStatus.waitingForModel);
+    expect(updated.turns.single.assistantDraft, isEmpty);
+    expect(
+      container
+          .read(studioRequestLifecycleProvider)
+          .active('req-legacy-agent-run-ignored')
+          ?.lastEventKind,
+      StudioRequestLifecycleEventKind.requestStarted,
+    );
+  });
+
+  test('streaming chunks update the registered Studio thread live', () {
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -48,11 +162,11 @@ void main() {
           contextSummary: summary,
         );
 
-    container.read(agentServiceProvider).events.emit(EventType.messageChunk, {
+    _emitRuntimeEvent(container, 'req-stream', EventType.messageChunk, {
       'requestId': 'req-stream',
       'content': 'Hello',
     });
-    container.read(agentServiceProvider).events.emit(EventType.messageChunk, {
+    _emitRuntimeEvent(container, 'req-stream', EventType.messageChunk, {
       'requestId': 'req-stream',
       'content': ' world',
     });
@@ -67,7 +181,7 @@ void main() {
   test(
     'message completion records assistant content on the turn and marks thread done',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -85,14 +199,11 @@ void main() {
             contextSummary: summary,
           );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.messageCompleted, {
-            'requestId': 'req-done',
-            'content': 'Hi! How can I help?',
-            'toolCalls': const [],
-          });
+      _emitRuntimeEvent(container, 'req-done', EventType.messageCompleted, {
+        'requestId': 'req-done',
+        'content': 'Hi! How can I help?',
+        'toolCalls': const [],
+      });
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updated = container
@@ -127,7 +238,7 @@ void main() {
   test(
     'explicit completeRequest closes thread and turn without message event',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -201,7 +312,7 @@ void main() {
   test(
     'explicit completeRequest completes associated workspace task',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
       await _waitForWorkspaceStore(container);
@@ -247,7 +358,7 @@ void main() {
   );
 
   test('explicit cancelRequest cancels associated workspace task', () async {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
     await _waitForThreadStore(container);
     await _waitForWorkspaceStore(container);
@@ -318,7 +429,7 @@ void main() {
   test(
     'completed requests ignore stale provider failure diagnostics',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -341,7 +452,9 @@ void main() {
             contextSummary: summary,
           );
 
-      container.read(agentServiceProvider).events.emit(
+      _emitRuntimeEvent(
+        container,
+        'req-stale-provider',
         EventType.messageCompleted,
         {
           'requestId': 'req-stale-provider',
@@ -351,19 +464,21 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.providerLifecycle, {
-            'requestId': 'req-stale-provider',
-            'event': ProviderLifecycleEvent(
-              requestId: 'req-stale-provider',
-              kind: ProviderLifecycleEventKind.failed,
-              timestamp: DateTime(2026, 1, 1, 0, 0, 1),
-              model: 'gpt-5-nano',
-              detail: 'Late provider failure should be ignored.',
-            ),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-stale-provider',
+        EventType.providerLifecycle,
+        {
+          'requestId': 'req-stale-provider',
+          'event': ProviderLifecycleEvent(
+            requestId: 'req-stale-provider',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+            model: 'gpt-5-nano',
+            detail: 'Late provider failure should be ignored.',
+          ),
+        },
+      );
 
       final updated = container
           .read(studioThreadProvider)
@@ -392,7 +507,7 @@ void main() {
   test(
     'provider completion diagnostic does not downgrade streaming turn state',
     () {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
 
       final thread = container
@@ -414,18 +529,20 @@ void main() {
             contextSummary: summary,
           );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.providerLifecycle, {
-            'requestId': 'req-provider-completed',
-            'event': ProviderLifecycleEvent(
-              requestId: 'req-provider-completed',
-              kind: ProviderLifecycleEventKind.firstTextDelta,
-              timestamp: DateTime(2026),
-              model: 'gpt-5-nano',
-            ),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-provider-completed',
+        EventType.providerLifecycle,
+        {
+          'requestId': 'req-provider-completed',
+          'event': ProviderLifecycleEvent(
+            requestId: 'req-provider-completed',
+            kind: ProviderLifecycleEventKind.firstTextDelta,
+            timestamp: DateTime(2026),
+            model: 'gpt-5-nano',
+          ),
+        },
+      );
       expect(
         container
             .read(studioThreadProvider)
@@ -436,19 +553,21 @@ void main() {
         StudioTurnStatus.streaming,
       );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.providerLifecycle, {
-            'requestId': 'req-provider-completed',
-            'event': ProviderLifecycleEvent(
-              requestId: 'req-provider-completed',
-              kind: ProviderLifecycleEventKind.completed,
-              timestamp: DateTime(2026, 1, 1, 0, 0, 1),
-              model: 'gpt-5-nano',
-              detail: 'Provider completed before messageCompleted.',
-            ),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-provider-completed',
+        EventType.providerLifecycle,
+        {
+          'requestId': 'req-provider-completed',
+          'event': ProviderLifecycleEvent(
+            requestId: 'req-provider-completed',
+            kind: ProviderLifecycleEventKind.completed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+            model: 'gpt-5-nano',
+            detail: 'Provider completed before messageCompleted.',
+          ),
+        },
+      );
 
       final updated = container.read(studioThreadProvider).selectedThread!;
       expect(updated.turns.single.status, StudioTurnStatus.streaming);
@@ -469,7 +588,7 @@ void main() {
   test(
     'provider fallback and tool-only diagnostics update progress clearly',
     () {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
 
       final thread = container
@@ -494,7 +613,7 @@ void main() {
             contextSummary: summary,
           );
 
-      final service = container.read(agentServiceProvider).events;
+      final service = _runtimeEventsFor(container, 'req-provider-fallback');
       for (final diagnostic in [
         ProviderLifecycleEventKind.nonSseJson,
         ProviderLifecycleEventKind.jsonFallback,
@@ -547,9 +666,80 @@ void main() {
   );
 
   test(
+    'outcome rejection stays recoverable when a reviewable patch exists',
+    () {
+      final container = _lifecycleContainer();
+      addTearDown(container.dispose);
+
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .ensureThread(title: 'Patch needs revision', model: 'gpt-5-nano');
+      const summary = StudioContextSummary(projectLabel: 'project');
+      _registerTurn(
+        container,
+        'req-reviewable-outcome',
+        thread.id,
+        summary: summary,
+      );
+      container
+          .read(studioRequestLifecycleProvider.notifier)
+          .registerRequest(
+            requestId: 'req-reviewable-outcome',
+            threadId: thread.id,
+            model: 'gpt-5-nano',
+            contextSummary: summary,
+          );
+      container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Prepared changes',
+            runId: 'req-reviewable-outcome',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/app.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old',
+                after: 'new',
+              ),
+            ],
+          );
+
+      _runtimeEventsFor(
+        container,
+        'req-reviewable-outcome',
+      ).emit(EventType.providerLifecycle, {
+        'requestId': 'req-reviewable-outcome',
+        'event': ProviderLifecycleEvent(
+          requestId: 'req-reviewable-outcome',
+          kind: ProviderLifecycleEventKind.outcomeRejected,
+          timestamp: DateTime(2026),
+          model: 'gpt-5-nano',
+          detail:
+              'Runtime rejected the model outcome, but a patch can be revised.',
+        ),
+      });
+
+      final updated = container.read(studioThreadProvider).selectedThread!;
+      final turn = updated.turns.single;
+      expect(turn.status, StudioTurnStatus.toolRunning);
+      expect(
+        turn.providerDiagnostics.map((event) => event.kind),
+        contains(ProviderLifecycleEventKind.outcomeRejected),
+      );
+      expect(
+        container
+            .read(studioRequestLifecycleProvider)
+            .find('req-reviewable-outcome')
+            ?.lastEventKind,
+        StudioRequestLifecycleEventKind.toolRunning,
+      );
+    },
+  );
+
+  test(
     'message completion summary uses structured tool result evidence',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -567,7 +757,9 @@ void main() {
             contextSummary: summary,
           );
 
-      container.read(agentServiceProvider).events.emit(
+      _emitRuntimeEvent(
+        container,
+        'req-summary',
         EventType.toolResultRecorded,
         {
           'requestId': 'req-summary',
@@ -582,14 +774,11 @@ void main() {
           ),
         },
       );
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.messageCompleted, {
-            'requestId': 'req-summary',
-            'content': 'I ran the requested check.',
-            'toolCalls': const [],
-          });
+      _emitRuntimeEvent(container, 'req-summary', EventType.messageCompleted, {
+        'requestId': 'req-summary',
+        'content': 'I ran the requested check.',
+        'toolCalls': const [],
+      });
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updated = container
@@ -608,7 +797,7 @@ void main() {
   );
 
   test('confirmationNeeded moves the thread into waiting for approval', () {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -638,10 +827,10 @@ void main() {
       ),
       preview: 'npm test',
     );
-    container.read(agentServiceProvider).events.emit(
-      EventType.confirmationNeeded,
-      {'requestId': 'req-approval', 'request': request},
-    );
+    _emitRuntimeEvent(container, 'req-approval', EventType.confirmationNeeded, {
+      'requestId': 'req-approval',
+      'request': request,
+    });
 
     final updated = container.read(studioThreadProvider).selectedThread!;
     expect(updated.status, StudioThreadStatus.waitingForApproval);
@@ -654,7 +843,7 @@ void main() {
   });
 
   test('completeRequest expires pending approval and archives Studio turn', () {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -675,13 +864,15 @@ void main() {
           contextSummary: const StudioContextSummary(projectLabel: 'project'),
         );
 
-    container
-        .read(agentServiceProvider)
-        .events
-        .emit(EventType.confirmationNeeded, {
-          'requestId': 'req-approval-complete',
-          'request': _approvalRequest('approval-complete'),
-        });
+    _emitRuntimeEvent(
+      container,
+      'req-approval-complete',
+      EventType.confirmationNeeded,
+      {
+        'requestId': 'req-approval-complete',
+        'request': _approvalRequest('approval-complete'),
+      },
+    );
     container
         .read(studioRequestLifecycleProvider.notifier)
         .completeRequest(
@@ -713,7 +904,7 @@ void main() {
   });
 
   test('failRequest expires pending approval', () {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -734,13 +925,15 @@ void main() {
           contextSummary: const StudioContextSummary(projectLabel: 'project'),
         );
 
-    container
-        .read(agentServiceProvider)
-        .events
-        .emit(EventType.confirmationNeeded, {
-          'requestId': 'req-approval-fail',
-          'request': _approvalRequest('approval-fail'),
-        });
+    _emitRuntimeEvent(
+      container,
+      'req-approval-fail',
+      EventType.confirmationNeeded,
+      {
+        'requestId': 'req-approval-fail',
+        'request': _approvalRequest('approval-fail'),
+      },
+    );
     container
         .read(studioRequestLifecycleProvider.notifier)
         .failRequest('req-approval-fail', 'Provider failed.');
@@ -759,7 +952,7 @@ void main() {
   });
 
   test('cancelRequest expires pending approval', () {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -780,13 +973,15 @@ void main() {
           contextSummary: const StudioContextSummary(projectLabel: 'project'),
         );
 
-    container
-        .read(agentServiceProvider)
-        .events
-        .emit(EventType.confirmationNeeded, {
-          'requestId': 'req-approval-cancel',
-          'request': _approvalRequest('approval-cancel'),
-        });
+    _emitRuntimeEvent(
+      container,
+      'req-approval-cancel',
+      EventType.confirmationNeeded,
+      {
+        'requestId': 'req-approval-cancel',
+        'request': _approvalRequest('approval-cancel'),
+      },
+    );
     container
         .read(studioRequestLifecycleProvider.notifier)
         .cancelRequest('req-approval-cancel', message: 'User cancelled.');
@@ -804,10 +999,9 @@ void main() {
     expect(approval.approvalState, ApprovalRequestState.expired);
   });
 
-  test('stale approval events do not become global chat approvals', () {
-    final container = ProviderContainer();
+  test('stale approval events without runtime attachment are ignored', () {
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
-    container.read(chatProvider);
 
     final request = ConfirmationRequest(
       id: 'approval-text',
@@ -818,25 +1012,23 @@ void main() {
       ),
       preview: 'edit docs/topology.md',
     );
-    container.read(agentServiceProvider).events.emit(
-      EventType.confirmationNeeded,
-      {'requestId': 'stale-request', 'request': request},
-    );
+    final unattachedEvents = EventBus();
+    unattachedEvents.emit(EventType.confirmationNeeded, {
+      'requestId': 'stale-request',
+      'request': request,
+    });
 
-    expect(container.read(chatProvider).pendingConfirmation, isNull);
+    expect(container.read(studioThreadProvider).selectedThread, isNull);
     expect(
-      container
-          .read(chatProvider.notifier)
-          .handlePendingApprovalText('approve'),
-      isFalse,
+      container.read(studioRequestLifecycleProvider).activeRequests,
+      isEmpty,
     );
-    expect(container.read(chatProvider).messages, isEmpty);
   });
 
   test(
     'tool events render Codex-style activity rows and completion recap',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -863,33 +1055,28 @@ void main() {
         name: 'run_command',
         arguments: {'command': 'flutter analyze'},
       );
-      container.read(agentServiceProvider).events.emit(
-        EventType.toolCallStarted,
-        {'requestId': 'req-tools', 'toolCall': command},
-      );
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.toolCallCompleted, {
-            'requestId': 'req-tools',
-            'toolCall': command.copyWith(result: 'No issues found'),
-          });
+      _emitRuntimeEvent(container, 'req-tools', EventType.toolCallStarted, {
+        'requestId': 'req-tools',
+        'toolCall': command,
+      });
+      _emitRuntimeEvent(container, 'req-tools', EventType.toolCallCompleted, {
+        'requestId': 'req-tools',
+        'toolCall': command.copyWith(result: 'No issues found'),
+      });
       const edit = ToolCallInfo(
         id: 'edit-1',
         name: 'edit_file',
         arguments: {'path': 'lib/main.dart'},
       );
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.toolCallCompleted, {
-            'requestId': 'req-tools',
-            'toolCall': edit.copyWith(result: 'Updated lib/main.dart'),
-          });
-      container.read(agentServiceProvider).events.emit(
-        EventType.messageCompleted,
-        {'requestId': 'req-tools', 'content': 'Done.', 'toolCalls': const []},
-      );
+      _emitRuntimeEvent(container, 'req-tools', EventType.toolCallCompleted, {
+        'requestId': 'req-tools',
+        'toolCall': edit.copyWith(result: 'Updated lib/main.dart'),
+      });
+      _emitRuntimeEvent(container, 'req-tools', EventType.messageCompleted, {
+        'requestId': 'req-tools',
+        'content': 'Done.',
+        'toolCalls': const [],
+      });
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updated = container
@@ -908,7 +1095,7 @@ void main() {
   );
 
   test('propose_patch creates a reviewable Studio plan artifact', () async {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
     await _waitForThreadStore(container);
 
@@ -928,6 +1115,7 @@ void main() {
           threadId: thread.id,
           model: 'gpt-5-nano',
           contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          intent: TurnIntent.plan,
         );
 
     const patchTool = ToolCallInfo(
@@ -942,6 +1130,7 @@ void main() {
             'path': 'hello.py',
             'intent': 'Print Hello when executed',
             'operation': 'create',
+            'content': 'print("Hello")\n',
           },
           {
             'path': 'README.md',
@@ -952,17 +1141,15 @@ void main() {
       },
     );
 
-    container.read(agentServiceProvider).events.emit(
-      EventType.toolCallCompleted,
-      {
-        'requestId': 'req-plan',
-        'toolCall': patchTool.copyWith(result: 'captured'),
-      },
-    );
+    _emitRuntimeEvent(container, 'req-plan', EventType.toolCallCompleted, {
+      'requestId': 'req-plan',
+      'toolCall': patchTool.copyWith(result: 'captured'),
+    });
 
     final patch = container.read(patchProposalProvider).active;
     expect(patch, isNotNull);
     expect(patch!.isPlanOnly, isTrue);
+    expect(patch.edits, isEmpty);
     expect(patch.title, 'Create hello program');
     expect(patch.planMarkdown, contains('Add hello.py'));
     expect(patch.plannedFiles, hasLength(2));
@@ -984,7 +1171,7 @@ void main() {
   test(
     'propose_patch with content creates a concrete patch artifact',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -1023,13 +1210,10 @@ void main() {
         },
       );
 
-      container.read(agentServiceProvider).events.emit(
-        EventType.toolCallCompleted,
-        {
-          'requestId': 'req-patch',
-          'toolCall': patchTool.copyWith(result: 'captured'),
-        },
-      );
+      _emitRuntimeEvent(container, 'req-patch', EventType.toolCallCompleted, {
+        'requestId': 'req-patch',
+        'toolCall': patchTool.copyWith(result: 'captured'),
+      });
 
       final patch = container.read(patchProposalProvider).active;
       expect(patch, isNotNull);
@@ -1052,7 +1236,7 @@ void main() {
   test(
     'propose_patch from implementation plus verification prompt preserves verification request',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -1092,13 +1276,15 @@ void main() {
         },
       );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.toolCallCompleted, {
-            'requestId': 'req-verify-patch',
-            'toolCall': patchTool.copyWith(result: 'captured'),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-verify-patch',
+        EventType.toolCallCompleted,
+        {
+          'requestId': 'req-verify-patch',
+          'toolCall': patchTool.copyWith(result: 'captured'),
+        },
+      );
 
       final patch = container.read(patchProposalProvider).active;
       expect(patch, isNotNull);
@@ -1109,7 +1295,7 @@ void main() {
   test(
     'accepted plan implementation preserves verification request from plan context',
     () async {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
       await _waitForThreadStore(container);
 
@@ -1151,13 +1337,15 @@ void main() {
         },
       );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.toolCallCompleted, {
-            'requestId': 'req-accepted-plan-verify',
-            'toolCall': patchTool.copyWith(result: 'captured'),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-accepted-plan-verify',
+        EventType.toolCallCompleted,
+        {
+          'requestId': 'req-accepted-plan-verify',
+          'toolCall': patchTool.copyWith(result: 'captured'),
+        },
+      );
 
       final patch = container.read(patchProposalProvider).active;
       expect(patch, isNotNull);
@@ -1166,7 +1354,7 @@ void main() {
   );
 
   test('message errors fail the thread and ignore stale request events', () {
-    final container = ProviderContainer();
+    final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
     final thread = container
@@ -1187,7 +1375,7 @@ void main() {
           contextSummary: const StudioContextSummary(projectLabel: 'project'),
         );
 
-    container.read(agentServiceProvider).events.emit(EventType.messageChunk, {
+    _emitRuntimeEvent(container, 'other-request', EventType.messageChunk, {
       'requestId': 'other-request',
       'content': 'stale',
     });
@@ -1196,7 +1384,7 @@ void main() {
       isEmpty,
     );
 
-    container.read(agentServiceProvider).events.emit(EventType.messageError, {
+    _emitRuntimeEvent(container, 'req-fail', EventType.messageError, {
       'requestId': 'req-fail',
       'error': 'Request timed out after 4 minutes',
     });
@@ -1216,9 +1404,9 @@ void main() {
   });
 
   test(
-    'terminal provider diagnostics fail the Studio turn without follow-up error',
+    'terminal provider diagnostics record progress without owning runtime failure',
     () {
-      final container = ProviderContainer();
+      final container = _lifecycleContainer();
       addTearDown(container.dispose);
 
       final thread = container
@@ -1239,23 +1427,25 @@ void main() {
             contextSummary: const StudioContextSummary(projectLabel: 'project'),
           );
 
-      container
-          .read(agentServiceProvider)
-          .events
-          .emit(EventType.providerLifecycle, {
-            'requestId': 'req-stream-ended',
-            'event': ProviderLifecycleEvent(
-              requestId: 'req-stream-ended',
-              kind: ProviderLifecycleEventKind.streamEndedWithoutDone,
-              timestamp: DateTime(2026),
-              model: 'gpt-5-nano',
-              detail: 'Circuit stream ended before the [DONE] marker.',
-            ),
-          });
+      _emitRuntimeEvent(
+        container,
+        'req-stream-ended',
+        EventType.providerLifecycle,
+        {
+          'requestId': 'req-stream-ended',
+          'event': ProviderLifecycleEvent(
+            requestId: 'req-stream-ended',
+            kind: ProviderLifecycleEventKind.streamEndedWithoutDone,
+            timestamp: DateTime(2026),
+            model: 'gpt-5-nano',
+            detail: 'Circuit stream ended before the [DONE] marker.',
+          ),
+        },
+      );
 
       final updated = container.read(studioThreadProvider).selectedThread!;
-      expect(updated.status, StudioThreadStatus.failed);
-      expect(updated.phase, StudioSendPhase.failed);
+      expect(updated.status, StudioThreadStatus.preflighting);
+      expect(updated.phase, StudioSendPhase.preflighting);
       expect(updated.turns.single.status, StudioTurnStatus.failed);
       expect(
         updated.turns.single.providerDiagnostics.single.kind,

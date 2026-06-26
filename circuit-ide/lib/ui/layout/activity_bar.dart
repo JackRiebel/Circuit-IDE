@@ -6,6 +6,7 @@ import '../../state/editor_provider.dart';
 import '../../state/layout_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/terminal_provider.dart';
+import '../../core/config/studio_feature_flags.dart';
 
 enum ActivityBarItem {
   explorer(Icons.folder_outlined, Icons.folder, 'Explorer', 'Core', true),
@@ -99,9 +100,23 @@ enum ActivityBarItem {
   final bool isPrimary;
   bool get defaultVisible => isPrimary;
   String get commandOnlyLabel => tooltip;
+  bool get requiresAdvancedStudioSurface => switch (this) {
+    ActivityBarItem.notebook ||
+    ActivityBarItem.mcp ||
+    ActivityBarItem.vericoding ||
+    ActivityBarItem.memories ||
+    ActivityBarItem.agents => true,
+    _ => false,
+  };
 
-  static List<ActivityBarItem> get primary =>
-      values.where((item) => item.isPrimary).toList(growable: false);
+  static List<ActivityBarItem> get primary => values
+      .where((item) => item.isPrimary)
+      .where(
+        (item) =>
+            StudioFeatureFlags.advancedStudioSurfaces ||
+            item != ActivityBarItem.tools,
+      )
+      .toList(growable: false);
 }
 
 class ActiveActivityItemNotifier extends Notifier<ActivityBarItem> {
@@ -109,6 +124,16 @@ class ActiveActivityItemNotifier extends Notifier<ActivityBarItem> {
   ActivityBarItem build() => ActivityBarItem.explorer;
 
   void set(ActivityBarItem item) {
+    if (!StudioFeatureFlags.advancedStudioSurfaces &&
+        item.requiresAdvancedStudioSurface) {
+      state = ActivityBarItem.ai;
+      return;
+    }
+    if (!StudioFeatureFlags.advancedStudioSurfaces &&
+        item == ActivityBarItem.tools) {
+      state = ActivityBarItem.ai;
+      return;
+    }
     state = item;
   }
 }

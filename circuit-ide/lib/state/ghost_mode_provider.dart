@@ -35,9 +35,6 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
   bool get _ghostModeEnabled => false;
 
   Future<void> startGhost(String description) async {
-    final service = ref.read(agentServiceProvider);
-    if (!service.isConnected) return;
-
     final task = GhostTask(description: description);
     if (!_ghostModeEnabled) {
       state = state.copyWith(
@@ -51,13 +48,11 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
         ],
       );
 
-      service.events.emit(EventType.ghostFailed, {
-        'taskId': task.id,
-        'error': _ghostPausedMessage,
-      });
       Logger.info('Ghost Mode launch paused', 'GhostMode');
       return;
     }
+    final service = ref.read(agentServiceProvider);
+    if (!service.isConnected) return;
 
     state = state.copyWith(
       tasks: [
@@ -151,6 +146,13 @@ class GhostModeNotifier extends Notifier<GhostModeState> {
   Future<void> undoGhost(String taskId) async {
     final task = state.tasks.firstWhere((t) => t.id == taskId);
     if (task.status != GhostStatus.completed) return;
+    if (!_ghostModeEnabled) {
+      Logger.info(
+        'Ghost undo paused while Ghost Mode is disabled',
+        'GhostMode',
+      );
+      return;
+    }
 
     final service = ref.read(agentServiceProvider);
     final workingDir = service.state.workingDir;

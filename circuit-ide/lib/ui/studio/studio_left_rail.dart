@@ -24,6 +24,7 @@ import '../../state/studio_thread_provider.dart';
 import '../../state/studio_thread_search_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/workspace_session_provider.dart';
+import '../../theme/theme_tokens.dart';
 import 'studio_chrome.dart';
 
 class StudioLeftRail extends ConsumerWidget {
@@ -40,28 +41,35 @@ class StudioLeftRail extends ConsumerWidget {
         if (!settings.recentProjects.contains(path)) path,
     ];
     return Container(
-      width: 238,
+      width: 236,
       decoration: BoxDecoration(
         color: tokens.studioRail,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [tokens.studioRail, tokens.bgMain.withValues(alpha: 0.94)],
+          colors: [
+            tokens.studioRail.withValues(alpha: 0.98),
+            tokens.studioRail,
+            tokens.bgMain.withValues(alpha: 0.9),
+          ],
+          stops: const [0, 0.64, 1],
         ),
         border: Border(
-          right: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.7)),
+          right: BorderSide(
+            color: tokens.studioDivider.withValues(alpha: 0.46),
+          ),
         ),
       ),
       child: SafeArea(
         bottom: false,
         child: Column(
           children: [
-            const SizedBox(height: Spacing.sm),
+            const SizedBox(height: 5),
             _RailTopBar(),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: 6),
             _RailAction(
               icon: Icons.edit_square,
-              label: 'New task',
+              label: 'New chat',
               onTap: () => ref.read(studioShellProvider.notifier).openHome(),
             ),
             _RailAction(
@@ -76,7 +84,7 @@ class StudioLeftRail extends ConsumerWidget {
               onTap: () => unawaited(_createProject(context, ref)),
             ),
             const _RailSearchBox(),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: 9),
             Expanded(
               child: ListView(
                 padding: EdgeInsets.zero,
@@ -107,7 +115,7 @@ class StudioLeftRail extends ConsumerWidget {
               onTap: () =>
                   ref.read(studioShellProvider.notifier).openSettings(),
             ),
-            const SizedBox(height: Spacing.sm),
+            const SizedBox(height: 7),
           ],
         ),
       ),
@@ -124,34 +132,65 @@ class _RailSearchBox extends ConsumerWidget {
     if (!search.isOpen) return const SizedBox.shrink();
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Spacing.sm, Spacing.sm, Spacing.sm, 0),
-      child: TextField(
-        autofocus: true,
-        onChanged: ref.read(studioThreadSearchProvider.notifier).setQuery,
-        style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
-        decoration: InputDecoration(
-          hintText: 'Search tasks',
-          hintStyle: TextStyle(color: tokens.textMuted),
-          prefixIcon: Icon(Icons.search, size: 16, color: tokens.textMuted),
-          suffixIcon: IconButton(
-            tooltip: 'Close search',
-            onPressed: ref.read(studioThreadSearchProvider.notifier).close,
-            icon: Icon(Icons.close, size: 15, color: tokens.textMuted),
+      padding: const EdgeInsets.fromLTRB(Spacing.sm, 7, Spacing.sm, 0),
+      child: SizedBox(
+        height: 28,
+        child: TextField(
+          autofocus: true,
+          onChanged: ref.read(studioThreadSearchProvider.notifier).setQuery,
+          style: TextStyle(
+            color: tokens.textPrimary,
+            fontSize: FontSizes.xs,
+            height: 1.1,
           ),
-          filled: true,
-          fillColor: tokens.studioHover.withValues(alpha: 0.5),
-          isDense: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.lg),
-            borderSide: BorderSide(color: tokens.studioDivider),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.lg),
-            borderSide: BorderSide(color: tokens.studioDivider),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.lg),
-            borderSide: BorderSide(color: tokens.outlineFocus),
+          decoration: InputDecoration(
+            hintText: 'Search chats',
+            hintStyle: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+            ),
+            prefixIcon: Icon(Icons.search, size: 14, color: tokens.textMuted),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 26,
+              minHeight: 26,
+            ),
+            suffixIcon: StudioChromeIconButton(
+              tooltip: 'Close search',
+              onTap: ref.read(studioThreadSearchProvider.notifier).close,
+              icon: Icons.close,
+              width: 24,
+              height: 22,
+              iconSize: 14,
+            ),
+            suffixIconConstraints: const BoxConstraints(
+              minWidth: 26,
+              minHeight: 26,
+            ),
+            filled: true,
+            fillColor: tokens.studioHover.withValues(alpha: 0.24),
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: Spacing.sm,
+              vertical: 0,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+              borderSide: BorderSide(
+                color: tokens.studioDivider.withValues(alpha: 0.36),
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+              borderSide: BorderSide(
+                color: tokens.studioDivider.withValues(alpha: 0.36),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(Radii.md),
+              borderSide: BorderSide(
+                color: tokens.outlineFocus.withValues(alpha: 0.72),
+              ),
+            ),
           ),
         ),
       ),
@@ -162,23 +201,48 @@ class _RailSearchBox extends ConsumerWidget {
 class _RailTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final studio = ref.watch(studioShellProvider);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 9),
       child: Row(
         children: [
           const _WindowDot(color: Color(0xFFFF5F57)),
-          const SizedBox(width: Spacing.md),
+          const SizedBox(width: 8),
           const _WindowDot(color: Color(0xFFFFBD2E)),
-          const SizedBox(width: Spacing.md),
+          const SizedBox(width: 8),
           const _WindowDot(color: Color(0xFF28C840)),
+          const SizedBox(width: 17),
+          StudioChromeIconButton(
+            tooltip: 'Back',
+            onTap: studio.canNavigateBack
+                ? ref.read(studioShellProvider.notifier).navigateBack
+                : null,
+            icon: Icons.arrow_back,
+            width: 24,
+            height: 22,
+            iconSize: 14,
+          ),
+          const SizedBox(width: 4),
+          StudioChromeIconButton(
+            tooltip: 'Forward',
+            onTap: studio.canNavigateForward
+                ? ref.read(studioShellProvider.notifier).navigateForward
+                : null,
+            icon: Icons.arrow_forward,
+            width: 24,
+            height: 22,
+            iconSize: 14,
+          ),
           const Spacer(),
           StudioChromeIconButton(
             tooltip: 'Open project folder',
             onTap: () => unawaited(_chooseProjectRoot(ref)),
-            icon: Icons.download_for_offline,
+            icon: Icons.arrow_downward,
             active: true,
+            prominent: true,
             width: 28,
-            height: 26,
+            height: 28,
+            iconSize: 14,
           ),
         ],
       ),
@@ -284,11 +348,14 @@ class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
     return Dialog(
       backgroundColor: tokens.studioPanel,
       insetPadding: const EdgeInsets.all(24),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.xl),
+        side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.46)),
+      ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
+        constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
-          padding: const EdgeInsets.all(Spacing.xl),
+          padding: const EdgeInsets.all(14),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,7 +364,8 @@ class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
                 'Create project',
                 style: TextStyle(
                   color: tokens.textPrimary,
-                  fontSize: FontSizes.lg,
+                  fontSize: FontSizes.base,
+                  height: 1.2,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -306,50 +374,78 @@ class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
                 'Name a new folder for this Circuit task.',
                 style: TextStyle(
                   color: tokens.textMuted,
-                  fontSize: FontSizes.sm,
+                  fontSize: FontSizes.xs,
+                  height: 1.28,
                 ),
               ),
-              const SizedBox(height: Spacing.lg),
-              TextField(
-                controller: _nameController,
-                autofocus: true,
-                style: TextStyle(color: tokens.textPrimary),
-                decoration: InputDecoration(
-                  labelText: 'Project name',
-                  labelStyle: TextStyle(color: tokens.textMuted),
-                  filled: true,
-                  fillColor: tokens.studioControl,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: tokens.studioDivider),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 34,
+                child: TextField(
+                  controller: _nameController,
+                  autofocus: true,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.sm,
+                    height: 1.18,
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: tokens.studioDivider),
+                  decoration: InputDecoration(
+                    labelText: 'Project name',
+                    labelStyle: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                    ),
+                    floatingLabelStyle: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                    ),
+                    filled: true,
+                    fillColor: tokens.studioControl.withValues(alpha: 0.72),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.lg),
+                      borderSide: BorderSide(
+                        color: tokens.studioDivider.withValues(alpha: 0.62),
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.lg),
+                      borderSide: BorderSide(
+                        color: tokens.studioDivider.withValues(alpha: 0.62),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(Radii.lg),
+                      borderSide: BorderSide(
+                        color: tokens.outlineFocus.withValues(alpha: 0.76),
+                      ),
+                    ),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide(color: tokens.outlineFocus),
-                  ),
+                  onSubmitted: (_) => _submit(),
                 ),
-                onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: Spacing.md),
               Container(
-                padding: const EdgeInsets.all(Spacing.md),
+                padding: const EdgeInsets.fromLTRB(9, 7, 5, 7),
                 decoration: BoxDecoration(
-                  color: tokens.studioControl.withValues(alpha: 0.7),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: tokens.studioDivider),
+                  color: tokens.studioControl.withValues(alpha: 0.56),
+                  borderRadius: BorderRadius.circular(Radii.lg),
+                  border: Border.all(
+                    color: tokens.studioDivider.withValues(alpha: 0.52),
+                  ),
                 ),
                 child: Row(
                   children: [
                     Icon(
                       Icons.folder_outlined,
-                      size: 16,
+                      size: 14,
                       color: tokens.textMuted,
                     ),
-                    const SizedBox(width: Spacing.sm),
+                    const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         _parentPath,
@@ -357,27 +453,34 @@ class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: tokens.textSecondary,
-                          fontSize: FontSizes.sm,
+                          fontSize: FontSizes.xs,
+                          height: 1.2,
                         ),
                       ),
                     ),
                     TextButton(
                       onPressed: _chooseParent,
+                      style: _dialogTextButtonStyle(tokens),
                       child: const Text('Change'),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: Spacing.xl),
+              const SizedBox(height: 14),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
+                    style: _dialogTextButtonStyle(tokens),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: Spacing.sm),
-                  FilledButton(onPressed: _submit, child: const Text('Create')),
+                  FilledButton(
+                    onPressed: _submit,
+                    style: _dialogFilledButtonStyle(tokens),
+                    child: const Text('Create'),
+                  ),
                 ],
               ),
             ],
@@ -404,6 +507,37 @@ class _NewProjectDialogState extends ConsumerState<_NewProjectDialog> {
       context,
     ).pop(_NewProjectResult(name: name, parentPath: _parentPath));
   }
+
+  ButtonStyle _dialogTextButtonStyle(ThemeTokens tokens) {
+    return TextButton.styleFrom(
+      minimumSize: const Size(0, 28),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 0),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      foregroundColor: tokens.textMuted,
+      textStyle: const TextStyle(
+        fontSize: FontSizes.xs,
+        height: 1.1,
+        fontWeight: FontWeight.w600,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+    );
+  }
+
+  ButtonStyle _dialogFilledButtonStyle(ThemeTokens tokens) {
+    return FilledButton.styleFrom(
+      minimumSize: const Size(0, 28),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      backgroundColor: tokens.textPrimary,
+      foregroundColor: tokens.bgDark,
+      textStyle: const TextStyle(
+        fontSize: FontSizes.xs,
+        height: 1.1,
+        fontWeight: FontWeight.w600,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+    );
+  }
 }
 
 class _RailSectionLabel extends ConsumerWidget {
@@ -415,13 +549,14 @@ class _RailSectionLabel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(Spacing.lg, Spacing.md, Spacing.md, 3),
+      padding: const EdgeInsets.fromLTRB(12, 10, Spacing.md, 3),
       child: Text(
         label,
         style: TextStyle(
-          color: tokens.textMuted.withValues(alpha: 0.78),
+          color: tokens.textMuted.withValues(alpha: 0.62),
           fontSize: FontSizes.xs,
           fontWeight: FontWeight.w500,
+          height: 1.1,
         ),
       ),
     );
@@ -505,7 +640,7 @@ class _RecentProjectGroup extends ConsumerWidget {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: Spacing.sm),
+      padding: const EdgeInsets.only(bottom: 5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -593,7 +728,9 @@ TaskDisplayState _displayStateForTask(
     isChatStreaming: false,
     hasAssistantResponse: false,
     hasPendingApproval: false,
-    commands: isSelected ? commands : const [],
+    commands: isSelected
+        ? commands.where((command) => command.taskId == task.id)
+        : const [],
     chatError: null,
   );
 }
@@ -613,10 +750,11 @@ class _ProjectRow extends ConsumerWidget {
       project: true,
       onTap: () => unawaited(_open(ref)),
       hoverTrailing: StudioChromeIconButton(
-        icon: Icons.edit_square,
+        icon: Icons.edit_outlined,
         tooltip: 'New thread in ${summary.name}',
-        width: 24,
-        height: 24,
+        width: 22,
+        height: 22,
+        iconSize: 12,
         onTap: () => unawaited(_newThread(ref)),
       ),
     );
@@ -668,18 +806,15 @@ class _ConversationRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = summary.selected;
     final display = summary.displayState;
-    final showStatusChip = studioRailShouldShowStatusChip(display);
+    final showStatusIndicator = studioRailShouldShowStatusIndicator(display);
     final ageLabel = studioRailAgeLabel(summary.updatedAt);
     return StudioRailRow(
       label: summary.title,
       selected: selected,
       leftIndent: Spacing.xxl,
       onTap: onTap,
-      trailing: showStatusChip
-          ? StudioMiniChip(
-              label: display.label,
-              attention: display.needsAttention,
-            )
+      trailing: showStatusIndicator
+          ? _RailStatusIndicator(display: display)
           : ageLabel == null
           ? null
           : _RailAgeLabel(label: ageLabel),
@@ -687,7 +822,7 @@ class _ConversationRow extends ConsumerWidget {
   }
 }
 
-bool studioRailShouldShowStatusChip(TaskDisplayState display) {
+bool studioRailShouldShowStatusIndicator(TaskDisplayState display) {
   return display.isActive || display.needsAttention;
 }
 
@@ -723,6 +858,48 @@ class _RailAgeLabel extends ConsumerWidget {
         height: 1.1,
         fontWeight: FontWeight.w500,
       ),
+    );
+  }
+}
+
+class _RailStatusIndicator extends ConsumerWidget {
+  final TaskDisplayState display;
+
+  const _RailStatusIndicator({required this.display});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final active = display.isActive;
+    final color = display.needsAttention
+        ? tokens.warning.withValues(alpha: 0.88)
+        : tokens.textMuted.withValues(alpha: 0.74);
+    return Tooltip(
+      message: display.label,
+      child: active
+          ? SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+                backgroundColor: tokens.studioDivider.withValues(alpha: 0.36),
+              ),
+            )
+          : SizedBox(
+              width: 12,
+              height: 12,
+              child: Center(
+                child: Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

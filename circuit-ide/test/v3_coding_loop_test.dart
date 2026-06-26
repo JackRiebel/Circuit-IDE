@@ -1,18 +1,22 @@
 import 'dart:io';
 
+import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/spec_models.dart';
+import 'package:circuit_ide/models/specialist_agent.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/suggested_learning.dart';
 import 'package:circuit_ide/models/work_item.dart';
+import 'package:circuit_ide/models/turn_intent.dart';
 import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/chat_provider.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/project_profile_provider.dart';
 import 'package:circuit_ide/state/spec_provider.dart';
+import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:circuit_ide/state/suggested_learning_provider.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
@@ -52,6 +56,112 @@ void main() {
     expect(pack.serializePrompt(), isNot(contains('secret output')));
   });
 
+  test('ContextPack serializes within retrieval budget', () {
+    final pack = ContextPack(
+      id: 'ctx-budget',
+      projectKey: 'project',
+      createdAt: DateTime(2026),
+      items: const [
+        ContextPackItem(
+          id: 'profile',
+          type: ContextPackItemType.projectProfile,
+          title: 'Project',
+          detail: 'Flutter app',
+          estimatedTokens: 10,
+          removable: false,
+        ),
+        ContextPackItem(
+          id: 'active',
+          type: ContextPackItemType.activeFile,
+          title: 'main.dart',
+          detail: 'void main() {}',
+          estimatedTokens: 25,
+          retrievalScore: 120,
+        ),
+        ContextPackItem(
+          id: 'terminal',
+          type: ContextPackItemType.terminal,
+          title: 'Terminal',
+          detail: 'very long terminal output',
+          estimatedTokens: 80,
+          retrievalScore: 5,
+        ),
+      ],
+      retrievalResult: const ContextRetrievalResult(
+        rankedCandidates: [
+          ContextCandidate(
+            id: 'active',
+            title: 'main.dart',
+            sourceKind: ContextPackSourceKind.editor,
+            score: 120,
+            estimatedTokens: 25,
+            included: true,
+            reason: 'active file',
+          ),
+          ContextCandidate(
+            id: 'terminal',
+            title: 'Terminal',
+            sourceKind: ContextPackSourceKind.terminal,
+            score: 5,
+            estimatedTokens: 80,
+            included: true,
+            reason: 'recent terminal',
+          ),
+        ],
+        budget: ContextBudgetReport(
+          maxTokens: 60,
+          reservedForResponse: 20,
+          availableForContext: 40,
+          usedTokens: 115,
+        ),
+      ),
+    );
+
+    final prompt = pack.serializePrompt();
+
+    expect(pack.compactedVisibleItems.map((item) => item.id), [
+      'profile',
+      'active',
+    ]);
+    expect(pack.compactedOmittedItems.map((item) => item.id), ['terminal']);
+    expect(prompt, contains('Flutter app'));
+    expect(prompt, contains('void main()'));
+    expect(prompt, isNot(contains('very long terminal output')));
+    expect(prompt, contains('omitted to fit the selected model budget'));
+  });
+
+  test(
+    'ContextPack serializes retrieval warnings even without visible items',
+    () {
+      final pack = ContextPack(
+        id: 'ctx-warning-only',
+        projectKey: 'project',
+        createdAt: DateTime(2026),
+        retrievalResult: const ContextRetrievalResult(
+          rankedCandidates: [],
+          budget: ContextBudgetReport(
+            maxTokens: 1000,
+            reservedForResponse: 200,
+            availableForContext: 800,
+            usedTokens: 0,
+          ),
+          warnings: [
+            ContextPackWarning(
+              message:
+                  'Project instructions conflict with app permission policy; app policy wins.',
+              itemId: 'instruction-conflict:approval',
+            ),
+          ],
+        ),
+      );
+
+      final prompt = pack.serializePrompt();
+
+      expect(prompt, contains('[context-warnings]'));
+      expect(prompt, contains('app policy wins'));
+    },
+  );
+
   test('ContextPackController builds project profile context', () async {
     final root = await _sampleFlutterProject();
     addTearDown(() => _delete(root));
@@ -68,6 +178,61 @@ void main() {
     expect(pack.visibleItems.first.type, ContextPackItemType.projectProfile);
     expect(pack.serializePrompt(), contains('Improve startup'));
     expect(pack.estimatedTokens, greaterThan(0));
+  });
+
+  test('ContextPackController includes pinned context on next build', () async {
+    final root = await Directory.systemTemp.createTemp('context_include_next_');
+    final prefsRoot = await Directory.systemTemp.createTemp(
+      'context_include_next_prefs_',
+    );
+    addTearDown(() => _delete(root));
+    addTearDown(() => _delete(prefsRoot));
+    await Directory(p.join(root.path, 'lib')).create(recursive: true);
+    await File(
+      p.join(root.path, 'lib', 'important.dart'),
+    ).writeAsString('class ImportantContext {}\n');
+
+    final firstContainer = ProviderContainer(
+      overrides: [
+        contextPreferenceStoreProvider.overrideWithValue(
+          ContextPreferenceStore(baseDir: prefsRoot.path),
+        ),
+      ],
+    );
+    addTearDown(firstContainer.dispose);
+
+    await firstContainer
+        .read(fileTreeProvider.notifier)
+        .openDirectory(root.path);
+    firstContainer
+        .read(contextPackProvider.notifier)
+        .includeNextTime('lib/important.dart');
+
+    final container = ProviderContainer(
+      overrides: [
+        contextPreferenceStoreProvider.overrideWithValue(
+          ContextPreferenceStore(baseDir: prefsRoot.path),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+    final pack = container
+        .read(contextPackProvider.notifier)
+        .buildForCodingTask(prompt: '');
+    final included = pack.retrievalResult!.includedCandidates;
+
+    expect(
+      pack.visibleItems.map((item) => item.source),
+      contains('lib/important.dart'),
+    );
+    expect(
+      included
+          .firstWhere((candidate) => candidate.path == 'lib/important.dart')
+          .reason,
+      contains('included next time from Context drawer'),
+    );
   });
 
   test(
@@ -139,7 +304,9 @@ void main() {
       expect(restoredPatch.applyStatus, PatchApplyStatus.restored);
       expect(restoredPatch.changedFiles, ['README.md']);
       expect(restoredPatch.diffSummary, contains('Modified README.md'));
-      expect(restoredPatch.verificationSuggestions, isEmpty);
+      expect(restoredPatch.verificationSuggestions, [
+        'Run the relevant project checks for the changed files.',
+      ]);
       expect(restoredPatch.verificationRequested, isTrue);
 
       final updatedThread = container
@@ -650,6 +817,105 @@ void main() {
   );
 
   test(
+    'PatchProposalController maps prose conflict paths to one accepted-plan target',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_prose_conflict_v3_',
+      );
+      addTearDown(() => _delete(root));
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      await _waitForThreadStore(container);
+
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Accepted plan prose conflict');
+      const acceptedPlan = AcceptedPlanContext(
+        patchSetId: 'plan-prose-conflict',
+        title: 'Two file plan',
+        summary: 'Create app and docs files.',
+        markdown: '- Create app.py\n- Create docs.md',
+        plannedFiles: ['app.py — Create app', 'docs.md — Create docs'],
+      );
+      final turn = container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'request-prose-conflict',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'message-prose-conflict',
+            prompt: 'Implement accepted plan',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              projectLabel: 'patch',
+              rootPath: root.path,
+            ),
+            intent: TurnIntent.code,
+            acceptedPlanState: AcceptedPlanState.patchProposed,
+            acceptedPlanContext: acceptedPlan,
+            userMessageTranscriptVisible: false,
+          );
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Create app and docs',
+            runId: 'request-prose-conflict',
+            edits: const [
+              ProposedFileEdit(
+                path: 'app.py',
+                type: ProposedFileEditType.create,
+                after: 'print("hi")\n',
+              ),
+              ProposedFileEdit(
+                path: 'docs.md',
+                type: ProposedFileEditType.create,
+              ),
+            ],
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.conflict);
+      expect(result.conflictMessage, contains('docs.md'));
+      expect(await File(p.join(root.path, 'app.py')).exists(), isFalse);
+
+      final updatedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .where((candidate) => candidate.id == thread.id)
+          .single
+          .turns
+          .where((candidate) => candidate.id == turn.id)
+          .single;
+      expect(
+        updatedTurn.planTargetProgress
+            .firstWhere((target) => target.path == 'app.py')
+            .state,
+        PlanTargetProgressState.pending,
+      );
+      expect(
+        updatedTurn.planTargetProgress
+            .firstWhere((target) => target.path == 'docs.md')
+            .state,
+        PlanTargetProgressState.conflict,
+      );
+      final conflictEvents = updatedTurn.events.where(
+        (event) =>
+            event.type == StudioTurnEventType.completionSummary &&
+            event.title == 'Patch conflict',
+      );
+      expect(conflictEvents, hasLength(1));
+      expect(conflictEvents.single.detail, contains('docs.md'));
+      expect(conflictEvents.single.detail, contains('revise the patch'));
+    },
+  );
+
+  test(
     'PatchProposalController refuses to apply plan-only proposals',
     () async {
       final root = await Directory.systemTemp.createTemp('patch_plan_only_v3_');
@@ -771,6 +1037,58 @@ void main() {
           .read(patchProposalProvider.notifier)
           .apply(withGoMod.id);
       expect(goResult.verificationSuggestions, contains('go test ./...'));
+    },
+  );
+
+  test(
+    'PatchProposalController filters unsafe package verification scripts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_verify_unsafe_',
+      );
+      addTearDown(() => _delete(root));
+      await File(p.join(root.path, 'README.md')).writeAsString('old\n');
+      await File(p.join(root.path, 'package.json')).writeAsString('''
+{"scripts":{"test":"curl https://example.com","lint":"cat .env","build":"npm run deploy","deploy":"firebase deploy"}}
+''');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final patchSet = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Update readme',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'old\n',
+                after: 'new\n',
+              ),
+            ],
+            verificationRequested: true,
+          );
+
+      final result = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patchSet.id);
+
+      expect(result.status, PatchApplyStatus.applied);
+      expect(result.verificationSuggestions, [
+        'Run the relevant project checks for the changed files.',
+      ]);
+      expect(result.verificationSuggestions, isNot(contains('npm test')));
+      expect(result.verificationSuggestions, isNot(contains('npm run lint')));
+      expect(result.verificationSuggestions, isNot(contains('npm run build')));
+      final restoredPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patchSet.id);
+      expect(restoredPatch.verificationSuggestions, [
+        'Run the relevant project checks for the changed files.',
+      ]);
     },
   );
 
@@ -1705,6 +2023,20 @@ void main() {
     expect(source, contains('sendStudioMessage('));
   });
 
+  test('Studio command registry does not call legacy chat runtime', () async {
+    final source = await File(
+      'lib/core/commands/core_command_registry.dart',
+    ).readAsString();
+
+    expect(source, isNot(contains('chatProvider')));
+    expect(source, isNot(contains('agentServiceProvider')));
+    expect(source, isNot(contains('connectWithSavedCredentials')));
+    expect(source, isNot(contains('sendMessage(')));
+    expect(source, isNot(contains('project.explain')));
+    expect(source, isNot(contains('project.summarizeChanges')));
+    expect(source, isNot(contains('ai.reconnect')));
+  });
+
   test(
     'Studio turn runtime does not load legacy global agent config',
     () async {
@@ -1716,6 +2048,161 @@ void main() {
       expect(source, isNot(contains('loadSystemPrompt')));
     },
   );
+
+  test(
+    'Studio turn runtime does not use legacy AgentService runtime state',
+    () async {
+      final source = await File(
+        'lib/state/agent_turn_runtime_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('service.state.workingDir')));
+      expect(source, isNot(contains('service.state.model')));
+      expect(source, contains('studioAgentConnectionProvider'));
+      expect(source, contains('workspaceContextProvider'));
+      expect(source, contains('settings.ciscoModel'));
+    },
+  );
+
+  test('Studio screen auto-connect does not use legacy AgentService', () async {
+    final source = await File('lib/ui/screens/ide_screen.dart').readAsString();
+
+    expect(source, isNot(contains('agentServiceProvider')));
+    expect(source, isNot(contains('AgentService')));
+    expect(source, isNot(contains('connectWithSavedCredentials')));
+    expect(source, isNot(contains('service.connect(')));
+    expect(source, contains('studioAgentConnectionProvider'));
+  });
+
+  test(
+    'Studio connection facade owns provider without reading AgentService',
+    () async {
+      final source = await File(
+        'lib/state/connection_provider.dart',
+      ).readAsString();
+      final start = source.indexOf('class StudioAgentConnectionController');
+      final end = source.indexOf(
+        '/// Studio-facing provider-only connection facade.',
+      );
+      final studioConnectionSource = source.substring(start, end);
+
+      expect(studioConnectionSource, contains('ProviderRegistry'));
+      expect(studioConnectionSource, contains('provider.connect'));
+      expect(studioConnectionSource, isNot(contains('agentServiceProvider')));
+      expect(studioConnectionSource, isNot(contains('AgentService')));
+      expect(studioConnectionSource, isNot(contains('CircuitAgent')));
+    },
+  );
+
+  test(
+    'Studio workspace session does not bind through legacy AgentService',
+    () async {
+      final source = await File(
+        'lib/state/workspace_session_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('updateWorkingDir(')));
+      expect(source, contains('fileTreeProvider'));
+      expect(source, contains('WorkspaceSessionStatus.ready'));
+    },
+  );
+
+  test(
+    'Studio request lifecycle only listens to runtime-scoped events',
+    () async {
+      final source = await File(
+        'lib/state/studio_request_lifecycle_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('studioLegacyAgentEventBridgeProvider')));
+      expect(source, isNot(contains('connection_provider.dart')));
+      expect(source, contains('attachRuntimeEvents'));
+      expect(source, contains('_runtimeEventBindings'));
+    },
+  );
+
+  test(
+    'Studio command run controller only listens to runtime-scoped events',
+    () async {
+      final source = await File(
+        'lib/state/command_run_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('legacyCommandRunEventBridgeProvider')));
+      expect(source, isNot(contains('connection_provider.dart')));
+      expect(source, isNot(contains('cancelActiveCommands(')));
+      expect(source, contains('attachRuntimeEvents'));
+      expect(source, contains('_runtimeEventBindings'));
+    },
+  );
+
+  test('Studio token usage display does not read legacy chat state', () async {
+    final composerSource = await File(
+      'lib/ui/studio/studio_prompt_composer.dart',
+    ).readAsString();
+    final tokenSource = await File(
+      'lib/state/studio_token_usage_provider.dart',
+    ).readAsString();
+
+    expect(composerSource, isNot(contains('chatProvider')));
+    expect(composerSource, isNot(contains('tokenUsageProvider')));
+    expect(composerSource, isNot(contains('lastTokenUsageProvider')));
+    expect(composerSource, isNot(contains('costInfoProvider')));
+    expect(composerSource, isNot(contains('token_provider.dart')));
+    expect(composerSource, contains('studioTokenUsageForTaskViewProvider'));
+
+    expect(tokenSource, isNot(contains('chatProvider')));
+    expect(tokenSource, isNot(contains('token_provider.dart')));
+    expect(tokenSource, contains('studioThreadProvider'));
+  });
+
+  test('Studio context memory extraction avoids legacy AgentService', () async {
+    final source = await File(
+      'lib/state/memories_provider.dart',
+    ).readAsString();
+
+    expect(source, isNot(contains('agentServiceProvider')));
+    expect(source, isNot(contains('sendOneShot(')));
+    expect(source, contains('studioAgentConnectionProvider'));
+    expect(source, contains('provider.chat('));
+  });
+
+  test('Studio UI files do not import legacy chat runtime providers', () async {
+    final studioFiles = await Directory('lib/ui/studio')
+        .list(recursive: true)
+        .where((entity) => entity is File && entity.path.endsWith('.dart'))
+        .cast<File>()
+        .toList();
+
+    expect(studioFiles, isNotEmpty);
+    for (final file in studioFiles) {
+      final source = await file.readAsString();
+      final importBlock = source
+          .split('\n')
+          .where((line) => line.trimLeft().startsWith('import '))
+          .join('\n');
+      expect(
+        importBlock,
+        isNot(contains('chat_provider.dart')),
+        reason: '${file.path} must render from Studio turns, not ChatNotifier.',
+      );
+      expect(
+        importBlock,
+        isNot(contains('token_provider.dart')),
+        reason: '${file.path} must use Studio token providers.',
+      );
+      expect(
+        importBlock,
+        isNot(contains('connection_provider.dart')),
+        reason:
+            '${file.path} must not reach AgentService/CircuitAgent through legacy connection providers.',
+      );
+    }
+  });
 
   test('Git commit message helper uses stateless generation', () async {
     final source = await File('lib/ui/git/git_panel.dart').readAsString();
@@ -1742,7 +2229,131 @@ void main() {
         reason: '${entry.key} should explain why execution is paused.',
       );
     }
+
+    final ghostSource = await File(
+      'lib/state/ghost_mode_provider.dart',
+    ).readAsString();
+    final startGhostSource = _methodBody(
+      ghostSource,
+      'Future<void> startGhost',
+      'Future<void> undoGhost',
+    );
+    expect(
+      startGhostSource.indexOf('if (!_ghostModeEnabled)'),
+      lessThan(startGhostSource.indexOf('ref.read(agentServiceProvider)')),
+      reason:
+          'Ghost Mode must fail closed before touching legacy AgentService.',
+    );
+    final undoGhostSource = _methodBody(
+      ghostSource,
+      'Future<void> undoGhost',
+      'void dismissTask',
+    );
+    expect(
+      undoGhostSource.indexOf('if (!_ghostModeEnabled)'),
+      lessThan(undoGhostSource.indexOf('ref.read(agentServiceProvider)')),
+      reason: 'Ghost undo must stay quarantined while Ghost Mode is disabled.',
+    );
+
+    final backgroundSource = await File(
+      'lib/state/background_agent_provider.dart',
+    ).readAsString();
+    for (final marker in [
+      'void _setupListeners',
+      'void _handleFileSaveTrigger',
+      'void handleGitCommitTrigger',
+      'void handleProjectOpenTrigger',
+      'void _handlePeriodicTriggers',
+    ]) {
+      final methodSource = _methodBody(
+        backgroundSource,
+        marker,
+        marker == 'void _handlePeriodicTriggers'
+            ? 'bool _checkCooldown'
+            : _nextBackgroundMarker(marker),
+      );
+      expect(
+        methodSource.indexOf('if (!_backgroundAgentsEnabled)'),
+        lessThan(methodSource.indexOf('ref.read(agentServiceProvider)')),
+        reason: '$marker must fail closed before touching legacy AgentService.',
+      );
+    }
+
+    final senderSource = await File(
+      'lib/ui/studio/studio_message_sender.dart',
+    ).readAsString();
+    final featureFlagSource = await File(
+      'lib/core/config/studio_feature_flags.dart',
+    ).readAsString();
+    expect(
+      featureFlagSource,
+      contains('static const enterpriseSpecialists = false'),
+    );
+    expect(senderSource, contains('StudioFeatureFlags.enterpriseSpecialists'));
+    expect(senderSource, contains('Enterprise specialist routing is disabled'));
+    expect(
+      senderSource,
+      contains('SpecialistAgentRouter().route(prompt)'),
+      reason:
+          'Specialist routing may return only after the explicit Studio feature gate is enabled.',
+    );
+
+    final shellProviderSource = await File(
+      'lib/state/studio_shell_provider.dart',
+    ).readAsString();
+    expect(
+      shellProviderSource,
+      contains('StudioFeatureFlags.advancedStudioSurfaces'),
+      reason:
+          'Unsupported execution modes must be coerced until the Studio runtime owns their sandbox boundary.',
+    );
+    expect(
+      shellProviderSource,
+      contains('StudioExecutionMode.local'),
+      reason: 'Studio should fail closed to local execution mode.',
+    );
   });
+
+  test('Disabled Studio specialists coerce to Auto in shell state', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container
+        .read(studioShellProvider.notifier)
+        .setSpecialistAgent(SpecialistAgentId.solutionSizer);
+
+    expect(
+      container.read(studioShellProvider).specialistAgentId,
+      SpecialistAgentId.auto,
+      reason:
+          'Specialist agents stay quarantined until they use the same turn runtime, context, and permission contract as core Studio.',
+    );
+  });
+
+  test(
+    'Notebook AI helpers stay quarantined from legacy AgentService',
+    () async {
+      final source = await File(
+        'lib/state/notebook_provider.dart',
+      ).readAsString();
+
+      expect(source, isNot(contains('agentServiceProvider')));
+      expect(source, isNot(contains('sendOneShot(')));
+      expect(source, contains('StudioFeatureFlags.advancedStudioSurfaces'));
+      expect(
+        source,
+        contains(
+          'Notebook AI generation is paused while notebooks are migrated',
+        ),
+      );
+      expect(
+        source,
+        contains(
+          'Notebook AI explanation is paused while notebooks are migrated',
+        ),
+      );
+    },
+  );
 
   test('SuggestedLearningController reviews memories before saving', () async {
     final root = await _sampleFlutterProject();
@@ -1762,6 +2373,24 @@ void main() {
 
     expect(container.read(suggestedLearningProvider).pending, isEmpty);
   });
+}
+
+String _methodBody(String source, String startMarker, String endMarker) {
+  final start = source.indexOf(startMarker);
+  final end = source.indexOf(endMarker, start + startMarker.length);
+  expect(start, isNonNegative, reason: startMarker);
+  expect(end, isNonNegative, reason: endMarker);
+  return source.substring(start, end);
+}
+
+String _nextBackgroundMarker(String marker) {
+  return switch (marker) {
+    'void _setupListeners' => 'void _onAgentCompleted',
+    'void _handleFileSaveTrigger' => 'void handleGitCommitTrigger',
+    'void handleGitCommitTrigger' => 'void handleProjectOpenTrigger',
+    'void handleProjectOpenTrigger' => 'void _handlePeriodicTriggers',
+    _ => 'bool _checkCooldown',
+  };
 }
 
 class _FakeWorkItemHistoryController extends WorkItemHistoryController {

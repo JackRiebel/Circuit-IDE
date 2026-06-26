@@ -1,6 +1,7 @@
 import '../models/provider_lifecycle_event.dart';
 import '../models/studio_turn.dart';
 import '../models/tool_result_envelope.dart';
+import 'verification_command_filter.dart';
 
 class TurnCompletionSummaryBuilder {
   const TurnCompletionSummaryBuilder();
@@ -138,31 +139,9 @@ class TurnCompletionSummaryBuilder {
     return raw
         .whereType<String>()
         .map((value) => value.trim())
-        .where(_isRunnableVerificationCommand)
+        .where(isRunnableVerificationCommand)
         .take(3)
         .toList(growable: false);
-  }
-
-  bool _isRunnableVerificationCommand(String value) {
-    final command = value.trim();
-    if (command.isEmpty) return false;
-    if (command.contains('\n')) return false;
-    final first = command.split(RegExp(r'\s+')).first.toLowerCase();
-    const knownCommands = {
-      'cargo',
-      'dart',
-      'flutter',
-      'go',
-      'make',
-      'npm',
-      'pnpm',
-      'python',
-      'python3',
-      'swift',
-      'yarn',
-      'xcodebuild',
-    };
-    return knownCommands.contains(first);
   }
 
   String? _providerDiagnosticLine(List<ProviderLifecycleEvent> diagnostics) {

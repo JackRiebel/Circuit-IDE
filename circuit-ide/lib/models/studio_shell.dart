@@ -11,6 +11,8 @@ class StudioShellState {
   final StudioMode mode;
   final String? selectedProjectPath;
   final String? selectedTaskId;
+  final bool canNavigateBack;
+  final bool canNavigateForward;
   final StudioPromptMode promptMode;
   final StudioExecutionMode executionMode;
   final SpecialistAgentId specialistAgentId;
@@ -22,6 +24,8 @@ class StudioShellState {
     this.mode = StudioMode.home,
     this.selectedProjectPath,
     this.selectedTaskId,
+    this.canNavigateBack = false,
+    this.canNavigateForward = false,
     this.promptMode = StudioPromptMode.code,
     this.executionMode = StudioExecutionMode.local,
     this.specialistAgentId = SpecialistAgentId.auto,
@@ -34,6 +38,8 @@ class StudioShellState {
     StudioMode? mode,
     Object? selectedProjectPath = _sentinel,
     Object? selectedTaskId = _sentinel,
+    bool? canNavigateBack,
+    bool? canNavigateForward,
     StudioPromptMode? promptMode,
     StudioExecutionMode? executionMode,
     SpecialistAgentId? specialistAgentId,
@@ -49,6 +55,8 @@ class StudioShellState {
       selectedTaskId: identical(selectedTaskId, _sentinel)
           ? this.selectedTaskId
           : selectedTaskId as String?,
+      canNavigateBack: canNavigateBack ?? this.canNavigateBack,
+      canNavigateForward: canNavigateForward ?? this.canNavigateForward,
       promptMode: promptMode ?? this.promptMode,
       executionMode: executionMode ?? this.executionMode,
       specialistAgentId: specialistAgentId ?? this.specialistAgentId,

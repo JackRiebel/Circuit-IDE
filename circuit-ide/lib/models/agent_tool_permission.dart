@@ -48,6 +48,7 @@ enum CommandCategory {
   git,
   install,
   network,
+  compound,
   secretAccess,
   privileged,
   destructive,
@@ -68,6 +69,7 @@ class ToolPermissionRequest {
   final String? networkDomain;
   final McpToolRisk mcpToolRisk;
   final String? mcpToolName;
+  final String? approvalGrantKey;
 
   const ToolPermissionRequest({
     required this.intent,
@@ -80,5 +82,6 @@ class ToolPermissionRequest {
     this.networkDomain,
     this.mcpToolRisk = McpToolRisk.unknown,
     this.mcpToolName,
+    this.approvalGrantKey,
   });
 }

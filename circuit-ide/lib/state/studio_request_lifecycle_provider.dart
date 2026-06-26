@@ -22,7 +22,6 @@ import '../services/event_bus.dart';
 import 'agent_request_provider.dart';
 import 'agent_run_provider.dart';
 import 'agent_workspace_provider.dart';
-import 'connection_provider.dart';
 import 'patch_proposal_provider.dart';
 import 'studio_thread_provider.dart';
 import 'studio_turn_provider.dart';
@@ -31,21 +30,37 @@ class StudioRequestLifecycleController
     extends Notifier<StudioRequestLifecycleState> {
   final _softTimers = <String, Timer>{};
   final _hardTimers = <String, Timer>{};
-  final _handlers = <EventType, EventHandler>{};
+  final _runtimeEventBindings = <String, _LifecycleEventBinding>{};
 
   @override
   StudioRequestLifecycleState build() {
-    final events = ref.read(agentServiceProvider).events;
-    _listenToAgentEvents(events);
     ref.onDispose(() {
       for (final timer in [..._softTimers.values, ..._hardTimers.values]) {
         timer.cancel();
       }
-      for (final entry in _handlers.entries) {
-        events.off(entry.key, entry.value);
+      for (final binding in _runtimeEventBindings.values) {
+        binding.dispose();
       }
     });
     return const StudioRequestLifecycleState();
+  }
+
+  void attachRuntimeEvents(String requestId, EventBus events) {
+    detachRuntimeEvents(requestId);
+    final handlers = <EventType, EventHandler>{};
+    _listenToAgentEvents(
+      events,
+      handlers,
+      finishOnTerminalProviderDiagnostic: false,
+    );
+    _runtimeEventBindings[requestId] = _LifecycleEventBinding(
+      events: events,
+      handlers: handlers,
+    );
+  }
+
+  void detachRuntimeEvents(String requestId) {
+    _runtimeEventBindings.remove(requestId)?.dispose();
   }
 
   void registerRequest({
@@ -53,6 +68,7 @@ class StudioRequestLifecycleController
     required String threadId,
     required String model,
     required StudioContextSummary contextSummary,
+    TurnIntent intent = TurnIntent.code,
     String? taskId,
   }) {
     final now = DateTime.now();
@@ -61,6 +77,7 @@ class StudioRequestLifecycleController
       threadId: threadId,
       taskId: taskId,
       model: model,
+      intent: intent,
       contextSummary: contextSummary,
       startedAt: now,
       lastEventAt: now,
@@ -121,9 +138,13 @@ class StudioRequestLifecycleController
     _finish(entry, StudioRequestLifecycleEventKind.completed, message);
   }
 
-  void _listenToAgentEvents(EventBus events) {
+  void _listenToAgentEvents(
+    EventBus events,
+    Map<EventType, EventHandler> handlers, {
+    required bool finishOnTerminalProviderDiagnostic,
+  }) {
     void on(EventType type, EventHandler handler) {
-      _handlers[type] = handler;
+      handlers[type] = handler;
       events.on(type, handler);
     }
 
@@ -138,8 +159,13 @@ class StudioRequestLifecycleController
     on(EventType.confirmationReceived, _handleConfirmationReceived);
     on(EventType.messageCompleted, _handleMessageCompleted);
     on(EventType.messageError, _handleMessageError);
-    on(EventType.providerLifecycle, _handleProviderLifecycle);
-    on(EventType.agentRunEvent, _handleAgentRunEvent);
+    on(
+      EventType.providerLifecycle,
+      (event) => _handleProviderLifecycle(
+        event,
+        finishOnTerminalProviderDiagnostic: finishOnTerminalProviderDiagnostic,
+      ),
+    );
   }
 
   StudioRequestLifecycleEntry? _entryFor(Event event) {
@@ -172,38 +198,10 @@ class StudioRequestLifecycleController
         );
   }
 
-  void _handleAgentRunEvent(Event event) {
-    final entry = _entryFor(event);
-    if (entry == null) return;
-    if (event.data['event'] != 'provider_lifecycle') return;
-    final kind = event.data['kind'] as String? ?? 'event';
-    final detail = switch (kind) {
-      'request_sent' => 'Request sent to provider.',
-      'first_delta' => 'Provider started responding.',
-      'first_text_delta' => 'Circuit AI started writing.',
-      'first_tool_delta' => 'Circuit AI started a tool call.',
-      _ => 'Provider event: $kind',
-    };
-    _touch(
-      entry,
-      StudioRequestLifecycleEventKind.waitingForModel,
-      detail: detail,
-    );
-    ref
-        .read(studioTurnProvider.notifier)
-        .markProgress(
-          entry.requestId,
-          title: 'Provider',
-          detail: detail,
-          status: switch (kind) {
-            'first_text_delta' => StudioTurnStatus.streaming,
-            'first_tool_delta' => StudioTurnStatus.toolRunning,
-            _ => StudioTurnStatus.waitingForModel,
-          },
-        );
-  }
-
-  void _handleProviderLifecycle(Event event) {
+  void _handleProviderLifecycle(
+    Event event, {
+    required bool finishOnTerminalProviderDiagnostic,
+  }) {
     final entry = _providerEntryFor(event);
     if (entry == null) return;
     final lifecycle = event.data['event'] as ProviderLifecycleEvent?;
@@ -245,6 +243,8 @@ class StudioRequestLifecycleController
             'Circuit stream ended without a completion marker.',
           ProviderLifecycleEventKind.outcomeRepair =>
             'Circuit is repairing an invalid draft response.',
+          ProviderLifecycleEventKind.outcomeRejected =>
+            'Circuit produced an invalid draft response.',
           ProviderLifecycleEventKind.completed => 'Provider completed.',
           ProviderLifecycleEventKind.failed => 'Provider failed.',
           ProviderLifecycleEventKind.cancelled => 'Provider request cancelled.',
@@ -256,6 +256,9 @@ class StudioRequestLifecycleController
         '$rawDetail Completed without text or tool calls.',
       _ => rawDetail,
     };
+    final outcomeRejectedWithReviewablePatch =
+        lifecycle.kind == ProviderLifecycleEventKind.outcomeRejected &&
+        _hasReviewablePatchForRequest(entry.requestId);
     final lifecycleEventKind = switch (lifecycle.kind) {
       ProviderLifecycleEventKind.firstTextDelta =>
         StudioRequestLifecycleEventKind.streaming,
@@ -267,6 +270,10 @@ class StudioRequestLifecycleController
         StudioRequestLifecycleEventKind.waitingForModel,
       ProviderLifecycleEventKind.completed =>
         StudioRequestLifecycleEventKind.completed,
+      ProviderLifecycleEventKind.outcomeRejected =>
+        outcomeRejectedWithReviewablePatch
+            ? StudioRequestLifecycleEventKind.toolRunning
+            : StudioRequestLifecycleEventKind.failed,
       ProviderLifecycleEventKind.failed =>
         StudioRequestLifecycleEventKind.failed,
       ProviderLifecycleEventKind.authFailed =>
@@ -307,7 +314,7 @@ class StudioRequestLifecycleController
     ref
         .read(studioTurnProvider.notifier)
         .addProviderDiagnostic(entry.requestId, lifecycle);
-    if (terminalProviderEvent) {
+    if (terminalProviderEvent && finishOnTerminalProviderDiagnostic) {
       _finish(entry, lifecycleEventKind, detail);
     } else {
       _touch(entry, lifecycleEventKind, detail: detail);
@@ -334,6 +341,10 @@ class StudioRequestLifecycleController
         StudioTurnStatus.failed,
       ProviderLifecycleEventKind.outcomeRepair =>
         StudioTurnStatus.waitingForModel,
+      ProviderLifecycleEventKind.outcomeRejected =>
+        outcomeRejectedWithReviewablePatch
+            ? StudioTurnStatus.toolRunning
+            : StudioTurnStatus.failed,
       _ => StudioTurnStatus.waitingForModel,
     };
     ref
@@ -366,11 +377,29 @@ class StudioRequestLifecycleController
       ProviderLifecycleEventKind.malformedBytes => 'Malformed response bytes',
       ProviderLifecycleEventKind.streamEndedWithoutDone => 'Stream ended early',
       ProviderLifecycleEventKind.outcomeRepair => 'Repairing response',
+      ProviderLifecycleEventKind.outcomeRejected => 'Invalid model outcome',
       ProviderLifecycleEventKind.completed => 'Provider completed',
       ProviderLifecycleEventKind.failed => 'Provider failed',
       ProviderLifecycleEventKind.cancelled => 'Provider cancelled',
       ProviderLifecycleEventKind.timeout => 'Provider timed out',
     };
+  }
+
+  bool _hasReviewablePatchForRequest(String requestId) {
+    final patchState = ref.read(patchProposalProvider);
+    final active = patchState.active;
+    if (active != null &&
+        active.runId == requestId &&
+        active.edits.isNotEmpty &&
+        active.applyStatus == null) {
+      return true;
+    }
+    return patchState.history.any(
+      (patch) =>
+          patch.runId == requestId &&
+          patch.edits.isNotEmpty &&
+          patch.applyStatus == null,
+    );
   }
 
   bool _canRecordArchivedProviderDiagnostic(
@@ -464,7 +493,6 @@ class StudioRequestLifecycleController
             title: 'Tool running',
             detail: 'running',
             status: StudioTurnStatus.toolRunning,
-            transcriptVisible: true,
           );
     }
   }
@@ -491,7 +519,6 @@ class StudioRequestLifecycleController
             entry.requestId,
             title: 'Tool completed',
             detail: 'completed',
-            transcriptVisible: true,
           );
     }
   }
@@ -515,7 +542,6 @@ class StudioRequestLifecycleController
             entry.requestId,
             title: 'Tool failed',
             detail: 'failed',
-            transcriptVisible: true,
           );
     }
   }
@@ -648,6 +674,7 @@ class StudioRequestLifecycleController
     String detail,
   ) {
     _cancelTimers(entry.requestId);
+    detachRuntimeEvents(entry.requestId);
     _finishRequestInfrastructure(kind, detail);
     final finished = entry.copyWith(
       lastEventAt: DateTime.now(),
@@ -735,7 +762,6 @@ class StudioRequestLifecycleController
       ref
           .read(agentRunProvider.notifier)
           .finishRun(AgentRunKind.chat, error: message);
-      ref.read(agentServiceProvider).cancelCurrentOperation();
       ref.read(studioThreadProvider.notifier).fail(current.threadId, message);
       if (current.taskId != null) {
         ref
@@ -804,6 +830,7 @@ class StudioRequestLifecycleController
 
   void _createPatchPlan(StudioRequestLifecycleEntry entry, ToolCallInfo tool) {
     final args = tool.arguments;
+    final planMode = entry.intent == TurnIntent.plan;
     final title = args['title'] as String? ?? 'Implementation plan';
     final summary = args['summary'] as String? ?? '';
     final planMarkdown =
@@ -834,6 +861,7 @@ class StudioRequestLifecycleController
       );
       plannedTargets.add(plannedTarget);
       plannedFiles.add(plannedTarget.displayString);
+      if (planMode) continue;
       final content = file['content'] as String? ?? file['after'] as String?;
       if (content == null && operation != 'delete') continue;
       edits.add(
@@ -857,7 +885,9 @@ class StudioRequestLifecycleController
           agentTaskId: entry.taskId,
           runId: entry.requestId,
           comparisonSummary: summary.trim().isEmpty ? planMarkdown : summary,
-          verificationRequested: _verificationRequestedFor(entry.requestId),
+          verificationRequested:
+              _verificationRequestedFor(entry.requestId) ||
+              _proposalRequestsVerification(args, planMarkdown),
         );
     ref
         .read(studioTurnProvider.notifier)
@@ -869,6 +899,17 @@ class StudioRequestLifecycleController
               : '${patch.fileCount} files proposed.',
           transcriptVisible: true,
         );
+    if (!patch.isPlanOnly && patch.edits.isNotEmpty) {
+      ref
+          .read(studioTurnProvider.notifier)
+          .updatePlanTargetProgress(
+            entry.requestId,
+            patchSetId: patch.id,
+            paths: patch.edits.map((edit) => edit.path),
+            targetState: PlanTargetProgressState.proposed,
+            detail: 'Concrete patch proposed.',
+          );
+    }
   }
 
   bool _verificationRequestedFor(String requestId) {
@@ -899,6 +940,23 @@ class StudioRequestLifecycleController
           IntentClassifier.requestsVerification(lowerPrompt);
     }
     return false;
+  }
+
+  bool _proposalRequestsVerification(
+    Map<String, dynamic> args,
+    String planMarkdown,
+  ) {
+    final verification =
+        args['verification_steps'] ?? args['verificationSteps'];
+    if (verification is List &&
+        verification.any((item) => item is String && item.trim().isNotEmpty)) {
+      return true;
+    }
+    if (verification is String && verification.trim().isNotEmpty) return true;
+    return RegExp(
+      r'(^|\n)\s{0,3}#{1,6}\s*(verification|validation|test plan|checks?)\b',
+      caseSensitive: false,
+    ).hasMatch(planMarkdown);
   }
 
   Future<void> _addCompletionSummary(
@@ -1089,6 +1147,19 @@ class StudioRequestLifecycleController
     final trimmed = content.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (trimmed.length <= 180) return trimmed;
     return '${trimmed.substring(0, 177)}...';
+  }
+}
+
+class _LifecycleEventBinding {
+  final EventBus events;
+  final Map<EventType, EventHandler> handlers;
+
+  const _LifecycleEventBinding({required this.events, required this.handlers});
+
+  void dispose() {
+    for (final entry in handlers.entries) {
+      events.off(entry.key, entry.value);
+    }
   }
 }
 

@@ -2,8 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../agent/context/memories_loader.dart';
 import '../core/utils/logger.dart';
+import '../enums/message_role.dart';
+import '../models/chat_message.dart';
+import '../models/provider_lifecycle_event.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
+import 'settings_provider.dart';
 import 'suggested_learning_provider.dart';
 
 class MemoriesState {
@@ -90,8 +94,8 @@ class MemoriesNotifier extends Notifier<MemoriesState> {
     String lastUserMsg,
     String lastAssistantMsg,
   ) async {
-    final service = ref.read(agentServiceProvider);
-    if (!service.isConnected) return;
+    final provider = ref.read(studioAgentConnectionProvider).provider;
+    if (provider == null || !provider.isConnected) return;
 
     final workingDir = ref.read(fileTreeProvider).rootPath;
     if (workingDir == null) return;
@@ -112,7 +116,7 @@ MEMORY_CONTENT: <1-3 lines describing the learned pattern>
 
 If there is nothing worth remembering, respond with exactly: NONE''';
 
-      final response = await service.sendOneShot(prompt);
+      final response = await _sendProviderOneShot(prompt);
       if (response == null || response.trim() == 'NONE') return;
 
       final nameMatch = RegExp(r'MEMORY_NAME:\s*(.+)').firstMatch(response);
@@ -139,6 +143,36 @@ If there is nothing worth remembering, respond with exactly: NONE''';
     } catch (e) {
       Logger.warning('Memory extraction failed: $e', 'Memories');
     }
+  }
+
+  Future<String?> _sendProviderOneShot(String prompt) async {
+    final provider = ref.read(studioAgentConnectionProvider).provider;
+    if (provider == null || !provider.isConnected) return null;
+    final content = StringBuffer();
+    await for (final chunk in provider.chat(
+      [
+        ChatMessage(
+          id: 'memory-extraction-${DateTime.now().microsecondsSinceEpoch}',
+          role: MessageRole.user,
+          content: prompt,
+          timestamp: DateTime.now(),
+        ),
+      ],
+      model: ref.read(settingsProvider).ciscoModel,
+      tools: const [],
+      systemPrompt:
+          'Extract one concise memory only when it is clearly useful. Do not call tools.',
+      temperature: 0,
+      maxTokens: 512,
+    )) {
+      if (chunk.lifecycleKind == ProviderLifecycleEventKind.failed) {
+        return null;
+      }
+      if (chunk.content != null) content.write(chunk.content);
+      if (chunk.isDone) break;
+    }
+    final text = content.toString().trim();
+    return text.isEmpty ? null : text;
   }
 }
 

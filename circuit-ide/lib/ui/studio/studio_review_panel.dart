@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../models/reviewed_edit.dart';
+import '../../models/studio_shell.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
+import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../theme/theme_tokens.dart';
 import 'studio_message_sender.dart';
 
 class StudioReviewPanel extends ConsumerWidget {
@@ -46,14 +49,14 @@ class StudioReviewPanel extends ConsumerWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 736),
+        constraints: const BoxConstraints(maxWidth: 694),
         child: Container(
-          margin: const EdgeInsets.all(Spacing.xl),
+          margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
           decoration: BoxDecoration(
-            color: tokens.studioActivityRow.withValues(alpha: 0.66),
-            borderRadius: BorderRadius.circular(11),
+            color: tokens.studioActivityRow.withValues(alpha: 0.44),
+            borderRadius: BorderRadius.circular(9),
             border: Border.all(
-              color: tokens.studioDivider.withValues(alpha: 0.62),
+              color: tokens.studioDivider.withValues(alpha: 0.38),
             ),
           ),
           clipBehavior: Clip.antiAlias,
@@ -62,25 +65,15 @@ class StudioReviewPanel extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  Spacing.md,
-                  Spacing.lg,
-                  Spacing.md,
-                ),
+                padding: const EdgeInsets.fromLTRB(13, 10, 10, 10),
                 child: _ReviewHeader(patch: patch),
               ),
               Divider(
                 height: 1,
-                color: tokens.studioDivider.withValues(alpha: 0.78),
+                color: tokens.studioDivider.withValues(alpha: 0.52),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  Spacing.md,
-                  Spacing.lg,
-                  Spacing.md,
-                ),
+                padding: const EdgeInsets.fromLTRB(13, 8, 13, 8),
                 child: Text(
                   _reviewSummary(patch),
                   style: TextStyle(
@@ -95,16 +88,16 @@ class StudioReviewPanel extends ConsumerWidget {
               else
                 for (final edit in patch.edits)
                   _ReviewFileRow(patchId: patch.id, edit: edit),
-              const SizedBox(height: Spacing.md),
+              const SizedBox(height: Spacing.sm),
               Container(
                 width: double.infinity,
-                constraints: const BoxConstraints(maxHeight: 220),
-                margin: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+                constraints: const BoxConstraints(maxHeight: 176),
+                margin: const EdgeInsets.symmetric(horizontal: 13),
                 decoration: BoxDecoration(
-                  color: tokens.surfaceInset.withValues(alpha: 0.58),
-                  borderRadius: BorderRadius.circular(Radii.lg),
+                  color: tokens.surfaceInset.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(Radii.md),
                   border: Border.all(
-                    color: tokens.studioDivider.withValues(alpha: 0.68),
+                    color: tokens.studioDivider.withValues(alpha: 0.46),
                   ),
                 ),
                 child: SingleChildScrollView(
@@ -121,8 +114,8 @@ class StudioReviewPanel extends ConsumerWidget {
                     style: TextStyle(
                       color: tokens.textSecondary,
                       fontSize: FontSizes.xs,
-                      height: 1.35,
-                      fontFamily: EditorDefaults.fallbackFontFamily,
+                      height: 1.32,
+                      fontFamily: EditorDefaults.studioMonospaceFontFamily,
                     ),
                   ),
                 ),
@@ -130,7 +123,7 @@ class StudioReviewPanel extends ConsumerWidget {
               if (patch.conflictMessage != null) ...[
                 const SizedBox(height: Spacing.md),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
                   child: Text(
                     patch.conflictMessage!,
                     style: TextStyle(
@@ -144,19 +137,14 @@ class StudioReviewPanel extends ConsumerWidget {
               Container(
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  color: tokens.surfacePanel.withValues(alpha: 0.2),
+                  color: tokens.surfacePanel.withValues(alpha: 0.13),
                   border: Border(
                     top: BorderSide(
-                      color: tokens.studioDivider.withValues(alpha: 0.66),
+                      color: tokens.studioDivider.withValues(alpha: 0.42),
                     ),
                   ),
                 ),
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.lg,
-                  Spacing.sm,
-                  Spacing.lg,
-                  Spacing.sm,
-                ),
+                padding: const EdgeInsets.fromLTRB(13, 6, 10, 6),
                 child: _ReviewActions(
                   patch: patch,
                   isApplying: patchState.isApplying,
@@ -194,6 +182,7 @@ ProposedPatchSet? _latestReviewablePatch(PatchProposalState state) {
     if (patch.checkpointId != null ||
         patch.applyStatus == PatchApplyStatus.applied ||
         patch.applyStatus == PatchApplyStatus.restored ||
+        patch.applyStatus == PatchApplyStatus.revisionRequested ||
         patch.applyStatus == PatchApplyStatus.conflict ||
         patch.applyStatus == PatchApplyStatus.failed) {
       return patch;
@@ -203,16 +192,19 @@ ProposedPatchSet? _latestReviewablePatch(PatchProposalState state) {
 }
 
 String _reviewTitle(ProposedPatchSet patch) {
-  if (patch.isPlanOnly) return 'Circuit created a plan';
+  if (patch.isPlanOnly) return 'Plan ready';
   return switch (patch.applyStatus) {
-    PatchApplyStatus.applied => 'Applied ${patch.fileCount} files',
+    PatchApplyStatus.applied => 'Edited ${_fileCountLabel(patch.fileCount)}',
     PatchApplyStatus.restored => 'Checkpoint restored',
+    PatchApplyStatus.revisionRequested => 'Patch revision requested',
     PatchApplyStatus.conflict => 'Patch needs attention',
     PatchApplyStatus.failed => 'Patch failed',
     PatchApplyStatus.rejected => 'Patch rejected',
-    null => 'Circuit wants to change ${patch.fileCount} files',
+    null => 'Prepared ${_fileCountLabel(patch.fileCount)}',
   };
 }
+
+String _fileCountLabel(int count) => '$count file${count == 1 ? '' : 's'}';
 
 String _reviewSummary(ProposedPatchSet patch) {
   return patch.comparisonSummary ??
@@ -236,23 +228,25 @@ class _ReviewHeader extends ConsumerWidget {
         ? 'Applied'
         : patch.applyStatus == PatchApplyStatus.conflict
         ? 'Needs review'
+        : patch.applyStatus == PatchApplyStatus.revisionRequested
+        ? 'Revision requested'
         : 'Review';
     return Row(
       children: [
         Container(
-          width: 30,
-          height: 30,
+          width: 25,
+          height: 25,
           decoration: BoxDecoration(
-            color: tokens.bgDark.withValues(alpha: 0.58),
-            borderRadius: BorderRadius.circular(Radii.lg),
+            color: tokens.bgDark.withValues(alpha: 0.42),
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
             patch.isPlanOnly ? Icons.format_list_bulleted : Icons.difference,
             color: tokens.textMuted,
-            size: 16,
+            size: 14,
           ),
         ),
-        const SizedBox(width: Spacing.md),
+        const SizedBox(width: 10),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,10 +264,11 @@ class _ReviewHeader extends ConsumerWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                '${patch.fileCount} file${patch.fileCount == 1 ? '' : 's'} · $status',
+                '${_fileCountLabel(patch.fileCount)} · $status',
                 style: TextStyle(
                   color: tokens.textMuted,
                   fontSize: FontSizes.xs,
+                  height: 1.15,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -301,12 +296,12 @@ class _ReviewFileRow extends ConsumerWidget {
             .read(studioRightDrawerProvider.notifier)
             .openPatchFile(patchId, edit.path),
         child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: tokens.studioDivider.withValues(alpha: 0.8),
+                color: tokens.studioDivider.withValues(alpha: 0.48),
               ),
             ),
           ),
@@ -315,9 +310,9 @@ class _ReviewFileRow extends ConsumerWidget {
               Icon(
                 Icons.description_outlined,
                 color: tokens.textMuted,
-                size: 13,
+                size: 11,
               ),
-              const SizedBox(width: Spacing.md),
+              const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Text(
                   edit.path,
@@ -335,11 +330,12 @@ class _ReviewFileRow extends ConsumerWidget {
                 edit.type.name,
                 style: TextStyle(
                   color: tokens.textMuted,
-                  fontSize: FontSizes.xs,
+                  fontSize: FontSizes.xxs,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(width: Spacing.sm),
-              Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
+              Icon(Icons.chevron_right, color: tokens.textMuted, size: 13),
             ],
           ),
         ),
@@ -356,18 +352,21 @@ class _ReviewActions extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
     final canApply =
         patch.isPlanOnly ||
-        patch.applyStatus == null ||
-        patch.applyStatus == PatchApplyStatus.conflict ||
-        patch.applyStatus == PatchApplyStatus.failed ||
-        patch.applyStatus == PatchApplyStatus.restored;
+        (patch.approvalStatus != PatchApprovalStatus.revisionRequested &&
+            (patch.applyStatus == null ||
+                patch.applyStatus == PatchApplyStatus.failed ||
+                patch.applyStatus == PatchApplyStatus.restored));
     return Wrap(
       spacing: Spacing.sm,
       runSpacing: Spacing.sm,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         if (canApply)
           FilledButton.icon(
+            style: _primaryActionStyle(tokens),
             onPressed: isApplying
                 ? null
                 : patch.isPlanOnly
@@ -375,7 +374,7 @@ class _ReviewActions extends ConsumerWidget {
                 : () => unawaited(
                     ref.read(patchProposalProvider.notifier).apply(patch.id),
                   ),
-            icon: const Icon(Icons.check, size: 16),
+            icon: const Icon(Icons.check, size: 13),
             label: Text(
               isApplying
                   ? 'Applying'
@@ -385,39 +384,105 @@ class _ReviewActions extends ConsumerWidget {
             ),
           ),
         OutlinedButton.icon(
-          onPressed: isApplying
-              ? null
-              : () => ref
-                    .read(patchProposalProvider.notifier)
-                    .requestRevision(
-                      PatchProposalRevisionRequest(
-                        patchSetId: patch.id,
-                        prompt: 'Revise this patch based on user feedback.',
-                      ),
-                    ),
-          icon: const Icon(Icons.edit_note, size: 16),
-          label: const Text('Ask for revision'),
+          style: _secondaryActionStyle(tokens),
+          onPressed: isApplying ? null : () => _requestPatchUpdate(ref, patch),
+          icon: const Icon(Icons.edit_note, size: 13),
+          label: Text(
+            patch.applyStatus == PatchApplyStatus.conflict
+                ? 'Ask Circuit to rebase'
+                : 'Ask for revision',
+          ),
         ),
         OutlinedButton.icon(
+          style: _subtleActionStyle(tokens),
           onPressed: isApplying
               ? null
-              : () => ref.read(patchProposalProvider.notifier).rejectActive(),
-          icon: const Icon(Icons.close, size: 16),
+              : () => ref.read(patchProposalProvider.notifier).reject(patch.id),
+          icon: const Icon(Icons.close, size: 13),
           label: const Text('Reject'),
         ),
         if (patch.checkpointId != null)
           OutlinedButton.icon(
+            style: _secondaryActionStyle(tokens),
             onPressed: () => unawaited(
               ref
                   .read(patchProposalProvider.notifier)
                   .restoreCheckpoint(patch.checkpointId!),
             ),
-            icon: const Icon(Icons.restore, size: 16),
+            icon: const Icon(Icons.restore, size: 13),
             label: const Text('Restore checkpoint'),
           ),
       ],
     );
   }
+}
+
+void _requestPatchUpdate(WidgetRef ref, ProposedPatchSet patch) {
+  final prompt = patch.applyStatus == PatchApplyStatus.conflict
+      ? _rebasePrompt(patch)
+      : 'Revise this patch based on user feedback.';
+  ref
+      .read(patchProposalProvider.notifier)
+      .requestRevision(
+        PatchProposalRevisionRequest(patchSetId: patch.id, prompt: prompt),
+      );
+  ref.read(studioShellProvider.notifier)
+    ..setPromptMode(StudioPromptMode.code)
+    ..setComposerText(prompt);
+}
+
+String _rebasePrompt(ProposedPatchSet patch) {
+  final conflict = patch.conflictMessage?.trim();
+  final suffix = conflict == null || conflict.isEmpty
+      ? ''
+      : ' Resolve: $conflict';
+  return 'Refresh these proposed changes against the current files and preserve the accepted plan intent.$suffix';
+}
+
+ButtonStyle _primaryActionStyle(ThemeTokens tokens) {
+  return FilledButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
+}
+
+ButtonStyle _secondaryActionStyle(ThemeTokens tokens) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+    foregroundColor: tokens.textSecondary,
+    side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.58)),
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
+}
+
+ButtonStyle _subtleActionStyle(ThemeTokens tokens) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    foregroundColor: tokens.textMuted,
+    side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.34)),
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
 }
 
 class _PlanFileRow extends ConsumerWidget {
@@ -428,18 +493,19 @@ class _PlanFileRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final filePath = _plannedFilePath(path);
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () =>
-            ref.read(studioRightDrawerProvider.notifier).openFile(path),
+            ref.read(studioRightDrawerProvider.notifier).openFile(filePath),
         child: Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 13),
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: tokens.studioDivider.withValues(alpha: 0.8),
+                color: tokens.studioDivider.withValues(alpha: 0.48),
               ),
             ),
           ),
@@ -448,12 +514,12 @@ class _PlanFileRow extends ConsumerWidget {
               Icon(
                 Icons.description_outlined,
                 color: tokens.textMuted,
-                size: 13,
+                size: 11,
               ),
-              const SizedBox(width: Spacing.md),
+              const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Text(
-                  path,
+                  filePath,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -469,14 +535,19 @@ class _PlanFileRow extends ConsumerWidget {
                 style: TextStyle(
                   color: tokens.textMuted,
                   fontSize: FontSizes.xs,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(width: Spacing.sm),
-              Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
+              Icon(Icons.chevron_right, color: tokens.textMuted, size: 13),
             ],
           ),
         ),
       ),
     );
   }
+}
+
+String _plannedFilePath(String plannedFile) {
+  return plannedFile.split(' — ').first.split(' - ').first.trim();
 }

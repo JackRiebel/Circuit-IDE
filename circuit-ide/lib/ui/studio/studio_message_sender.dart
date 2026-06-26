@@ -29,6 +29,7 @@ import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/studio_turn_provider.dart';
 import '../../state/workspace_session_provider.dart';
+import '../../core/config/studio_feature_flags.dart';
 import 'studio_plan_prompts.dart';
 
 const _uuid = Uuid();
@@ -129,7 +130,14 @@ Future<StudioSendResult> sendStudioMessage(
   String? taskId,
   bool finishTask = false,
   AcceptedPlanContext? acceptedPlan,
+  String? displayText,
+  String? threadTitle,
+  String? outboundTextOverride,
+  bool userMessageTranscriptVisible = true,
 }) async {
+  final visibleText = (displayText?.trim().isNotEmpty ?? false)
+      ? displayText!.trim()
+      : text;
   final runtime = ref.read(agentTurnRuntimeProvider.notifier);
   final beforeSend = ref.read(agentTurnRuntimeProvider);
   if (runtime.handlePendingApprovalText(text)) {
@@ -171,11 +179,15 @@ Future<StudioSendResult> sendStudioMessage(
   if (planContinuation != null) return planContinuation;
   ref.read(workspaceSessionProvider.notifier).syncFromCurrentWorkspace();
   final studio = ref.read(studioShellProvider);
-  final intent = IntentClassifier.classify(
+  final classifiedIntent = IntentClassifier.classify(
     text,
     promptMode: studio.promptMode,
     planModeEnabled: studio.planModeEnabled,
   );
+  // Accepted-plan implementation is always a Code turn. The structured plan
+  // prompt may mention deferred verification, but verification must happen in a
+  // separate approved Verify turn after the patch is reviewed and applied.
+  final intent = acceptedPlan == null ? classifiedIntent : TurnIntent.code;
   final intentContract = IntentContract.forIntent(intent);
   final conversationalOnly = intent == TurnIntent.chat;
   final requiresWorkspace = _intentRequiresWorkspace(intent);
@@ -202,17 +214,40 @@ Future<StudioSendResult> sendStudioMessage(
       workspace = ref.read(workspaceSessionProvider);
     }
   }
+  final patchRevisionContext = acceptedPlan == null
+      ? _activePatchRevisionContext(ref, text)
+      : null;
+  final extraContextAttachments = [
+    if (patchRevisionContext != null) patchRevisionContext.attachment,
+  ];
+  final extraAllowedFileContextPaths = {
+    ..._acceptedPlanFileContextPaths(acceptedPlan),
+    if (patchRevisionContext != null) ...patchRevisionContext.filePaths,
+  };
   final payload = conversationalOnly
       ? buildConversationalContextPayload(ref)
-      : await buildStudioContextPayloadWithFreshIndex(ref, text);
-  final outboundText = studioOutboundPromptForIntent(
-    text: text,
-    intent: intent,
-    planModeEnabled: planModeEnabled,
-  );
+      : await buildStudioContextPayloadWithFreshIndex(
+          ref,
+          text,
+          allowedFileContextPaths: extraAllowedFileContextPaths,
+          extraAttachments: extraContextAttachments,
+        );
+  final outboundText =
+      outboundTextOverride ??
+      (patchRevisionContext == null
+          ? studioOutboundPromptForIntent(
+              text: text,
+              intent: intent,
+              planModeEnabled: planModeEnabled,
+            )
+          : _patchRevisionOutboundPrompt(text, patchRevisionContext));
   final thread = ref
       .read(studioThreadProvider.notifier)
-      .ensureThread(taskId: taskId, title: text, model: model);
+      .ensureThread(
+        taskId: taskId,
+        title: threadTitle ?? visibleText,
+        model: model,
+      );
   final priorThreadMessages = studioModelHistoryForThread(thread);
 
   if (beforeSend.hasActiveStudioRequest) {
@@ -296,7 +331,7 @@ Future<StudioSendResult> sendStudioMessage(
         threadId: thread.id,
         taskId: taskId,
         userMessageId: userMessageId,
-        prompt: text,
+        prompt: visibleText,
         model: model,
         contextSummary: payload.summary,
         intent: intent,
@@ -305,6 +340,8 @@ Future<StudioSendResult> sendStudioMessage(
             : AcceptedPlanState.accepted,
         acceptedPlanContext: acceptedPlan,
         contextRetrieval: payload.contextRetrieval,
+        userMessageTranscriptVisible:
+            acceptedPlan == null && userMessageTranscriptVisible,
       );
   ref
       .read(studioRequestLifecycleProvider.notifier)
@@ -313,6 +350,7 @@ Future<StudioSendResult> sendStudioMessage(
         threadId: thread.id,
         taskId: taskId,
         model: model,
+        intent: intent,
         contextSummary: payload.summary,
       );
   unawaited(
@@ -332,7 +370,8 @@ Future<StudioSendResult> sendStudioMessage(
       intent: intent,
       acceptedPlan: acceptedPlan,
       model: model,
-      retryPrompt: text,
+      retryPrompt: visibleText,
+      displayTitle: visibleText,
       finishTask: finishTask,
     ),
   );
@@ -355,7 +394,7 @@ List<ChatMessage> _modelHistoryFromTurns(List<StudioTurn> turns) {
   final history = <ChatMessage>[];
   for (final turn in sortedTurns) {
     final prompt = turn.prompt.trim();
-    if (prompt.isNotEmpty) {
+    if (prompt.isNotEmpty && _turnHasVisibleUserMessage(turn)) {
       history.add(
         ChatMessage(
           id: turn.userMessageId,
@@ -383,6 +422,18 @@ List<ChatMessage> _modelHistoryFromTurns(List<StudioTurn> turns) {
     }
   }
   return history;
+}
+
+bool _turnHasVisibleUserMessage(StudioTurn turn) {
+  if (turn.acceptedPlanContext != null ||
+      turn.acceptedPlanState != AcceptedPlanState.none) {
+    return false;
+  }
+  final userEvents = turn.events
+      .where((event) => event.type == StudioTurnEventType.userMessage)
+      .toList(growable: false);
+  if (userEvents.isEmpty) return true;
+  return userEvents.any((event) => event.transcriptVisible);
 }
 
 String _turnFailureHistoryDetail(StudioTurn turn) {
@@ -427,22 +478,20 @@ Future<StudioSendResult> implementPlanFromStudio(
   ProposedPatchSet plan, {
   String? taskId,
   bool finishTask = false,
+  AcceptedPlanContext? acceptedPlanOverride,
+  String displayText = 'Implementing approved plan',
 }) async {
   final shell = ref.read(studioShellProvider);
   final resolvedTaskId = taskId ?? shell.selectedTaskId;
-  final shellNotifier = ref.read(studioShellProvider.notifier);
-  final previousPlanMode = shell.planModeEnabled;
-  final previousPromptMode = shell.promptMode;
-  shellNotifier.setPlanModeEnabled(false);
-  shellNotifier.setPromptMode(StudioPromptMode.code);
-  final acceptedPlan = AcceptedPlanContext.fromPatch(plan);
-  final prompt = buildPlanImplementationPrompt(acceptedPlan);
-  final result = await sendStudioMessage(
+  final acceptedPlan =
+      acceptedPlanOverride ?? AcceptedPlanContext.fromPatch(plan);
+  final result = await implementAcceptedPlanFromStudio(
     ref,
-    prompt,
+    acceptedPlan,
     taskId: resolvedTaskId,
     finishTask: finishTask || resolvedTaskId != null,
-    acceptedPlan: acceptedPlan,
+    displayText: displayText,
+    fallbackTitle: plan.title,
   );
   if (result.registeredRequest &&
       (result.status == StudioSendStatus.sent ||
@@ -450,10 +499,239 @@ Future<StudioSendResult> implementPlanFromStudio(
     ref.read(patchProposalProvider.notifier).markPlanAccepted(plan.id);
   } else {
     ref.read(patchProposalProvider.notifier).preserveProposal(plan);
+  }
+  return result;
+}
+
+Future<StudioSendResult> implementAcceptedPlanFromStudio(
+  WidgetRef ref,
+  AcceptedPlanContext acceptedPlan, {
+  String? taskId,
+  bool finishTask = false,
+  String displayText = 'Implementing approved plan',
+  String? fallbackTitle,
+}) async {
+  final shell = ref.read(studioShellProvider);
+  final resolvedTaskId = taskId ?? shell.selectedTaskId;
+  final shellNotifier = ref.read(studioShellProvider.notifier);
+  final previousPlanMode = shell.planModeEnabled;
+  final previousPromptMode = shell.promptMode;
+  final selectedThread = ref.read(studioThreadProvider).selectedThread;
+  shellNotifier.setPlanModeEnabled(false);
+  shellNotifier.setPromptMode(StudioPromptMode.code);
+  final prompt = buildPlanImplementationPrompt(acceptedPlan);
+  final result = await sendStudioMessage(
+    ref,
+    prompt,
+    taskId: resolvedTaskId,
+    finishTask: finishTask || resolvedTaskId != null,
+    acceptedPlan: acceptedPlan,
+    displayText: displayText,
+    threadTitle: selectedThread?.title ?? fallbackTitle ?? acceptedPlan.title,
+    outboundTextOverride: prompt,
+    userMessageTranscriptVisible: false,
+  );
+  if (!result.registeredRequest ||
+      (result.status != StudioSendStatus.sent &&
+          result.status != StudioSendStatus.completed)) {
     shellNotifier.setPlanModeEnabled(previousPlanMode);
     shellNotifier.setPromptMode(previousPromptMode);
   }
   return result;
+}
+
+Future<StudioSendResult> verifyPatchFromStudio(
+  WidgetRef ref,
+  ProposedPatchSet patch, {
+  String? taskId,
+  bool finishTask = false,
+  String displayText = 'Running verification',
+}) async {
+  final shell = ref.read(studioShellProvider);
+  final resolvedTaskId = taskId ?? shell.selectedTaskId ?? patch.agentTaskId;
+  final shellNotifier = ref.read(studioShellProvider.notifier);
+  final previousPlanMode = shell.planModeEnabled;
+  final previousPromptMode = shell.promptMode;
+  final selectedThread = ref.read(studioThreadProvider).selectedThread;
+  shellNotifier.setPlanModeEnabled(false);
+  shellNotifier.setPromptMode(StudioPromptMode.ask);
+  final prompt = buildPatchVerificationPrompt(patch);
+  final result = await sendStudioMessage(
+    ref,
+    prompt,
+    taskId: resolvedTaskId,
+    finishTask: finishTask || resolvedTaskId != null,
+    displayText: displayText,
+    threadTitle: selectedThread?.title ?? patch.title,
+    outboundTextOverride: prompt,
+    userMessageTranscriptVisible: false,
+  );
+  if (!result.registeredRequest ||
+      (result.status != StudioSendStatus.sent &&
+          result.status != StudioSendStatus.completed)) {
+    shellNotifier.setPlanModeEnabled(previousPlanMode);
+    shellNotifier.setPromptMode(previousPromptMode);
+  } else if (result.requestId != null) {
+    ref
+        .read(patchProposalProvider.notifier)
+        .markVerificationStarted(patch.id, result.requestId!);
+  }
+  return result;
+}
+
+Set<String> _acceptedPlanFileContextPaths(AcceptedPlanContext? acceptedPlan) {
+  if (acceptedPlan == null) return const {};
+  final targets = acceptedPlan.plannedTargets.isNotEmpty
+      ? acceptedPlan.plannedTargets
+      : [
+          for (final file in acceptedPlan.plannedFiles)
+            PlannedFileTarget.fromDisplayString(file),
+        ];
+  return {
+    for (final target in targets)
+      if (target.path.trim().isNotEmpty)
+        p.normalize(target.path.trim()).replaceAll('\\', '/'),
+  };
+}
+
+class _PatchRevisionContext {
+  final ProposedPatchSet patch;
+  final ContextAttachment attachment;
+  final Set<String> filePaths;
+
+  const _PatchRevisionContext({
+    required this.patch,
+    required this.attachment,
+    required this.filePaths,
+  });
+}
+
+ContextAttachment debugPatchRevisionContextAttachment(ProposedPatchSet patch) {
+  final content = _patchRevisionPromptBlock(patch);
+  return ContextAttachment(
+    id: 'patch-revision-context-${patch.id}',
+    type: ContextAttachmentType.note,
+    label: 'Patch revision context',
+    content: content,
+    resolutionStatus: ContextAttachmentResolutionStatus.resolved,
+    estimatedTokens: (content.length / 4).ceil(),
+    createdAt: DateTime.now(),
+  );
+}
+
+String debugPatchRevisionOutboundPrompt(
+  String userPrompt,
+  ProposedPatchSet patch,
+) {
+  return _patchRevisionOutboundPrompt(
+    userPrompt,
+    _PatchRevisionContext(
+      patch: patch,
+      attachment: debugPatchRevisionContextAttachment(patch),
+      filePaths: _patchRevisionFilePaths(patch),
+    ),
+  );
+}
+
+_PatchRevisionContext? _activePatchRevisionContext(WidgetRef ref, String text) {
+  final patch = ref.read(patchProposalProvider).active;
+  if (patch == null ||
+      patch.approvalStatus != PatchApprovalStatus.revisionRequested) {
+    return null;
+  }
+  final revisionPrompt = patch.revisionPrompt?.trim();
+  if (revisionPrompt == null || revisionPrompt.isEmpty) return null;
+  if (!_sameRevisionRequest(text, revisionPrompt)) return null;
+
+  final filePaths = _patchRevisionFilePaths(patch);
+  return _PatchRevisionContext(
+    patch: patch,
+    attachment: debugPatchRevisionContextAttachment(patch),
+    filePaths: filePaths,
+  );
+}
+
+bool _sameRevisionRequest(String text, String revisionPrompt) {
+  final normalizedText = _normalizeRevisionText(text);
+  final normalizedPrompt = _normalizeRevisionText(revisionPrompt);
+  if (normalizedText == normalizedPrompt) return true;
+  if (normalizedText.contains(normalizedPrompt) ||
+      normalizedPrompt.contains(normalizedText)) {
+    return normalizedText.length > 24 && normalizedPrompt.length > 24;
+  }
+  return false;
+}
+
+String _normalizeRevisionText(String value) {
+  return value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9/._\-\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+Set<String> _patchRevisionFilePaths(ProposedPatchSet patch) {
+  return {
+    for (final edit in patch.edits)
+      if (edit.path.trim().isNotEmpty)
+        p.normalize(edit.path.trim()).replaceAll('\\', '/'),
+    for (final target in patch.effectivePlannedTargets)
+      if (target.path.trim().isNotEmpty)
+        p.normalize(target.path.trim()).replaceAll('\\', '/'),
+  };
+}
+
+String _patchRevisionPromptBlock(ProposedPatchSet patch) {
+  final edits = patch.edits
+      .map(
+        (edit) =>
+            '- ${edit.path} — ${edit.type.name}${edit.conflictMessage == null ? '' : ' (${edit.conflictMessage})'}',
+      )
+      .join('\n');
+  final targets = patch.effectivePlannedTargets
+      .where((target) => target.path.trim().isNotEmpty)
+      .map((target) => '- ${target.contractString}')
+      .join('\n');
+  final suggestions = patch.verificationSuggestions
+      .map((suggestion) => '- $suggestion')
+      .join('\n');
+  return [
+    'Patch revision request',
+    'Patch id: ${patch.id}',
+    'Patch title: ${patch.title}',
+    if (patch.comparisonSummary?.trim().isNotEmpty == true)
+      'Patch summary: ${patch.comparisonSummary!.trim()}',
+    if (patch.conflictMessage?.trim().isNotEmpty == true)
+      'Current conflict: ${patch.conflictMessage!.trim()}',
+    if (patch.revisionPrompt?.trim().isNotEmpty == true)
+      'Revision request: ${patch.revisionPrompt!.trim()}',
+    if (edits.trim().isNotEmpty) 'Current proposed files:\n$edits',
+    if (targets.trim().isNotEmpty) 'Accepted/planned targets:\n$targets',
+    if (suggestions.trim().isNotEmpty)
+      'Existing verification suggestions:\n$suggestions',
+  ].where((part) => part.trim().isNotEmpty).join('\n\n');
+}
+
+String _patchRevisionOutboundPrompt(
+  String userPrompt,
+  _PatchRevisionContext context,
+) {
+  final patch = context.patch;
+  return '''
+The user is asking Circuit to revise a previously proposed patch:
+$userPrompt
+
+Use the attached "Patch revision context" as the source of truth.
+
+Revision contract:
+- Refresh the proposal against the current workspace files.
+- Preserve the accepted plan or original task intent.
+- Produce exactly one concrete `propose_patch` result with app-applyable file contents, or ask exactly one specific missing-context question.
+- Do not run commands, write files directly, mutate git, apply patches, or ask the user to type approval text.
+- Avoid unplanned files unless the revision request explicitly requires them.
+
+Patch to revise: ${patch.title}
+''';
 }
 
 bool isConversationalOnlyPrompt(String text) {
@@ -724,6 +1002,9 @@ String studioOutboundPromptForIntent({
   required bool planModeEnabled,
 }) {
   if (intent == TurnIntent.chat) return _conversationalPrompt(text);
+  if (IntentClassifier.requestsBuildDiscovery(text)) {
+    return _buildDiscoveryPrompt(text);
+  }
   if (intent == TurnIntent.ask &&
       IntentClassifier.requestsStructuredAdvisoryOutput(text)) {
     return _structuredAdvisoryPrompt(text);
@@ -750,6 +1031,25 @@ AgentToolMode studioToolModeForIntent({
     hasWorkspace: hasWorkspace,
     planModeEnabled: planModeEnabled,
   );
+}
+
+String _buildDiscoveryPrompt(String userPrompt) {
+  return '''
+The user described a broad product/build idea:
+$userPrompt
+
+Treat this as a product-discovery turn, not an implementation turn.
+Do not create files, do not propose patches, do not inspect the workspace unless the user explicitly asks, do not run commands, and do not infer a framework or file structure.
+If the user mentioned a technology or framework, treat it as a preference to validate during discovery, not permission to start coding.
+
+Respond like a Codex-style coding partner before implementation:
+- Briefly restate the likely goal in plain language.
+- Identify the key decisions needed before code exists: users, inputs, outputs, workflow, data model, integrations, validation rules, and success criteria.
+- Ask 3-6 concise questions that would materially change the first implementation.
+- Suggest a safe next step, such as turning the answers into a plan.
+
+Do not say that anything was built or saved.
+''';
 }
 
 String _conversationalPrompt(String userPrompt) {
@@ -888,21 +1188,25 @@ class StudioContextPayload {
   });
 }
 
-StudioContextPayload buildStudioContextPayload(WidgetRef ref, String prompt) {
+StudioContextPayload buildStudioContextPayload(
+  WidgetRef ref,
+  String prompt, {
+  Set<String> allowedFileContextPaths = const {},
+  List<ContextAttachment> extraAttachments = const [],
+}) {
   final rootPath = ref.read(fileTreeProvider).rootPath;
   const registry = SpecialistAgentRegistry();
-  const selection = SpecialistAgentSelection(
-    requestedAgentId: SpecialistAgentId.auto,
-    resolvedAgentIds: [],
-    isAuto: true,
-    rationale: 'Specialist routing is disabled for the core runtime.',
-  );
+  final selection = _studioSpecialistSelectionForPrompt(prompt);
   final contextPack = ref
       .read(contextPackProvider.notifier)
-      .buildForCodingTask(prompt: prompt);
+      .buildForCodingTask(
+        prompt: prompt,
+        allowedFileContextPaths: allowedFileContextPaths,
+      );
   final attachment = _buildStudioContextAttachment(rootPath, contextPack);
   final attachments = <ContextAttachment>[
     attachment,
+    ...extraAttachments,
     if (selection.hasEnterpriseRouting)
       _buildSpecialistContextAttachment(selection, registry),
   ];
@@ -922,22 +1226,23 @@ StudioContextPayload buildStudioContextPayload(WidgetRef ref, String prompt) {
 
 Future<StudioContextPayload> buildStudioContextPayloadWithFreshIndex(
   WidgetRef ref,
-  String prompt,
-) async {
+  String prompt, {
+  Set<String> allowedFileContextPaths = const {},
+  List<ContextAttachment> extraAttachments = const [],
+}) async {
   final rootPath = ref.read(fileTreeProvider).rootPath;
   const registry = SpecialistAgentRegistry();
-  const selection = SpecialistAgentSelection(
-    requestedAgentId: SpecialistAgentId.auto,
-    resolvedAgentIds: [],
-    isAuto: true,
-    rationale: 'Specialist routing is disabled for the core runtime.',
-  );
+  final selection = _studioSpecialistSelectionForPrompt(prompt);
   final contextPack = await ref
       .read(contextPackProvider.notifier)
-      .buildForCodingTaskWithFreshIndex(prompt: prompt);
+      .buildForCodingTaskWithFreshIndex(
+        prompt: prompt,
+        allowedFileContextPaths: allowedFileContextPaths,
+      );
   final attachment = _buildStudioContextAttachment(rootPath, contextPack);
   final attachments = <ContextAttachment>[
     attachment,
+    ...extraAttachments,
     if (selection.hasEnterpriseRouting)
       _buildSpecialistContextAttachment(selection, registry),
   ];
@@ -953,6 +1258,19 @@ Future<StudioContextPayload> buildStudioContextPayloadWithFreshIndex(
     specialistSelection: selection,
     contextRetrieval: contextPack.retrievalResult,
   );
+}
+
+SpecialistAgentSelection _studioSpecialistSelectionForPrompt(String prompt) {
+  if (!StudioFeatureFlags.enterpriseSpecialists) {
+    return const SpecialistAgentSelection(
+      requestedAgentId: SpecialistAgentId.auto,
+      resolvedAgentIds: [],
+      isAuto: true,
+      rationale:
+          'Enterprise specialist routing is disabled while Studio uses the request-local turn runtime.',
+    );
+  }
+  return const SpecialistAgentRouter().route(prompt);
 }
 
 List<ContextAttachment> buildStudioContextAttachments(

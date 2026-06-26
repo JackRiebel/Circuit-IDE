@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/utils/platform_utils.dart';
-import '../../enums/connection_status.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_descriptor.dart';
 import '../../models/run_diagnostics_summary.dart';
@@ -14,16 +12,13 @@ import '../../state/agent_run_provider.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/ai_context_provider.dart';
 import '../../state/chat_context_draft_provider.dart';
-import '../../state/chat_provider.dart';
 import '../../state/command_palette_provider.dart';
-import '../../state/connection_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/editor_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/layout_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/project_profile_provider.dart';
-import '../../state/settings_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/terminal_provider.dart';
 import '../../state/work_item_provider.dart';
@@ -124,49 +119,6 @@ class CoreCommandRegistry {
           _showSidePanel(ref, ActivityBarItem.tools);
           ref.read(workItemProvider.notifier).start('Run recommended checks');
           unawaited(ref.read(workItemProvider.notifier).runVerification());
-        },
-      ),
-      CommandDescriptor(
-        id: 'project.explain',
-        title: 'Explain Project',
-        description:
-            'Ask AI to explain stack, architecture, and safe next steps.',
-        category: 'Project',
-        icon: Icons.psychology_outlined,
-        surface: 'cockpit',
-        priority: 80,
-        isEnabled: () => ref.read(fileTreeProvider).rootPath != null,
-        run: () {
-          ref.read(chatPanelVisibleProvider.notifier).set(true);
-          unawaited(
-            ref
-                .read(chatProvider.notifier)
-                .sendMessage(
-                  'Explain this project using the project profile and visible context. '
-                  'Cover stack, entrypoints, architecture, and safest next steps.',
-                ),
-          );
-        },
-      ),
-      CommandDescriptor(
-        id: 'project.summarizeChanges',
-        title: 'Summarize Current Changes',
-        description: 'Create a concise handoff from the current working tree.',
-        category: 'Project',
-        icon: Icons.summarize_outlined,
-        surface: 'cockpit',
-        priority: 75,
-        isEnabled: () => ref.read(projectProfileProvider).changedFiles > 0,
-        run: () {
-          ref.read(chatPanelVisibleProvider.notifier).set(true);
-          unawaited(
-            ref
-                .read(chatProvider.notifier)
-                .sendMessage(
-                  'Summarize the current working tree changes as a handoff. '
-                  'Include files changed, risk, tests run, and next steps.',
-                ),
-          );
         },
       ),
       CommandDescriptor(
@@ -407,30 +359,6 @@ class CoreCommandRegistry {
         },
       ),
       CommandDescriptor(
-        id: 'ai.reconnect',
-        title: 'Reconnect AI',
-        description: 'Reconnect using saved Circuit Company AI credentials.',
-        category: 'AI',
-        icon: Icons.power_settings_new,
-        run: () async {
-          ref
-              .read(connectionStatusProvider.notifier)
-              .set(ConnectionStatus.connecting);
-          final service = ref.read(agentServiceProvider);
-          final workingDir =
-              ref.read(fileTreeProvider).rootPath ?? PlatformUtils.scratchDir;
-          final success = await service.connectWithSavedCredentials(
-            workingDir: workingDir,
-            preferredProvider: ref.read(settingsProvider).activeProvider,
-          );
-          ref
-              .read(connectionStatusProvider.notifier)
-              .set(
-                success ? ConnectionStatus.connected : ConnectionStatus.error,
-              );
-        },
-      ),
-      CommandDescriptor(
         id: 'view.explorer',
         title: 'Show Explorer',
         category: 'View',
@@ -544,8 +472,6 @@ const _studioQuarantinedCommandIds = <String>{
   'project.openCockpit',
   'project.startWorkItem',
   'project.runRecommendedChecks',
-  'project.explain',
-  'project.summarizeChanges',
   'project.copyHandoff',
   'project.refreshContextPack',
   'agentWorkspace.open',

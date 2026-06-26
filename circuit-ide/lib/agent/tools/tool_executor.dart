@@ -17,6 +17,7 @@ import '../checkpoint/checkpoint_manager.dart';
 import '../security/secret_detector.dart';
 import '../security/agent_tool_permission_policy.dart';
 import '../security/command_sanitizer.dart';
+import '../verification_command_filter.dart' as verification_command_filter;
 import '../mcp/mcp_client.dart';
 import 'tool_registry.dart';
 import 'file_tools.dart';
@@ -185,6 +186,7 @@ class ToolExecutor {
       // Check policy before relying on model intent. Prompts guide behavior,
       // but this client-side policy is the enforcement layer.
       final permission = _permissionPolicy.evaluate(toolCall);
+      var approvedByReview = false;
       if (permission.denied) {
         onToolCallUpdate?.call(
           updated.copyWith(
@@ -208,42 +210,64 @@ class ToolExecutor {
         );
       }
 
-      if (permission.requiresApproval &&
-          !autoApprove &&
-          _permissionRequest.approvalGrant == ApprovalGrant.none) {
+      if (permission.requiresApproval) {
         final preview = _generatePreview(toolCall);
         final warnings = [permission.message, ..._checkWarnings(toolCall)];
 
-        if (onConfirmationNeeded != null) {
-          final request = ConfirmationRequest(
-            id: toolCall.id,
-            toolCall: toolCall,
-            preview: preview,
-            warnings: warnings,
+        if (onConfirmationNeeded == null) {
+          onToolCallUpdate?.call(
+            updated.copyWith(
+              status: ToolStatus.error,
+              completedAt: DateTime.now(),
+              error: permission.message,
+            ),
           );
-
-          final approved = await onConfirmationNeeded!(request);
-          if (!approved) {
-            onToolCallUpdate?.call(
-              updated.copyWith(
-                status: ToolStatus.cancelled,
-                completedAt: DateTime.now(),
-              ),
-            );
-            return ToolExecutionResult(
+          return ToolExecutionResult(
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            result: 'Action blocked: ${permission.message}',
+            success: false,
+            envelope: ToolResultEnvelope(
               toolCallId: toolCall.id,
               toolName: toolCall.name,
-              result: 'Action rejected by user.',
-              wasCancelled: true,
-              envelope: ToolResultEnvelope(
-                toolCallId: toolCall.id,
-                toolName: toolCall.name,
-                status: ToolResultStatus.cancelled,
-                summary: 'Action rejected by user.',
-              ),
-            );
-          }
+              status: ToolResultStatus.waitingForApproval,
+              summary:
+                  'Action requires review, but no approval handler is attached.',
+              diagnostic: permission.reason.name,
+              retryable: true,
+            ),
+          );
         }
+
+        final request = ConfirmationRequest(
+          id: toolCall.id,
+          toolCall: toolCall,
+          preview: preview,
+          warnings: warnings,
+        );
+
+        final approved = await onConfirmationNeeded!(request);
+        if (!approved) {
+          onToolCallUpdate?.call(
+            updated.copyWith(
+              status: ToolStatus.cancelled,
+              completedAt: DateTime.now(),
+            ),
+          );
+          return ToolExecutionResult(
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            result: 'Action rejected by user.',
+            wasCancelled: true,
+            envelope: ToolResultEnvelope(
+              toolCallId: toolCall.id,
+              toolName: toolCall.name,
+              status: ToolResultStatus.cancelled,
+              summary: 'Action rejected by user.',
+            ),
+          );
+        }
+        approvedByReview = true;
       }
 
       // Auto-snapshot files before write/edit for checkpoint rewind
@@ -269,8 +293,21 @@ class ToolExecutor {
       }
 
       final result = toolCall.name == 'run_command'
-          ? await _executeCommandTool(toolCall, updated)
-          : await _dispatch(toolCall.name, toolCall.arguments);
+          ? await _executeCommandTool(
+              toolCall,
+              updated,
+              permission,
+              approvedByReview: approvedByReview,
+            )
+          : await _dispatch(
+              toolCall.name,
+              toolCall.arguments,
+              networkApproved:
+                  approvedByReview ||
+                  (permission.allowed &&
+                      permission.reason ==
+                          ToolPermissionReason.approvalGranted),
+            );
       final resultIsError = _isErrorResult(result);
       final commandExitCode = toolCall.name == 'run_command'
           ? _commandExitCode(result)
@@ -302,6 +339,8 @@ class ToolExecutor {
           retryable: resultIsError,
           data: {
             'rawResult': result,
+            if (toolCall.name == 'run_command')
+              'command': toolCall.arguments['command'],
             ..._commandResultData(commandExitCode),
             if (toolCall.name == 'propose_patch') ...toolCall.arguments,
           },
@@ -367,11 +406,20 @@ class ToolExecutor {
   Future<String> _executeCommandTool(
     ToolCallInfo toolCall,
     ToolCallInfo running,
-  ) {
+    ToolPermissionDecision permission, {
+    required bool approvedByReview,
+  }) {
     final output = StringBuffer();
+    final command = toolCall.arguments['command'] as String? ?? '';
+    final allowNetwork =
+        CommandSanitizer.checkNetworkAccess(command) != null &&
+        ((permission.allowed &&
+                permission.reason == ToolPermissionReason.approvalGranted) ||
+            (permission.requiresApproval && approvedByReview));
     return _commandTools.runCommand(
       toolCall.arguments,
       runId: toolCall.id,
+      allowNetwork: allowNetwork,
       onEvent: (event) {
         if (event.type == CommandRunEventType.stdout ||
             event.type == CommandRunEventType.stderr) {
@@ -661,9 +709,21 @@ class ToolExecutor {
         if (json is Map<String, dynamic>) {
           final scripts = json['scripts'];
           if (scripts is Map) {
-            if (scripts.containsKey('test')) suggestions.add('npm test');
-            if (scripts.containsKey('lint')) suggestions.add('npm run lint');
-            if (scripts.containsKey('build')) suggestions.add('npm run build');
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['test'],
+            )) {
+              suggestions.add('npm test');
+            }
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['lint'],
+            )) {
+              suggestions.add('npm run lint');
+            }
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['build'],
+            )) {
+              suggestions.add('npm run build');
+            }
           }
         }
       } catch (_) {}
@@ -876,7 +936,11 @@ class ToolExecutor {
     return '- ${operation[0].toUpperCase()}${operation.substring(1)} $path$suffix';
   }
 
-  Future<String> _dispatch(String name, Map<String, dynamic> args) async {
+  Future<String> _dispatch(
+    String name,
+    Map<String, dynamic> args, {
+    bool networkApproved = false,
+  }) async {
     switch (name) {
       // File tools
       case 'read_file':
@@ -910,12 +974,12 @@ class ToolExecutor {
 
       // Command tools
       case 'run_command':
-        return _commandTools.runCommand(args);
+        return 'Error: run_command must run through the reviewed command execution path.';
 
       // Web tools
       case 'web_fetch':
       case 'web_search':
-        return _webTools.execute(name, args);
+        return _webTools.execute(name, args, allowNetwork: networkApproved);
 
       // GitHub tools
       case 'github_whoami':
@@ -923,14 +987,15 @@ class ToolExecutor {
       case 'github_get_repo':
       case 'github_list_issues':
       case 'github_get_issue':
-      case 'github_create_issue':
-      case 'github_close_issue':
       case 'github_list_prs':
       case 'github_get_pr':
       case 'github_search_repos':
       case 'github_search_issues':
-      case 'github_create_repo':
         return _githubTools.execute(name, args);
+      case 'github_create_issue':
+      case 'github_close_issue':
+      case 'github_create_repo':
+        return 'Error: GitHub mutation tools are unavailable in Studio turns until the connector is explicitly feature-enabled and scoped.';
 
       // Orchestration tool
       case 'orchestrate':
@@ -941,15 +1006,31 @@ class ToolExecutor {
 
       default:
         // MCP tool dispatch
-        if (ToolRegistry.isMcpTool(name) && _mcpClient != null) {
-          final parsed = _mcpClient!.parseMcpToolName(name);
-          if (parsed != null) {
-            return _mcpClient!.callTool(parsed.$2, args);
-          }
-          return 'Error: Could not parse MCP tool name: $name';
+        if (ToolRegistry.isMcpTool(name)) {
+          return _dispatchMcpTool(name, args);
         }
         return 'Unknown tool: $name';
     }
+  }
+
+  Future<String> _dispatchMcpTool(
+    String name,
+    Map<String, dynamic> args,
+  ) async {
+    final guard = _permissionPolicy.evaluate(
+      ToolCallInfo(id: 'mcp-dispatch-guard', name: name, arguments: args),
+    );
+    if (!guard.allowed || !guard.isReadOnly) {
+      return 'Error: MCP tool blocked: ${guard.message}';
+    }
+    if (_mcpClient == null) {
+      return 'Error: MCP client not configured';
+    }
+    final parsed = _mcpClient!.parseMcpToolName(name);
+    if (parsed == null) {
+      return 'Error: Could not parse MCP tool name: $name';
+    }
+    return _mcpClient!.callToolOnServer(parsed.$1, parsed.$2, args);
   }
 
   String _generatePreview(ToolCallInfo toolCall) {

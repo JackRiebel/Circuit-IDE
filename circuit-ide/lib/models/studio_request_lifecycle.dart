@@ -1,4 +1,5 @@
 import 'studio_thread.dart';
+import 'turn_intent.dart';
 
 enum StudioRequestLifecycleEventKind {
   requestStarted,
@@ -16,6 +17,7 @@ class StudioRequestLifecycleEntry {
   final String threadId;
   final String? taskId;
   final String model;
+  final TurnIntent intent;
   final StudioContextSummary contextSummary;
   final DateTime startedAt;
   final DateTime lastEventAt;
@@ -27,6 +29,7 @@ class StudioRequestLifecycleEntry {
     required this.threadId,
     this.taskId,
     required this.model,
+    this.intent = TurnIntent.code,
     required this.contextSummary,
     required this.startedAt,
     required this.lastEventAt,
@@ -44,6 +47,7 @@ class StudioRequestLifecycleEntry {
       threadId: threadId,
       taskId: taskId,
       model: model,
+      intent: intent,
       contextSummary: contextSummary,
       startedAt: startedAt,
       lastEventAt: lastEventAt ?? this.lastEventAt,

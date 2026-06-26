@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/agent_run.dart';
 import '../models/workspace_session.dart';
 import 'agent_run_provider.dart';
-import 'connection_provider.dart';
 import 'file_tree_provider.dart';
 import 'git_provider.dart';
 import 'project_profile_provider.dart';
@@ -41,58 +40,48 @@ class WorkspaceSessionController extends Notifier<WorkspaceSessionState> {
       );
     }
 
-    await ref.read(agentServiceProvider).updateWorkingDir(path);
     await ref.read(gitProvider.notifier).refresh();
     await ref.read(projectProfileProvider.notifier).refresh();
 
-    final agentWorkingDir = ref.read(agentServiceProvider).state.workingDir;
-    final isBound = agentWorkingDir == path;
     state = WorkspaceSessionState(
       rootPath: path,
-      agentWorkingDir: agentWorkingDir,
-      status: isBound
-          ? WorkspaceSessionStatus.ready
-          : WorkspaceSessionStatus.degraded,
+      agentWorkingDir: path,
+      status: WorkspaceSessionStatus.ready,
       lastOpenResult: openResult,
       lastBoundAt: DateTime.now(),
-      error: isBound ? null : 'Agent working directory did not bind.',
+      error: null,
     );
     ref
         .read(agentRunProvider.notifier)
         .addEvent(
           AgentRunKind.backgroundTask,
           AgentRunEventType.contextPrepared,
-          isBound ? 'Workspace bound' : 'Workspace binding degraded',
+          'Workspace bound',
           metadata: {
             'rootPath': path,
-            'agentWorkingDir': agentWorkingDir,
-            'isBound': isBound.toString(),
+            'agentWorkingDir': path,
+            'isBound': 'true',
           },
         );
     return WorkspaceBindingResult(
-      success: isBound,
+      success: true,
       rootPath: path,
-      agentWorkingDir: agentWorkingDir,
-      message: isBound ? 'Workspace ready.' : state.error,
+      agentWorkingDir: path,
+      message: 'Workspace ready.',
       openResult: openResult,
     );
   }
 
   void syncFromCurrentWorkspace() {
     final rootPath = ref.read(fileTreeProvider).rootPath;
-    final agentWorkingDir = ref.read(agentServiceProvider).state.workingDir;
     state = WorkspaceSessionState(
       rootPath: rootPath,
-      agentWorkingDir: agentWorkingDir,
+      agentWorkingDir: rootPath,
       status: rootPath == null
           ? WorkspaceSessionStatus.closed
-          : rootPath == agentWorkingDir
-          ? WorkspaceSessionStatus.ready
-          : WorkspaceSessionStatus.degraded,
+          : WorkspaceSessionStatus.ready,
       lastBoundAt: DateTime.now(),
-      error: rootPath == null || rootPath == agentWorkingDir
-          ? null
-          : 'Agent is not bound to the selected workspace.',
+      error: null,
     );
   }
 }

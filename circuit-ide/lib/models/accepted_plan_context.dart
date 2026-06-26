@@ -19,6 +19,27 @@ class AcceptedPlanContext {
     this.verificationRequested = false,
   });
 
+  AcceptedPlanContext copyWith({
+    String? patchSetId,
+    String? title,
+    String? summary,
+    String? markdown,
+    List<String>? plannedFiles,
+    List<PlannedFileTarget>? plannedTargets,
+    bool? verificationRequested,
+  }) {
+    return AcceptedPlanContext(
+      patchSetId: patchSetId ?? this.patchSetId,
+      title: title ?? this.title,
+      summary: summary ?? this.summary,
+      markdown: markdown ?? this.markdown,
+      plannedFiles: plannedFiles ?? this.plannedFiles,
+      plannedTargets: plannedTargets ?? this.plannedTargets,
+      verificationRequested:
+          verificationRequested ?? this.verificationRequested,
+    );
+  }
+
   factory AcceptedPlanContext.fromPatch(ProposedPatchSet patch) {
     final targets = patch.effectivePlannedTargets
         .where((target) => target.path.trim().isNotEmpty)

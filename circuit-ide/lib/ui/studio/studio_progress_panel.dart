@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
+import '../../models/reviewed_edit.dart';
 import '../../models/studio_shell.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
@@ -11,6 +12,7 @@ import '../../models/studio_view_models.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/git_provider.dart';
 import '../../state/patch_proposal_provider.dart';
+import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 
@@ -23,8 +25,12 @@ class StudioProgressPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
+    final latestTurn = _latestTurn(thread);
     final git = ref.watch(gitProvider).status;
-    final patch = ref.watch(patchProposalProvider).active;
+    final patch = _patchForTurn(
+      ref.watch(patchProposalProvider).active,
+      latestTurn,
+    );
     final commands = ref.watch(commandRunProvider).values.toList();
     final hasPendingApproval =
         thread?.turns.any(
@@ -35,18 +41,22 @@ class StudioProgressPanel extends ConsumerWidget {
           ),
         ) ??
         false;
-    final runningCommand = commands
-        .where((command) => command.status == CommandRunStatus.running)
-        .firstOrNull;
+    final runningCommand = _runningCommandForTurn(commands, latestTurn);
     final displayState = TaskDisplayState.fromLifecycle(
       StudioTaskLifecycleState.fromThread(thread),
     );
+    final shouldShowTaskState =
+        displayState.isActive ||
+        displayState.needsAttention ||
+        hasPendingApproval ||
+        runningCommand != null;
     final rows = <StudioProgressRow>[
-      StudioProgressRow(
-        label: 'Task',
-        value: displayState.label,
-        accent: displayState.isActive || displayState.needsAttention,
-      ),
+      if (shouldShowTaskState)
+        StudioProgressRow(
+          label: 'Task',
+          value: displayState.label,
+          accent: true,
+        ),
       if (hasPendingApproval)
         const StudioProgressRow(
           label: 'Approval',
@@ -72,59 +82,75 @@ class StudioProgressPanel extends ConsumerWidget {
     ];
 
     return Container(
-      width: 300,
-      margin: const EdgeInsets.fromLTRB(0, 58, Spacing.lg, Spacing.lg),
+      width: 292,
+      margin: const EdgeInsets.fromLTRB(0, 56, 14, 18),
       decoration: BoxDecoration(
-        color: tokens.studioPanel,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tokens.studioDivider),
-        boxShadow: Shadows.medium,
+        color: tokens.studioPanel.withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.38)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(Spacing.xl),
+        padding: const EdgeInsets.fromLTRB(15, 10, 15, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Text(
-                  'Progress',
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: FontSizes.base,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const Spacer(),
-              ],
+            _PanelSectionHeader(
+              title: 'Environment',
+              actionTooltip: 'Open context details',
+              actionIcon: Icons.add,
+              onAction: () =>
+                  ref.read(studioRightDrawerProvider.notifier).openContext(),
             ),
-            const SizedBox(height: Spacing.xl),
-            Divider(color: tokens.studioDivider, height: 1),
-            const SizedBox(height: Spacing.lg),
-            Text(
-              'Environment',
-              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
-            ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: 4),
             for (final row in rows) _ProgressRow(row: row),
-            const SizedBox(height: Spacing.lg),
-            Divider(color: tokens.studioDivider, height: 1),
-            const SizedBox(height: Spacing.lg),
-            Text(
-              'Sources',
-              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
+            const SizedBox(height: 10),
+            Divider(
+              color: tokens.studioDivider.withValues(alpha: 0.32),
+              height: 1,
             ),
-            const SizedBox(height: Spacing.md),
-            _SourceRow(
-              icon: Icons.travel_explore,
-              label: _sourceLabel(thread, commands.isNotEmpty),
+            const SizedBox(height: 10),
+            const _PanelSectionHeader(title: 'Sources'),
+            const SizedBox(height: 6),
+            _SourceDotGrid(
+              activeCount: _sourceCount(thread, runningCommand != null),
             ),
           ],
         ),
       ),
     );
   }
+
+  StudioTurn? _latestTurn(StudioThread? thread) {
+    if (thread == null || thread.turns.isEmpty) return null;
+    final turns = thread.turns.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return turns.first;
+  }
+
+  ProposedPatchSet? _patchForTurn(ProposedPatchSet? patch, StudioTurn? turn) {
+    if (patch == null || turn == null) return null;
+    return patch.runId == turn.requestId ? patch : null;
+  }
+
+  CommandRun? _runningCommandForTurn(
+    Iterable<CommandRun> commands,
+    StudioTurn? turn,
+  ) {
+    if (turn == null) return null;
+    return commands
+        .where(
+          (command) =>
+              command.status == CommandRunStatus.running &&
+              command.requestId == turn.requestId,
+        )
+        .firstOrNull;
+  }
+}
+
+int _sourceCount(StudioThread? thread, bool hasCommands) {
+  if (hasCommands) return 3;
+  return (thread?.contextSummary?.includedItemCount ?? 0).clamp(1, 24).toInt();
 }
 
 class _ProgressRow extends ConsumerWidget {
@@ -137,23 +163,40 @@ class _ProgressRow extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final color = row.enabled ? tokens.textSecondary : tokens.textMuted;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(_iconFor(row.label), color: color, size: 15),
-          const SizedBox(width: Spacing.md),
+          Icon(
+            _iconFor(row.label),
+            color: color.withValues(alpha: 0.9),
+            size: 13,
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               row.label,
-              style: TextStyle(color: color, fontSize: FontSizes.sm),
+              style: TextStyle(
+                color: color,
+                fontSize: FontSizes.sm,
+                height: 1.1,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          Text(
-            row.value,
-            style: TextStyle(
-              color: row.accent ? tokens.success : tokens.textMuted,
-              fontSize: FontSizes.sm,
-              fontWeight: row.accent ? FontWeight.w800 : FontWeight.w500,
+          Flexible(
+            child: Text(
+              row.value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: row.accent
+                    ? tokens.success.withValues(alpha: 0.92)
+                    : tokens.textMuted.withValues(alpha: 0.88),
+                fontSize: FontSizes.sm,
+                height: 1.1,
+                fontWeight: row.accent ? FontWeight.w600 : FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -174,31 +217,74 @@ class _ProgressRow extends ConsumerWidget {
   }
 }
 
-String _sourceLabel(StudioThread? thread, bool hasCommands) {
-  if (hasCommands) return 'Tool output';
-  final summary = thread?.contextSummary;
-  if (summary == null) return 'Project context';
-  if (summary.rootPath == null) return 'No project context';
-  return summary.projectLabel;
-}
+class _PanelSectionHeader extends ConsumerWidget {
+  final String title;
+  final String? actionTooltip;
+  final IconData? actionIcon;
+  final VoidCallback? onAction;
 
-class _SourceRow extends ConsumerWidget {
-  final IconData icon;
-  final String label;
-
-  const _SourceRow({required this.icon, required this.label});
+  const _PanelSectionHeader({
+    required this.title,
+    this.actionTooltip,
+    this.actionIcon,
+    this.onAction,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Row(
       children: [
-        Icon(icon, color: tokens.textMuted, size: 15),
-        const SizedBox(width: Spacing.md),
-        Text(
-          label,
-          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              color: tokens.textMuted.withValues(alpha: 0.86),
+              fontSize: FontSizes.xs,
+              height: 1.1,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
+        if (actionIcon != null && onAction != null)
+          Tooltip(
+            message: actionTooltip ?? title,
+            child: InkWell(
+              onTap: onAction,
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: Icon(actionIcon, color: tokens.textMuted, size: 14),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SourceDotGrid extends ConsumerWidget {
+  final int activeCount;
+
+  const _SourceDotGrid({required this.activeCount});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final count = activeCount.clamp(1, 24).toInt();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (var index = 0; index < 24; index++)
+          Icon(
+            Icons.language,
+            size: 11,
+            color: index < count
+                ? tokens.textMuted.withValues(alpha: 0.76)
+                : tokens.textMuted.withValues(alpha: 0.18),
+          ),
       ],
     );
   }

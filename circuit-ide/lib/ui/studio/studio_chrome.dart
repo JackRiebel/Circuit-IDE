@@ -11,6 +11,8 @@ class StudioChromeIconButton extends ConsumerWidget {
   final bool active;
   final double width;
   final double height;
+  final double iconSize;
+  final bool prominent;
 
   const StudioChromeIconButton({
     super.key,
@@ -18,37 +20,54 @@ class StudioChromeIconButton extends ConsumerWidget {
     required this.tooltip,
     this.onTap,
     this.active = false,
-    this.width = 30,
-    this.height = 26,
+    this.width = 28,
+    this.height = 24,
+    this.iconSize = 14,
+    this.prominent = false,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final enabled = onTap != null;
+    final prominentColor = tokens.brightness == Brightness.dark
+        ? const Color(0xFF4C8DFF)
+        : tokens.accent;
     return Tooltip(
       message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(Radii.md),
-        child: Container(
-          width: width,
-          height: height,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: active
-                ? tokens.studioControl.withValues(alpha: 0.68)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(Radii.md),
-            border: active
-                ? Border.all(
-                    color: tokens.studioDivider.withValues(alpha: 0.54),
-                  )
-                : null,
-          ),
-          child: Icon(
-            icon,
-            color: active ? tokens.textSecondary : tokens.textMuted,
-            size: 15,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(prominent ? Radii.pill : 7),
+          child: Container(
+            width: width,
+            height: height,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: prominent && enabled
+                  ? prominentColor
+                  : active
+                  ? tokens.studioControl.withValues(alpha: 0.54)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(prominent ? Radii.pill : 7),
+              border: active && !prominent
+                  ? Border.all(
+                      color: tokens.studioDivider.withValues(alpha: 0.42),
+                    )
+                  : null,
+            ),
+            child: Icon(
+              icon,
+              color: prominent
+                  ? (enabled ? tokens.bgDark : tokens.textDisabled)
+                  : !enabled
+                  ? tokens.textDisabled
+                  : active
+                  ? tokens.textSecondary
+                  : tokens.textMuted,
+              size: iconSize,
+            ),
           ),
         ),
       ),
@@ -70,11 +89,11 @@ class StudioMiniChip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: attention
-            ? tokens.warning.withValues(alpha: 0.13)
-            : tokens.studioControl.withValues(alpha: 0.54),
+            ? tokens.warning.withValues(alpha: 0.11)
+            : tokens.studioControl.withValues(alpha: 0.42),
         borderRadius: BorderRadius.circular(Radii.pill),
       ),
       child: Text(
@@ -168,10 +187,7 @@ class StudioActivityRow extends ConsumerWidget {
         borderRadius: BorderRadius.circular(Radii.md),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 706),
-          padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.md,
-            vertical: 7,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
             color: elevated
                 ? tokens.studioActivityRow.withValues(alpha: 0.62)
@@ -184,7 +200,7 @@ class StudioActivityRow extends ConsumerWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Icon(icon, color: tokens.textMuted, size: 13),
+              Icon(icon, color: tokens.textMuted, size: 14),
               const SizedBox(width: Spacing.sm),
               Expanded(
                 child: Column(
@@ -196,7 +212,7 @@ class StudioActivityRow extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: tokens.textSecondary,
-                        fontSize: FontSizes.xs,
+                        fontSize: FontSizes.sm,
                         height: 1.15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -218,7 +234,7 @@ class StudioActivityRow extends ConsumerWidget {
                 ),
               ),
               if (onTap != null)
-                Icon(Icons.chevron_right, color: tokens.textMuted, size: 15),
+                Icon(Icons.chevron_right, color: tokens.textMuted, size: 14),
             ],
           ),
         ),
@@ -263,10 +279,11 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
     final showHoverTrailing =
         widget.hoverTrailing != null &&
         (_hovered || _focused || widget.selected);
+    final highlighted = _hovered || _focused;
     return Padding(
       padding: EdgeInsets.only(
-        left: Spacing.sm + widget.leftIndent,
-        right: Spacing.sm,
+        left: 7 + widget.leftIndent,
+        right: 7,
         bottom: 1,
       ),
       child: FocusableActionDetector(
@@ -274,19 +291,19 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
         onShowFocusHighlight: (value) => setState(() => _focused = value),
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(Radii.md),
+          borderRadius: BorderRadius.circular(7),
           child: Container(
             height: widget.project ? 29 : 28,
-            padding: EdgeInsets.symmetric(horizontal: widget.project ? 9 : 8),
+            padding: EdgeInsets.symmetric(horizontal: widget.project ? 8 : 8),
             decoration: BoxDecoration(
               color: widget.selected
                   ? (widget.project
-                        ? tokens.studioRailSelected.withValues(alpha: 0.78)
-                        : tokens.studioTaskSelected.withValues(alpha: 0.78))
-                  : _hovered || _focused
-                  ? tokens.studioHover.withValues(alpha: 0.48)
+                        ? tokens.studioRailSelected.withValues(alpha: 0.32)
+                        : tokens.studioTaskSelected.withValues(alpha: 0.3))
+                  : highlighted
+                  ? tokens.studioHover.withValues(alpha: 0.16)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(Radii.md),
+              borderRadius: BorderRadius.circular(7),
             ),
             child: Row(
               children: [
@@ -296,9 +313,9 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
                     color: widget.selected
                         ? tokens.textPrimary
                         : tokens.textMuted,
-                    size: widget.project ? 15 : 14,
+                    size: 14,
                   ),
-                  const SizedBox(width: 7),
+                  const SizedBox(width: 8),
                 ],
                 Expanded(
                   child: Text(
@@ -310,7 +327,7 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
                           ? tokens.textPrimary
                           : tokens.textSecondary,
                       fontSize: FontSizes.sm,
-                      height: 1.15,
+                      height: 1.12,
                       fontWeight: widget.selected
                           ? FontWeight.w600
                           : widget.project

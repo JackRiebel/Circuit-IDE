@@ -2,6 +2,7 @@ import 'package:circuit_ide/enums/message_role.dart';
 import 'package:circuit_ide/models/agent_workspace.dart';
 import 'package:circuit_ide/models/chat_message.dart';
 import 'package:circuit_ide/models/command_run.dart';
+import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_view_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -112,6 +113,27 @@ void main() {
       );
 
       expect(state.kind, TaskDisplayKind.failed);
+      expect(state.needsAttention, isTrue);
+    });
+  });
+
+  group('TaskDisplayState.fromLifecycle', () {
+    test('renders continuation as an actionable paused state, not working', () {
+      final state = TaskDisplayState.fromLifecycle(
+        StudioTaskLifecycleState.fromThread(
+          StudioThread(
+            id: 'thread-continue',
+            title: 'Partial plan',
+            status: StudioThreadStatus.continuationReady,
+            createdAt: DateTime(2026),
+            updatedAt: DateTime(2026),
+          ),
+        ),
+      );
+
+      expect(state.kind, TaskDisplayKind.continuationReady);
+      expect(state.label, 'Continue');
+      expect(state.isActive, isFalse);
       expect(state.needsAttention, isTrue);
     });
   });

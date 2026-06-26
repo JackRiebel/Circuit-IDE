@@ -46,6 +46,7 @@ class StudioTurnRunner {
   final String model;
   final ToolExecutor toolExecutor;
   final ApprovalGrant Function()? approvalGrantProvider;
+  final String? Function()? approvalGrantKeyProvider;
   final ContextManager _contextManager = ContextManager();
   final TurnOutcomeValidator _outcomeValidator = const TurnOutcomeValidator();
 
@@ -59,6 +60,7 @@ class StudioTurnRunner {
     required this.model,
     required this.toolExecutor,
     this.approvalGrantProvider,
+    this.approvalGrantKeyProvider,
   });
 
   void cancel() {
@@ -161,6 +163,7 @@ class StudioTurnRunner {
               phase: _permissionPhaseFor(phase),
               approvalGrant:
                   approvalGrantProvider?.call() ?? ApprovalGrant.none,
+              approvalGrantKey: approvalGrantKeyProvider?.call(),
               hasAcceptedPlan: acceptedPlan != null,
             ),
           );
@@ -557,6 +560,41 @@ class StudioTurnRunner {
             taskPrompt: userMessage,
           );
         }
+        final planNormalization = _normalizePlanModeArtifact(
+          requestId: requestId,
+          intent: intent,
+          content: fullResponse,
+          toolCalls: allToolCalls,
+          toolResults: allToolResults,
+        );
+        if (planNormalization != null) {
+          allToolCalls
+            ..clear()
+            ..addAll(planNormalization.toolCalls);
+          allToolResults
+            ..clear()
+            ..addAll(planNormalization.toolResults);
+          if (planNormalization.synthesizedToolCall != null) {
+            final syntheticCall = planNormalization.synthesizedToolCall!;
+            events.emit(EventType.toolCallCompleted, {
+              'requestId': requestId,
+              'toolCall': syntheticCall.copyWith(result: 'captured'),
+            });
+            events.emit(EventType.toolResultRecorded, {
+              'requestId': requestId,
+              'result': planNormalization.synthesizedToolResult!,
+            });
+          }
+          validation = _outcomeValidator.validate(
+            intent: intent,
+            toolMode: toolMode,
+            content: fullResponse,
+            toolCalls: allToolCalls,
+            toolResults: allToolResults,
+            acceptedPlan: acceptedPlan,
+            taskPrompt: userMessage,
+          );
+        }
         if (!validation.canComplete) {
           if (outcomeAttempt + 1 < maxOutcomeAttempts &&
               _canRepairOutcome(
@@ -564,6 +602,9 @@ class StudioTurnRunner {
                 content: fullResponse,
                 toolCalls: allToolCalls,
                 toolResults: allToolResults,
+                allowApprovalLanguageRepair:
+                    acceptedPlan != null &&
+                    !_hasSuccessfulPatchProposal(allToolResults),
               )) {
             _emitLifecycle(
               requestId,
@@ -637,7 +678,9 @@ class StudioTurnRunner {
         _emitLifecycle(
           requestId,
           turnId,
-          ProviderLifecycleEventKind.failed,
+          isOutcomeValidationError
+              ? ProviderLifecycleEventKind.outcomeRejected
+              : ProviderLifecycleEventKind.failed,
           detail: isOutcomeValidationError
               ? 'Runtime rejected the model outcome: $message'
               : message,
@@ -670,12 +713,14 @@ class StudioTurnRunner {
     required String content,
     required List<ToolCallInfo> toolCalls,
     required List<ToolResultEnvelope> toolResults,
+    bool allowApprovalLanguageRepair = false,
   }) {
     if (validation.status != TurnOutcomeValidationStatus.invalid ||
         !(validation.userMessage?.trim().isNotEmpty ?? false)) {
       return false;
     }
-    if (validation.userMessage!.toLowerCase().contains('approval')) {
+    if (validation.userMessage!.toLowerCase().contains('approval') &&
+        !allowApprovalLanguageRepair) {
       return false;
     }
     if (validation.userMessage!.toLowerCase().contains('plan-only')) {
@@ -691,6 +736,252 @@ class StudioTurnRunner {
     }
     if (content.trim().isEmpty && toolNames.isEmpty) return false;
     return !_containsApprovalLanguage(content);
+  }
+
+  _PlanArtifactNormalization? _normalizePlanModeArtifact({
+    required String requestId,
+    required TurnIntent intent,
+    required String content,
+    required List<ToolCallInfo> toolCalls,
+    required List<ToolResultEnvelope> toolResults,
+  }) {
+    if (intent != TurnIntent.plan) return null;
+
+    var changed = false;
+    final normalizedCalls = <ToolCallInfo>[];
+    for (final call in toolCalls) {
+      if (call.name != 'propose_patch') {
+        normalizedCalls.add(call);
+        continue;
+      }
+      final normalizedArgs = _planOnlyPatchArguments(call.arguments);
+      changed = changed || !_shallowMapEquals(normalizedArgs, call.arguments);
+      normalizedCalls.add(
+        ToolCallInfo(
+          id: call.id,
+          name: call.name,
+          arguments: normalizedArgs,
+          status: call.status,
+          result: call.result,
+          error: call.error,
+          startedAt: call.startedAt,
+          completedAt: call.completedAt,
+          requiresConfirmation: call.requiresConfirmation,
+        ),
+      );
+    }
+
+    final normalizedResults = <ToolResultEnvelope>[];
+    for (final result in toolResults) {
+      if (result.toolName != 'propose_patch' ||
+          result.status != ToolResultStatus.success ||
+          result.data.isEmpty) {
+        normalizedResults.add(result);
+        continue;
+      }
+      final normalizedData = _planOnlyPatchArguments(result.data);
+      changed = changed || !_shallowMapEquals(normalizedData, result.data);
+      normalizedResults.add(
+        ToolResultEnvelope(
+          toolCallId: result.toolCallId,
+          toolName: result.toolName,
+          status: result.status,
+          summary: result.summary,
+          data: normalizedData,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          artifacts: result.artifacts,
+          changedFiles: result.changedFiles,
+          diagnostic: result.diagnostic,
+          retryable: result.retryable,
+        ),
+      );
+    }
+
+    if (_hasReviewablePlanPayload(normalizedCalls, normalizedResults)) {
+      return changed
+          ? _PlanArtifactNormalization(
+              toolCalls: normalizedCalls,
+              toolResults: normalizedResults,
+            )
+          : null;
+    }
+
+    if (!_isSubstantivePlanProse(content)) {
+      return changed
+          ? _PlanArtifactNormalization(
+              toolCalls: normalizedCalls,
+              toolResults: normalizedResults,
+            )
+          : null;
+    }
+
+    final syntheticArgs = _syntheticPlanArguments(content);
+    final syntheticCall = ToolCallInfo(
+      id: 'synthetic-plan-$requestId',
+      name: 'propose_patch',
+      arguments: syntheticArgs,
+    );
+    final syntheticResult = ToolResultEnvelope(
+      toolCallId: syntheticCall.id,
+      toolName: syntheticCall.name,
+      status: ToolResultStatus.success,
+      summary: 'Synthesized a reviewable plan card from assistant prose.',
+      data: syntheticArgs,
+    );
+    return _PlanArtifactNormalization(
+      toolCalls: [...normalizedCalls, syntheticCall],
+      toolResults: [...normalizedResults, syntheticResult],
+      synthesizedToolCall: syntheticCall,
+      synthesizedToolResult: syntheticResult,
+    );
+  }
+
+  Map<String, dynamic> _planOnlyPatchArguments(Map<String, dynamic> args) {
+    final normalized = Map<String, dynamic>.from(args);
+    final files = normalized['files'];
+    if (files is List) {
+      normalized['files'] = [
+        for (final item in files)
+          if (item is Map<String, dynamic>)
+            _planOnlyFilePayload(item)
+          else
+            item,
+      ];
+    }
+    normalized.remove('changed_files');
+    normalized.remove('changedFiles');
+    return normalized;
+  }
+
+  Map<String, dynamic> _planOnlyFilePayload(Map<String, dynamic> file) {
+    final normalized = Map<String, dynamic>.from(file);
+    normalized.remove('content');
+    normalized.remove('after');
+    normalized.remove('before');
+    normalized.remove('unified_diff');
+    normalized.remove('unifiedDiff');
+    return normalized;
+  }
+
+  bool _hasReviewablePlanPayload(
+    List<ToolCallInfo> toolCalls,
+    List<ToolResultEnvelope> toolResults,
+  ) {
+    bool isReviewable(Map<String, dynamic> args) {
+      final title = args['title'];
+      final summary = args['summary'];
+      final planMarkdown = args['plan_markdown'] ?? args['planMarkdown'];
+      if (title is! String || title.trim().isEmpty) return false;
+      if (summary is! String || summary.trim().isEmpty) return false;
+      if (planMarkdown is! String || planMarkdown.trim().length < 40) {
+        return false;
+      }
+      if (args['synthetic_plan'] == true) return true;
+      final files = args['files'];
+      if (files is! List || files.isEmpty) return false;
+      return files.whereType<Map<String, dynamic>>().isNotEmpty;
+    }
+
+    return [
+      ...toolCalls
+          .where((call) => call.name == 'propose_patch')
+          .map((call) => call.arguments),
+      ...toolResults
+          .where(
+            (result) =>
+                result.toolName == 'propose_patch' &&
+                result.status == ToolResultStatus.success,
+          )
+          .map((result) => result.data),
+    ].any(isReviewable);
+  }
+
+  Map<String, dynamic> _syntheticPlanArguments(String content) {
+    final title = _planTitleFromProse(content);
+    return {
+      'title': title,
+      'summary': _planSummaryFromProse(content),
+      'plan_markdown': content.trim(),
+      'assumptions': const [
+        'CircuitCode synthesized this review card from the assistant plan text.',
+      ],
+      'verification_steps': const [
+        'Review the plan and revise it if target files or acceptance criteria are missing.',
+      ],
+      'files': const [],
+      'synthetic_plan': true,
+    };
+  }
+
+  String _planTitleFromProse(String content) {
+    for (final line in content.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      final heading = RegExp(r'^#{1,6}\s+(.+)$').firstMatch(trimmed);
+      final candidate = (heading?.group(1) ?? trimmed)
+          .replaceAll(RegExp(r'^[*\-]+\s*'), '')
+          .trim();
+      if (candidate.isNotEmpty && candidate.length <= 90) return candidate;
+    }
+    return 'Review implementation plan';
+  }
+
+  String _planSummaryFromProse(String content) {
+    final normalized = content
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) {
+      return 'Review this implementation plan before making changes.';
+    }
+    return normalized.length <= 220
+        ? normalized
+        : '${normalized.substring(0, 217).trimRight()}...';
+  }
+
+  bool _isSubstantivePlanProse(String content) {
+    final trimmed = content.trim();
+    if (trimmed.length < 240) return false;
+    final lower = trimmed.toLowerCase();
+    final bulletCount = RegExp(
+      r'(^|\n)\s{0,4}([-*]|\d+[.)])\s+',
+    ).allMatches(trimmed).length;
+    final sectionSignals = [
+      'summary',
+      'plan',
+      'scope',
+      'assumption',
+      'requirements',
+      'inputs',
+      'outputs',
+      'milestone',
+      'verification',
+      'validation',
+      'risks',
+      'next step',
+    ].where(lower.contains).length;
+    return bulletCount >= 3 && sectionSignals >= 2;
+  }
+
+  bool _shallowMapEquals(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    if (left.length != right.length) return false;
+    for (final entry in left.entries) {
+      if (!right.containsKey(entry.key)) return false;
+      final other = right[entry.key];
+      if (entry.value is List || other is List) {
+        if (entry.value.toString() != other.toString()) return false;
+      } else if (entry.value != other) {
+        return false;
+      }
+    }
+    return true;
   }
 
   String _failedOutcomeMessage(
@@ -936,6 +1227,20 @@ class StudioTurnCancelledException implements Exception {
 
   @override
   String toString() => 'Request cancelled.';
+}
+
+class _PlanArtifactNormalization {
+  final List<ToolCallInfo> toolCalls;
+  final List<ToolResultEnvelope> toolResults;
+  final ToolCallInfo? synthesizedToolCall;
+  final ToolResultEnvelope? synthesizedToolResult;
+
+  const _PlanArtifactNormalization({
+    required this.toolCalls,
+    required this.toolResults,
+    this.synthesizedToolCall,
+    this.synthesizedToolResult,
+  });
 }
 
 class StudioTurnOutcomeValidationException implements Exception {

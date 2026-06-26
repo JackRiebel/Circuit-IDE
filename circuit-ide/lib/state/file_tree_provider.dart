@@ -58,6 +58,7 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
 
   Future<WorkspaceOpenResult> openDirectory(String path) async {
     final validation = await _validateDirectory(path);
+    if (!ref.mounted) return validation;
     if (!validation.success) {
       state = state.copyWith(
         isLoading: false,
@@ -77,6 +78,7 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
 
     try {
       final nodes = await _loadDirectory(path, 0);
+      if (!ref.mounted) return validation;
       state = state.copyWith(
         nodes: nodes,
         isLoading: false,
@@ -90,6 +92,7 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
         reason: WorkspaceOpenFailureReason.unknown,
         message: 'Could not open project: $e',
       );
+      if (!ref.mounted) return failure;
       state = state.copyWith(
         isLoading: false,
         error: failure.message,
@@ -192,17 +195,19 @@ class FileTreeNotifier extends Notifier<FileTreeState> {
     } else {
       // Expand: load and insert children
       final children = await _loadDirectory(node.path, node.depth + 1);
+      if (!ref.mounted) return;
       newNodes[index] = node.copyWith(isExpanded: true, children: children);
       newNodes.insertAll(index + 1, children);
     }
 
+    if (!ref.mounted) return;
     state = state.copyWith(nodes: newNodes);
   }
 
   Future<void> refresh() async {
-    if (state.rootPath != null) {
-      await openDirectory(state.rootPath!);
-    }
+    final rootPath = state.rootPath;
+    if (rootPath == null) return;
+    await openDirectory(rootPath);
   }
 
   Future<void> createFile(String parentPath, String name) async {

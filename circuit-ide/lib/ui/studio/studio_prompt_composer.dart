@@ -23,6 +23,7 @@ import '../../state/studio_token_usage_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../state/workspace_session_provider.dart';
 import '../../theme/theme_tokens.dart';
+import '../../core/config/studio_feature_flags.dart';
 
 class StudioPromptComposer extends ConsumerStatefulWidget {
   final String hintText;
@@ -93,13 +94,13 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
     return Container(
       decoration: BoxDecoration(
         color: tokens.studioComposer,
-        borderRadius: BorderRadius.circular(widget.compact ? 18 : 22),
-        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.48)),
+        borderRadius: BorderRadius.circular(widget.compact ? 16 : 19),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.26)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: widget.compact ? 0.12 : 0.16),
-            blurRadius: widget.compact ? 14 : 20,
-            offset: const Offset(0, 8),
+            color: Colors.black.withValues(alpha: widget.compact ? 0.05 : 0.09),
+            blurRadius: widget.compact ? 9 : 14,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
@@ -113,8 +114,8 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
               onSelect: _applySlashCommand,
             ),
           Container(
-            height: widget.compact ? 86 : 92,
-            padding: const EdgeInsets.fromLTRB(16, 10, 10, 8),
+            height: widget.compact ? 78 : 80,
+            padding: const EdgeInsets.fromLTRB(13, 10, 8, 8),
             child: Column(
               children: [
                 Expanded(
@@ -131,12 +132,16 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                       textInputAction: TextInputAction.send,
                       style: TextStyle(
                         color: tokens.textPrimary,
-                        fontSize: FontSizes.base,
-                        height: 1.32,
+                        fontSize: FontSizes.md,
+                        height: 1.22,
                       ),
                       decoration: InputDecoration(
                         hintText: widget.hintText,
-                        hintStyle: TextStyle(color: tokens.textMuted),
+                        hintStyle: TextStyle(
+                          color: tokens.textMuted,
+                          fontSize: FontSizes.md,
+                          height: 1.22,
+                        ),
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -156,21 +161,23 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
+                            const _AddContextButton(),
+                            const SizedBox(width: 9),
                             const _PermissionsSelector(),
-                            const SizedBox(width: Spacing.lg),
+                            const SizedBox(width: 9),
                             _ComposerModeSelector(value: studio.promptMode),
-                            const SizedBox(width: Spacing.lg),
+                            const SizedBox(width: 9),
                             _PlanModeToggle(enabled: studio.planModeEnabled),
-                            const SizedBox(width: Spacing.lg),
+                            const SizedBox(width: 9),
                             if (widget.compact &&
-                                _studioSpecialistsEnabled) ...[
+                                StudioFeatureFlags.enterpriseSpecialists) ...[
                               _SpecialistAgentSelector(
                                 value: studio.specialistAgentId,
                               ),
-                              const SizedBox(width: Spacing.lg),
+                              const SizedBox(width: 9),
                             ],
                             _ModelSelector(selectedModel: settings.ciscoModel),
-                            const SizedBox(width: Spacing.lg),
+                            const SizedBox(width: 9),
                             _TokenRemainingPill(
                               modelId: settings.ciscoModel,
                               usage: tokenUsage,
@@ -197,7 +204,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             border: _controller.text.trim().isEmpty
                                 ? Border.all(
                                     color: tokens.studioDivider.withValues(
-                                      alpha: 0.42,
+                                      alpha: 0.36,
                                     ),
                                   )
                                 : null,
@@ -207,7 +214,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             color: _controller.text.trim().isEmpty
                                 ? tokens.textMuted
                                 : tokens.bgDark,
-                            size: 15,
+                            size: 16,
                           ),
                         ),
                       ),
@@ -219,7 +226,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
           ),
           if (!widget.compact)
             Container(
-              height: 40,
+              height: 38,
               padding: const EdgeInsets.symmetric(horizontal: Spacing.xl),
               decoration: BoxDecoration(
                 color: tokens.surfaceBase.withValues(alpha: 0.16),
@@ -243,7 +250,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                     label: branch.isEmpty ? 'main' : branch,
                   ),
                   const SizedBox(width: Spacing.xl),
-                  if (_studioSpecialistsEnabled)
+                  if (StudioFeatureFlags.enterpriseSpecialists)
                     _SpecialistAgentSelector(value: studio.specialistAgentId),
                 ],
               ),
@@ -272,7 +279,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
   }
 
   void _applySlashCommand(_SlashCommand command) {
-    command.run(ref);
+    command.run?.call(ref);
     if (command.prompt.isNotEmpty) {
       _controller.text = command.prompt;
       _controller.selection = TextSelection.collapsed(
@@ -283,8 +290,6 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
     }
   }
 }
-
-const _studioSpecialistsEnabled = false;
 
 class _ComposerModeSelector extends ConsumerWidget {
   final StudioPromptMode value;
@@ -306,14 +311,29 @@ class _ComposerModeSelector extends ConsumerWidget {
     return PopupMenuButton<StudioPromptMode>(
       tooltip: 'Task mode',
       color: tokens.studioPanel,
-      elevation: 12,
+      elevation: 8,
       position: PopupMenuPosition.under,
       shape: _softMenuShape(tokens),
       onSelected: (mode) =>
           ref.read(studioShellProvider.notifier).setPromptMode(mode),
       itemBuilder: (context) => [
         for (final mode in _visibleModes)
-          PopupMenuItem(value: mode, child: Text(mode.label)),
+          PopupMenuItem(
+            height: 34,
+            value: mode,
+            child: Text(
+              mode.label,
+              style: TextStyle(
+                color: mode == displayValue
+                    ? tokens.textSecondary
+                    : tokens.textMuted,
+                fontSize: FontSizes.xs,
+                fontWeight: mode == displayValue
+                    ? FontWeight.w600
+                    : FontWeight.w500,
+              ),
+            ),
+          ),
       ],
       child: _ComposerPill(
         icon: Icons.route_outlined,
@@ -361,7 +381,7 @@ class _SpecialistAgentSelector extends ConsumerWidget {
     return PopupMenuButton<SpecialistAgentId>(
       tooltip: 'Enterprise specialist',
       color: tokens.studioPanel,
-      elevation: 12,
+      elevation: 8,
       position: PopupMenuPosition.under,
       shape: _softMenuShape(tokens),
       onSelected: (agentId) =>
@@ -369,15 +389,16 @@ class _SpecialistAgentSelector extends ConsumerWidget {
       itemBuilder: (context) => [
         for (final descriptor in registry.selectableDescriptors)
           PopupMenuItem<SpecialistAgentId>(
+            height: 44,
             value: descriptor.id,
             child: SizedBox(
-              width: 280,
+              width: 258,
               child: Row(
                 children: [
                   Icon(
                     _specialistIcon(descriptor.id),
                     color: tokens.textMuted,
-                    size: 16,
+                    size: 13,
                   ),
                   const SizedBox(width: Spacing.md),
                   Expanded(
@@ -388,8 +409,8 @@ class _SpecialistAgentSelector extends ConsumerWidget {
                           descriptor.label,
                           style: TextStyle(
                             color: tokens.textPrimary,
-                            fontSize: FontSizes.sm,
-                            fontWeight: FontWeight.w700,
+                            fontSize: FontSizes.xs,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -399,14 +420,14 @@ class _SpecialistAgentSelector extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: tokens.textMuted,
-                            fontSize: FontSizes.xs,
+                            fontSize: FontSizes.xxs,
                           ),
                         ),
                       ],
                     ),
                   ),
                   if (descriptor.id == value)
-                    Icon(Icons.check, color: tokens.textPrimary, size: 16),
+                    Icon(Icons.check, color: tokens.textPrimary, size: 13),
                 ],
               ),
             ),
@@ -460,22 +481,22 @@ class _ExecutionModeSelector extends ConsumerWidget {
     return PopupMenuButton<StudioExecutionMode>(
       tooltip: 'Execution mode',
       color: tokens.studioPanel,
-      elevation: 12,
+      elevation: 8,
       position: PopupMenuPosition.under,
       shape: _softMenuShape(tokens),
       onSelected: (mode) =>
           ref.read(studioShellProvider.notifier).setExecutionMode(mode),
       itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: StudioExecutionMode.local,
-          child: Text('Local project'),
-        ),
         PopupMenuItem(
-          value: StudioExecutionMode.worktree,
-          enabled: false,
+          height: 34,
+          value: StudioExecutionMode.local,
           child: Text(
-            'Worktree mode is next',
-            style: TextStyle(color: tokens.textMuted),
+            'Local project',
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -499,16 +520,16 @@ class _SlashCommandMenu extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      constraints: const BoxConstraints(maxHeight: 280),
+      constraints: const BoxConstraints(maxHeight: 240),
       decoration: BoxDecoration(
         color: tokens.studioDrawer.withValues(alpha: 0.98),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.66)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.22),
-            blurRadius: 24,
-            offset: const Offset(0, 14),
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -539,18 +560,18 @@ class _SlashCommandRow extends ConsumerWidget {
     return InkWell(
       onTap: () => onSelect(command),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
         child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(Radii.md),
           ),
           child: Row(
             children: [
               Container(
-                width: 26,
-                height: 26,
+                width: 22,
+                height: 22,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: tokens.studioControl.withValues(alpha: 0.62),
@@ -566,7 +587,7 @@ class _SlashCommandRow extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: tokens.textSecondary,
-                    fontSize: FontSizes.sm,
+                    fontSize: FontSizes.xs,
                     height: 1.15,
                     fontWeight: FontWeight.w600,
                   ),
@@ -581,7 +602,7 @@ class _SlashCommandRow extends ConsumerWidget {
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     color: tokens.textMuted,
-                    fontSize: FontSizes.xs,
+                    fontSize: FontSizes.xxs,
                     height: 1.1,
                     fontWeight: FontWeight.w500,
                   ),
@@ -601,7 +622,7 @@ class _SlashCommand {
   final String detail;
   final String prompt;
   final IconData icon;
-  final void Function(WidgetRef ref) run;
+  final void Function(WidgetRef ref)? run;
 
   const _SlashCommand({
     required this.name,
@@ -609,18 +630,17 @@ class _SlashCommand {
     required this.detail,
     required this.prompt,
     required this.icon,
-    required this.run,
+    this.run,
   });
 }
 
 final _slashCommands = <_SlashCommand>[
-  _SlashCommand(
+  const _SlashCommand(
     name: 'status',
     title: 'Status',
     detail: 'Summarize project state',
     prompt: 'Summarize the current project status, branch, changes, and risks.',
     icon: Icons.radio_button_checked,
-    run: (_) {},
   ),
   _SlashCommand(
     name: 'review',
@@ -641,14 +661,13 @@ final _slashCommands = <_SlashCommand>[
     run: (ref) =>
         ref.read(studioShellProvider.notifier).setPlanModeEnabled(true),
   ),
-  _SlashCommand(
+  const _SlashCommand(
     name: 'init',
     title: 'Initialize',
     detail: 'Explain structure',
     prompt:
         'Inspect this project and explain its structure and best next steps.',
     icon: Icons.auto_awesome_outlined,
-    run: (_) {},
   ),
   _SlashCommand(
     name: 'files',
@@ -699,18 +718,18 @@ class _ComposerPill extends ConsumerWidget {
     return AnimatedContainer(
       duration: AnimationDurations.fast,
       curve: AnimationCurves.smooth,
-      constraints: const BoxConstraints(minHeight: 24),
+      constraints: const BoxConstraints(minHeight: 20),
       padding: EdgeInsets.symmetric(
         horizontal: active ? 7 : 0,
-        vertical: active ? 3 : 2,
+        vertical: active ? 2 : 0,
       ),
       decoration: BoxDecoration(
         color: active
-            ? tokens.studioControl.withValues(alpha: 0.82)
+            ? tokens.studioControl.withValues(alpha: 0.58)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(Radii.pill),
         border: active
-            ? Border.all(color: tokens.studioDivider.withValues(alpha: 0.58))
+            ? Border.all(color: tokens.studioDivider.withValues(alpha: 0.42))
             : null,
       ),
       child: Row(
@@ -720,9 +739,9 @@ class _ComposerPill extends ConsumerWidget {
             Icon(
               icon,
               color: active ? tokens.textSecondary : tokens.textMuted,
-              size: 13,
+              size: 12,
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
           ],
           Text(
             label,
@@ -737,9 +756,38 @@ class _ComposerPill extends ConsumerWidget {
           ),
           if (trailing != null) ...[
             const SizedBox(width: 3),
-            Icon(trailing, color: tokens.textMuted, size: 13),
+            Icon(trailing, color: tokens.textMuted, size: 12),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AddContextButton extends ConsumerWidget {
+  const _AddContextButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Tooltip(
+      message: 'Add context',
+      child: InkWell(
+        onTap: () {
+          ref.read(studioShellProvider.notifier).showRightProgressPanel();
+          ref.read(studioRightDrawerProvider.notifier).openContext();
+        },
+        borderRadius: BorderRadius.circular(Radii.pill),
+        child: Container(
+          width: 24,
+          height: 24,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(Radii.pill),
+          ),
+          child: Icon(Icons.add, color: tokens.textMuted, size: 14),
+        ),
       ),
     );
   }
@@ -767,7 +815,7 @@ class _ModelSelector extends ConsumerWidget {
     return PopupMenuButton<String>(
       tooltip: 'Choose model',
       color: tokens.studioPanel,
-      elevation: 12,
+      elevation: 8,
       position: PopupMenuPosition.under,
       shape: _softMenuShape(tokens),
       onSelected: (modelId) =>
@@ -775,9 +823,10 @@ class _ModelSelector extends ConsumerWidget {
       itemBuilder: (context) => [
         for (final model in models)
           PopupMenuItem<String>(
+            height: 44,
             value: model.id,
             child: SizedBox(
-              width: 260,
+              width: 238,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -787,7 +836,7 @@ class _ModelSelector extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: tokens.textPrimary,
-                      fontSize: FontSizes.sm,
+                      fontSize: FontSizes.xs,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -798,7 +847,7 @@ class _ModelSelector extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: tokens.textMuted,
-                      fontSize: FontSizes.xs,
+                      fontSize: FontSizes.xxs,
                     ),
                   ),
                 ],
@@ -891,7 +940,7 @@ Future<void> _chooseProjectRoot(WidgetRef ref) async {
 
 ShapeBorder _softMenuShape(ThemeTokens tokens) {
   return RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(14),
-    side: BorderSide(color: tokens.studioDivider),
+    borderRadius: BorderRadius.circular(10),
+    side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.64)),
   );
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/config/studio_feature_flags.dart';
 import '../models/studio_right_drawer.dart';
 import '../models/studio_source_artifact.dart';
 
@@ -8,15 +9,16 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
   StudioRightDrawerState build() => const StudioRightDrawerState();
 
   void openMode(StudioDrawerMode mode) {
-    state = state.copyWith(mode: mode, collapsed: false);
+    state = state.copyWith(mode: _safeMode(mode), collapsed: false);
   }
 
   void openArtifact(StudioSourceArtifact artifact) {
+    final mode = _modeFor(artifact.kind);
     state = state.copyWith(
-      mode: _modeFor(artifact.kind),
+      mode: mode,
       collapsed: false,
       selectedArtifactId: artifact.id,
-      localUrl: artifact.localUrl,
+      localUrl: mode == StudioDrawerMode.browser ? artifact.localUrl : null,
       filePath: artifact.filePath,
       diffId: artifact.patchSetId,
       commandRunId: artifact.commandRunId,
@@ -44,6 +46,15 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
   }
 
   void openBrowser(String url) {
+    if (!StudioFeatureFlags.advancedStudioSurfaces) {
+      state = state.copyWith(
+        mode: StudioDrawerMode.sources,
+        collapsed: false,
+        localUrl: null,
+        selectedArtifactId: null,
+      );
+      return;
+    }
     state = state.copyWith(
       mode: StudioDrawerMode.browser,
       collapsed: false,
@@ -80,11 +91,21 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     state = state.copyWith(widthMode: mode, collapsed: false);
   }
 
+  StudioDrawerMode _safeMode(StudioDrawerMode mode) {
+    if (mode == StudioDrawerMode.browser &&
+        !StudioFeatureFlags.advancedStudioSurfaces) {
+      return StudioDrawerMode.sources;
+    }
+    return mode;
+  }
+
   StudioDrawerMode _modeFor(StudioSourceArtifactKind kind) {
     return switch (kind) {
       StudioSourceArtifactKind.localUrl ||
       StudioSourceArtifactKind.webSource ||
-      StudioSourceArtifactKind.browserComment => StudioDrawerMode.browser,
+      StudioSourceArtifactKind.browserComment => _safeMode(
+        StudioDrawerMode.browser,
+      ),
       StudioSourceArtifactKind.file => StudioDrawerMode.code,
       StudioSourceArtifactKind.diff ||
       StudioSourceArtifactKind.gitChange ||

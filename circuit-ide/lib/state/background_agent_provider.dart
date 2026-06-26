@@ -69,6 +69,13 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _setupListeners() {
+    if (!_backgroundAgentsEnabled) {
+      Logger.info(
+        'Background agent listeners paused while Studio uses the request-local turn runtime.',
+        'BackgroundAgent',
+      );
+      return;
+    }
     final service = ref.read(agentServiceProvider);
 
     // Monitor agent manager for completion
@@ -130,6 +137,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _handleFileSaveTrigger(String filePath) {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -155,6 +163,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void handleGitCommitTrigger() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -168,6 +177,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void handleProjectOpenTrigger() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -181,6 +191,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _handlePeriodicTriggers() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;

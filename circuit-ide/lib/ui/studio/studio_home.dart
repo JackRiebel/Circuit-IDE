@@ -26,28 +26,29 @@ class StudioHome extends ConsumerWidget {
     final projectLabel = rootPath == null
         ? 'No project selected'
         : p.basename(rootPath);
-    final recentThreads = threads.take(3).toList();
+    final recentThreads = threads.take(4).toList();
 
     return Container(
       color: tokens.studioCanvas,
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 724),
+          constraints: const BoxConstraints(maxWidth: 706),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.xxl),
+            padding: const EdgeInsets.symmetric(horizontal: 40),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
                       child: Text(
-                        'What should Circuit do next?',
+                        'Where should we start?',
                         style: TextStyle(
                           color: tokens.textPrimary,
-                          fontSize: 21,
-                          height: 1.15,
+                          fontSize: FontSizes.lg,
+                          height: 1.16,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0,
                         ),
@@ -56,24 +57,24 @@ class StudioHome extends ConsumerWidget {
                     _HomeContextChip(label: projectLabel),
                   ],
                 ),
-                const SizedBox(height: Spacing.lg),
+                const SizedBox(height: Spacing.md),
                 Text(
                   rootPath == null
-                      ? 'Ask a question or describe the work. Circuit will create a project only when the task needs one.'
-                      : 'Working in $projectLabel.',
+                      ? 'Ask a question, sketch an idea, or describe a concrete change. Circuit will only create a project when the request truly needs one.'
+                      : 'Working in $projectLabel. Broad ideas start with discovery; concrete changes move into plans and patches.',
                   style: TextStyle(
                     color: tokens.textMuted,
                     fontSize: FontSizes.xs,
-                    height: 1.32,
+                    height: 1.3,
                   ),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 14),
                 StudioPromptComposer(
-                  hintText: 'Do anything',
+                  hintText: 'Ask, plan, or describe work',
                   submitTooltip: 'Start Circuit task',
                   onSubmit: (text) => _submit(ref, text),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: Spacing.lg),
                 if (recentThreads.isNotEmpty) ...[
                   const _HomeSectionLabel('Recent'),
                   for (final thread in recentThreads)
@@ -87,12 +88,12 @@ class StudioHome extends ConsumerWidget {
                       ),
                     ),
                 ] else ...[
-                  const _HomeSectionLabel('Try'),
-                  ..._suggestions(settings.recentProjects.isNotEmpty).map(
-                    (suggestion) => _SuggestionRow(
-                      text: suggestion,
-                      onTap: () => _submit(ref, suggestion),
+                  const _HomeSectionLabel('Start with'),
+                  _SuggestionList(
+                    suggestions: _suggestions(
+                      settings.recentProjects.isNotEmpty,
                     ),
+                    onTap: (suggestion) => _submit(ref, suggestion),
                   ),
                 ],
               ],
@@ -106,15 +107,15 @@ class StudioHome extends ConsumerWidget {
   List<String> _suggestions(bool hasProjects) {
     if (!hasProjects) {
       return const [
-        'Open a project and explain what it does',
-        'Create a network topology from requirements',
-        'Size a switching solution for Wi-Fi 7 and UPOE needs',
+        'Open a project and explain the codebase',
+        'Explore requirements for a network topology',
+        'Work through sizing rules for Wi-Fi 7 and UPOE',
       ];
     }
     return const [
-      'Create a network topology for this customer',
-      'Size a Cisco solution from client count, WAN speed, and PoE needs',
-      'Validate model lifecycle and replacement options',
+      'Review this project and summarize the next safe change',
+      'Turn these requirements into a plan',
+      'Validate model lifecycle and replacement risk',
     ];
   }
 
@@ -153,16 +154,16 @@ class _HomeContextChip extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     return Container(
       constraints: const BoxConstraints(maxWidth: 220),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: tokens.studioControl.withValues(alpha: 0.46),
+        color: tokens.studioControl.withValues(alpha: 0.36),
         borderRadius: BorderRadius.circular(Radii.pill),
-        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.48)),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.38)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.folder_outlined, size: 13, color: tokens.textMuted),
+          Icon(Icons.folder_outlined, size: 12, color: tokens.textMuted),
           const SizedBox(width: Spacing.sm),
           Flexible(
             child: Text(
@@ -171,7 +172,7 @@ class _HomeContextChip extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: tokens.textMuted,
-                fontSize: FontSizes.xs,
+                fontSize: FontSizes.xxs,
                 height: 1.1,
                 fontWeight: FontWeight.w600,
               ),
@@ -192,7 +193,7 @@ class _HomeSectionLabel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(2, 0, 2, Spacing.sm),
+      padding: const EdgeInsets.fromLTRB(2, 0, 2, 7),
       child: Text(
         label,
         style: TextStyle(
@@ -224,20 +225,20 @@ class _RecentThreadRow extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.lg),
+      borderRadius: BorderRadius.circular(Radii.md),
       child: Container(
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
         decoration: BoxDecoration(
-          color: tokens.studioActivityRow.withValues(alpha: 0.36),
+          color: tokens.studioActivityRow.withValues(alpha: 0.28),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.48),
+            color: tokens.studioDivider.withValues(alpha: 0.38),
           ),
-          borderRadius: BorderRadius.circular(Radii.lg),
+          borderRadius: BorderRadius.circular(Radii.md),
         ),
         child: Row(
           children: [
-            Icon(Icons.chat_bubble_outline, color: tokens.textMuted, size: 14),
+            Icon(Icons.chat_bubble_outline, color: tokens.textMuted, size: 13),
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
@@ -248,6 +249,7 @@ class _RecentThreadRow extends ConsumerWidget {
                   color: tokens.textSecondary,
                   fontSize: FontSizes.xs,
                   fontWeight: FontWeight.w500,
+                  height: 1.1,
                 ),
               ),
             ),
@@ -266,6 +268,7 @@ class _RecentThreadRow extends ConsumerWidget {
                 style: TextStyle(
                   color: chipColor,
                   fontSize: FontSizes.xxs,
+                  height: 1.1,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -277,31 +280,74 @@ class _RecentThreadRow extends ConsumerWidget {
   }
 }
 
+class _SuggestionList extends ConsumerWidget {
+  final List<String> suggestions;
+  final ValueChanged<String> onTap;
+
+  const _SuggestionList({required this.suggestions, required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.5)),
+          bottom: BorderSide(
+            color: tokens.studioDivider.withValues(alpha: 0.32),
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < suggestions.length; index++)
+            _SuggestionRow(
+              text: suggestions[index],
+              onTap: () => onTap(suggestions[index]),
+              showDivider: index > 0,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SuggestionRow extends ConsumerWidget {
   final String text;
   final VoidCallback onTap;
+  final bool showDivider;
 
-  const _SuggestionRow({required this.text, required this.onTap});
+  const _SuggestionRow({
+    required this.text,
+    required this.onTap,
+    this.showDivider = true,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.lg),
+      borderRadius: BorderRadius.circular(Radii.sm),
       child: Container(
-        height: 34,
-        padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
         decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: tokens.studioDivider.withValues(alpha: 0.62),
-            ),
-          ),
+          border: showDivider
+              ? Border(
+                  top: BorderSide(
+                    color: tokens.studioDivider.withValues(alpha: 0.34),
+                  ),
+                )
+              : null,
         ),
         child: Row(
           children: [
-            Icon(Icons.chat_bubble_outline, color: tokens.textMuted, size: 14),
+            Icon(
+              Icons.arrow_outward,
+              color: tokens.textMuted.withValues(alpha: 0.86),
+              size: 13,
+            ),
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
@@ -311,9 +357,11 @@ class _SuggestionRow extends ConsumerWidget {
                 style: TextStyle(
                   color: tokens.textMuted,
                   fontSize: FontSizes.xs,
+                  height: 1.1,
                 ),
               ),
             ),
+            Icon(Icons.chevron_right, color: tokens.textMuted, size: 14),
           ],
         ),
       ),

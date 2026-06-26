@@ -7,6 +7,8 @@ import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../core/utils/platform_utils.dart';
+import '../agent/verification_command_filter.dart'
+    as verification_command_filter;
 import '../agent/security/secret_detector.dart';
 import '../models/agent_run.dart';
 import '../models/checkpoint.dart';
@@ -547,6 +549,10 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         description: 'Applied patch proposal: ${patchSet.title}',
         snapshots: snapshots,
       );
+      final verificationSuggestions = _verificationSuggestionsForPatch(
+        rootPath,
+        patchSet,
+      );
       return _finishApply(
         patchSet,
         PatchApplyResult(
@@ -555,7 +561,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
           checkpointId: checkpoint.id,
           message: 'Applied ${changedFiles.length} files.',
           diffSummary: _diffSummary(patchSet),
-          verificationSuggestions: _verificationSuggestions(rootPath),
+          verificationSuggestions: verificationSuggestions,
           verificationRequested: patchSet.verificationRequested,
         ),
         checkpoint: checkpoint,
@@ -595,6 +601,20 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     _syncAgentTask(updated);
   }
 
+  void markVerificationStarted(String patchSetId, String requestId) {
+    final patchSet = _find(patchSetId);
+    if (patchSet == null) return;
+    final updated = patchSet.copyWith(verificationRequestId: requestId);
+    state = state.copyWith(
+      active: state.active?.id == patchSetId ? updated : state.active,
+      history: _replace(updated),
+      message: 'Verification started.',
+    );
+    _persistSync();
+    ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
+  }
+
   void preserveProposal(ProposedPatchSet patchSet) {
     final alreadyActive = state.active?.id == patchSet.id;
     final alreadyHistorical = state.history.any(
@@ -613,9 +633,27 @@ class PatchProposalController extends Notifier<PatchProposalState> {
   }
 
   void rejectActive() {
+    if (state.isApplying) return;
     final patchSet = state.active;
     if (patchSet == null) return;
+    if (patchSet.applyStatus == PatchApplyStatus.applied) return;
     reject(patchSet.id);
+  }
+
+  void discardActiveForRequest(String requestId, {String? message}) {
+    if (state.isApplying) return;
+    final patchSet = state.active;
+    if (patchSet == null || patchSet.runId != requestId) return;
+    if (patchSet.applyStatus == PatchApplyStatus.applied) return;
+    state = state.copyWith(
+      active: null,
+      history: [
+        for (final candidate in state.history)
+          if (candidate.id != patchSet.id) candidate,
+      ],
+      message: message ?? 'Patch proposal discarded.',
+    );
+    _persistSync();
   }
 
   void reject(String patchSetId) {
@@ -665,7 +703,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     _recordPatchTransaction(
       updated,
       PatchApplyResult(
-        status: PatchApplyStatus.rejected,
+        status: PatchApplyStatus.revisionRequested,
         message: 'Patch revision requested.',
         conflictMessage: request.prompt,
         changedFiles: updated.changedFiles,
@@ -891,7 +929,9 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       message: result.message ?? result.conflictMessage ?? result.status.name,
     );
     await _persist();
+    if (!ref.mounted) return result;
     await ref.read(fileTreeProvider.notifier).refresh();
+    if (!ref.mounted) return result;
     ref.read(workItemProvider.notifier).recordPatchSet(updated);
     _syncAgentTask(updated);
     if (result.applied && updated.agentTaskId != null) {
@@ -950,8 +990,54 @@ class PatchProposalController extends Notifier<PatchProposalState> {
           patchSetId: patchSet.id,
           title: titleOverride ?? _patchTransactionTitle(result.status),
           detail: _patchTransactionDetail(patchSet, result),
+          paths: _patchTransactionPaths(patchSet, result),
           applyStatus: result.status,
         );
+  }
+
+  List<String> _patchTransactionPaths(
+    ProposedPatchSet patchSet,
+    PatchApplyResult result,
+  ) {
+    if (result.changedFiles.isNotEmpty) return result.changedFiles;
+    final conflict = result.conflictMessage ?? result.message ?? '';
+    final explicitPath = _pathFromPatchMessage(conflict);
+    if (explicitPath != null) return [explicitPath];
+    return patchSet.edits.map((edit) => edit.path).toList(growable: false);
+  }
+
+  String? _pathFromPatchMessage(String message) {
+    final trimmed = message.trim();
+    final patterns = [
+      RegExp(r':\s*([^\n]+)$'),
+      RegExp(
+        r'\bfor\s+([^\n]+?)(?:\. Ask\b|\. Revise\b| before\b| on line\b|$)',
+        caseSensitive: false,
+      ),
+      RegExp(r'\bin\s+([^\n]+?)\s+on line\b', caseSensitive: false),
+      RegExp(r'\bPatch leaves\s+([^\n]+?)\s+empty\b', caseSensitive: false),
+    ];
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(trimmed);
+      final path = _cleanExtractedPatchPath(match?.group(1));
+      if (path != null) return path;
+    }
+    return null;
+  }
+
+  String? _cleanExtractedPatchPath(String? value) {
+    final initial = value?.trim();
+    if (initial == null || initial.isEmpty) return null;
+    var path = initial
+        .replaceAll(RegExp(r'''^[`"']+|[`"']+$'''), '')
+        .replaceAll(RegExp(r'\s*\([^)]*\)$'), '')
+        .trim();
+    while (path.isNotEmpty && ',.;:'.contains(path[path.length - 1])) {
+      path = path.substring(0, path.length - 1).trim();
+    }
+    if (path.isEmpty) return null;
+    if (path.contains(' ') && !path.contains('/')) return null;
+    return path;
   }
 
   String _patchTransactionTitle(PatchApplyStatus status) => switch (status) {
@@ -960,12 +1046,30 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     PatchApplyStatus.conflict => 'Patch conflict',
     PatchApplyStatus.failed => 'Patch apply failed',
     PatchApplyStatus.rejected => 'Patch rejected',
+    PatchApplyStatus.revisionRequested => 'Patch revision requested',
   };
 
   String _patchTransactionDetail(
     ProposedPatchSet patchSet,
     PatchApplyResult result,
   ) {
+    if (result.applied) {
+      final lines = <String>[
+        result.message ?? 'Applied ${result.changedFiles.length} files.',
+        if (result.changedFiles.isNotEmpty)
+          'Here’s what changed: ${result.changedFiles.join(', ')}',
+        if (result.checkpointId != null) 'Checkpoint: ${result.checkpointId}',
+        if ((result.diffSummary ?? '').trim().isNotEmpty)
+          result.diffSummary!.trim(),
+        if (result.verificationSuggestions.isNotEmpty)
+          'Suggested checks: ${result.verificationSuggestions.join(' · ')}',
+        if (result.verificationSuggestions.isNotEmpty)
+          'Recommended next step: run the suggested checks to verify the applied changes.',
+        if (result.verificationRequested)
+          'Verification was requested for this patch.',
+      ];
+      return lines.where((line) => line.trim().isNotEmpty).join('\n');
+    }
     final lines = <String>[
       result.message ??
           result.conflictMessage ??
@@ -977,6 +1081,8 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         result.diffSummary!.trim(),
       if (result.verificationSuggestions.isNotEmpty)
         'Suggested checks: ${result.verificationSuggestions.join(' · ')}',
+      if (result.verificationSuggestions.isNotEmpty)
+        'Recommended next step: run the suggested checks to verify this patch state.',
       if (result.verificationRequested)
         'Verification was requested for this patch.',
       if (result.conflictMessage != null &&
@@ -1191,9 +1297,21 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         if (json is Map<String, dynamic>) {
           final scripts = json['scripts'];
           if (scripts is Map) {
-            if (scripts.containsKey('test')) suggestions.add('npm test');
-            if (scripts.containsKey('lint')) suggestions.add('npm run lint');
-            if (scripts.containsKey('build')) suggestions.add('npm run build');
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['test'],
+            )) {
+              suggestions.add('npm test');
+            }
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['lint'],
+            )) {
+              suggestions.add('npm run lint');
+            }
+            if (verification_command_filter.isSafePackageScriptBody(
+              scripts['build'],
+            )) {
+              suggestions.add('npm run build');
+            }
           }
         }
       } catch (_) {}
@@ -1223,6 +1341,25 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       if (targets.contains('build')) suggestions.add('make build');
     }
     return suggestions.toSet().take(5).toList();
+  }
+
+  List<String> _verificationSuggestionsForPatch(
+    String rootPath,
+    ProposedPatchSet patchSet,
+  ) {
+    final detected = _verificationSuggestions(rootPath);
+    if (detected.isNotEmpty) return detected;
+    if (patchSet.verificationSuggestions.isNotEmpty) {
+      return patchSet.verificationSuggestions
+          .where(verification_command_filter.isRunnableVerificationCommand)
+          .toSet()
+          .take(5)
+          .toList();
+    }
+    if (patchSet.verificationRequested) {
+      return const ['Run the relevant project checks for the changed files.'];
+    }
+    return const [];
   }
 
   List<String> _missingParentDirectories(String rootPath, String fullPath) {

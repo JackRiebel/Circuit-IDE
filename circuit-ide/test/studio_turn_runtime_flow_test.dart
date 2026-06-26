@@ -33,6 +33,7 @@ import 'package:circuit_ide/state/studio_request_lifecycle_provider.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:circuit_ide/ui/studio/studio_message_sender.dart';
+import 'package:circuit_ide/ui/studio/studio_plan_continuation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -301,6 +302,135 @@ void main() {
   );
 
   test(
+    'AgentTurnRuntime keeps concrete patch reviewable when model asks for approval text',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'studio_runtime_approval_text_',
+      );
+      addTearDown(() => _delete(root));
+      final service = AgentService();
+      addTearDown(service.dispose);
+      final provider = _ScriptedProvider([
+        const [
+          ChatChunk(
+            content: 'Please approve the patch plan as described.',
+            toolCallIndex: 0,
+            toolCallId: 'patch',
+            toolCallName: 'propose_patch',
+            toolCallArguments:
+                '{"title":"Create hello file","summary":"Add a text greeting.","files":[{"path":"hello.txt","intent":"Add greeting","operation":"create","content":"hello approval text\\n"}]}',
+          ),
+          ChatChunk(finishReason: 'tool_calls', isDone: true),
+        ],
+      ]);
+      final environment = StudioAgentEnvironment(
+        provider: provider,
+        model: 'gpt-5-nano',
+        workspaceRoot: root.path,
+        permissionPolicy: AgentToolPermissionPolicy(workingDir: root.path),
+        events: service.events,
+        onProviderEvent: (event) {
+          service.events.emit(EventType.providerLifecycle, {
+            'event': event,
+            'requestId': event.requestId,
+          });
+        },
+      );
+      final container = ProviderContainer(
+        overrides: [
+          agentServiceProvider.overrideWithValue(service),
+          studioAgentEnvironmentOverrideProvider.overrideWithValue(environment),
+        ],
+      );
+      addTearDown(container.dispose);
+      await _waitForThreadStore(container);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .ensureThread(title: 'Implement accepted plan', model: 'gpt-5-nano');
+      const requestId = 'runtime-plan-soft-approval';
+      const acceptedPlan = AcceptedPlanContext(
+        patchSetId: 'plan',
+        title: 'Accepted plan',
+        summary: 'Add a hello text file.',
+        markdown: '- Create hello.txt',
+        plannedFiles: ['hello.txt — Add greeting'],
+        plannedTargets: [
+          PlannedFileTarget(
+            path: 'hello.txt',
+            intent: 'Add greeting',
+            operation: ProposedFileEditType.create,
+          ),
+        ],
+      );
+      container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'user-message',
+            prompt: 'Implement this plan',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(
+              projectLabel: 'runtime',
+              rootPath: '/tmp/runtime',
+            ),
+            intent: TurnIntent.code,
+            acceptedPlanState: AcceptedPlanState.accepted,
+            acceptedPlanContext: acceptedPlan,
+          );
+      container
+          .read(studioRequestLifecycleProvider.notifier)
+          .registerRequest(
+            requestId: requestId,
+            threadId: thread.id,
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(
+              projectLabel: 'runtime',
+              rootPath: '/tmp/runtime',
+            ),
+          );
+
+      await container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: acceptedPlan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = container
+          .read(studioThreadProvider)
+          .threads
+          .firstWhere((candidate) => candidate.id == thread.id);
+      final turn = updatedThread.turns.single;
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.lastError, isNull);
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(
+        turn.providerDiagnostics.map((event) => event.kind),
+        isNot(contains(ProviderLifecycleEventKind.outcomeRejected)),
+      );
+      final patch = container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.edits.single.path, 'hello.txt');
+      expect(patch.edits.single.after, 'hello approval text\n');
+    },
+  );
+
+  test(
     'AgentTurnRuntime golden path plans, patches, applies, and verifies',
     () async {
       final harness = await _RuntimeHarness.create(
@@ -431,6 +561,9 @@ void main() {
         implementationTurn.acceptedPlanState,
         AcceptedPlanState.patchProposed,
       );
+      expect(_targetStates(implementationTurn), {
+        'hello.txt': PlanTargetProgressState.proposed,
+      });
       expect(
         harness.scriptedProvider?.exposedTools[1],
         contains('propose_patch'),
@@ -458,6 +591,9 @@ void main() {
         implementationTurnAfterApply.acceptedPlanState,
         AcceptedPlanState.implemented,
       );
+      expect(_targetStates(implementationTurnAfterApply), {
+        'hello.txt': PlanTargetProgressState.applied,
+      });
       final applyEvents = implementationTurnAfterApply.events
           .where(
             (event) =>
@@ -559,6 +695,9 @@ void main() {
         reloadedImplementation.acceptedPlanState,
         AcceptedPlanState.implemented,
       );
+      expect(_targetStates(reloadedImplementation), {
+        'hello.txt': PlanTargetProgressState.applied,
+      });
       expect(
         reloadedImplementation.events.any(
           (event) =>
@@ -587,6 +726,234 @@ void main() {
             .content,
         'Verified hello.txt contents.',
       );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime continuation batch completes source accepted plan',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'plan',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Two file plan","summary":"Create greeting and docs.","plan_markdown":"# Plan\\n\\n- Create hello.txt.\\n- Create README.md.\\n\\n## Assumptions\\n- The workspace root is the correct target.\\n\\n## Verification\\n- Confirm both files exist.","assumptions":["The workspace root is the correct target."],"verification_steps":["Confirm both files exist."],"files":[{"path":"hello.txt","intent":"Create greeting file","operation":"create"},{"path":"README.md","intent":"Document usage","operation":"create"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'hello-patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Create greeting","summary":"First batch creates the greeting.","files":[{"path":"hello.txt","intent":"Create greeting file","operation":"create","content":"hello first batch\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'readme-patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Create docs","summary":"Continuation batch creates the docs.","files":[{"path":"README.md","intent":"Document usage","operation":"create","content":"# Usage\\n\\nRun the greeting flow.\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      File(
+        p.join(harness.root.path, 'pubspec.yaml'),
+      ).writeAsStringSync('name: continuation_verify\n');
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'studio_continuation_store_',
+      );
+      addTearDown(() => _delete(storeRoot));
+
+      const planRequestId = 'continuation-plan';
+      final thread = harness.registerTurn(
+        requestId: planRequestId,
+        prompt: 'Create a two file plan',
+        intent: TurnIntent.plan,
+      );
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: planRequestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Create a two file plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.plan,
+            intent: TurnIntent.plan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Create a two file plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final planPatch = harness.container.read(patchProposalProvider).active;
+      expect(planPatch, isNotNull);
+      expect(planPatch!.verificationRequested, isTrue);
+      harness.container
+          .read(patchProposalProvider.notifier)
+          .markPlanAccepted(planPatch.id);
+
+      const firstBatchRequestId = 'continuation-first-batch';
+      harness.registerTurn(
+        requestId: firstBatchRequestId,
+        prompt: 'Implement this plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+        intent: TurnIntent.code,
+      );
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: firstBatchRequestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: AcceptedPlanContext.fromPatch(planPatch),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final firstPatch = harness.container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere(
+            (candidate) =>
+                candidate.runId == firstBatchRequestId && !candidate.isPlanOnly,
+          );
+      expect(firstPatch.verificationRequested, isTrue);
+      final firstApply = await harness.container
+          .read(patchProposalProvider.notifier)
+          .apply(firstPatch.id);
+      expect(firstApply.status, PatchApplyStatus.applied);
+      expect(firstApply.verificationRequested, isTrue);
+      expect(firstApply.verificationSuggestions, isNotEmpty);
+      expect(firstApply.changedFiles, ['hello.txt']);
+      expect(
+        harness.container.read(fileTreeProvider).rootPath,
+        harness.root.path,
+      );
+      expect(
+        await File(p.join(harness.root.path, 'hello.txt')).readAsString(),
+        'hello first batch\n',
+      );
+
+      final firstAppliedPatch = harness.container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == firstPatch.id);
+      final continuation = studioPlanContinuationForPatch(
+        patch: firstAppliedPatch,
+        threads: [harness.thread(thread.id)],
+      );
+      expect(continuation, isNotNull);
+      expect(continuation!.acceptedPlan.verificationRequested, isTrue);
+      expect(continuation.acceptedPlan.plannedFiles, [
+        'README.md — Document usage',
+      ]);
+      expect(continuation.acceptedPlan.markdown, contains('README.md'));
+      expect(continuation.acceptedPlan.markdown, isNot(contains('hello.txt')));
+
+      const continuationRequestId = 'continuation-second-batch';
+      harness.registerTurn(
+        requestId: continuationRequestId,
+        prompt: 'Continue next batch',
+        acceptedPlanState: AcceptedPlanState.accepted,
+        intent: TurnIntent.code,
+      );
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: continuationRequestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Continue next batch',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: continuation.acceptedPlan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Continue next batch',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final secondPatch = harness.container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere(
+            (candidate) =>
+                candidate.runId == continuationRequestId &&
+                !candidate.isPlanOnly,
+          );
+      expect(secondPatch.verificationRequested, isTrue);
+      final secondApply = await harness.container
+          .read(patchProposalProvider.notifier)
+          .apply(secondPatch.id);
+      expect(secondApply.status, PatchApplyStatus.applied);
+      expect(secondApply.verificationRequested, isTrue);
+      expect(secondApply.verificationSuggestions, isNotEmpty);
+      expect(secondApply.changedFiles, ['README.md']);
+      expect(
+        await File(p.join(harness.root.path, 'README.md')).readAsString(),
+        '# Usage\n\nRun the greeting flow.\n',
+      );
+
+      final completedThread = harness.thread(thread.id);
+      final sourceTurn = completedThread.turns.firstWhere(
+        (turn) => turn.requestId == firstBatchRequestId,
+      );
+      expect(sourceTurn.acceptedPlanState, AcceptedPlanState.implemented);
+      expect(_targetStates(sourceTurn), {
+        'hello.txt': PlanTargetProgressState.applied,
+        'README.md': PlanTargetProgressState.applied,
+      });
+      final continuationTurn = completedThread.turns.firstWhere(
+        (turn) => turn.requestId == continuationRequestId,
+      );
+      expect(continuationTurn.acceptedPlanState, AcceptedPlanState.implemented);
+      expect(_targetStates(continuationTurn), {
+        'README.md': PlanTargetProgressState.applied,
+      });
+      expect(
+        studioPlanContinuationForPatch(
+          patch: firstAppliedPatch,
+          threads: [completedThread],
+        ),
+        isNull,
+      );
+
+      final store = StudioThreadStore(baseDir: storeRoot.path);
+      await store.save(harness.root.path, [completedThread]);
+      final reloaded = (await store.load(harness.root.path)).single;
+      final reloadedSourceTurn = reloaded.turns.firstWhere(
+        (turn) => turn.requestId == firstBatchRequestId,
+      );
+      expect(
+        reloadedSourceTurn.acceptedPlanState,
+        AcceptedPlanState.implemented,
+      );
+      expect(_targetStates(reloadedSourceTurn), {
+        'hello.txt': PlanTargetProgressState.applied,
+        'README.md': PlanTargetProgressState.applied,
+      });
     },
   );
 
@@ -672,6 +1039,82 @@ void main() {
         'Hello. How can I help?',
       );
       expect(harness.container.read(patchProposalProvider).active, isNull);
+    },
+  );
+
+  test(
+    'AgentTurnRuntime vague continuation stays chat-only without active plan context',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              content:
+                  'I need an active plan or patch context before continuing implementation.',
+            ),
+            ChatChunk(finishReason: 'stop', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+
+      const prompt = 'continue with the next step';
+      final intent = IntentClassifier.classify(
+        prompt,
+        promptMode: StudioPromptMode.code,
+        planModeEnabled: false,
+      );
+      final toolMode = studioToolModeForIntent(
+        intent: intent,
+        promptMode: StudioPromptMode.code,
+        hasWorkspace: true,
+        planModeEnabled: false,
+      );
+      final outboundText = studioOutboundPromptForIntent(
+        text: prompt,
+        intent: intent,
+        planModeEnabled: false,
+      );
+
+      expect(intent, TurnIntent.chat);
+      expect(toolMode, AgentToolMode.chat);
+      expect(studioIntentRequiresWorkspace(intent), isFalse);
+      expect(outboundText, contains('Do not inspect the project'));
+
+      const requestId = 'classified-vague-continuation';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: prompt,
+        intent: intent,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: outboundText,
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: toolMode,
+            intent: intent,
+            model: 'gpt-5-nano',
+            retryPrompt: prompt,
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      final turn = updatedThread.turns.singleWhere(
+        (candidate) => candidate.requestId == requestId,
+      );
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.intent, TurnIntent.chat);
+      expect(turn.toolResults, isEmpty);
+      expect(harness.scriptedProvider?.exposedTools.single, isEmpty);
+      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.status, StudioThreadStatus.done);
     },
   );
 
@@ -1232,6 +1675,10 @@ void main() {
         await File(p.join(harness.root.path, 'second.txt')).readAsString(),
         'second drifted\n',
       );
+      final repeatApply = await harness.container
+          .read(patchProposalProvider.notifier)
+          .applyActive();
+      expect(repeatApply.status, PatchApplyStatus.conflict);
 
       final state = harness.container.read(patchProposalProvider);
       expect(state.active, isNotNull);
@@ -1242,12 +1689,26 @@ void main() {
           .thread(thread.id)
           .turns
           .singleWhere((candidate) => candidate.requestId == requestId);
-      expect(turnAfterConflict.acceptedPlanState, AcceptedPlanState.failed);
+      expect(
+        turnAfterConflict.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
+      );
+      expect(_targetStates(turnAfterConflict), {
+        'first.txt': PlanTargetProgressState.proposed,
+        'second.txt': PlanTargetProgressState.conflict,
+      });
+      final conflictEvents = turnAfterConflict.events.where(
+        (event) =>
+            event.type == StudioTurnEventType.completionSummary &&
+            event.title == 'Patch conflict',
+      );
+      expect(conflictEvents, hasLength(1));
+      expect(conflictEvents.single.detail, contains('second.txt'));
     },
   );
 
   test(
-    'AgentTurnRuntime rejects accepted-plan patches that omit planned files',
+    'AgentTurnRuntime accepts accepted-plan patch batches that cover planned subset',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -1288,7 +1749,18 @@ void main() {
               title: 'Accepted plan',
               summary: 'Update both files as a transaction.',
               markdown: '- Modify first.txt\n- Modify second.txt',
-              plannedFiles: ['first.txt', 'second.txt'],
+              plannedTargets: [
+                PlannedFileTarget(
+                  path: 'first.txt',
+                  intent: 'Update first file',
+                  operation: ProposedFileEditType.modify,
+                ),
+                PlannedFileTarget(
+                  path: 'second.txt',
+                  intent: 'Update second file',
+                  operation: ProposedFileEditType.modify,
+                ),
+              ],
             ),
             model: 'gpt-5-nano',
             retryPrompt: 'Implement this accepted plan',
@@ -1300,16 +1772,103 @@ void main() {
       final turn = updatedThread.turns.singleWhere(
         (candidate) => candidate.requestId == requestId,
       );
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(turn.status, StudioTurnStatus.failed);
-      expect(turn.acceptedPlanState, AcceptedPlanState.failed);
-      expect(turn.lastError, contains('cover every planned file'));
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.status, StudioThreadStatus.continuationReady);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(_targetStates(turn), {
+        'first.txt': PlanTargetProgressState.proposed,
+        'second.txt': PlanTargetProgressState.pending,
+      });
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.edits.map((edit) => edit.path), ['first.txt']);
     },
   );
 
   test(
-    'AgentTurnRuntime rejects accepted-plan patches with mismatched file intent',
+    'AgentTurnRuntime requests revision instead of rejecting malformed accepted-plan patch',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Incomplete accepted plan patch","summary":"Missing full file contents.","files":[{"path":"first.txt","intent":"Update first file","operation":"modify","before":"first old\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+
+      const requestId = 'runtime-malformed-accepted-plan-patch';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Implement this accepted plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this accepted plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: const AcceptedPlanContext(
+              patchSetId: 'plan',
+              title: 'Accepted plan',
+              summary: 'Update first file.',
+              markdown: '- Modify first.txt',
+              plannedTargets: [
+                PlannedFileTarget(
+                  path: 'first.txt',
+                  intent: 'Update first file',
+                  operation: ProposedFileEditType.modify,
+                ),
+              ],
+            ),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this accepted plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      final turn = updatedThread.turns.singleWhere(
+        (candidate) => candidate.requestId == requestId,
+      );
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.lastError, isNull);
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.runId, requestId);
+      expect(patch.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.applyStatus, isNull);
+      expect(patch.revisionPrompt, contains('app-applyable file edits'));
+      expect(
+        turn.events.where((event) => event.title == 'Patch rejected'),
+        isEmpty,
+      );
+      expect(
+        turn.events.where((event) => event.title == 'Patch revision requested'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime keeps accepted-plan patches reviewable when intent wording differs',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -1362,11 +1921,15 @@ void main() {
       final turn = updatedThread.turns.singleWhere(
         (candidate) => candidate.requestId == requestId,
       );
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(turn.status, StudioTurnStatus.failed);
-      expect(turn.acceptedPlanState, AcceptedPlanState.failed);
-      expect(turn.lastError, contains('cover every planned file'));
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(turn.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.proposed);
+      expect(patch.applyStatus, isNull);
+      expect(patch.edits.map((edit) => edit.path), ['first.txt']);
     },
   );
 
@@ -1469,7 +2032,7 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime repairs path-only accepted-plan patches with wrong intent',
+    'AgentTurnRuntime keeps path-only accepted-plan patches reviewable when intent wording differs',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -1542,13 +2105,13 @@ void main() {
       expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
       expect(
         turn.providerDiagnostics.map((event) => event.kind),
-        contains(ProviderLifecycleEventKind.outcomeRepair),
+        isNot(contains(ProviderLifecycleEventKind.outcomeRepair)),
       );
       final patch = harness.container.read(patchProposalProvider).active;
       expect(patch, isNotNull);
-      expect(patch!.title, 'Fix login redirect');
+      expect(patch!.title, 'Update login copy');
       expect(patch.edits.single.path, 'lib/router.dart');
-      expect(patch.edits.single.after, 'const redirect = "/dashboard";\n');
+      expect(patch.edits.single.after, 'const redirect = "/old"; // Sign in\n');
     },
   );
 
@@ -1853,7 +2416,18 @@ void main() {
           .thread(thread.id)
           .turns
           .singleWhere((candidate) => candidate.requestId == requestId);
+      expect(turnAfterApply.status, StudioTurnStatus.completed);
+      expect(turnAfterApply.lastError, isNull);
       expect(turnAfterApply.acceptedPlanState, AcceptedPlanState.implemented);
+      final applySummaries = turnAfterApply.events.where(
+        (event) =>
+            event.type == StudioTurnEventType.completionSummary &&
+            event.title == 'Applied changes',
+      );
+      expect(applySummaries, isNotEmpty);
+      expect(applySummaries.last.detail, contains('Applied 3 files.'));
+      expect(applySummaries.last.detail, contains('Here’s what changed'));
+      expect(applySummaries.last.detail, contains('Recommended next step'));
 
       expect(
         await File(
@@ -1918,6 +2492,83 @@ void main() {
       expect(restoredPatch.applyStatus, PatchApplyStatus.restored);
       expect(restoredPatch.changedFiles, restored.changedFiles);
       expect(restoredState.message, 'Restored 3 files.');
+    },
+  );
+
+  test(
+    'AgentTurnRuntime accepts child files for accepted-plan directory targets',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Build webform scaffold","summary":"Create the first concrete files inside the planned directories.","files":[{"path":"frontend/webform/index.html","intent":"Create webform UI","operation":"create","content":"<main>webform</main>\\n"},{"path":"backend/server/app.py","intent":"Create backend server","operation":"create","content":"print(\\"server\\")\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+
+      const requestId = 'runtime-directory-target-implementation';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Implement this accepted plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this accepted plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: const AcceptedPlanContext(
+              patchSetId: 'plan',
+              title: 'Webform plan',
+              summary: 'Create webform and server scaffolds.',
+              markdown: '- Create frontend/webform/\n- Create backend/server/',
+              plannedTargets: [
+                PlannedFileTarget(
+                  path: 'frontend/webform/',
+                  intent: 'Create webform UI',
+                  operation: ProposedFileEditType.create,
+                ),
+                PlannedFileTarget(
+                  path: 'backend/server/',
+                  intent: 'Create backend server',
+                  operation: ProposedFileEditType.create,
+                ),
+              ],
+            ),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this accepted plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final turn = harness
+          .thread(thread.id)
+          .turns
+          .singleWhere((candidate) => candidate.requestId == requestId);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(turn.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.edits.map((edit) => edit.path), [
+        'frontend/webform/index.html',
+        'backend/server/app.py',
+      ]);
     },
   );
 
@@ -2014,6 +2665,95 @@ void main() {
         ).readAsString(),
         'String status = "old";\n',
       );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime keeps invalid accepted-plan patches reviewable for revision',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Touch unrelated file","summary":"This misses the accepted plan target.","files":[{"path":"lib/unplanned.dart","intent":"Create unrelated helper","operation":"create","content":"void helper() {}\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+
+      const requestId = 'runtime-invalid-accepted-plan-patch-reviewable';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Implement this accepted plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this accepted plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: const AcceptedPlanContext(
+              patchSetId: 'plan',
+              title: 'Accepted auth update plan',
+              summary: 'Modify auth status.',
+              markdown: '- Modify lib/auth.dart',
+              plannedTargets: [
+                PlannedFileTarget(
+                  path: 'lib/auth.dart',
+                  intent: 'Update auth status',
+                  operation: ProposedFileEditType.modify,
+                ),
+              ],
+            ),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this accepted plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      final turn = updatedThread.turns.singleWhere(
+        (candidate) => candidate.requestId == requestId,
+      );
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.lastError, isNull);
+      expect(
+        turn.events
+            .where(
+              (event) => event.type == StudioTurnEventType.completionSummary,
+            )
+            .map((event) => event.detail)
+            .join('\n'),
+        contains('Prepared changes need revision'),
+      );
+      expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.runId, requestId);
+      expect(patch.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.applyStatus, isNull);
+      expect(patch.revisionPrompt, contains('accepted plan targets'));
+      expect(patch.edits.single.path, 'lib/unplanned.dart');
+
+      final rejectedTransactions = turn.events.where(
+        (event) => event.title == 'Patch rejected',
+      );
+      expect(rejectedTransactions, isEmpty);
     },
   );
 
@@ -2356,7 +3096,7 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime fails accepted-plan implementation that only re-plans',
+    'AgentTurnRuntime requests revision when accepted-plan implementation only re-plans',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2409,22 +3149,28 @@ void main() {
         isEmpty,
       );
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.revisionPrompt, contains('app-applyable file edits'));
       expect(
-        updatedThread.turns.single.lastError,
-        contains('app-applyable file edits'),
+        updatedThread.turns.single.events.where(
+          (event) => event.title == 'Patch rejected',
+        ),
+        isEmpty,
       );
-      expect(harness.container.read(patchProposalProvider).active, isNull);
     },
   );
 
   test(
-    'AgentTurnRuntime rejects accepted-plan diff-only patch proposals',
+    'AgentTurnRuntime requests revision for accepted-plan diff-only patch proposals',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2473,83 +3219,86 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
-      expect(
-        updatedThread.turns.single.lastError,
-        contains('app-applyable file edits'),
-      );
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.revisionPrompt, contains('app-applyable file edits'));
     },
   );
 
-  test('AgentTurnRuntime rejects accepted-plan no-op modify proposals', () async {
-    final harness = await _RuntimeHarness.create(
-      rounds: const [
-        [
-          ChatChunk(
-            toolCallIndex: 0,
-            toolCallId: 'patch',
-            toolCallName: 'propose_patch',
-            toolCallArguments:
-                '{"title":"No-op patch","summary":"Leaves the file unchanged.","files":[{"path":"file.txt","intent":"update greeting","operation":"modify","before":"hello\\\\n","content":"hello\\\\n"}]}',
-          ),
-          ChatChunk(finishReason: 'tool_calls', isDone: true),
+  test(
+    'AgentTurnRuntime requests revision for accepted-plan no-op modify proposals',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"No-op patch","summary":"Leaves the file unchanged.","files":[{"path":"file.txt","intent":"update greeting","operation":"modify","before":"hello\\\\n","content":"hello\\\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
         ],
-      ],
-    );
-    addTearDown(harness.dispose);
-    const requestId = 'runtime-noop-patch';
-    final thread = harness.registerTurn(
-      requestId: requestId,
-      prompt: 'Implement this plan',
-      acceptedPlanState: AcceptedPlanState.accepted,
-    );
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-noop-patch';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Implement this plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+      );
 
-    await harness.container
-        .read(agentTurnRuntimeProvider.notifier)
-        .startTurn(
-          requestId: requestId,
-          threadId: thread.id,
-          taskId: null,
-          outboundText: 'Implement this plan',
-          attachments: const [],
-          historyOverride: const <ChatMessage>[],
-          toolMode: AgentToolMode.code,
-          intent: TurnIntent.code,
-          acceptedPlan: const AcceptedPlanContext(
-            patchSetId: 'plan',
-            title: 'Accepted plan',
-            summary: 'Update a file.',
-            markdown: '- Update file.txt',
-            plannedFiles: ['file.txt'],
-          ),
-          model: 'gpt-5-nano',
-          retryPrompt: 'Implement this plan',
-          finishTask: false,
-        );
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: const AcceptedPlanContext(
+              patchSetId: 'plan',
+              title: 'Accepted plan',
+              summary: 'Update a file.',
+              markdown: '- Update file.txt',
+              plannedFiles: ['file.txt'],
+            ),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    final updatedThread = harness.thread(thread.id);
-    expect(updatedThread.status, StudioThreadStatus.failed);
-    expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
-    expect(
-      updatedThread.turns.single.acceptedPlanState,
-      AcceptedPlanState.failed,
-    );
-    expect(
-      updatedThread.turns.single.lastError,
-      contains('app-applyable file edits'),
-    );
-    expect(harness.container.read(patchProposalProvider).active, isNull);
-  });
+      final updatedThread = harness.thread(thread.id);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
+      expect(
+        updatedThread.turns.single.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
+      );
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.revisionPrompt, contains('app-applyable file edits'));
+    },
+  );
 
   test(
-    'AgentTurnRuntime rejects accepted-plan path-only delete proposals',
+    'AgentTurnRuntime requests revision for accepted-plan path-only delete proposals',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2598,17 +3347,17 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
-      expect(
-        updatedThread.turns.single.lastError,
-        contains('app-applyable file edits'),
-      );
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.revisionPrompt, contains('app-applyable file edits'));
     },
   );
 
@@ -2662,17 +3411,31 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
+      expect(updatedThread.turns.single.lastError, isNull);
+      final activePatch = harness.container.read(patchProposalProvider).active;
+      expect(activePatch, isNotNull);
       expect(
-        updatedThread.turns.single.lastError,
-        contains('app-applyable file edits'),
+        activePatch!.approvalStatus,
+        PatchApprovalStatus.revisionRequested,
       );
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(activePatch.revisionPrompt, contains('app-applyable file edits'));
+      expect(activePatch.revisionPrompt, contains('duplicate normalized'));
+      expect(
+        updatedThread.turns.single.events
+            .where(
+              (event) =>
+                  event.type == StudioTurnEventType.completionSummary &&
+                  event.title == 'Patch revision requested',
+            )
+            .length,
+        1,
+      );
     },
   );
 
@@ -2783,7 +3546,74 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime rejects patch proposals that still ask for typed approval',
+    'AgentTurnRuntime repairs accepted-plan approval prose into a patch proposal',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(content: 'Should I proceed with this implementation?'),
+            ChatChunk(finishReason: 'stop', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Add router","summary":"Create the planned router file.","files":[{"path":"lib/router.dart","intent":"Add a route file.","operation":"create","content":"void registerRoutes() {}\\\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-plan-approval-repair';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Implement this plan',
+        acceptedPlanState: AcceptedPlanState.accepted,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Implement this plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.code,
+            intent: TurnIntent.code,
+            acceptedPlan: const AcceptedPlanContext(
+              patchSetId: 'plan',
+              title: 'Accepted plan',
+              summary: 'Add a route.',
+              markdown: '- Add route file',
+              plannedFiles: ['lib/router.dart'],
+            ),
+            model: 'gpt-5-nano',
+            retryPrompt: 'Implement this plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
+      expect(
+        updatedThread.turns.single.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
+      );
+      expect(updatedThread.turns.single.lastError, isNull);
+      final activePatch = harness.container.read(patchProposalProvider).active;
+      expect(activePatch, isNotNull);
+      expect(activePatch!.edits.single.path, 'lib/router.dart');
+    },
+  );
+
+  test(
+    'AgentTurnRuntime keeps patch proposals reviewable despite typed approval wording',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2833,19 +3663,21 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
-      expect(updatedThread.turns.single.lastError, contains('review UI'));
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.edits.single.path, 'hello.txt');
     },
   );
 
   test(
-    'AgentTurnRuntime rejects patch proposals that ask for prose approval',
+    'AgentTurnRuntime keeps patch proposals reviewable despite prose approval wording',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2895,19 +3727,21 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
-      expect(updatedThread.turns.single.lastError, contains('approval text'));
-      expect(harness.container.read(patchProposalProvider).active, isNull);
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.edits.single.path, 'hello.txt');
     },
   );
 
   test(
-    'AgentTurnRuntime rejects patch proposals that claim they are applied',
+    'AgentTurnRuntime keeps patch proposals reviewable when they falsely claim applied work',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -2960,17 +3794,23 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       final updatedThread = harness.thread(thread.id);
-      expect(updatedThread.status, StudioThreadStatus.failed);
-      expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
       expect(
         updatedThread.turns.single.acceptedPlanState,
-        AcceptedPlanState.failed,
+        AcceptedPlanState.patchProposed,
       );
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(patch.revisionPrompt, contains('already applied or verified'));
       expect(
-        updatedThread.turns.single.lastError,
-        contains('already applied or verified'),
+        updatedThread.turns.single.events.where(
+          (event) => event.title == 'Patch rejected',
+        ),
+        isEmpty,
       );
-      expect(harness.container.read(patchProposalProvider).active, isNull);
     },
   );
 
@@ -3551,6 +4391,82 @@ void main() {
   );
 
   test(
+    'AgentTurnRuntime cancellation rejects pending approval futures',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'cancel-cmd',
+              toolCallName: 'run_command',
+              toolCallArguments: '{"command":"pwd"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(content: 'This should not continue after cancel.'),
+            ChatChunk(finishReason: 'stop', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-cancel-pending-approval';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'run pwd',
+        intent: TurnIntent.verify,
+      );
+
+      final runFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'run pwd',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.verify,
+            intent: TurnIntent.verify,
+            model: 'gpt-5-nano',
+            retryPrompt: 'run pwd',
+            finishTask: false,
+          );
+
+      await _waitUntil(() {
+        final updated = harness.thread(thread.id);
+        return updated.turns.single.events.any(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalId == 'cancel-cmd' &&
+              event.approvalState == ApprovalRequestState.pending,
+        );
+      });
+
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .cancel(requestId);
+      await runFuture.timeout(const Duration(seconds: 2));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      expect(updatedThread.status, StudioThreadStatus.cancelled);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.cancelled);
+      expect(
+        updatedThread.turns.single.events
+            .singleWhere((event) => event.approvalId == 'cancel-cmd')
+            .approvalState,
+        ApprovalRequestState.expired,
+      );
+      expect(
+        harness.container.read(agentTurnRuntimeProvider).activeSessions,
+        isEmpty,
+      );
+    },
+  );
+
+  test(
     'AgentTurnRuntime rejects Verify prose without an approved command',
     () async {
       final harness = await _RuntimeHarness.create(
@@ -3919,7 +4835,7 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime approve-for-turn auto-approves later Verify commands',
+    'AgentTurnRuntime approve-for-turn auto-approves repeated Verify commands',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -3935,9 +4851,9 @@ void main() {
           [
             ChatChunk(
               toolCallIndex: 0,
-              toolCallId: 'ls',
+              toolCallId: 'pwd-again',
               toolCallName: 'run_command',
-              toolCallArguments: '{"command":"ls"}',
+              toolCallArguments: '{"command":"pwd"}',
             ),
             ChatChunk(finishReason: 'tool_calls', isDone: true),
           ],
@@ -3951,7 +4867,7 @@ void main() {
       const requestId = 'runtime-verify-approve-turn';
       final thread = harness.registerTurn(
         requestId: requestId,
-        prompt: 'run pwd and ls',
+        prompt: 'run pwd twice',
         intent: TurnIntent.verify,
       );
 
@@ -3961,13 +4877,13 @@ void main() {
             requestId: requestId,
             threadId: thread.id,
             taskId: null,
-            outboundText: 'run pwd and ls',
+            outboundText: 'run pwd twice',
             attachments: const [],
             historyOverride: const <ChatMessage>[],
             toolMode: AgentToolMode.verify,
             intent: TurnIntent.verify,
             model: 'gpt-5-nano',
-            retryPrompt: 'run pwd and ls',
+            retryPrompt: 'run pwd twice',
             finishTask: false,
           );
 
@@ -3997,12 +4913,15 @@ void main() {
             .approvalState,
         ApprovalRequestState.approved,
       );
-      expect(turn.events.where((event) => event.approvalId == 'ls'), isEmpty);
+      expect(
+        turn.events.where((event) => event.approvalId == 'pwd-again'),
+        isEmpty,
+      );
       expect(
         turn.toolResults
             .where((result) => result.toolName == 'run_command')
             .map((result) => result.toolCallId),
-        containsAll(['pwd', 'ls']),
+        containsAll(['pwd', 'pwd-again']),
       );
       expect(
         turn.events
@@ -4017,7 +4936,7 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime typed approval ignores mixed user instructions',
+    'AgentTurnRuntime approve-for-turn is scoped to the exact approved command',
     () async {
       final harness = await _RuntimeHarness.create(
         rounds: const [
@@ -4039,6 +4958,126 @@ void main() {
             ),
             ChatChunk(finishReason: 'tool_calls', isDone: true),
           ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-verify-turn-grant-exact-command';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'run pwd and then ls',
+        intent: TurnIntent.verify,
+      );
+
+      final runFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'run pwd and then ls',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.verify,
+            intent: TurnIntent.verify,
+            model: 'gpt-5-nano',
+            retryPrompt: 'run pwd and then ls',
+            finishTask: false,
+          );
+
+      await _waitUntil(() {
+        final updated = harness.thread(thread.id);
+        return updated.turns.single.events.any(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalId == 'pwd' &&
+              event.approvalState == ApprovalRequestState.pending,
+        );
+      });
+
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .approveForTurn('pwd');
+
+      await _waitUntil(() {
+        final updated = harness.thread(thread.id);
+        return updated.turns.single.events.any(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalId == 'ls' &&
+              event.approvalState == ApprovalRequestState.pending,
+        );
+      });
+
+      var updatedThread = harness.thread(thread.id);
+      var turn = updatedThread.turns.single;
+      expect(updatedThread.status, StudioThreadStatus.waitingForApproval);
+      expect(
+        turn.events
+            .singleWhere((event) => event.approvalId == 'pwd')
+            .approvalState,
+        ApprovalRequestState.approved,
+      );
+      expect(
+        turn.events
+            .singleWhere((event) => event.approvalId == 'ls')
+            .approvalState,
+        ApprovalRequestState.pending,
+      );
+      expect(
+        turn.toolResults
+            .where((result) => result.toolName == 'run_command')
+            .map((result) => result.toolCallId),
+        ['pwd'],
+      );
+
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .rejectApproval('ls');
+      await runFuture;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      updatedThread = harness.thread(thread.id);
+      turn = updatedThread.turns.single;
+      expect(updatedThread.status, StudioThreadStatus.failed);
+      expect(turn.status, StudioTurnStatus.failed);
+      expect(
+        turn.events
+            .singleWhere((event) => event.approvalId == 'ls')
+            .approvalState,
+        ApprovalRequestState.rejected,
+      );
+      expect(
+        turn.toolResults
+            .where((result) => result.toolName == 'run_command')
+            .map((result) => result.toolCallId),
+        ['pwd'],
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime typed approval ignores mixed user instructions',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'pwd',
+              toolCallName: 'run_command',
+              toolCallArguments: '{"command":"pwd"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'pwd-again',
+              toolCallName: 'run_command',
+              toolCallArguments: '{"command":"pwd"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
           [
             ChatChunk(content: 'Verification commands completed.'),
             ChatChunk(finishReason: 'stop', isDone: true),
@@ -4049,7 +5088,7 @@ void main() {
       const requestId = 'runtime-verify-mixed-approval-text';
       final thread = harness.registerTurn(
         requestId: requestId,
-        prompt: 'run pwd and ls',
+        prompt: 'run pwd twice',
         intent: TurnIntent.verify,
       );
 
@@ -4059,13 +5098,13 @@ void main() {
             requestId: requestId,
             threadId: thread.id,
             taskId: null,
-            outboundText: 'run pwd and ls',
+            outboundText: 'run pwd twice',
             attachments: const [],
             historyOverride: const <ChatMessage>[],
             toolMode: AgentToolMode.verify,
             intent: TurnIntent.verify,
             model: 'gpt-5-nano',
-            retryPrompt: 'run pwd and ls',
+            retryPrompt: 'run pwd twice',
             finishTask: false,
           );
 
@@ -4116,12 +5155,15 @@ void main() {
             .approvalState,
         ApprovalRequestState.approved,
       );
-      expect(turn.events.where((event) => event.approvalId == 'ls'), isEmpty);
+      expect(
+        turn.events.where((event) => event.approvalId == 'pwd-again'),
+        isEmpty,
+      );
       expect(
         turn.toolResults
             .where((result) => result.toolName == 'run_command')
             .map((result) => result.toolCallId),
-        containsAll(['pwd', 'ls']),
+        containsAll(['pwd', 'pwd-again']),
       );
     },
   );
@@ -4709,56 +5751,191 @@ void main() {
     expect(harness.container.read(patchProposalProvider).active, isNull);
   });
 
-  test('AgentTurnRuntime rejects concrete edit proposals in plan mode', () async {
-    final harness = await _RuntimeHarness.create(
-      rounds: const [
-        [
-          ChatChunk(
-            toolCallIndex: 0,
-            toolCallId: 'patch',
-            toolCallName: 'propose_patch',
-            toolCallArguments:
-                '{"title":"Concrete edit too early","summary":"This tries to skip plan acceptance.","plan_markdown":"# Plan\\n\\n- Create the route fix.\\n- Review the patch.\\n- Verify the behavior.","files":[{"path":"lib/router.dart","intent":"Fix redirect","operation":"modify","before":"void oldRedirect() {}\\n","content":"void fixRedirect() {}\\n"}]}',
-          ),
-          ChatChunk(finishReason: 'tool_calls', isDone: true),
+  test(
+    'AgentTurnRuntime normalizes concrete edit proposals in plan mode',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Concrete edit too early","summary":"This tries to skip plan acceptance.","plan_markdown":"# Plan\\n\\n- Create the route fix.\\n- Review the patch.\\n- Verify the behavior.\\n\\n## Assumptions\\n\\n- The current route contract stays in place.\\n\\n## Verification\\n\\n- Verify redirects after applying the implementation patch.","assumptions":["The current route contract stays in place."],"verification_steps":["Verify redirects after applying the implementation patch."],"files":[{"path":"lib/router.dart","intent":"Fix redirect","operation":"modify","before":"void oldRedirect() {}\\n","content":"void fixRedirect() {}\\n"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
         ],
-        [
-          ChatChunk(content: 'Plan ready.'),
-          ChatChunk(finishReason: 'stop', isDone: true),
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-plan-concrete-edit';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'make a plan',
+        intent: TurnIntent.plan,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'make a plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.plan,
+            intent: TurnIntent.plan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'make a plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.isPlanOnly, isTrue);
+      expect(patch.edits, isEmpty);
+      expect(patch.plannedTargets.single.path, 'lib/router.dart');
+    },
+  );
+
+  test(
+    'AgentTurnRuntime does not reject plan card artifacts on plan validation failure',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              content:
+                  'Done, I applied the plan and verified the implementation.',
+            ),
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'patch',
+              toolCallName: 'propose_patch',
+              toolCallArguments:
+                  '{"title":"Reviewable plan","summary":"Plan the route fix.","plan_markdown":"# Plan\\n\\n- Inspect the route contract.\\n- Create a patch after approval.\\n- Verify redirects after applying changes.","assumptions":["The route contract stays in place."],"verification_steps":["Verify redirects after applying changes."],"files":[{"path":"lib/router.dart","intent":"Fix redirect after plan acceptance","operation":"modify"}]}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
         ],
-      ],
-    );
-    addTearDown(harness.dispose);
-    const requestId = 'runtime-plan-concrete-edit';
-    final thread = harness.registerTurn(
-      requestId: requestId,
-      prompt: 'make a plan',
-      intent: TurnIntent.plan,
-    );
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-plan-validation-keeps-card';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'make a plan',
+        intent: TurnIntent.plan,
+      );
 
-    await harness.container
-        .read(agentTurnRuntimeProvider.notifier)
-        .startTurn(
-          requestId: requestId,
-          threadId: thread.id,
-          taskId: null,
-          outboundText: 'make a plan',
-          attachments: const [],
-          historyOverride: const <ChatMessage>[],
-          toolMode: AgentToolMode.plan,
-          intent: TurnIntent.plan,
-          model: 'gpt-5-nano',
-          retryPrompt: 'make a plan',
-          finishTask: false,
-        );
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'make a plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.plan,
+            intent: TurnIntent.plan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'make a plan',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    final updatedThread = harness.thread(thread.id);
-    expect(updatedThread.status, StudioThreadStatus.failed);
-    expect(updatedThread.turns.single.status, StudioTurnStatus.failed);
-    expect(updatedThread.turns.single.lastError, contains('plan-only'));
-    expect(harness.container.read(patchProposalProvider).active, isNull);
-  });
+      final updatedThread = harness.thread(thread.id);
+      final turn = updatedThread.turns.single;
+      expect(updatedThread.status, StudioThreadStatus.failed);
+      expect(turn.status, StudioTurnStatus.failed);
+      expect(
+        turn.lastError,
+        contains('Plan Mode created planning output but also claimed'),
+      );
+      expect(
+        turn.events.where((event) => event.title == 'Patch rejected'),
+        isEmpty,
+      );
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.runId, requestId);
+      expect(patch.isPlanOnly, isTrue);
+      expect(patch.applyStatus, isNull);
+      expect(patch.approvalStatus, isNot(PatchApprovalStatus.rejected));
+    },
+  );
+
+  test(
+    'AgentTurnRuntime synthesizes plan card from substantive prose',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              content: '''
+# Datacenter Sizing Discovery Plan
+
+## Summary
+- Build a discovery plan for the customer datacenter sizing workflow.
+- Keep the first version focused on inputs, outputs, assumptions, and validation.
+
+## Requirements
+- Capture customer counts, rack count, power/cooling assumptions, WAN speeds, and growth targets.
+- Identify where Cisco portfolio data, lifecycle data, and customer constraints will be sourced.
+- Define output artifacts: sizing table, topology sketch, assumptions, and follow-up questions.
+
+## Verification
+- Validate each sizing recommendation against source-backed model facts.
+- Show unknowns and confidence before any implementation starts.
+''',
+            ),
+            ChatChunk(finishReason: 'stop', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-plan-prose-synth';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'create a plan for this',
+        intent: TurnIntent.plan,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'create a plan for this',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.plan,
+            intent: TurnIntent.plan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'create a plan for this',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updatedThread = harness.thread(thread.id);
+      expect(updatedThread.status, StudioThreadStatus.done);
+      expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
+      expect(updatedThread.turns.single.lastError, isNull);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.isPlanOnly, isTrue);
+      expect(patch.edits, isEmpty);
+      expect(patch.title, 'Datacenter Sizing Discovery Plan');
+      expect(patch.planMarkdown, contains('Datacenter Sizing Discovery Plan'));
+    },
+  );
 
   test(
     'AgentTurnRuntime rejects plan cards that claim implementation happened',
@@ -5791,6 +6968,12 @@ void main() {
   );
 }
 
+Map<String, PlanTargetProgressState> _targetStates(StudioTurn turn) {
+  return {
+    for (final target in turn.planTargetProgress) target.path: target.state,
+  };
+}
+
 class _RuntimeHarness {
   final Directory root;
   final AgentService service;
@@ -5877,6 +7060,7 @@ class _RuntimeHarness {
           requestId: requestId,
           threadId: thread.id,
           model: 'gpt-5-nano',
+          intent: intent,
           contextSummary: const StudioContextSummary(
             projectLabel: 'runtime',
             rootPath: '/tmp/runtime',

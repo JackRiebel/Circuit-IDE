@@ -19,6 +19,8 @@ import 'settings_provider.dart';
 import 'terminal_provider.dart';
 
 const _uuid = Uuid();
+const _maxRelevantFileContextItems = 5;
+const _maxOmittedRelevantFileCandidates = 50;
 const _commonContextTerms = {
   'please',
   'review',
@@ -282,6 +284,20 @@ final contextPreferenceStoreProvider = Provider<ContextPreferenceStore>(
   (ref) => ContextPreferenceStore(),
 );
 
+class ContextPreferenceRevisionController extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() {
+    state++;
+  }
+}
+
+final contextPreferenceRevisionProvider =
+    NotifierProvider<ContextPreferenceRevisionController, int>(
+      ContextPreferenceRevisionController.new,
+    );
+
 class ContextPackController extends Notifier<ContextPack?> {
   final Map<String, Set<String>> _includeNextByRoot = {};
 
@@ -291,15 +307,24 @@ class ContextPackController extends Notifier<ContextPack?> {
     return null;
   }
 
-  Future<ContextPack> buildForCodingTaskWithFreshIndex({String? prompt}) async {
+  Future<ContextPack> buildForCodingTaskWithFreshIndex({
+    String? prompt,
+    Set<String> allowedFileContextPaths = const {},
+  }) async {
     final rootPath = ref.read(fileTreeProvider).rootPath;
     if (rootPath != null) {
       await ref.read(fileIndexerProvider.notifier).refreshIfStale();
     }
-    return buildForCodingTask(prompt: prompt);
+    return buildForCodingTask(
+      prompt: prompt,
+      allowedFileContextPaths: allowedFileContextPaths,
+    );
   }
 
-  ContextPack buildForCodingTask({String? prompt}) {
+  ContextPack buildForCodingTask({
+    String? prompt,
+    Set<String> allowedFileContextPaths = const {},
+  }) {
     final profile = ref.read(projectProfileProvider);
     final editor = ref.read(editorProvider);
     final git = ref.read(gitProvider).status;
@@ -339,30 +364,38 @@ class ContextPackController extends Notifier<ContextPack?> {
       final relativeSource = rootPath == null
           ? activeTab.filePath
           : p.relative(activeTab.filePath, from: rootPath);
-      final activeContent = activeTab.content.trim().isEmpty
-          ? _readFileIfSmall(activeTab.filePath)
-          : activeTab.content;
-      items.add(
-        ContextPackItem(
-          id: 'active-file:${activeTab.filePath}',
-          type: ContextPackItemType.activeFile,
-          title: activeTab.fileName,
-          detail: [
-            'Active editor file. Cursor: ${activeTab.cursorLine}:${activeTab.cursorColumn}.',
-            if (activeTab.isModified) 'Unsaved editor changes are present.',
-            if (activeContent.trim().isNotEmpty)
-              _truncate(activeContent, 8000)
-            else
-              'File content was not loaded.',
-          ].join('\n\n'),
-          source: relativeSource,
-          sourceKind: ContextPackSourceKind.editor,
-          estimatedTokens: _estimateTokens(activeContent) + 40,
-        ),
-      );
+      if (_fileContextAllowed(relativeSource, allowedFileContextPaths)) {
+        final activeContent = activeTab.content.trim().isEmpty
+            ? _readFileIfSmall(activeTab.filePath)
+            : activeTab.content;
+        items.add(
+          ContextPackItem(
+            id: 'active-file:${activeTab.filePath}',
+            type: ContextPackItemType.activeFile,
+            title: activeTab.fileName,
+            detail: [
+              'Active editor file. Cursor: ${activeTab.cursorLine}:${activeTab.cursorColumn}.',
+              if (activeTab.isModified) 'Unsaved editor changes are present.',
+              if (activeContent.trim().isNotEmpty)
+                _truncate(activeContent, 8000)
+              else
+                'File content was not loaded.',
+            ].join('\n\n'),
+            source: relativeSource,
+            sourceKind: ContextPackSourceKind.editor,
+            estimatedTokens: _estimateTokens(activeContent) + 40,
+          ),
+        );
+      }
     }
 
-    items.addAll(_mentionedFileItems(prompt, rootPath));
+    items.addAll(
+      _mentionedFileItems(
+        prompt,
+        rootPath,
+        allowedFileContextPaths: allowedFileContextPaths,
+      ),
+    );
     final changedFiles = {
       ...git.staged.map((change) => change.path),
       ...git.unstaged.map((change) => change.path),
@@ -377,6 +410,7 @@ class ContextPackController extends Notifier<ContextPack?> {
         for (final item in items)
           if (item.source != null) item.source!,
       },
+      allowedFileContextPaths: allowedFileContextPaths,
     );
     items.addAll(relevantFiles.items);
 
@@ -535,6 +569,61 @@ class ContextPackController extends Notifier<ContextPack?> {
     );
     paths.add(normalized);
     ref.read(contextPreferenceStoreProvider).saveIncludedPaths(rootPath, paths);
+    ref.read(contextPreferenceRevisionProvider.notifier).bump();
+  }
+
+  void removeIncludeNextTime(String relativePath) {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    if (rootPath == null) return;
+    final normalized = ContextPreferenceStore._normalizePreferencePath(
+      relativePath,
+    );
+    if (normalized == null) return;
+    final rootKey = p.normalize(rootPath);
+    final paths = _includeNextByRoot.putIfAbsent(
+      rootKey,
+      () => ref
+          .read(contextPreferenceStoreProvider)
+          .loadIncludedPaths(rootPath)
+          .toSet(),
+    );
+    if (!paths.remove(normalized)) return;
+    ref.read(contextPreferenceStoreProvider).saveIncludedPaths(rootPath, paths);
+    ref.read(contextPreferenceRevisionProvider.notifier).bump();
+
+    final pack = state;
+    if (pack == null) return;
+    final pinnedIds = {
+      for (final item in pack.allItems)
+        if (item.source == normalized &&
+            (item.retrievalReason ?? '').contains('included next time'))
+          item.id,
+      for (final candidate
+          in pack.retrievalResult?.rankedCandidates ??
+              const <ContextCandidate>[])
+        if (candidate.path == normalized &&
+            candidate.reason.contains('included next time'))
+          candidate.id,
+    };
+    if (pinnedIds.isEmpty) return;
+    final retrieval = pack.retrievalResult;
+    state = pack.copyWith(
+      items: pack.items
+          .where((item) => !pinnedIds.contains(item.id))
+          .toList(growable: false),
+      instructionItems: pack.instructionItems
+          .where((item) => !pinnedIds.contains(item.id))
+          .toList(growable: false),
+      retrievalResult: retrieval == null
+          ? null
+          : ContextRetrievalResult(
+              rankedCandidates: retrieval.rankedCandidates
+                  .where((candidate) => !pinnedIds.contains(candidate.id))
+                  .toList(growable: false),
+              budget: retrieval.budget,
+              warnings: retrieval.warnings,
+            ),
+    );
   }
 
   Set<String> includeNextTimePathsForCurrentRoot() {
@@ -595,8 +684,295 @@ class ContextPackController extends Notifier<ContextPack?> {
             message:
                 '${omittedCandidates.length} high-scoring context candidate${omittedCandidates.length == 1 ? '' : 's'} omitted from this turn.',
           ),
+        ..._instructionPolicyWarnings(instructionItems),
       ],
     );
+  }
+
+  List<ContextPackWarning> _instructionPolicyWarnings(
+    List<ContextPackItem> instructionItems,
+  ) {
+    final warnings = <ContextPackWarning>[];
+    for (final item in instructionItems) {
+      final text = item.detail.toLowerCase();
+      final source = item.source ?? item.title;
+      if (_mentionsInstructionPermissionBypass(text)) {
+        warnings.add(
+          ContextPackWarning(
+            itemId: item.id,
+            message:
+                '$source contains permission-like instructions. Circuit treats project instruction files as guidance only; app policy still controls tools, approvals, and workspace boundaries.',
+          ),
+        );
+      }
+      if (_mentionsInstructionWorkspaceBypass(text)) {
+        warnings.add(
+          ContextPackWarning(
+            itemId: item.id,
+            message:
+                '$source references filesystem or workspace-boundary behavior. Circuit will still enforce the selected workspace root and deny unsafe paths.',
+          ),
+        );
+      }
+      if (_mentionsInstructionNetworkBypass(text)) {
+        warnings.add(
+          ContextPackWarning(
+            itemId: item.id,
+            message:
+                '$source references network or internet access. Circuit treats project instruction files as guidance only; app policy still controls network tools and domain access.',
+          ),
+        );
+      }
+      if (_mentionsInstructionMcpBypass(text)) {
+        warnings.add(
+          ContextPackWarning(
+            itemId: item.id,
+            message:
+                '$source references MCP or connector side effects. Circuit treats project instruction files as guidance only; app policy still controls connector tools and mutation access.',
+          ),
+        );
+      }
+    }
+    warnings.addAll(_instructionConflictWarnings(instructionItems));
+    return warnings;
+  }
+
+  List<ContextPackWarning> _instructionConflictWarnings(
+    List<ContextPackItem> instructionItems,
+  ) {
+    final approvalBypassSources = <String>[];
+    final approvalRequiredSources = <String>[];
+    final workspaceBypassSources = <String>[];
+    final workspaceRestrictedSources = <String>[];
+    final networkBypassSources = <String>[];
+    final networkRestrictedSources = <String>[];
+    final mcpBypassSources = <String>[];
+    final mcpRestrictedSources = <String>[];
+
+    for (final item in instructionItems) {
+      final text = item.detail.toLowerCase();
+      final source = item.source ?? item.title;
+      if (_mentionsInstructionPermissionBypass(text)) {
+        approvalBypassSources.add(source);
+      }
+      if (_mentionsInstructionApprovalRequired(text)) {
+        approvalRequiredSources.add(source);
+      }
+      if (_mentionsInstructionWorkspaceBypass(text)) {
+        workspaceBypassSources.add(source);
+      }
+      if (_mentionsInstructionWorkspaceRestricted(text)) {
+        workspaceRestrictedSources.add(source);
+      }
+      if (_mentionsInstructionNetworkBypass(text)) {
+        networkBypassSources.add(source);
+      }
+      if (_mentionsInstructionNetworkRestricted(text)) {
+        networkRestrictedSources.add(source);
+      }
+      if (_mentionsInstructionMcpBypass(text)) {
+        mcpBypassSources.add(source);
+      }
+      if (_mentionsInstructionMcpRestricted(text)) {
+        mcpRestrictedSources.add(source);
+      }
+    }
+
+    return [
+      if (approvalBypassSources.isNotEmpty &&
+          approvalRequiredSources.isNotEmpty)
+        ContextPackWarning(
+          itemId: 'instruction-conflict:approval',
+          message:
+              'Project instruction files contain conflicting approval guidance (${_sourceList(approvalBypassSources)} vs ${_sourceList(approvalRequiredSources)}). Circuit treats instructions as guidance only; app permission policy decides when tools require review.',
+        ),
+      if (workspaceBypassSources.isNotEmpty &&
+          workspaceRestrictedSources.isNotEmpty)
+        ContextPackWarning(
+          itemId: 'instruction-conflict:workspace',
+          message:
+              'Project instruction files contain conflicting workspace-boundary guidance (${_sourceList(workspaceBypassSources)} vs ${_sourceList(workspaceRestrictedSources)}). Circuit enforces the selected workspace root regardless of instruction text.',
+        ),
+      if (networkBypassSources.isNotEmpty &&
+          networkRestrictedSources.isNotEmpty)
+        ContextPackWarning(
+          itemId: 'instruction-conflict:network',
+          message:
+              'Project instruction files contain conflicting network guidance (${_sourceList(networkBypassSources)} vs ${_sourceList(networkRestrictedSources)}). Circuit treats instructions as guidance only; app network policy decides when web or domain access requires review.',
+        ),
+      if (mcpBypassSources.isNotEmpty && mcpRestrictedSources.isNotEmpty)
+        ContextPackWarning(
+          itemId: 'instruction-conflict:mcp',
+          message:
+              'Project instruction files contain conflicting connector guidance (${_sourceList(mcpBypassSources)} vs ${_sourceList(mcpRestrictedSources)}). Circuit treats instructions as guidance only; app connector policy decides when MCP tools require review.',
+        ),
+    ];
+  }
+
+  String _sourceList(List<String> sources) {
+    final unique = <String>[];
+    for (final source in sources) {
+      if (!unique.contains(source)) unique.add(source);
+    }
+    if (unique.length <= 2) return unique.join(', ');
+    return '${unique.take(2).join(', ')} +${unique.length - 2} more';
+  }
+
+  bool _mentionsInstructionPermissionBypass(String text) {
+    const phrases = [
+      'bypass approval',
+      'bypass approvals',
+      'skip approval',
+      'skip approvals',
+      'auto approve',
+      'auto-approve',
+      'never ask approval',
+      'never ask for approval',
+      'do not ask approval',
+      'do not ask for approval',
+      'without asking approval',
+      'without asking for approval',
+      'run commands without asking',
+      'execute commands without asking',
+      'ignore permissions',
+      'ignore safety',
+      'disable safety',
+      'ignore sandbox',
+      'disable sandbox',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionWorkspaceBypass(String text) {
+    const phrases = [
+      'full filesystem access',
+      'full file system access',
+      'outside the workspace',
+      'outside workspace',
+      'outside the project',
+      'outside project',
+      'write anywhere',
+      'edit anywhere',
+      'read anywhere',
+      'unrestricted filesystem',
+      'unrestricted file system',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionApprovalRequired(String text) {
+    const phrases = [
+      'always ask for approval',
+      'always request approval',
+      'ask before running commands',
+      'ask before executing commands',
+      'ask before shell commands',
+      'request approval before',
+      'require approval',
+      'approval required',
+      'review first',
+      'do not run commands without approval',
+      'never run commands without approval',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionWorkspaceRestricted(String text) {
+    const phrases = [
+      'stay inside the workspace',
+      'stay within the workspace',
+      'stay inside workspace',
+      'stay within workspace',
+      'only edit files in the workspace',
+      'only write files in the workspace',
+      'do not edit outside the workspace',
+      'do not write outside the workspace',
+      'workspace root only',
+      'selected workspace root',
+      'project root only',
+      'inside the project root',
+      'within the project root',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionNetworkBypass(String text) {
+    const phrases = [
+      'unrestricted network',
+      'full network access',
+      'internet access is allowed',
+      'use the internet freely',
+      'use web freely',
+      'browse freely',
+      'browse the web freely',
+      'fetch external urls',
+      'fetch external urls without asking',
+      'call external apis without asking',
+      'curl without asking',
+      'wget without asking',
+      'access any domain',
+      'ignore network policy',
+      'disable network policy',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionNetworkRestricted(String text) {
+    const phrases = [
+      'no internet',
+      'no network',
+      'network disabled',
+      'offline only',
+      'do not browse',
+      'do not use the internet',
+      'do not access external urls',
+      'ask before internet',
+      'ask before network',
+      'ask before web',
+      'ask before browsing',
+      'request approval before internet',
+      'request approval before network',
+      'network requires approval',
+      'internet requires approval',
+      'web access requires approval',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionMcpBypass(String text) {
+    const phrases = [
+      'use mcp without asking',
+      'use mcp tools without asking',
+      'mcp without approval',
+      'mcp tools without approval',
+      'mutate mcp freely',
+      'connector mutation is allowed',
+      'connectors can mutate',
+      'ignore mcp policy',
+      'ignore connector policy',
+      'disable mcp policy',
+      'disable connector policy',
+    ];
+    return phrases.any(text.contains);
+  }
+
+  bool _mentionsInstructionMcpRestricted(String text) {
+    const phrases = [
+      'no mcp',
+      'disable mcp',
+      'mcp read only',
+      'mcp read-only',
+      'connector read only',
+      'connector read-only',
+      'ask before mcp',
+      'ask before connectors',
+      'request approval before mcp',
+      'mcp requires approval',
+      'connectors require approval',
+      'do not mutate mcp',
+      'do not mutate connectors',
+    ];
+    return phrases.any(text.contains);
   }
 
   int _contextScore(ContextPackItem item) {
@@ -708,7 +1084,11 @@ class ContextPackController extends Notifier<ContextPack?> {
     }
   }
 
-  List<ContextPackItem> _mentionedFileItems(String? prompt, String? rootPath) {
+  List<ContextPackItem> _mentionedFileItems(
+    String? prompt,
+    String? rootPath, {
+    required Set<String> allowedFileContextPaths,
+  }) {
     if (rootPath == null || prompt == null || prompt.trim().isEmpty) {
       return const [];
     }
@@ -734,6 +1114,9 @@ class ContextPackController extends Notifier<ContextPack?> {
       var content = _readFileIfSmall(candidate);
       if (content.trim().isEmpty) continue;
       final relativePath = p.relative(candidate, from: rootPath);
+      if (!_fileContextAllowed(relativePath, allowedFileContextPaths)) {
+        continue;
+      }
       if (_isInstructionContextPath(relativePath)) {
         content = _cleanInstructionContent(content);
         if (content.trim().isEmpty) continue;
@@ -768,6 +1151,7 @@ class ContextPackController extends Notifier<ContextPack?> {
     String? rootPath, {
     required Set<String> changedFiles,
     required Set<String> alreadyIncludedSources,
+    required Set<String> allowedFileContextPaths,
   }) {
     if (rootPath == null) {
       return const _RelevantFileResult(items: [], omittedCandidates: []);
@@ -849,6 +1233,7 @@ class ContextPackController extends Notifier<ContextPack?> {
       String? boostReason,
     }) {
       if (!scoredPaths.add(relativePath)) return;
+      if (!_fileContextAllowed(relativePath, allowedFileContextPaths)) return;
       if (alreadyIncludedSources.contains(relativePath)) return;
       if (_isIgnoredContextPath(relativePath)) return;
       if (_isInstructionContextPath(relativePath)) return;
@@ -986,8 +1371,11 @@ class ContextPackController extends Notifier<ContextPack?> {
     }
 
     scored.sort((a, b) => b.score.compareTo(a.score));
-    final included = scored.take(5).toList();
-    final omitted = scored.skip(5).take(10).toList();
+    final included = scored.take(_maxRelevantFileContextItems).toList();
+    final omitted = scored
+        .skip(_maxRelevantFileContextItems)
+        .take(_maxOmittedRelevantFileCandidates)
+        .toList();
     return _RelevantFileResult(
       items: [
         for (final file in included)
@@ -1439,6 +1827,12 @@ class ContextPackController extends Notifier<ContextPack?> {
           part == '.next' ||
           part == 'Pods',
     );
+  }
+
+  bool _fileContextAllowed(String path, Set<String> allowedFileContextPaths) {
+    if (allowedFileContextPaths.isEmpty) return true;
+    final normalized = p.normalize(path).replaceAll('\\', '/');
+    return allowedFileContextPaths.contains(normalized);
   }
 
   bool _isInstructionContextPath(String path) {

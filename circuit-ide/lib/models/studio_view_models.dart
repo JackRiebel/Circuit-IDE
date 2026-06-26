@@ -13,6 +13,7 @@ enum TaskDisplayKind {
   waitingForApproval,
   runningCommand,
   streaming,
+  continuationReady,
   done,
   failed,
   cancelled,
@@ -111,6 +112,8 @@ class TaskDisplayState {
         StudioThreadStatus.preflighting ||
         StudioThreadStatus.buildingContext ||
         StudioThreadStatus.reviewingPatch => TaskDisplayKind.working,
+        StudioThreadStatus.continuationReady =>
+          TaskDisplayKind.continuationReady,
         StudioThreadStatus.done => TaskDisplayKind.done,
         StudioThreadStatus.failed => TaskDisplayKind.failed,
         StudioThreadStatus.cancelled => TaskDisplayKind.cancelled,

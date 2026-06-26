@@ -1,6 +1,13 @@
 enum ProposedFileEditType { create, modify, delete }
 
-enum PatchApplyStatus { applied, restored, rejected, conflict, failed }
+enum PatchApplyStatus {
+  applied,
+  restored,
+  rejected,
+  revisionRequested,
+  conflict,
+  failed,
+}
 
 enum PatchApprovalStatus { proposed, approved, rejected, revisionRequested }
 
@@ -150,6 +157,7 @@ class ProposedPatchSet {
   final String? diffSummary;
   final List<String> verificationSuggestions;
   final bool verificationRequested;
+  final String? verificationRequestId;
   final String? planMarkdown;
   final List<String> plannedFiles;
   final List<PlannedFileTarget> plannedTargets;
@@ -173,6 +181,7 @@ class ProposedPatchSet {
     this.diffSummary,
     this.verificationSuggestions = const [],
     this.verificationRequested = false,
+    this.verificationRequestId,
     this.planMarkdown,
     this.plannedFiles = const [],
     this.plannedTargets = const [],
@@ -189,7 +198,10 @@ class ProposedPatchSet {
   bool get isEmpty =>
       edits.isEmpty && plannedFiles.isEmpty && plannedTargets.isEmpty;
   bool get isPlanOnly =>
-      edits.isEmpty && (plannedFiles.isNotEmpty || plannedTargets.isNotEmpty);
+      edits.isEmpty &&
+      (plannedFiles.isNotEmpty ||
+          plannedTargets.isNotEmpty ||
+          (planMarkdown?.trim().isNotEmpty ?? false));
   int get fileCount => edits.isNotEmpty
       ? edits.length
       : effectivePlannedTargets
@@ -211,6 +223,7 @@ class ProposedPatchSet {
     Object? diffSummary = _sentinel,
     List<String>? verificationSuggestions,
     bool? verificationRequested,
+    Object? verificationRequestId = _sentinel,
     Object? planMarkdown = _sentinel,
     List<String>? plannedFiles,
     List<PlannedFileTarget>? plannedTargets,
@@ -248,6 +261,9 @@ class ProposedPatchSet {
           verificationSuggestions ?? this.verificationSuggestions,
       verificationRequested:
           verificationRequested ?? this.verificationRequested,
+      verificationRequestId: identical(verificationRequestId, _sentinel)
+          ? this.verificationRequestId
+          : verificationRequestId as String?,
       planMarkdown: identical(planMarkdown, _sentinel)
           ? this.planMarkdown
           : planMarkdown as String?,
@@ -275,6 +291,7 @@ class ProposedPatchSet {
     'diffSummary': diffSummary,
     'verificationSuggestions': verificationSuggestions,
     'verificationRequested': verificationRequested,
+    'verificationRequestId': verificationRequestId,
     'planMarkdown': planMarkdown,
     'plannedFiles': plannedFiles,
     'plannedTargets': plannedTargets.map((target) => target.toJson()).toList(),
@@ -323,6 +340,7 @@ class ProposedPatchSet {
                 ?.cast<String>() ??
             const [],
         verificationRequested: json['verificationRequested'] as bool? ?? false,
+        verificationRequestId: json['verificationRequestId'] as String?,
         planMarkdown: json['planMarkdown'] as String?,
         plannedFiles:
             (json['plannedFiles'] as List<dynamic>?)?.cast<String>() ??

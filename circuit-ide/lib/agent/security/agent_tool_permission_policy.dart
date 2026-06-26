@@ -27,9 +27,26 @@ class AgentToolPermissionPolicy {
         message: 'Tools are not available for this conversational turn.',
       );
     }
+    if (_githubMutationTools.contains(name)) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.gitMutationRequiresReview,
+        message:
+            'GitHub mutation is not available in Studio turns until that connector is explicitly feature-enabled and scoped.',
+      );
+    }
     if (name.startsWith('mcp_')) {
+      final mcpToolName = request.mcpToolName ?? name;
+      if (_mcpLooksNetworkBacked(mcpToolName, toolCall)) {
+        return const ToolPermissionDecision(
+          verdict: ToolPermissionVerdict.deny,
+          reason: ToolPermissionReason.mcpRequiresReview,
+          message:
+              'MCP browser, web, URL, or network tools are unavailable in Studio until that connector is explicitly feature-enabled and scoped.',
+        );
+      }
       final mcpRisk = request.mcpToolRisk == McpToolRisk.unknown
-          ? _mcpRiskFromToolName(request.mcpToolName ?? name)
+          ? _mcpRiskFromToolName(mcpToolName)
           : request.mcpToolRisk;
       if (mcpRisk == McpToolRisk.readOnly &&
           intentContract.mayInspectWorkspace) {
@@ -49,10 +66,10 @@ class AgentToolPermissionPolicy {
         );
       }
       return const ToolPermissionDecision(
-        verdict: ToolPermissionVerdict.ask,
+        verdict: ToolPermissionVerdict.deny,
         reason: ToolPermissionReason.mcpRequiresReview,
         message:
-            'MCP tool requires review because its side effects are unknown.',
+            'Unknown MCP tools are unavailable in Studio until the connector declares read-only or mutation risk metadata.',
       );
     }
 
@@ -61,8 +78,11 @@ class AgentToolPermissionPolicy {
           ? _networkAccessKind(toolCall)
           : request.networkAccessKind;
       final domain = request.networkDomain ?? _networkDomain(toolCall);
+      final blockedTarget = _blockedNetworkDecision(accessKind, domain);
+      if (blockedTarget != null) return blockedTarget;
       final granted = _grantDecision(
         'Network tool approved for this turn (${_networkDescription(accessKind, domain)}).',
+        _networkGrantKey(name, accessKind, domain),
       );
       if (granted != null) return granted;
       return ToolPermissionDecision(
@@ -120,7 +140,10 @@ class AgentToolPermissionPolicy {
     if (_gitMutationTools.contains(name)) {
       final gitAvailability = _gitMutationAvailabilityDecision();
       if (gitAvailability != null) return gitAvailability;
-      final granted = _grantDecision('Git mutation approved for this turn.');
+      final granted = _grantDecision(
+        'Git mutation approved for this turn.',
+        _toolGrantKey(name),
+      );
       if (granted != null) return granted;
       return const ToolPermissionDecision(
         verdict: ToolPermissionVerdict.ask,
@@ -133,6 +156,10 @@ class AgentToolPermissionPolicy {
       reason: ToolPermissionReason.unknownTool,
       message: 'Unknown tool requires review.',
     );
+  }
+
+  String approvalGrantKeyFor(ToolCallInfo toolCall) {
+    return _approvalGrantKey(toolCall);
   }
 
   ToolPermissionDecision _writeDecision(ToolCallInfo toolCall) {
@@ -165,7 +192,10 @@ class AgentToolPermissionPolicy {
         message: 'Approved app-side patch transaction.',
       );
     }
-    final granted = _grantDecision('File write approved for this turn.');
+    final granted = _grantDecision(
+      'File write approved for this turn.',
+      _toolGrantKey(toolCall.name),
+    );
     if (granted != null) return granted;
     return const ToolPermissionDecision(
       verdict: ToolPermissionVerdict.ask,
@@ -199,6 +229,14 @@ class AgentToolPermissionPolicy {
         message: 'Privileged shell commands are blocked.',
       );
     }
+    if (category == CommandCategory.compound) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.commandRequiresReview,
+        message:
+            'Compound shell commands are blocked. Run one command per approval so each action can be reviewed independently.',
+      );
+    }
     if (!IntentContract.forIntent(request.intent).mayRunCommands ||
         request.phase != ToolPermissionPhase.verify) {
       return const ToolPermissionDecision(
@@ -216,13 +254,33 @@ class AgentToolPermissionPolicy {
         message: 'Command blocked: $danger',
       );
     }
+    final boundaryDecision = _commandWorkspaceBoundaryDecision(command);
+    if (boundaryDecision != null) return boundaryDecision;
     if (category == CommandCategory.network) {
+      final blockedNetworkTarget = CommandSanitizer.checkBlockedNetworkTarget(
+        command,
+      );
+      if (blockedNetworkTarget != null) {
+        return ToolPermissionDecision(
+          verdict: ToolPermissionVerdict.deny,
+          reason: ToolPermissionReason.networkRequiresReview,
+          message: 'Network target is blocked: $blockedNetworkTarget',
+        );
+      }
       final accessKind = request.networkAccessKind == NetworkAccessKind.none
           ? _networkAccessKindFromText(command)
           : request.networkAccessKind;
       final domain = request.networkDomain ?? _networkDomainFromText(command);
+      final blockedTarget = _blockedNetworkDecision(accessKind, domain);
+      if (blockedTarget != null) return blockedTarget;
       final granted = _grantDecision(
         'Network shell command approved for this turn (${_networkDescription(accessKind, domain)}).',
+        _commandGrantKey(
+          category,
+          accessKind: accessKind,
+          domain: domain,
+          command: command,
+        ),
       );
       if (granted != null) return granted;
       return ToolPermissionDecision(
@@ -235,6 +293,7 @@ class AgentToolPermissionPolicy {
     if (category == CommandCategory.install) {
       final granted = _grantDecision(
         'Dependency installation approved for this turn.',
+        _commandGrantKey(category, command: command),
       );
       if (granted != null) return granted;
       return const ToolPermissionDecision(
@@ -244,7 +303,10 @@ class AgentToolPermissionPolicy {
             'Dependency installation can modify the workspace and requires review.',
       );
     }
-    final granted = _grantDecision('Shell command approved for this turn.');
+    final granted = _grantDecision(
+      'Shell command approved for this turn.',
+      _commandGrantKey(category, command: command),
+    );
     if (granted != null) return granted;
     return const ToolPermissionDecision(
       verdict: ToolPermissionVerdict.ask,
@@ -271,7 +333,7 @@ class AgentToolPermissionPolicy {
       return CommandCategory.privileged;
     }
     if (RegExp(
-      r'(^|\s)(cat|less|more|head|tail|grep|rg|sed|awk|perl)\s+[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.aws/|aws/credentials)',
+      r'''(^|[\s'"`(])(cat|less|more|head|tail|grep|rg|sed|awk|perl|ls|find|stat|du)\s+[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.ssh\b|\.ssh/|\.aws\b|\.aws/|aws/credentials|\.azure\b|\.azure/|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.config/gcloud)''',
     ).hasMatch(normalized)) {
       return CommandCategory.secretAccess;
     }
@@ -279,29 +341,50 @@ class AgentToolPermissionPolicy {
       return CommandCategory.secretAccess;
     }
     if (RegExp(
-      r'(<|>|>>|\bsource\b|\.)\s*[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.aws/|aws/credentials)',
+      r'(<|>|>>|\bsource\b|\.)\s*[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.ssh/|\.aws/|aws/credentials|\.azure/|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.config/gcloud)',
     ).hasMatch(normalized)) {
       return CommandCategory.secretAccess;
     }
     if (RegExp(
-      r'(^|\s)(python|python3|node|ruby|php|perl)\b[^\n]*(open|readfilesync|file_get_contents|read_text|readbytes|read\s*\()[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.aws/|aws/credentials)',
+      r'''(^|[\s'"`(])(python|python3|node|ruby|php|perl)\b[^\n]*(open|readfilesync|file_get_contents|read_text|readbytes|read\s*\()[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.ssh/|\.aws/|aws/credentials|\.azure/|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.config/gcloud)''',
     ).hasMatch(normalized)) {
       return CommandCategory.secretAccess;
     }
     if (RegExp(
-      r'(^|\s)(cp|rsync|tar|zip|7z|gzip|gpg|base64)\b[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.aws/|aws/credentials)',
+      r'''(^|[\s'"`(])(python|python3|node|ruby|php|perl)\b[^\n]*(os\.environ|process\.env|\benv\b|getenv|dotenv|load_dotenv)''',
     ).hasMatch(normalized)) {
       return CommandCategory.secretAccess;
     }
     if (RegExp(
-      r'(^|\s)(curl|wget|scp|ssh|ftp|sftp|nc|ncat|telnet|openssl\s+s_client)\b',
+      r'''(^|[\s'"`(])(cp|rsync|tar|zip|7z|gzip|gpg|base64)\b[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.ssh/|\.aws/|aws/credentials|\.azure/|\.kube/config|\.docker/config\.json|\.config/gh/hosts\.yml|\.config/gcloud)''',
     ).hasMatch(normalized)) {
+      return CommandCategory.secretAccess;
+    }
+    if (RegExp(
+      r'(^|\s)(security\s+(find-generic-password|find-internet-password|dump-keychain)|gh\s+auth\s+token|gcloud\s+auth\s+(print-access-token|print-identity-token)|aws\s+configure\s+get|firebase\s+functions:secrets:access|npm\s+token\b|vercel\s+env\s+(pull|ls|add|rm)|op\s+(read|item\s+get)|pass\s+(show|find)|doppler\s+secrets|vault\s+(read|kv\s+get))\b',
+    ).hasMatch(normalized)) {
+      return CommandCategory.secretAccess;
+    }
+    if (RegExp(
+      r'(^|\s)(firebase|gh|gcloud|aws|az|vercel|netlify|flyctl|railway|render|doppler|vault)\s+([^\n]*\s)?(login|auth\s+login|sso\s+login)\b',
+    ).hasMatch(normalized)) {
+      return CommandCategory.secretAccess;
+    }
+    if (_hasUnquotedShellControlOperator(command)) {
+      return CommandCategory.compound;
+    }
+    if (RegExp(
+      r'(^|\s)(npm|pnpm|yarn|bun|pip|pip3|pipx|poetry|uv|gem|bundle|cargo|go)\s+(install|add|get|update|upgrade)\b|(^|\s)(python|python3)\s+-m\s+(pip|pip3)\s+(install|add|get|update|upgrade)\b|(^|\s)(npx|bunx|uvx)\b|(^|\s)(pnpm|yarn)\s+dlx\b|(^|\s)(brew|apt|apt-get|dnf|yum|apk)\s+install\b',
+    ).hasMatch(normalized)) {
+      return CommandCategory.install;
+    }
+    if (CommandSanitizer.checkNetworkAccess(command) != null) {
       return CommandCategory.network;
     }
     if (RegExp(
-      r'(^|\s)(npm|pnpm|yarn|bun|pip|pip3|poetry|uv|gem|bundle|cargo|go)\s+(install|add|get|update|upgrade)\b|(^|\s)(brew|apt|apt-get|dnf|yum|apk)\s+install\b',
+      r'(^|\s)(firebase|vercel|netlify|flyctl|railway|render|gcloud|aws|az|kubectl|helm|gh)\s+([^\n]*\s)?(deploy|apply|sync|publish|release|workflow\s+run|run\s+deploy|functions:deploy|hosting:deploy|push|upload)\b',
     ).hasMatch(normalized)) {
-      return CommandCategory.install;
+      return CommandCategory.network;
     }
     if (RegExp(
       r'\b(test|pytest|flutter test|dart test|npm test|pnpm test|yarn test|cargo test|go test)\b',
@@ -327,6 +410,20 @@ class AgentToolPermissionPolicy {
     return CommandCategory.unknown;
   }
 
+  ToolPermissionDecision? _commandWorkspaceBoundaryDecision(String command) {
+    final boundary = CommandSanitizer.checkWorkspaceBoundary(
+      command,
+      workingDir,
+    );
+    if (boundary == null) return null;
+    return const ToolPermissionDecision(
+      verdict: ToolPermissionVerdict.deny,
+      reason: ToolPermissionReason.pathOutsideWorkspace,
+      message:
+          'Shell commands may not read or modify paths outside the active workspace.',
+    );
+  }
+
   ToolPermissionDecision _gitBranchDecision(ToolCallInfo toolCall) {
     final action = (toolCall.arguments['action'] as String? ?? 'list')
         .toLowerCase();
@@ -340,7 +437,10 @@ class AgentToolPermissionPolicy {
     }
     final gitAvailability = _gitMutationAvailabilityDecision();
     if (gitAvailability != null) return gitAvailability;
-    final granted = _grantDecision('Branch mutation approved for this turn.');
+    final granted = _grantDecision(
+      'Branch mutation approved for this turn.',
+      _gitBranchGrantKey(action),
+    );
     if (granted != null) return granted;
     return const ToolPermissionDecision(
       verdict: ToolPermissionVerdict.ask,
@@ -438,9 +538,24 @@ class AgentToolPermissionPolicy {
         normalized.endsWith('/id_rsa') ||
         normalized == 'id_ed25519' ||
         normalized.endsWith('/id_ed25519') ||
+        normalized == '.ssh' ||
+        normalized.startsWith('.ssh/') ||
+        normalized.contains('/.ssh/') ||
         normalized == '.aws' ||
         normalized.startsWith('.aws/') ||
-        normalized.contains('/.aws/');
+        normalized.contains('/.aws/') ||
+        normalized == '.azure' ||
+        normalized.startsWith('.azure/') ||
+        normalized.contains('/.azure/') ||
+        normalized == '.kube/config' ||
+        normalized.endsWith('/.kube/config') ||
+        normalized == '.docker/config.json' ||
+        normalized.endsWith('/.docker/config.json') ||
+        normalized == '.config/gh/hosts.yml' ||
+        normalized.endsWith('/.config/gh/hosts.yml') ||
+        normalized == '.config/gcloud' ||
+        normalized.startsWith('.config/gcloud/') ||
+        normalized.contains('/.config/gcloud/');
   }
 
   McpToolRisk _mcpRiskFromToolName(String toolName) {
@@ -456,6 +571,23 @@ class AgentToolPermissionPolicy {
       return McpToolRisk.mutation;
     }
     return McpToolRisk.unknown;
+  }
+
+  bool _mcpLooksNetworkBacked(String toolName, ToolCallInfo toolCall) {
+    final normalized = toolName.toLowerCase();
+    if (RegExp(
+      r'(^|_)(browser|web|url|uri|http|https|fetch_url|fetch_page|open_url|navigate|crawl|scrape|download)(_|$)',
+    ).hasMatch(normalized)) {
+      return true;
+    }
+    return toolCall.arguments.values.any(_containsNetworkTarget);
+  }
+
+  bool _containsNetworkTarget(Object? value) {
+    if (value is String) return _networkDomainFromText(value) != null;
+    if (value is Iterable) return value.any(_containsNetworkTarget);
+    if (value is Map) return value.values.any(_containsNetworkTarget);
+    return false;
   }
 
   NetworkAccessKind _networkAccessKind(ToolCallInfo toolCall) {
@@ -552,13 +684,182 @@ class AgentToolPermissionPolicy {
     return '$label: $cleanedDomain';
   }
 
-  ToolPermissionDecision? _grantDecision(String message) {
+  ToolPermissionDecision? _blockedNetworkDecision(
+    NetworkAccessKind kind,
+    String? domain,
+  ) {
+    if (kind != NetworkAccessKind.localhost &&
+        kind != NetworkAccessKind.privateNetwork) {
+      return null;
+    }
+    return ToolPermissionDecision(
+      verdict: ToolPermissionVerdict.deny,
+      reason: ToolPermissionReason.networkRequiresReview,
+      message:
+          'Network target is blocked (${_networkDescription(kind, domain)}). Studio can only request review for public internet access.',
+    );
+  }
+
+  ToolPermissionDecision? _grantDecision(String message, String grantKey) {
     if (request.approvalGrant == ApprovalGrant.none) return null;
+    if (request.approvalGrantKey == null ||
+        request.approvalGrantKey != grantKey) {
+      return null;
+    }
     return ToolPermissionDecision(
       verdict: ToolPermissionVerdict.allow,
       reason: ToolPermissionReason.approvalGranted,
       message: message,
     );
+  }
+
+  String _approvalGrantKey(ToolCallInfo toolCall) {
+    final name = toolCall.name;
+    if (name == 'run_command') {
+      final command = toolCall.arguments['command'] as String? ?? '';
+      final category = _commandCategory(command);
+      if (category == CommandCategory.network) {
+        final domain = _networkDomainFromText(command);
+        final accessKind = _networkAccessKindFromDomain(domain);
+        return _commandGrantKey(
+          category,
+          accessKind: accessKind,
+          domain: domain,
+          command: command,
+        );
+      }
+      return _commandGrantKey(category, command: command);
+    }
+    if (_networkTools.contains(name)) {
+      final domain = _networkDomain(toolCall);
+      return _networkGrantKey(
+        name,
+        _networkAccessKindFromDomain(domain),
+        domain,
+      );
+    }
+    if (name == 'git_branch') {
+      final action = (toolCall.arguments['action'] as String? ?? 'list')
+          .toLowerCase();
+      return _gitBranchGrantKey(action);
+    }
+    if (_gitMutationTools.contains(name)) return _toolGrantKey(name);
+    if (name.startsWith('mcp_')) {
+      final mcpName = request.mcpToolName ?? name;
+      final mcpRisk = request.mcpToolRisk == McpToolRisk.unknown
+          ? _mcpRiskFromToolName(mcpName)
+          : request.mcpToolRisk;
+      return _mcpGrantKey(mcpName, mcpRisk);
+    }
+    return _toolGrantKey(name);
+  }
+
+  String _toolGrantKey(String toolName) => 'tool:${toolName.toLowerCase()}';
+
+  String _gitBranchGrantKey(String action) =>
+      'git_branch:${action.toLowerCase()}';
+
+  String _commandGrantKey(
+    CommandCategory category, {
+    NetworkAccessKind accessKind = NetworkAccessKind.none,
+    String? domain,
+    String? command,
+  }) {
+    final normalizedDomain = domain?.trim().toLowerCase();
+    final fingerprint = _shouldFingerprintCommand(category)
+        ? _commandFingerprint(command)
+        : null;
+    if (category == CommandCategory.network) {
+      return [
+        'command',
+        category.name,
+        accessKind.name,
+        if (normalizedDomain != null && normalizedDomain.isNotEmpty)
+          normalizedDomain,
+        ?fingerprint,
+      ].join(':');
+    }
+    return ['command', category.name, ?fingerprint].join(':');
+  }
+
+  String _networkGrantKey(
+    String toolName,
+    NetworkAccessKind accessKind,
+    String? domain,
+  ) {
+    final normalizedDomain = domain?.trim().toLowerCase();
+    return [
+      'network',
+      toolName.toLowerCase(),
+      accessKind.name,
+      if (normalizedDomain != null && normalizedDomain.isNotEmpty)
+        normalizedDomain,
+    ].join(':');
+  }
+
+  String _mcpGrantKey(String toolName, McpToolRisk risk) =>
+      'mcp:${risk.name}:${toolName.toLowerCase()}';
+
+  String? _commandFingerprint(String? command) {
+    final normalized = command
+        ?.trim()
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .toLowerCase();
+    if (normalized == null || normalized.isEmpty) return null;
+    var hash = 0xcbf29ce484222325;
+    for (final unit in normalized.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
+    }
+    return hash.toRadixString(16).padLeft(16, '0');
+  }
+
+  bool _shouldFingerprintCommand(CommandCategory category) {
+    return switch (category) {
+      CommandCategory.unknown ||
+      CommandCategory.git ||
+      CommandCategory.install ||
+      CommandCategory.network ||
+      CommandCategory.readOnly ||
+      CommandCategory.test ||
+      CommandCategory.build ||
+      CommandCategory.devServer => true,
+      CommandCategory.compound ||
+      CommandCategory.secretAccess ||
+      CommandCategory.privileged ||
+      CommandCategory.destructive => false,
+    };
+  }
+
+  bool _hasUnquotedShellControlOperator(String command) {
+    var inSingleQuote = false;
+    var inDoubleQuote = false;
+    var escaped = false;
+    for (var i = 0; i < command.length; i++) {
+      final char = command[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char == '\\') {
+        escaped = true;
+        continue;
+      }
+      if (char == "'" && !inDoubleQuote) {
+        inSingleQuote = !inSingleQuote;
+        continue;
+      }
+      if (char == '"' && !inSingleQuote) {
+        inDoubleQuote = !inDoubleQuote;
+        continue;
+      }
+      if (inSingleQuote || inDoubleQuote) continue;
+      if (char == '\n' || char == ';' || char == '|') return true;
+      if (char == '&' && i + 1 < command.length && command[i + 1] == '&') {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -571,8 +872,9 @@ const _readOnlyTools = {
   'git_log',
 };
 
-const _gitMutationTools = {
-  'git_commit',
+const _gitMutationTools = {'git_commit', ..._githubMutationTools};
+
+const _githubMutationTools = {
   'github_create_repo',
   'github_create_issue',
   'github_close_issue',

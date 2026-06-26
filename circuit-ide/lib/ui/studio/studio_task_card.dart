@@ -29,31 +29,31 @@ class StudioTaskCard extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(Radii.lg),
       child: Container(
         padding: const EdgeInsets.all(Spacing.lg),
         decoration: BoxDecoration(
           color: tokens.studioCard,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(Radii.lg),
           border: Border.all(color: tokens.studioDivider),
         ),
         child: Row(
           children: [
             Container(
-              width: 38,
-              height: 38,
+              width: 32,
+              height: 32,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(Radii.lg),
                 border: Border.all(color: statusColor.withValues(alpha: 0.24)),
               ),
               child: Text(
                 summary.alias.characters.first,
                 style: TextStyle(
                   color: statusColor,
-                  fontSize: FontSizes.lg,
-                  fontWeight: FontWeight.w800,
+                  fontSize: FontSizes.sm,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -69,7 +69,7 @@ class StudioTaskCard extends ConsumerWidget {
                     style: TextStyle(
                       color: tokens.textPrimary,
                       fontSize: FontSizes.sm,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: Spacing.xs),
@@ -94,7 +94,7 @@ class StudioTaskCard extends ConsumerWidget {
                   style: TextStyle(
                     color: statusColor,
                     fontSize: FontSizes.xs,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: Spacing.xs),

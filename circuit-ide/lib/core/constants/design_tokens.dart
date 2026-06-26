@@ -42,6 +42,7 @@ class EditorDefaults {
   static const double fontSize = 14;
   static const double lineHeight = 1.5;
   static const String fontFamily = 'JetBrains Mono';
+  static const String studioMonospaceFontFamily = 'SF Mono';
   static const String fallbackFontFamily = 'Menlo';
 }
 

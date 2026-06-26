@@ -13,6 +13,7 @@ enum StudioThreadStatus {
   waitingForApproval,
   runningCommand,
   reviewingPatch,
+  continuationReady,
   done,
   failed,
   cancelled,
@@ -390,6 +391,11 @@ class StudioTaskLifecycleState {
         isActive: true,
         needsAttention: true,
       ),
+      StudioThreadStatus.continuationReady => const StudioTaskLifecycleState(
+        status: StudioThreadStatus.continuationReady,
+        label: 'Continue',
+        needsAttention: true,
+      ),
       StudioThreadStatus.done => const StudioTaskLifecycleState(
         status: StudioThreadStatus.done,
         label: 'Done',
@@ -457,6 +463,7 @@ class StudioTaskLifecycleState {
       StudioThreadStatus.idle ||
       StudioThreadStatus.waitingForApproval ||
       StudioThreadStatus.reviewingPatch ||
+      StudioThreadStatus.continuationReady ||
       StudioThreadStatus.done ||
       StudioThreadStatus.failed ||
       StudioThreadStatus.cancelled => false,

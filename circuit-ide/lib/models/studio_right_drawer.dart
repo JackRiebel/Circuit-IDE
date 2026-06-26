@@ -37,9 +37,9 @@ class StudioRightDrawerState {
   double get width {
     if (collapsed) return 52;
     return switch (widthMode) {
-      StudioDrawerWidthMode.standard => 312,
-      StudioDrawerWidthMode.expanded => 520,
-      StudioDrawerWidthMode.split => 680,
+      StudioDrawerWidthMode.standard => 300,
+      StudioDrawerWidthMode.expanded => 508,
+      StudioDrawerWidthMode.split => 668,
     };
   }
 

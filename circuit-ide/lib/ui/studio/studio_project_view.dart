@@ -29,8 +29,8 @@ class StudioProjectView extends ConsumerWidget {
                 projectName,
                 style: TextStyle(
                   color: tokens.textPrimary,
-                  fontSize: FontSizes.display,
-                  fontWeight: FontWeight.w700,
+                  fontSize: FontSizes.lg,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: Spacing.sm),
@@ -38,7 +38,7 @@ class StudioProjectView extends ConsumerWidget {
                 'Cisco Circuit project studio',
                 style: TextStyle(
                   color: tokens.textMuted,
-                  fontSize: FontSizes.base,
+                  fontSize: FontSizes.sm,
                 ),
               ),
               const SizedBox(height: Spacing.xxxl),
@@ -69,7 +69,7 @@ class _ProjectSummaryCard extends ConsumerWidget {
       padding: const EdgeInsets.all(Spacing.xl),
       decoration: BoxDecoration(
         color: tokens.studioPanel,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(Radii.lg),
         border: Border.all(color: tokens.studioDivider),
       ),
       child: Row(
@@ -127,8 +127,8 @@ class _SummaryStat extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: tokens.textPrimary,
-                fontSize: FontSizes.lg,
-                fontWeight: FontWeight.w800,
+                fontSize: FontSizes.sm,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -148,12 +148,12 @@ class _CoreRuntimeNotice extends ConsumerWidget {
       padding: const EdgeInsets.all(Spacing.xl),
       decoration: BoxDecoration(
         color: tokens.studioCard,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(Radii.lg),
         border: Border.all(color: tokens.studioDivider),
       ),
       child: Text(
         'Use the Studio composer to start work. Studio now routes prompts through the turn runtime so intent, context, approvals, plans, patches, and verification stay scoped to one reliable request.',
-        style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.base),
+        style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
       ),
     );
   }

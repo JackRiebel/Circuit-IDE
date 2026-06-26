@@ -294,6 +294,51 @@ class ContextPack {
   int get estimatedTokens =>
       visibleItems.fold<int>(0, (total, item) => total + item.estimatedTokens);
 
+  List<ContextPackItem> get compactedVisibleItems {
+    final budget = retrievalResult?.budget;
+    if (budget == null ||
+        budget.availableForContext <= 0 ||
+        estimatedTokens <= budget.availableForContext) {
+      return visibleItems;
+    }
+
+    final scoreById = {
+      for (final candidate
+          in retrievalResult?.rankedCandidates ?? const <ContextCandidate>[])
+        candidate.id: candidate.score,
+    };
+    final candidates = [...visibleItems]
+      ..sort((a, b) {
+        if (a.removable != b.removable) return a.removable ? 1 : -1;
+        final scoreA = a.retrievalScore ?? scoreById[a.id] ?? _typePriority(a);
+        final scoreB = b.retrievalScore ?? scoreById[b.id] ?? _typePriority(b);
+        final scoreCompare = scoreB.compareTo(scoreA);
+        if (scoreCompare != 0) return scoreCompare;
+        return visibleItems.indexOf(a).compareTo(visibleItems.indexOf(b));
+      });
+
+    final selected = <ContextPackItem>[];
+    var used = 0;
+    for (final item in candidates) {
+      final nextUsed = used + item.estimatedTokens;
+      if (selected.isEmpty || nextUsed <= budget.availableForContext) {
+        selected.add(item);
+        used = nextUsed;
+      }
+    }
+    selected.sort(
+      (a, b) => visibleItems.indexOf(a).compareTo(visibleItems.indexOf(b)),
+    );
+    return selected;
+  }
+
+  List<ContextPackItem> get compactedOmittedItems {
+    final selectedIds = compactedVisibleItems.map((item) => item.id).toSet();
+    return visibleItems
+        .where((item) => !selectedIds.contains(item.id))
+        .toList(growable: false);
+  }
+
   ContextPack copyWith({
     List<ContextPackItem>? items,
     List<ContextPackItem>? instructionItems,
@@ -312,11 +357,36 @@ class ContextPack {
   }
 
   String serializePrompt() {
-    if (visibleItems.isEmpty) return '';
+    final itemsForPrompt = compactedVisibleItems;
+    final warningsForPrompt = (retrievalResult?.warnings ?? const [])
+        .where((warning) => warning.message.trim().isNotEmpty)
+        .take(8)
+        .toList(growable: false);
+    if (itemsForPrompt.isEmpty && warningsForPrompt.isEmpty) return '';
+    final omitted = compactedOmittedItems;
     return [
       'Visible coding context pack:',
-      for (final item in visibleItems) item.promptBlock,
+      if (warningsForPrompt.isNotEmpty)
+        '[context-warnings]\n${warningsForPrompt.map((warning) => '- ${warning.message.trim()}').join('\n')}',
+      for (final item in itemsForPrompt) item.promptBlock,
+      if (omitted.isNotEmpty)
+        '[context-compaction]\n${omitted.length} visible context item${omitted.length == 1 ? '' : 's'} omitted to fit the selected model budget: ${omitted.take(8).map((item) => item.title).join(', ')}${omitted.length > 8 ? ', ...' : ''}',
     ].join('\n\n');
+  }
+
+  static int _typePriority(ContextPackItem item) {
+    return switch (item.type) {
+      ContextPackItemType.mentionedFile => 100,
+      ContextPackItemType.activeFile => 95,
+      ContextPackItemType.selection => 95,
+      ContextPackItemType.gitDiff => 90,
+      ContextPackItemType.instruction => 80,
+      ContextPackItemType.projectProfile => 75,
+      ContextPackItemType.diagnostics => 65,
+      ContextPackItemType.rule => 60,
+      ContextPackItemType.terminal => 45,
+      ContextPackItemType.memory => 35,
+    };
   }
 
   Map<String, dynamic> toJson() {

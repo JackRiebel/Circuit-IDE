@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/config/studio_feature_flags.dart';
 import '../models/notebook.dart';
 import '../services/notebook_executor.dart';
 import '../services/notebook_storage.dart';
-import 'connection_provider.dart';
 import 'file_tree_provider.dart';
 
 class NotebookNotifier extends Notifier<NotebookState> {
@@ -30,15 +30,10 @@ class NotebookNotifier extends Notifier<NotebookState> {
 
   /// Create a new notebook with an optional name.
   Future<Notebook> createNotebook({String? name}) async {
-    final notebook = Notebook(
-      name: name ?? 'Untitled Notebook',
-    );
+    final notebook = Notebook(name: name ?? 'Untitled Notebook');
 
     final newList = [notebook, ...state.notebooks];
-    state = state.copyWith(
-      notebooks: newList,
-      activeNotebookId: notebook.id,
-    );
+    state = state.copyWith(notebooks: newList, activeNotebookId: notebook.id);
 
     _saveNotebook(notebook);
     return notebook;
@@ -55,10 +50,7 @@ class NotebookNotifier extends Notifier<NotebookState> {
       newActiveId = newList.isNotEmpty ? newList.first.id : null;
     }
 
-    state = state.copyWith(
-      notebooks: newList,
-      activeNotebookId: newActiveId,
-    );
+    state = state.copyWith(notebooks: newList, activeNotebookId: newActiveId);
 
     await _storage.deleteNotebook(id, root);
   }
@@ -75,9 +67,7 @@ class NotebookNotifier extends Notifier<NotebookState> {
         type: type,
         language: notebook.defaultLanguage,
       );
-      return notebook.copyWith(
-        cells: [...notebook.cells, newCell],
-      );
+      return notebook.copyWith(cells: [...notebook.cells, newCell]);
     });
   }
 
@@ -122,7 +112,9 @@ class NotebookNotifier extends Notifier<NotebookState> {
       final cells = nb.cells.map((c) {
         if (c.id == cellId) {
           return c.copyWith(
-            status: output.exitCode == 0 ? CellStatus.complete : CellStatus.error,
+            status: output.exitCode == 0
+                ? CellStatus.complete
+                : CellStatus.error,
             output: output,
             executionOrder: newCounter,
             lastExecuted: DateTime.now(),
@@ -138,63 +130,39 @@ class NotebookNotifier extends Notifier<NotebookState> {
 
   /// Use AI to generate code for a new cell from a natural language prompt.
   Future<void> generateCell(String notebookId, String prompt) async {
-    final service = ref.read(agentServiceProvider);
-    final notebook = state.notebooks.firstWhere((n) => n.id == notebookId);
-
-    // Gather existing cell sources for context
-    final existingCode = notebook.cells
-        .where((c) => c.type == CellType.code && c.source.isNotEmpty)
-        .map((c) => '```${c.language}\n${c.source}\n```')
-        .join('\n\n');
-
-    final systemPrompt =
-        'You are a code assistant inside a notebook IDE. '
-        'Generate ONLY executable code — no markdown fences, no explanations. '
-        'Language: ${notebook.defaultLanguage}. '
-        '${existingCode.isNotEmpty ? 'Existing notebook code for context:\n$existingCode' : ''}';
-
-    final result = await service.sendOneShot(
-      prompt,
-      systemPrompt: systemPrompt,
-    );
-
-    if (result != null && result.isNotEmpty) {
-      // Strip any markdown code fences the AI might have included
-      final cleanedCode = _stripCodeFences(result);
-
-      final newCell = NotebookCell(
-        type: CellType.code,
-        source: cleanedCode,
-        language: notebook.defaultLanguage,
-      );
-
-      _updateNotebook(notebookId, (nb) {
-        return nb.copyWith(cells: [...nb.cells, newCell]);
-      });
+    if (!StudioFeatureFlags.advancedStudioSurfaces) {
+      return;
     }
+    final notebook = state.notebooks.firstWhere((n) => n.id == notebookId);
+    _updateNotebook(notebookId, (nb) {
+      return nb.copyWith(
+        cells: [
+          ...nb.cells,
+          NotebookCell(
+            type: CellType.markdown,
+            source:
+                'Notebook AI generation is paused while notebooks are migrated to the Studio turn runtime.',
+            language: notebook.defaultLanguage,
+          ),
+        ],
+      );
+    });
   }
 
   /// Use AI to explain a cell's code.
   Future<String?> explainCell(String notebookId, String cellId) async {
-    final service = ref.read(agentServiceProvider);
-    final notebook = state.notebooks.firstWhere((n) => n.id == notebookId);
-    final cell = notebook.cells.firstWhere((c) => c.id == cellId);
-
-    const systemPrompt =
-        'You are a code assistant. Explain the following code clearly and '
-        'concisely. Include what it does, key concepts, and any potential issues.';
-
-    return await service.sendOneShot(
-      'Explain this ${cell.language} code:\n\n${cell.source}',
-      systemPrompt: systemPrompt,
-    );
+    if (!StudioFeatureFlags.advancedStudioSurfaces) {
+      return 'Notebook AI explanation is paused while notebooks are migrated to the Studio turn runtime.';
+    }
+    return 'Notebook AI explanation is paused while notebooks are migrated to the Studio turn runtime.';
   }
 
   /// Run all code cells in order.
   Future<void> runAll(String notebookId) async {
     final notebook = state.notebooks.firstWhere((n) => n.id == notebookId);
-    final codeCells =
-        notebook.cells.where((c) => c.type == CellType.code).toList();
+    final codeCells = notebook.cells
+        .where((c) => c.type == CellType.code)
+        .toList();
 
     for (final cell in codeCells) {
       await executeCell(notebookId, cell.id);
@@ -279,8 +247,9 @@ class NotebookNotifier extends Notifier<NotebookState> {
     _updateNotebook(notebookId, (notebook) {
       final cells = notebook.cells.map((c) {
         if (c.id == cellId) {
-          final newType =
-              c.type == CellType.code ? CellType.markdown : CellType.code;
+          final newType = c.type == CellType.code
+              ? CellType.markdown
+              : CellType.code;
           return c.copyWith(type: newType);
         }
         return c;
@@ -327,24 +296,8 @@ class NotebookNotifier extends Notifier<NotebookState> {
       _saveNotebook(notebook);
     });
   }
-
-  /// Strip markdown code fences from AI-generated code.
-  String _stripCodeFences(String text) {
-    var result = text.trim();
-    // Remove opening fence: ```language\n
-    if (result.startsWith('```')) {
-      final firstNewline = result.indexOf('\n');
-      if (firstNewline != -1) {
-        result = result.substring(firstNewline + 1);
-      }
-    }
-    // Remove closing fence
-    if (result.endsWith('```')) {
-      result = result.substring(0, result.length - 3).trimRight();
-    }
-    return result;
-  }
 }
 
-final notebookProvider =
-    NotifierProvider<NotebookNotifier, NotebookState>(NotebookNotifier.new);
+final notebookProvider = NotifierProvider<NotebookNotifier, NotebookState>(
+  NotebookNotifier.new,
+);

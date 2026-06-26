@@ -17,6 +17,7 @@ enum ProviderLifecycleEventKind {
   malformedBytes,
   streamEndedWithoutDone,
   outcomeRepair,
+  outcomeRejected,
   completed,
   failed,
   cancelled,

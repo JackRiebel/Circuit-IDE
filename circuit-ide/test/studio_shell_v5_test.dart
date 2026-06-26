@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/agent/providers/provider_interface.dart';
 import 'package:circuit_ide/agent/security/agent_tool_permission_policy.dart'
     as tool_policy;
@@ -16,14 +17,18 @@ import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/studio_view_models.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
+import 'package:circuit_ide/models/tool_result_envelope.dart';
 import 'package:circuit_ide/models/turn_intent.dart';
 import 'package:circuit_ide/models/workspace_session.dart';
 import 'package:circuit_ide/agent/tools/tool_registry.dart';
 import 'package:circuit_ide/enums/connection_status.dart';
 import 'package:circuit_ide/enums/message_role.dart';
 import 'package:circuit_ide/services/agent_service.dart';
+import 'package:circuit_ide/state/agent_run_provider.dart';
 import 'package:circuit_ide/state/agent_workspace_provider.dart';
 import 'package:circuit_ide/state/agent_turn_runtime_provider.dart';
+import 'package:circuit_ide/state/command_palette_provider.dart';
+import 'package:circuit_ide/state/command_run_provider.dart';
 import 'package:circuit_ide/state/connection_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
@@ -39,6 +44,7 @@ import 'package:circuit_ide/ui/studio/studio_shell.dart';
 import 'package:circuit_ide/ui/studio/studio_home.dart';
 import 'package:circuit_ide/ui/studio/studio_left_rail.dart';
 import 'package:circuit_ide/ui/studio/studio_message_sender.dart';
+import 'package:circuit_ide/ui/studio/studio_plan_continuation.dart';
 import 'package:circuit_ide/ui/studio/studio_progress_panel.dart';
 import 'package:circuit_ide/ui/studio/studio_prompt_composer.dart';
 import 'package:circuit_ide/ui/studio/studio_task_view.dart';
@@ -89,6 +95,43 @@ void main() {
     );
   });
 
+  test(
+    'StudioShellProvider keeps real back and forward navigation history',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(studioShellProvider.notifier);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Navigation thread');
+
+      expect(container.read(studioShellProvider).canNavigateBack, isFalse);
+      expect(container.read(studioShellProvider).canNavigateForward, isFalse);
+
+      notifier.openProject('/tmp/project');
+      expect(container.read(studioShellProvider).canNavigateBack, isTrue);
+      expect(container.read(studioShellProvider).canNavigateForward, isFalse);
+
+      notifier.openThread(thread.id);
+      expect(container.read(studioShellProvider).mode, StudioMode.task);
+      expect(container.read(studioThreadProvider).selectedThreadId, thread.id);
+
+      notifier.navigateBack();
+      expect(container.read(studioShellProvider).mode, StudioMode.home);
+      expect(
+        container.read(studioShellProvider).selectedProjectPath,
+        '/tmp/project',
+      );
+      expect(container.read(studioThreadProvider).selectedThreadId, isNull);
+      expect(container.read(studioShellProvider).canNavigateForward, isTrue);
+
+      notifier.navigateForward();
+      expect(container.read(studioShellProvider).mode, StudioMode.task);
+      expect(container.read(studioThreadProvider).selectedThreadId, thread.id);
+      expect(container.read(studioShellProvider).canNavigateBack, isTrue);
+    },
+  );
+
   testWidgets('Studio top bar utility buttons are functional', (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -100,20 +143,233 @@ void main() {
       ),
     );
 
-    expect(find.byTooltip('Review changes'), findsOneWidget);
-    expect(find.byTooltip('Hide Environment panel'), findsOneWidget);
+    expect(find.byTooltip('Open in'), findsOneWidget);
+    expect(find.byTooltip('Command palette'), findsOneWidget);
+    expect(find.byTooltip('Studio settings'), findsOneWidget);
+    expect(find.byTooltip('Open review'), findsOneWidget);
+    expect(find.byTooltip('Hide Progress panel'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Review changes'));
+    await tester.tap(find.byTooltip('Command palette'));
+    await tester.pump();
+    expect(container.read(commandPaletteProvider).isOpen, isTrue);
+    container.read(commandPaletteProvider.notifier).close();
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Studio settings'));
+    await tester.pump();
+    expect(container.read(studioShellProvider).mode, StudioMode.settings);
+
+    await tester.tap(find.byTooltip('Open review'));
     await tester.pump();
     expect(container.read(studioShellProvider).mode, StudioMode.review);
 
-    await tester.tap(find.byTooltip('Hide Environment panel'));
+    await tester.tap(find.byTooltip('Open in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review').last);
+    await tester.pumpAndSettle();
+    expect(container.read(studioShellProvider).mode, StudioMode.review);
+
+    await tester.tap(find.byTooltip('Hide Progress panel'));
     await tester.pump();
     expect(
       container.read(studioShellProvider).rightProgressPanelVisible,
       isFalse,
     );
-    expect(find.byTooltip('Show Environment panel'), findsOneWidget);
+    expect(find.byTooltip('Show Progress panel'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Open in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Files').last);
+    await tester.pumpAndSettle();
+    expect(
+      container.read(studioShellProvider).rightProgressPanelVisible,
+      isTrue,
+    );
+    expect(
+      container.read(studioRightDrawerProvider).mode,
+      StudioDrawerMode.files,
+    );
+
+    await tester.tap(find.byTooltip('Thread options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Back to projects'), findsOneWidget);
+    final backToProjects = tester.widget<Text>(find.text('Back to projects'));
+    expect(backToProjects.style?.fontSize, FontSizes.xs);
+    expect(backToProjects.style?.fontWeight, FontWeight.w500);
+    final homeIcon = tester.widget<Icon>(
+      find.byIcon(Icons.folder_outlined).last,
+    );
+    expect(homeIcon.size, 13);
+  });
+
+  testWidgets('Studio top bar Open in menu routes each drawer target', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Open in thread');
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+
+    for (final target in <String, StudioDrawerMode>{
+      'Files': StudioDrawerMode.files,
+      'Terminal': StudioDrawerMode.terminal,
+    }.entries) {
+      await tester.tap(find.byTooltip('Open in'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(target.key).last);
+      await tester.pumpAndSettle();
+
+      expect(
+        container.read(studioShellProvider).rightProgressPanelVisible,
+        true,
+      );
+      expect(container.read(studioRightDrawerProvider).mode, target.value);
+    }
+
+    await tester.tap(find.byTooltip('Open in'));
+    await tester.pumpAndSettle();
+    expect(
+      find.ancestor(
+        of: find.text('Browser'),
+        matching: find.byType(PopupMenuItem),
+      ),
+      findsNothing,
+    );
+    for (final hiddenMenuLabel in [
+      'Environment',
+      'Code',
+      'Diff',
+      'Sources',
+      'Context',
+    ]) {
+      expect(
+        find.ancestor(
+          of: find.text(hiddenMenuLabel),
+          matching: find.byType(PopupMenuItem),
+        ),
+        findsNothing,
+      );
+    }
+    expect(find.text('Side chat'), findsOneWidget);
+    expect(find.text('^⇧G'), findsOneWidget);
+    expect(find.text('⌘T'), findsNothing);
+    expect(find.text('⌘P'), findsOneWidget);
+    expect(find.text('⌥⌘S'), findsOneWidget);
+    final reviewMenuText = tester.widget<Text>(find.text('Review').last);
+    expect(reviewMenuText.style?.fontSize, FontSizes.xs);
+    expect(reviewMenuText.style?.fontWeight, FontWeight.w500);
+    expect(
+      tester
+          .getSize(
+            find
+                .ancestor(
+                  of: find.text('Review').last,
+                  matching: find.byType(SizedBox),
+                )
+                .first,
+          )
+          .width,
+      520,
+    );
+    expect(
+      tester
+          .widgetList<Icon>(find.byIcon(Icons.rate_review_outlined))
+          .last
+          .size,
+      13,
+    );
+    await tester.tap(find.text('Review').last);
+    await tester.pumpAndSettle();
+    expect(container.read(studioShellProvider).mode, StudioMode.review);
+
+    await tester.tap(find.byTooltip('Open in'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Side chat').last);
+    await tester.pumpAndSettle();
+    expect(container.read(studioShellProvider).mode, StudioMode.task);
+    expect(container.read(studioThreadProvider).selectedThreadId, thread.id);
+  });
+
+  testWidgets('Studio chrome typography and icons match compact visual scale', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Create role-based mini Salesforce');
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+
+    final titleText = tester.widget<Text>(
+      find.text('Create role-based mini Salesforce').first,
+    );
+    expect(titleText.style?.fontSize, FontSizes.base);
+    expect(titleText.style?.fontWeight, FontWeight.w600);
+    expect(find.byTooltip('Back'), findsOneWidget);
+    final titleRight = tester
+        .getTopRight(find.text('Create role-based mini Salesforce').first)
+        .dx;
+    final overflowLeft = tester.getTopLeft(find.byTooltip('Thread options')).dx;
+    expect(overflowLeft - titleRight, lessThanOrEqualTo(12));
+
+    final openInText = tester.widget<Text>(find.text('Open in'));
+    expect(openInText.style?.fontSize, FontSizes.sm);
+    expect(openInText.style?.fontWeight, FontWeight.w600);
+
+    final openInIcon = tester.widget<Icon>(
+      find.byIcon(Icons.folder_special_outlined),
+    );
+    expect(openInIcon.size, 14);
+    expect(find.byTooltip('Command palette'), findsOneWidget);
+    expect(find.byTooltip('Studio settings'), findsOneWidget);
+    expect(find.byTooltip('Open review'), findsOneWidget);
+    expect(tester.widget<Icon>(find.byIcon(Icons.tune_outlined)).size, 13);
+    expect(tester.widget<Icon>(find.byIcon(Icons.info_outline)).size, 13);
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.rate_review_outlined).first).size,
+      13,
+    );
+
+    final railText = tester.widget<Text>(find.text('New chat'));
+    expect(railText.style?.fontSize, FontSizes.sm);
+
+    final railIcon = tester.widget<Icon>(find.byIcon(Icons.edit_square).first);
+    expect(railIcon.size, 14);
+
+    final windowDots = tester
+        .widgetList<Container>(find.byType(Container))
+        .where((container) {
+          final decoration = container.decoration;
+          return decoration is BoxDecoration &&
+              {
+                const Color(0xFFFF5F57),
+                const Color(0xFFFFBD2E),
+                const Color(0xFF28C840),
+              }.contains(decoration.color);
+        });
+    expect(windowDots, hasLength(3));
+    for (final dot in windowDots) {
+      expect(dot.constraints?.minWidth, 12);
+      expect(dot.constraints?.maxWidth, 12);
+      expect(dot.constraints?.minHeight, 12);
+      expect(dot.constraints?.maxHeight, 12);
+    }
   });
 
   testWidgets('Studio top bar thread menu routes to real actions', (
@@ -244,6 +500,110 @@ void main() {
 
     expect(history, isEmpty);
   });
+
+  test('Studio model history skips explicitly hidden internal user turns', () {
+    final started = DateTime(2026, 1, 1, 9);
+    final thread = StudioThread(
+      id: 'thread-hidden-turn-history',
+      title: 'Hidden turn history',
+      createdAt: started,
+      updatedAt: started,
+      turns: [
+        StudioTurn(
+          id: 'turn-hidden',
+          threadId: 'thread-hidden-turn-history',
+          requestId: 'request-hidden',
+          userMessageId: 'user-hidden',
+          prompt: 'Run these verification checks for the completed work.',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          status: StudioTurnStatus.completed,
+          createdAt: started,
+          updatedAt: started.add(const Duration(seconds: 2)),
+          completedAt: started.add(const Duration(seconds: 2)),
+          events: [
+            StudioTurnEvent.userMessage(
+              id: 'user-hidden',
+              turnId: 'turn-hidden',
+              requestId: 'request-hidden',
+              threadId: 'thread-hidden-turn-history',
+              content: 'Run verification',
+              timestamp: started,
+              transcriptVisible: false,
+            ),
+            StudioTurnEvent.assistantMessage(
+              turnId: 'turn-hidden',
+              requestId: 'request-hidden',
+              threadId: 'thread-hidden-turn-history',
+              content: 'Verification command completed.',
+              timestamp: started.add(const Duration(seconds: 1)),
+            ),
+          ],
+        ),
+      ],
+    );
+
+    final history = studioModelHistoryForThread(thread);
+
+    expect(history.map((message) => message.role), [MessageRole.assistant]);
+    expect(history.single.content, 'Verification command completed.');
+  });
+
+  test(
+    'Studio model history skips accepted-plan prompts even without user events',
+    () {
+      final started = DateTime(2026, 1, 1, 9);
+      final thread = StudioThread(
+        id: 'thread-accepted-plan-history',
+        title: 'Accepted plan history',
+        createdAt: started,
+        updatedAt: started,
+        turns: [
+          StudioTurn(
+            id: 'turn-accepted-plan',
+            threadId: 'thread-accepted-plan-history',
+            requestId: 'request-accepted-plan',
+            userMessageId: 'user-accepted-plan',
+            prompt:
+                'Implement this approved plan.\n\nUse the accepted plan context attached to this request as the source of truth.',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(projectLabel: 'project'),
+            intent: TurnIntent.code,
+            acceptedPlanState: AcceptedPlanState.patchProposed,
+            acceptedPlanContext: const AcceptedPlanContext(
+              patchSetId: 'plan-1',
+              title: 'Plan',
+              summary: 'Implement one file.',
+              markdown: '- Create hello.txt',
+              plannedFiles: ['hello.txt — create'],
+            ),
+            status: StudioTurnStatus.completed,
+            createdAt: started,
+            updatedAt: started.add(const Duration(seconds: 2)),
+            completedAt: started.add(const Duration(seconds: 2)),
+            events: [
+              StudioTurnEvent.assistantMessage(
+                turnId: 'turn-accepted-plan',
+                requestId: 'request-accepted-plan',
+                threadId: 'thread-accepted-plan-history',
+                content: 'Prepared changes for review.',
+                timestamp: started.add(const Duration(seconds: 1)),
+              ),
+            ],
+          ),
+        ],
+      );
+
+      final history = studioModelHistoryForThread(thread);
+
+      expect(history.map((message) => message.role), [MessageRole.assistant]);
+      expect(history.single.content, 'Prepared changes for review.');
+      expect(
+        history.map((message) => message.content).join('\n'),
+        isNot(contains('Implement this approved plan')),
+      );
+    },
+  );
 
   test('Studio model history pairs failed turns with error context', () {
     final started = DateTime(2026, 1, 1, 9);
@@ -677,6 +1037,109 @@ void main() {
     );
   });
 
+  testWidgets('Broad build ideas start discovery before code', (tester) async {
+    final provider = _ScriptedStudioProvider([
+      const [
+        ChatChunk(
+          content:
+              'You want a datacenter sizing tool for customer conversations. Before code, I need to understand inputs, outputs, sizing rules, and the first workflow. Key questions: what equipment families, what constraints, what output format, and who uses it?',
+          promptTokens: 42,
+          completionTokens: 34,
+        ),
+        ChatChunk(
+          isDone: true,
+          finishReason: 'stop',
+          promptTokens: 42,
+          completionTokens: 34,
+        ),
+      ],
+    ]);
+    final service = AgentService();
+    final container = ProviderContainer(
+      overrides: [
+        agentServiceProvider.overrideWithValue(service),
+        studioAgentEnvironmentOverrideProvider.overrideWithValue(
+          StudioAgentEnvironment(
+            provider: provider,
+            model: 'gpt-5-nano',
+            workspaceRoot: Directory.systemTemp.path,
+            permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+              workingDir: Directory.systemTemp.path,
+            ),
+            events: service.events,
+            onProviderEvent: (_) {},
+          ),
+        ),
+      ],
+    );
+    addTearDown(service.dispose);
+    addTearDown(container.dispose);
+    container
+        .read(connectionStatusProvider.notifier)
+        .set(ConnectionStatus.connected);
+    container
+        .read(studioShellProvider.notifier)
+        .setPromptMode(StudioPromptMode.code);
+    late WidgetRef capturedRef;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, child) {
+              capturedRef = ref;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    final result = await tester.runAsync(
+      () => sendStudioMessage(
+        capturedRef,
+        'I want to build something to help me size out datacenters for customers',
+      ),
+    );
+    await tester.runAsync(() async {
+      for (var i = 0; i < 40; i++) {
+        final runtime = container.read(agentTurnRuntimeProvider);
+        final thread = container.read(studioThreadProvider).selectedThread;
+        final turn = thread?.turns.firstOrNull;
+        if (!runtime.hasActiveStudioRequest &&
+            turn?.status == StudioTurnStatus.completed) {
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 25));
+      }
+    });
+    await tester.pump();
+
+    expect(result?.status, StudioSendStatus.sent);
+    expect(container.read(fileTreeProvider).rootPath, isNull);
+    expect(container.read(studioShellProvider).selectedProjectPath, isNull);
+    expect(provider.exposedTools, [isNot(contains('propose_patch'))]);
+
+    final thread = container.read(studioThreadProvider).selectedThread;
+    expect(thread, isNotNull);
+    final turn = thread!.turns.single;
+    expect(turn.intent, TurnIntent.ask);
+    expect(turn.status, StudioTurnStatus.completed);
+    expect(turn.contextSummary.projectLabel, 'No project selected');
+    expect(
+      turn.events.where((event) => event.type == StudioTurnEventType.tool),
+      isEmpty,
+    );
+    expect(
+      turn.events
+          .where((event) => event.type == StudioTurnEventType.assistantMessage)
+          .single
+          .detail,
+      contains('Before code'),
+    );
+  });
+
   test('Plan continuation text only targets active plan artifacts', () {
     expect(isPlanImplementationContinuationText('go ahead'), isFalse);
     expect(isPlanImplementationContinuationText('Looks good to me.'), isFalse);
@@ -1052,6 +1515,158 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Patch verification helper starts hidden Verify turn with internal prompt',
+    (tester) async {
+      final root = Directory.systemTemp.createTempSync(
+        'studio_patch_verify_sender_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final service = AgentService();
+      final provider = _ScriptedStudioProvider([
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'verify-cmd',
+            toolCallName: 'run_command',
+            toolCallArguments: '{"command":"flutter analyze"}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          agentServiceProvider.overrideWithValue(service),
+          workspaceSessionProvider.overrideWith(
+            () => _ReadyWorkspaceSessionController(root.path),
+          ),
+          studioAgentEnvironmentOverrideProvider.overrideWithValue(
+            StudioAgentEnvironment(
+              provider: provider,
+              model: 'gpt-5-nano',
+              workspaceRoot: root.path,
+              permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+                workingDir: root.path,
+              ),
+              events: service.events,
+              onProviderEvent: (_) {},
+            ),
+          ),
+        ],
+      );
+      addTearDown(service.dispose);
+      addTearDown(container.dispose);
+      container
+          .read(connectionStatusProvider.notifier)
+          .set(ConnectionStatus.connected);
+      await tester.runAsync(
+        () =>
+            container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch verification');
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+      final patch = ProposedPatchSet(
+        id: 'patch-verify-hidden',
+        title: 'Applied patch',
+        runId: 'request-applied',
+        edits: const [
+          ProposedFileEdit(
+            path: 'lib/login.dart',
+            type: ProposedFileEditType.modify,
+            before: 'old',
+            after: 'new',
+          ),
+        ],
+        changedFiles: const ['lib/login.dart'],
+        applyStatus: PatchApplyStatus.applied,
+        verificationRequested: true,
+        verificationSuggestions: const ['flutter analyze'],
+        createdAt: DateTime(2026),
+      );
+      container.read(patchProposalProvider.notifier).preserveProposal(patch);
+      late WidgetRef capturedRef;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final result = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, patch),
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 60; i++) {
+          final updated = container.read(studioThreadProvider).selectedThread;
+          final turn = updated?.turns.lastOrNull;
+          if (turn?.events.any(
+                (event) =>
+                    event.type == StudioTurnEventType.approvalRequest &&
+                    event.approvalId == 'verify-cmd' &&
+                    event.approvalState == ApprovalRequestState.pending,
+              ) ==
+              true) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+      });
+
+      expect(result, isNotNull);
+      expect(result!.status, StudioSendStatus.sent, reason: result.error);
+      expect(provider.exposedTools.single, contains('run_command'));
+      expect(
+        provider.messages.single.last.content,
+        contains('flutter analyze'),
+      );
+      final updatedThread = container
+          .read(studioThreadProvider)
+          .selectedThread!;
+      final turn = updatedThread.turns.last;
+      expect(turn.intent, TurnIntent.verify);
+      expect(turn.prompt, 'Running verification');
+      expect(
+        turn.events
+            .singleWhere(
+              (event) => event.type == StudioTurnEventType.userMessage,
+            )
+            .transcriptVisible,
+        isFalse,
+      );
+      final history = studioModelHistoryForThread(updatedThread);
+      expect(
+        history.map((message) => message.content),
+        isNot(contains('Running verification')),
+      );
+      expect(
+        history.map((message) => message.content),
+        isNot(
+          contains('Run these verification checks for the completed work.'),
+        ),
+      );
+      final storedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .where((candidate) => candidate.id == patch.id)
+          .firstOrNull;
+      expect(storedPatch?.verificationRequestId, result.requestId);
+      container.read(agentTurnRuntimeProvider.notifier).cancel(turn.requestId);
+      await tester.pump();
+    },
+  );
+
   test(
     'Patch verification prompt ignores non-command advisory suggestions',
     () {
@@ -1089,45 +1704,111 @@ void main() {
         ),
         isFalse,
       );
+      expect(
+        plan_prompts.isRunnableVerificationCommand(
+          'flutter test test/widget_test.dart',
+        ),
+        isTrue,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand('flutter test /etc/passwd'),
+        isFalse,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand(
+          'dart test ../outside_test.dart',
+        ),
+        isFalse,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand(
+          r'npm test -- C:\temp\foo.test.js',
+        ),
+        isFalse,
+      );
     },
   );
 
-  test('Applied verification-requested patches offer verification action', () {
+  test('Patch verification prompt filters unsafe path-bearing commands', () {
     final patch = ProposedPatchSet(
-      id: 'patch-verify-action',
+      id: 'patch-verify-unsafe-paths',
       title: 'Fix login',
-      edits: const [],
+      edits: const [
+        ProposedFileEdit(
+          path: 'lib/login.dart',
+          type: ProposedFileEditType.modify,
+          before: 'old',
+          after: 'new',
+        ),
+      ],
       changedFiles: const ['lib/login.dart'],
-      applyStatus: PatchApplyStatus.applied,
+      verificationSuggestions: const [
+        'flutter test /etc/passwd',
+        'dart test ../outside_test.dart',
+        r'npm test -- C:\temp\foo.test.js',
+        'flutter test test/widget_test.dart',
+      ],
       verificationRequested: true,
-      verificationSuggestions: const ['flutter analyze'],
       createdAt: DateTime(2026),
     );
 
-    expect(shouldOfferPatchVerification(patch), isTrue);
-    expect(
-      shouldOfferPatchVerification(
-        patch.copyWith(applyStatus: PatchApplyStatus.conflict),
-      ),
-      isFalse,
-    );
-    expect(
-      shouldOfferPatchVerification(
-        patch.copyWith(verificationSuggestions: const []),
-      ),
-      isFalse,
-    );
-    expect(
-      shouldOfferPatchVerification(
-        patch.copyWith(
-          verificationSuggestions: const [
-            'Review the changed files and run the project checks.',
-          ],
-        ),
-      ),
-      isFalse,
-    );
+    final prompt = buildPatchVerificationPrompt(patch);
+
+    expect(prompt, contains('- flutter test test/widget_test.dart'));
+    expect(prompt, isNot(contains('/etc/passwd')));
+    expect(prompt, isNot(contains('../outside_test.dart')));
+    expect(prompt, isNot(contains(r'C:\temp\foo.test.js')));
   });
+
+  test(
+    'Applied verification-requested patches offer verification action once',
+    () {
+      final patch = ProposedPatchSet(
+        id: 'patch-verify-action',
+        title: 'Fix login',
+        edits: const [],
+        changedFiles: const ['lib/login.dart'],
+        applyStatus: PatchApplyStatus.applied,
+        verificationRequested: true,
+        verificationRequestId: 'request-verify-action',
+        verificationSuggestions: const ['flutter analyze'],
+        createdAt: DateTime(2026),
+      );
+
+      expect(shouldOfferPatchVerification(patch), isFalse);
+      expect(
+        shouldOfferPatchVerification(
+          patch.copyWith(verificationRequestId: null),
+        ),
+        isTrue,
+      );
+      final restored = ProposedPatchSet.fromJson(patch.toJson())!;
+      expect(restored.verificationRequestId, 'request-verify-action');
+      expect(shouldOfferPatchVerification(restored), isFalse);
+      expect(
+        shouldOfferPatchVerification(
+          patch.copyWith(applyStatus: PatchApplyStatus.conflict),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldOfferPatchVerification(
+          patch.copyWith(verificationSuggestions: const []),
+        ),
+        isFalse,
+      );
+      expect(
+        shouldOfferPatchVerification(
+          patch.copyWith(
+            verificationSuggestions: const [
+              'Review the changed files and run the project checks.',
+            ],
+          ),
+        ),
+        isFalse,
+      );
+    },
+  );
 
   test('PatchProposalController accepts a specific plan', () {
     final container = ProviderContainer();
@@ -1157,28 +1838,78 @@ void main() {
       ),
     );
 
-    expect(find.text('New task'), findsOneWidget);
-    expect(find.text('What should Circuit do next?'), findsOneWidget);
+    expect(find.text('New chat'), findsOneWidget);
+    expect(find.text('Where should we start?'), findsOneWidget);
+    final homeTitle = tester.widget<Text>(find.text('Where should we start?'));
+    expect(homeTitle.style?.fontSize, FontSizes.lg);
+    expect(homeTitle.style?.fontWeight, FontWeight.w600);
     expect(find.text('No project selected'), findsOneWidget);
     expect(
-      find.textContaining('Circuit will create a project only when'),
+      find.textContaining('Circuit will only create a project'),
       findsOneWidget,
     );
-    expect(find.text('Try'), findsOneWidget);
-    expect(find.text('Do anything'), findsOneWidget);
+    expect(find.text('Start with'), findsOneWidget);
+    expect(find.text('Ask, plan, or describe work'), findsOneWidget);
     expect(find.text('Review first'), findsOneWidget);
-    expect(find.text('Plan'), findsOneWidget);
+    expect(find.text('Plan'), findsWidgets);
     expect(find.text('Default permissions'), findsNothing);
     expect(find.text('gpt-5-nano'), findsOneWidget);
     expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
     expect(find.byTooltip('Open project folder'), findsOneWidget);
+    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+    expect(find.byTooltip('Back'), findsOneWidget);
+    expect(find.byTooltip('Forward'), findsOneWidget);
     expect(find.text('Work locally'), findsNothing);
     expect(find.text('Search'), findsOneWidget);
     expect(find.text('Plugins'), findsNothing);
     expect(find.text('Automations'), findsNothing);
     expect(find.text('Circuit mobile'), findsNothing);
-    expect(find.byTooltip('Add context'), findsNothing);
+    expect(find.byTooltip('Enterprise specialist'), findsNothing);
+    expect(find.text('Topology'), findsNothing);
+    expect(find.text('Sizing'), findsNothing);
+    expect(find.text('Lifecycle'), findsNothing);
+    expect(find.byTooltip('Add context'), findsOneWidget);
+    final addContextIcon = tester.widget<Icon>(
+      find.descendant(
+        of: find.byTooltip('Add context'),
+        matching: find.byIcon(Icons.add),
+      ),
+    );
+    expect(addContextIcon.size, 14);
     expect(find.byTooltip('Voice input'), findsNothing);
+
+    final newChatText = tester.widget<Text>(find.text('New chat'));
+    expect(newChatText.style?.fontSize, FontSizes.sm);
+    final searchText = tester.widget<Text>(find.text('Search'));
+    expect(searchText.style?.fontSize, FontSizes.sm);
+    final openProjectIcon = tester.widget<Icon>(
+      find.byIcon(Icons.arrow_downward),
+    );
+    expect(openProjectIcon.size, 14);
+
+    await tester.tap(find.text('Search'));
+    await tester.pump();
+    expect(find.byTooltip('Close search'), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, Icons.close), findsNothing);
+    final closeSearchTooltip = find.byTooltip('Close search');
+    final closeSearchIcon = tester.widget<Icon>(
+      find.descendant(
+        of: closeSearchTooltip,
+        matching: find.byIcon(Icons.close),
+      ),
+    );
+    expect(closeSearchIcon.size, 14);
+    final closeSearchContainer = tester.widget<Container>(
+      find
+          .descendant(of: closeSearchTooltip, matching: find.byType(Container))
+          .first,
+    );
+    final closeSearchDecoration = closeSearchContainer.decoration;
+    expect(closeSearchDecoration, isA<BoxDecoration>());
+    expect(
+      (closeSearchDecoration! as BoxDecoration).borderRadius,
+      BorderRadius.circular(7),
+    );
   });
 
   testWidgets('Studio rail settings stays inside Studio runtime', (
@@ -1200,6 +1931,30 @@ void main() {
     expect(container.read(studioShellProvider).mode, StudioMode.settings);
     expect(find.text('Studio settings'), findsOneWidget);
     expect(find.textContaining('Core Studio stays'), findsOneWidget);
+    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byType(Switch), findsNothing);
+    expect(find.byTooltip('Choose model'), findsOneWidget);
+    final modelText = tester.widget<Text>(find.text('gpt-5-nano').first);
+    expect(modelText.style?.fontSize, FontSizes.xs);
+
+    await tester.tap(find.byTooltip('Choose model'));
+    await tester.pumpAndSettle();
+    expect(find.text('gemini-3.1-flash-lite').last, findsOneWidget);
+    final menuModelText = tester.widget<Text>(find.text('gpt-5-nano').last);
+    expect(menuModelText.style?.fontSize, FontSizes.xs);
+    await tester.tap(find.text('gemini-3.1-flash-lite').last);
+    await tester.pumpAndSettle();
+    expect(
+      container.read(settingsProvider).ciscoModel,
+      'gemini-3.1-flash-lite',
+    );
+
+    expect(container.read(settingsProvider).thinkingMode, false);
+    await tester.tap(find.byTooltip('Turn thinking mode on'));
+    await tester.pumpAndSettle();
+    expect(container.read(settingsProvider).thinkingMode, true);
+    expect(find.byTooltip('Turn thinking mode off'), findsOneWidget);
+
     await tester.scrollUntilVisible(
       find.text('Approval scope'),
       200,
@@ -1255,8 +2010,15 @@ void main() {
     });
     final container = ProviderContainer();
     addTearDown(container.dispose);
+    container.read(studioThreadProvider);
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
     await tester.runAsync(
       () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    await tester.runAsync(
+      () => container.read(studioThreadProvider.notifier).reload(),
     );
     await tester.runAsync(
       () => container.read(studioThreadProvider.notifier).reload(),
@@ -1299,21 +2061,21 @@ void main() {
     expect(container.read(studioThreadProvider).selectedThreadId, thread.id);
   });
 
-  test('Studio rail only shows status chips for active or attention rows', () {
+  test('Studio rail uses compact status indicators only when needed', () {
     expect(
-      studioRailShouldShowStatusChip(
+      studioRailShouldShowStatusIndicator(
         const TaskDisplayState(kind: TaskDisplayKind.done, label: 'Done'),
       ),
       isFalse,
     );
     expect(
-      studioRailShouldShowStatusChip(
+      studioRailShouldShowStatusIndicator(
         const TaskDisplayState(kind: TaskDisplayKind.idle, label: 'Ready'),
       ),
       isFalse,
     );
     expect(
-      studioRailShouldShowStatusChip(
+      studioRailShouldShowStatusIndicator(
         const TaskDisplayState(
           kind: TaskDisplayKind.working,
           label: 'Working',
@@ -1323,10 +2085,31 @@ void main() {
       isTrue,
     );
     expect(
-      studioRailShouldShowStatusChip(
+      studioRailShouldShowStatusIndicator(
         const TaskDisplayState(
           kind: TaskDisplayKind.failed,
           label: 'Failed',
+          needsAttention: true,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      studioRailShouldShowStatusIndicator(
+        const TaskDisplayState(
+          kind: TaskDisplayKind.waitingForApproval,
+          label: 'Waiting',
+          isActive: true,
+          needsAttention: true,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      studioRailShouldShowStatusIndicator(
+        const TaskDisplayState(
+          kind: TaskDisplayKind.continuationReady,
+          label: 'Continue',
           needsAttention: true,
         ),
       ),
@@ -1469,7 +2252,36 @@ void main() {
     expect(find.text('Context'), findsOneWidget);
     expect(find.text('Terminal'), findsOneWidget);
     expect(find.text('/browser'), findsNothing);
+    final slashStatusText = tester.widget<Text>(find.text('Status'));
+    expect(slashStatusText.style?.fontSize, FontSizes.xs);
+    expect(slashStatusText.style?.fontWeight, FontWeight.w600);
+    final slashStatusDetail = tester.widget<Text>(
+      find.text('Summarize project state'),
+    );
+    expect(slashStatusDetail.style?.fontSize, FontSizes.xxs);
+    final slashStatusIcon = tester.widget<Icon>(
+      find.byIcon(Icons.radio_button_checked).last,
+    );
+    expect(slashStatusIcon.size, 14);
 
+    await tester.tap(find.text('Status'));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(studioShellProvider).composerText,
+      'Summarize the current project status, branch, changes, and risks.',
+    );
+
+    await tester.enterText(find.byType(TextField).first, '/init');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Initialize'));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(studioShellProvider).composerText,
+      'Inspect this project and explain its structure and best next steps.',
+    );
+
+    await tester.enterText(find.byType(TextField).first, '/');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Files'));
     await tester.pumpAndSettle();
     expect(
@@ -1503,6 +2315,9 @@ void main() {
     expect(find.text('Code'), findsWidgets);
     expect(find.text('Review'), findsOneWidget);
     expect(find.text('Fix'), findsNothing);
+    final askMenuText = tester.widget<Text>(find.text('Ask'));
+    expect(askMenuText.style?.fontSize, FontSizes.xs);
+    expect(askMenuText.style?.fontWeight, FontWeight.w500);
     await tester.tap(find.text('Ask'));
     await tester.pumpAndSettle();
 
@@ -1510,6 +2325,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('gemini-3.1-flash-lite'), findsOneWidget);
     expect(find.textContaining('120.0K context'), findsWidgets);
+    final modelMenuText = tester.widget<Text>(
+      find.text('gemini-3.1-flash-lite'),
+    );
+    expect(modelMenuText.style?.fontSize, FontSizes.xs);
+    final modelMetaText = tester.widget<Text>(
+      find.textContaining('120.0K context').first,
+    );
+    expect(modelMetaText.style?.fontSize, FontSizes.xxs);
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Execution mode'));
+    await tester.pumpAndSettle();
+    expect(find.text('Local project'), findsOneWidget);
+    final executionText = tester.widget<Text>(find.text('Local project'));
+    expect(executionText.style?.fontSize, FontSizes.xs);
+    expect(executionText.style?.fontWeight, FontWeight.w600);
+    expect(find.text('Worktree mode is next'), findsNothing);
   });
 
   testWidgets('Studio composer sends with Enter', (tester) async {
@@ -1533,6 +2366,84 @@ void main() {
 
     expect(submitted, 'hello circuit');
     expect(find.text('hello circuit'), findsNothing);
+  });
+
+  testWidgets('Studio composer typography and icons match compact scale', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 220));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 720,
+                child: StudioPromptComposer(
+                  hintText: 'Ask for follow-up changes',
+                  onSubmit: (_) {},
+                  compact: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.style?.fontSize, FontSizes.md);
+    expect(field.style?.height, 1.22);
+    expect(field.decoration?.border, InputBorder.none);
+
+    final hintStyle = field.decoration?.hintStyle;
+    expect(hintStyle?.fontSize, FontSizes.md);
+    expect(hintStyle?.height, 1.22);
+
+    final reviewText = tester.widget<Text>(find.text('Review first'));
+    expect(reviewText.style?.fontSize, FontSizes.xs);
+    expect(reviewText.style?.fontWeight, FontWeight.w500);
+
+    final planText = tester.widget<Text>(find.text('Plan'));
+    expect(planText.style?.fontSize, FontSizes.xs);
+
+    expect(find.byTooltip('Add context'), findsOneWidget);
+    final addIcon = tester.widget<Icon>(find.byIcon(Icons.add));
+    expect(addIcon.size, 14);
+
+    final reviewIcon = tester.widget<Icon>(
+      find.byIcon(Icons.back_hand_outlined),
+    );
+    expect(reviewIcon.size, 12);
+
+    final sendIcon = tester.widget<Icon>(find.byIcon(Icons.arrow_upward));
+    expect(sendIcon.size, 16);
+
+    final sendButton = tester.widget<Container>(
+      find
+          .ancestor(
+            of: find.byIcon(Icons.arrow_upward),
+            matching: find.byType(Container),
+          )
+          .first,
+    );
+    expect(sendButton.constraints?.minWidth, 28);
+    expect(sendButton.constraints?.maxWidth, 28);
+    expect(sendButton.constraints?.minHeight, 28);
+    expect(sendButton.constraints?.maxHeight, 28);
+
+    await tester.tap(find.byTooltip('Add context'));
+    await tester.pump();
+    expect(container.read(studioShellProvider).rightProgressPanelVisible, true);
+    expect(
+      container.read(studioRightDrawerProvider).mode,
+      StudioDrawerMode.context,
+    );
   });
 
   testWidgets('Inline plan card is expandable and revision-ready', (
@@ -1590,26 +2501,233 @@ void main() {
       ),
     );
 
-    expect(find.text('Plan accepted'), findsOneWidget);
+    expect(find.text('Plan accepted. Implementation started.'), findsOneWidget);
     expect(find.text('Implement this plan'), findsNothing);
-    expect(find.text('Tell Circuit what to change'), findsOneWidget);
+    expect(
+      find.text('No, and tell Circuit what to do differently'),
+      findsNothing,
+    );
+    expect(find.text('Dismiss'), findsNothing);
+    expect(find.text('Submit'), findsNothing);
     expect(find.text('Expand plan'), findsOneWidget);
 
     await tester.tap(find.text('Expand plan'));
     await tester.pump();
     expect(find.text('Collapse plan'), findsOneWidget);
 
-    await tester.tap(find.text('Tell Circuit what to change'));
+    await tester.tap(find.text('Collapse plan'));
     await tester.pump();
-    final shell = container.read(studioShellProvider);
-    expect(shell.planModeEnabled, isTrue);
-    expect(shell.composerText, 'Revise this plan. Change: ');
-    final revisedPlan = container
-        .read(patchProposalProvider)
-        .history
-        .firstWhere((patch) => patch.id == plan.id);
-    expect(revisedPlan.approvalStatus, PatchApprovalStatus.revisionRequested);
-    expect(revisedPlan.revisionPrompt, 'Revise this plan. Change: ');
+    expect(find.text('Expand plan'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Continuation card renders from persisted turn without patch history',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Partial accepted plan');
+      final now = DateTime(2026);
+      const acceptedPlan = AcceptedPlanContext(
+        patchSetId: 'plan-fallback',
+        title: 'Two batch plan',
+        summary: 'Create the greeting and documentation.',
+        markdown: '# Plan\n\n- Create hello.txt\n- Create README.md',
+        plannedFiles: [
+          'hello.txt — Add greeting',
+          'README.md — Document usage',
+        ],
+      );
+      final turn = StudioTurn(
+        id: 'turn-continuation-fallback',
+        threadId: thread.id,
+        requestId: 'request-continuation-fallback',
+        userMessageId: 'message-continuation-fallback',
+        prompt: 'Implement accepted plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        intent: TurnIntent.code,
+        acceptedPlanState: AcceptedPlanState.patchProposed,
+        acceptedPlanContext: acceptedPlan,
+        planTargetProgress: [
+          PlanTargetProgress(
+            path: 'hello.txt',
+            intent: 'Add greeting',
+            operation: ProposedFileEditType.create,
+            state: PlanTargetProgressState.applied,
+            patchSetId: 'patch-first-batch',
+            updatedAt: now,
+          ),
+          PlanTargetProgress(
+            path: 'README.md',
+            intent: 'Document usage',
+            operation: ProposedFileEditType.create,
+            updatedAt: now,
+          ),
+        ],
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.continuation,
+            status: TurnStepStatus.queued,
+            title: 'Continue next batch',
+            detail:
+                '1 accepted-plan target still needs work. Remaining: README.md. Use Continue next batch to keep implementing the accepted plan.',
+            startedAt: now,
+          ),
+        ],
+        events: [
+          StudioTurnEvent.completionSummary(
+            id: 'patch-transaction-fallback-applied',
+            turnId: 'turn-continuation-fallback',
+            requestId: 'request-continuation-fallback',
+            threadId: thread.id,
+            title: 'Applied changes',
+            detail:
+                'Applied 1 files.\nNext batch: 1 accepted-plan target still needs work (README.md). Use Continue next batch to keep implementing the accepted plan.',
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      expect(
+        container.read(studioThreadProvider).selectedThread!.status,
+        StudioThreadStatus.continuationReady,
+      );
+      expect(container.read(patchProposalProvider).history, isEmpty);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Next batch available'), findsOneWidget);
+      expect(
+        find.textContaining('Plan progress: 1/2 targets applied'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('README.md'), findsWidgets);
+      expect(find.text('Continue next batch'), findsWidgets);
+    },
+  );
+
+  testWidgets('Completed accepted plan renders terminal plan progress', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Completed accepted plan');
+    final now = DateTime(2026);
+    final plan = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Two target plan',
+          edits: const [],
+          runId: 'request-complete-plan',
+          planMarkdown: '# Plan\n\n- Create hello.txt\n- Create README.md',
+          plannedFiles: const [
+            'hello.txt — Add greeting',
+            'README.md — Document usage',
+          ],
+        );
+    container.read(patchProposalProvider.notifier).markPlanAccepted(plan.id);
+    final turn = StudioTurn(
+      id: 'turn-complete-plan',
+      threadId: thread.id,
+      requestId: 'request-complete-plan',
+      userMessageId: 'message-complete-plan',
+      prompt: 'Implement accepted plan',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      intent: TurnIntent.code,
+      acceptedPlanState: AcceptedPlanState.implemented,
+      acceptedPlanContext: AcceptedPlanContext(
+        patchSetId: plan.id,
+        title: 'Two target plan',
+        summary: 'Create the greeting and documentation.',
+        markdown: '# Plan\n\n- Create hello.txt\n- Create README.md',
+        plannedFiles: const [
+          'hello.txt — Add greeting',
+          'README.md — Document usage',
+        ],
+      ),
+      planTargetProgress: [
+        PlanTargetProgress(
+          path: 'hello.txt',
+          intent: 'Add greeting',
+          operation: ProposedFileEditType.create,
+          state: PlanTargetProgressState.applied,
+          patchSetId: 'patch-complete',
+          updatedAt: now,
+        ),
+        PlanTargetProgress(
+          path: 'README.md',
+          intent: 'Document usage',
+          operation: ProposedFileEditType.create,
+          state: PlanTargetProgressState.applied,
+          patchSetId: 'patch-complete',
+          updatedAt: now,
+        ),
+      ],
+      events: [
+        StudioTurnEvent.completionSummary(
+          id: 'patch-transaction-complete-applied',
+          turnId: 'turn-complete-plan',
+          requestId: 'request-complete-plan',
+          threadId: thread.id,
+          title: 'Applied changes',
+          detail:
+              'Applied 2 files.\n'
+              'Accepted plan progress: all planned targets are complete.',
+        ),
+      ],
+      createdAt: now,
+      updatedAt: now,
+      completedAt: now,
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.textContaining('Plan progress: all 2 targets complete'),
+      findsOneWidget,
+    );
+    expect(find.text('Applied'), findsWidgets);
+    expect(find.textContaining('hello.txt'), findsWidgets);
+    expect(find.textContaining('README.md'), findsWidgets);
+    expect(find.text('Next batch available'), findsNothing);
+    expect(find.text('Continue next batch'), findsNothing);
+    expect(find.text('Implement this plan?'), findsNothing);
+    expect(find.text('Yes, implement this plan'), findsNothing);
+    expect(find.text('Plan accepted. Implementation started.'), findsOneWidget);
+    expect(find.textContaining('Accepted plan progress'), findsOneWidget);
   });
 
   testWidgets('Plan card dismiss targets the rendered plan id', (tester) async {
@@ -1671,11 +2789,8 @@ void main() {
       ),
     );
 
-    expect(find.text('Plan accepted'), findsOneWidget);
-    expect(find.text('Dismiss'), findsOneWidget);
-
-    await tester.tap(find.text('Dismiss'));
-    await tester.pump();
+    expect(find.text('Plan accepted. Implementation started.'), findsOneWidget);
+    expect(find.text('Dismiss'), findsNothing);
 
     final state = container.read(patchProposalProvider);
     final dismissedOldPlan = state.history.firstWhere(
@@ -1684,8 +2799,8 @@ void main() {
     final stillActivePlan = state.history.firstWhere(
       (patch) => patch.id == activePlan.id,
     );
-    expect(dismissedOldPlan.approvalStatus, PatchApprovalStatus.rejected);
-    expect(dismissedOldPlan.applyStatus, PatchApplyStatus.rejected);
+    expect(dismissedOldPlan.approvalStatus, PatchApprovalStatus.approved);
+    expect(dismissedOldPlan.applyStatus, isNull);
     expect(stillActivePlan.approvalStatus, PatchApprovalStatus.proposed);
     expect(state.active?.id, activePlan.id);
   });
@@ -1965,6 +3080,392 @@ void main() {
     expect(find.text('Legacy workspace task'), findsNothing);
   });
 
+  testWidgets('Internal fallback prompts stay out of Studio transcript', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Internal implementation turn');
+    final turn = StudioTurn(
+      id: 'turn-internal-fallback',
+      threadId: thread.id,
+      requestId: 'request-internal-fallback',
+      userMessageId: 'message-internal-fallback',
+      prompt:
+          'Implement this approved plan.\n\nUse the accepted plan context attached to this request as the source of truth.',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.failed,
+      events: [
+        StudioTurnEvent.error(
+          turnId: 'turn-internal-fallback',
+          requestId: 'request-internal-fallback',
+          threadId: thread.id,
+          detail: 'The implementation needs a patch proposal.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+      lastError: 'The implementation needs a patch proposal.',
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.textContaining('Implement this approved plan'), findsNothing);
+    expect(find.textContaining('accepted plan context'), findsNothing);
+    expect(find.textContaining('implementation needs a patch'), findsWidgets);
+  });
+
+  testWidgets('Streaming assistant draft does not render twice', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Streaming thread');
+    final turn = StudioTurn(
+      id: 'turn-streaming',
+      threadId: thread.id,
+      requestId: 'request-streaming',
+      userMessageId: 'message-streaming',
+      prompt: 'stream a response',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.streaming,
+      assistantDraft: 'partial response',
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container
+        .read(studioThreadProvider.notifier)
+        .markPhase(
+          thread.id,
+          status: StudioThreadStatus.streaming,
+          phase: StudioSendPhase.streaming,
+          requestId: 'request-streaming',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          streamingContent: 'partial response',
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('partial response'), findsOneWidget);
+    expect(find.text('Circuit AI is responding...'), findsNothing);
+  });
+
+  testWidgets('Active turn suppresses stale thread-level streaming fallback', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Streaming thread');
+    final turn = StudioTurn(
+      id: 'turn-streaming-empty-draft',
+      threadId: thread.id,
+      requestId: 'request-streaming-empty-draft',
+      userMessageId: 'message-streaming-empty-draft',
+      prompt: 'stream a response',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.streaming,
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container
+        .read(studioThreadProvider.notifier)
+        .markPhase(
+          thread.id,
+          status: StudioThreadStatus.streaming,
+          phase: StudioSendPhase.streaming,
+          requestId: 'request-streaming-empty-draft',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          streamingContent: 'stale thread-level response',
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('stale thread-level response'), findsNothing);
+    expect(find.text('Circuit AI is responding...'), findsNothing);
+  });
+
+  testWidgets(
+    'Legacy thread-level streaming content is not rendered without a turn',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Legacy streaming thread');
+      container
+          .read(studioThreadProvider.notifier)
+          .markPhase(
+            thread.id,
+            status: StudioThreadStatus.streaming,
+            phase: StudioSendPhase.streaming,
+            requestId: 'legacy-request',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(projectLabel: 'project'),
+            streamingContent: 'legacy thread-only response',
+          );
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('legacy thread-only response'), findsNothing);
+      expect(find.text('Circuit AI is responding...'), findsNothing);
+      expect(find.text('Legacy streaming thread'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Streaming plan draft renders inside plan card', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Streaming plan thread');
+    final turn = StudioTurn(
+      id: 'turn-streaming-plan',
+      threadId: thread.id,
+      requestId: 'request-streaming-plan',
+      userMessageId: 'message-streaming-plan',
+      prompt: 'create a plan',
+      model: 'gpt-5-nano',
+      intent: TurnIntent.plan,
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.streaming,
+      assistantDraft: '# Draft plan\n\n- First planned step',
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Plan'), findsWidgets);
+    expect(find.text('Drafting...'), findsOneWidget);
+    expect(find.text('Draft plan'), findsOneWidget);
+    expect(find.text('Expand plan'), findsOneWidget);
+    expect(find.text('Implement this plan?'), findsOneWidget);
+    expect(find.text('Yes, implement this plan'), findsOneWidget);
+    expect(
+      find.text('No, and tell Circuit what to do differently'),
+      findsOneWidget,
+    );
+    final implementChoice = tester.widget<InkWell>(
+      find
+          .ancestor(
+            of: find.text('Yes, implement this plan'),
+            matching: find.byType(InkWell),
+          )
+          .first,
+    );
+    expect(implementChoice.onTap, isNull);
+    expect(find.text('Circuit AI is responding...'), findsNothing);
+  });
+
+  testWidgets('Long streaming plan draft remains bounded in chat', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Long streaming plan thread');
+    final turn = StudioTurn(
+      id: 'turn-long-streaming-plan',
+      threadId: thread.id,
+      requestId: 'request-long-streaming-plan',
+      userMessageId: 'message-long-streaming-plan',
+      prompt: 'create a long plan',
+      model: 'gpt-5-nano',
+      intent: TurnIntent.plan,
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.streaming,
+      assistantDraft: [
+        '# Long draft plan',
+        '',
+        for (var i = 0; i < 30; i++)
+          '- Step $i: inspect the project, refine the implementation boundary, and keep this plan reviewable.',
+      ].join('\n'),
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Long draft plan'), findsOneWidget);
+    final cardSize = tester.getSize(
+      find.byKey(const Key('studio-plan-draft-card')),
+    );
+    expect(cardSize.height, lessThan(480));
+    expect(find.text('Expand plan'), findsOneWidget);
+
+    await tester.tap(find.text('Expand plan'));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Collapse plan'), findsOneWidget);
+    final expandedCardSize = tester.getSize(
+      find.byKey(const Key('studio-plan-draft-card')),
+    );
+    expect(expandedCardSize.height, greaterThan(cardSize.height));
+    expect(expandedCardSize.height, lessThan(760));
+    expect(find.text('Circuit AI is responding...'), findsNothing);
+  });
+
+  testWidgets(
+    'Synthesized final plan renders as one plan card without duplicate prose',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final planMarkdown = [
+        '# Datacenter sizing workflow plan',
+        '',
+        '## Summary',
+        'Create a guided sizing workflow for customer datacenter planning.',
+        '',
+        '## Key changes',
+        '- Create the quota scoring screen for customer inputs.',
+        '- Add the rack and power requirement model.',
+        '- Define validation steps before implementation.',
+      ].join('\n');
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Synthesized plan thread');
+      final turn = StudioTurn(
+        id: 'turn-synthesized-plan',
+        threadId: thread.id,
+        requestId: 'request-synthesized-plan',
+        userMessageId: 'message-synthesized-plan',
+        prompt: 'create a plan for this',
+        model: 'gpt-5-nano',
+        intent: TurnIntent.plan,
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        events: [
+          StudioTurnEvent.assistantMessage(
+            turnId: 'turn-synthesized-plan',
+            requestId: 'request-synthesized-plan',
+            threadId: thread.id,
+            content: planMarkdown,
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(
+            ProposedPatchSet(
+              id: 'synthesized-plan-patch',
+              title: 'Datacenter sizing workflow plan',
+              edits: const [],
+              runId: 'request-synthesized-plan',
+              createdAt: DateTime(2026),
+              comparisonSummary:
+                  'Create a guided sizing workflow for customer datacenter planning.',
+              planMarkdown: planMarkdown,
+              plannedFiles: const ['docs/datacenter_sizing_plan.md — create'],
+            ),
+          );
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Plan'), findsWidgets);
+      expect(find.text('Datacenter sizing workflow plan'), findsWidgets);
+      expect(
+        find.textContaining('Create the quota scoring screen'),
+        findsOneWidget,
+      );
+      expect(find.text('Implement this plan?'), findsOneWidget);
+    },
+  );
+
   testWidgets('Task-backed thread shows patch card without live legacy task', (
     tester,
   ) async {
@@ -2029,7 +3530,7 @@ void main() {
 
     expect(container.read(agentWorkspaceProvider).tasks, isEmpty);
     expect(find.text('Plan is ready.'), findsWidgets);
-    expect(find.text('Plan ready'), findsOneWidget);
+    expect(find.text('Recovered plan'), findsWidgets);
     expect(find.textContaining('README.md'), findsOneWidget);
   });
 
@@ -2091,6 +3592,22 @@ void main() {
       ),
     );
 
+    expect(find.text('Prepared 1 file'), findsOneWidget);
+    expect(find.text('Prepared 1 files'), findsNothing);
+    _expectCompactActionStyle(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Apply changes'),
+          )
+          .style,
+    );
+    _expectCompactActionStyle(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Ask for revision'),
+          )
+          .style,
+    );
     await tester.tap(find.text('README.md'));
     await tester.pump();
 
@@ -2098,6 +3615,191 @@ void main() {
     expect(drawer.mode, StudioDrawerMode.diff);
     expect(drawer.diffId, patch.id);
     expect(drawer.patchFilePath, 'README.md');
+  });
+
+  testWidgets('Applied patch verification action stays compact in transcript', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Verification action thread');
+    final turn = StudioTurn(
+      id: 'turn-verify-action',
+      threadId: thread.id,
+      requestId: 'request-verify-action',
+      userMessageId: 'message-verify-action',
+      prompt: 'apply the patch',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: 'turn-verify-action',
+          requestId: 'request-verify-action',
+          threadId: thread.id,
+          content: 'The patch has been applied.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container
+        .read(patchProposalProvider.notifier)
+        .preserveProposal(
+          ProposedPatchSet(
+            id: 'patch-verify-card',
+            title: 'Applied patch',
+            runId: 'request-verify-action',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/login.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old',
+                after: 'new',
+              ),
+            ],
+            changedFiles: const ['lib/login.dart'],
+            applyStatus: PatchApplyStatus.applied,
+            diffSummary: 'Updated login copy.',
+            verificationRequested: true,
+            verificationSuggestions: const ['flutter analyze'],
+            createdAt: DateTime(2026),
+          ),
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Run verification'), findsOneWidget);
+    _expectCompactActionStyle(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Run verification'),
+          )
+          .style,
+    );
+  });
+
+  testWidgets('Applied patch card shows linked verification result', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Verification result thread');
+    final applyTurn = StudioTurn(
+      id: 'turn-apply-result',
+      threadId: thread.id,
+      requestId: 'request-apply-result',
+      userMessageId: 'message-apply-result',
+      prompt: 'apply the patch',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: 'turn-apply-result',
+          requestId: 'request-apply-result',
+          threadId: thread.id,
+          content: 'The patch has been applied.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    final verifyTurn = StudioTurn(
+      id: 'turn-verify-result',
+      threadId: thread.id,
+      requestId: 'request-verify-result',
+      userMessageId: 'message-verify-result',
+      prompt: 'Running verification',
+      model: 'gpt-5-nano',
+      intent: TurnIntent.verify,
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      toolResults: const [
+        ToolResultEnvelope(
+          toolCallId: 'verify-command',
+          toolName: 'run_command',
+          status: ToolResultStatus.success,
+          summary: 'flutter analyze passed.',
+          data: {'command': 'flutter analyze', 'exitCode': 0},
+        ),
+      ],
+      events: [
+        StudioTurnEvent.completionSummary(
+          turnId: 'turn-verify-result',
+          requestId: 'request-verify-result',
+          threadId: thread.id,
+          title: 'Verification summary',
+          detail: 'Verification command completed.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, applyTurn, select: true);
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, verifyTurn, select: true);
+    container
+        .read(patchProposalProvider.notifier)
+        .preserveProposal(
+          ProposedPatchSet(
+            id: 'patch-verify-result-card',
+            title: 'Applied patch',
+            runId: 'request-apply-result',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/login.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old',
+                after: 'new',
+              ),
+            ],
+            changedFiles: const ['lib/login.dart'],
+            applyStatus: PatchApplyStatus.applied,
+            diffSummary: 'Updated login copy.',
+            verificationRequested: true,
+            verificationRequestId: 'request-verify-result',
+            verificationSuggestions: const ['flutter analyze'],
+            createdAt: DateTime(2026),
+          ),
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Verification completed'), findsOneWidget);
+    expect(find.text('flutter analyze passed.'), findsOneWidget);
+    expect(find.text('Run verification'), findsNothing);
   });
 
   testWidgets('Studio Task View renders transcript and progress panel', (
@@ -2119,11 +3821,160 @@ void main() {
 
     expect(find.text('Create role-based mini Salesforce'), findsWidgets);
     expect(find.text('Environment'), findsOneWidget);
-    expect(find.byTooltip('Progress'), findsOneWidget);
+    expect(find.byTooltip('Context details'), findsOneWidget);
+    await tester.tap(find.byTooltip('Context details'));
+    await tester.pump();
+    expect(
+      container.read(studioRightDrawerProvider).mode,
+      StudioDrawerMode.context,
+    );
     expect(find.text('Push'), findsNothing);
     expect(find.text('Create pull request'), findsNothing);
     expect(find.text('Ask for follow-up changes'), findsOneWidget);
   });
+
+  testWidgets(
+    'Studio user bubble typography matches compact transcript scale',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Bubble scale thread');
+      final turn = StudioTurn(
+        id: 'turn-bubble-scale',
+        threadId: thread.id,
+        requestId: 'request-bubble-scale',
+        userMessageId: 'message-bubble-scale',
+        prompt: 'Can we plan the dashboard first?',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-bubble-scale',
+            turnId: 'turn-bubble-scale',
+            requestId: 'request-bubble-scale',
+            threadId: thread.id,
+            content: 'Can we plan the dashboard first?',
+            timestamp: DateTime(2026),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+      expect(
+        container.read(studioThreadProvider).selectedThread?.id,
+        thread.id,
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      final bubble = tester.widget<Text>(
+        find.text('Can we plan the dashboard first?').first,
+      );
+      expect(bubble.style?.fontSize, FontSizes.md);
+      expect(bubble.style?.height, 1.28);
+    },
+  );
+
+  testWidgets(
+    'Studio assistant footer actions match compact transcript scale',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Assistant actions thread');
+      final turn = StudioTurn(
+        id: 'turn-assistant-actions',
+        threadId: thread.id,
+        requestId: 'request-assistant-actions',
+        userMessageId: 'message-assistant-actions',
+        prompt: 'Summarize this app.',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        events: [
+          StudioTurnEvent.assistantMessage(
+            turnId: 'turn-assistant-actions',
+            requestId: 'request-assistant-actions',
+            threadId: thread.id,
+            content: 'Here is the summary.',
+            timestamp: DateTime(2026),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.byTooltip('Copy response'), findsOneWidget);
+      expect(find.byTooltip('Mark helpful'), findsOneWidget);
+      expect(find.byTooltip('Mark needs work'), findsOneWidget);
+
+      for (final iconData in [
+        Icons.copy_outlined,
+        Icons.thumb_up_alt_outlined,
+        Icons.thumb_down_alt_outlined,
+      ]) {
+        final icon = tester.widget<Icon>(find.byIcon(iconData));
+        expect(icon.size, 12);
+        final box = tester.getSize(
+          find
+              .ancestor(
+                of: find.byIcon(iconData),
+                matching: find.byType(InkWell),
+              )
+              .first,
+        );
+        expect(box.width, 22);
+        expect(box.height, 22);
+        final decorated = tester.widget<AnimatedContainer>(
+          find
+              .ancestor(
+                of: find.byIcon(iconData),
+                matching: find.byType(AnimatedContainer),
+              )
+              .first,
+        );
+        final decoration = decorated.decoration;
+        expect(decoration, isA<BoxDecoration>());
+        expect(
+          (decoration! as BoxDecoration).borderRadius,
+          BorderRadius.circular(7),
+        );
+      }
+
+      await tester.tap(find.byTooltip('Copy response'));
+      await tester.pump();
+      expect(find.text('Copied response'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Mark helpful'));
+      await tester.pump();
+      expect(find.text('Marked helpful'), findsOneWidget);
+    },
+  );
 
   testWidgets('Progress drawer shows selected-thread repair diagnostics', (
     tester,
@@ -2257,6 +4108,206 @@ void main() {
     expect(find.text('Task'), findsOneWidget);
     expect(find.text('Approval'), findsOneWidget);
     expect(find.text('Required'), findsOneWidget);
+  });
+
+  testWidgets('Progress panel hides routine ready task row', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Done thread');
+    final turn = StudioTurn(
+      id: 'turn-done-panel',
+      threadId: thread.id,
+      requestId: 'request-done-panel',
+      userMessageId: 'message-done-panel',
+      prompt: 'hello',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-done-panel',
+          turnId: 'turn-done-panel',
+          requestId: 'request-done-panel',
+          threadId: thread.id,
+          content: 'hello',
+          timestamp: DateTime(2026),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioProgressPanel())),
+      ),
+    );
+
+    expect(find.text('Environment'), findsOneWidget);
+    expect(find.text('Task'), findsNothing);
+    expect(find.text('Changes'), findsOneWidget);
+    expect(find.text('No pending changes'), findsOneWidget);
+    expect(find.byIcon(Icons.language), findsNWidgets(24));
+
+    final changesText = tester.widget<Text>(find.text('Changes'));
+    expect(changesText.style?.fontSize, FontSizes.sm);
+    final sourceIcons = tester.widgetList<Icon>(find.byIcon(Icons.language));
+    expect(sourceIcons.first.size, 11);
+  });
+
+  testWidgets('Right progress drawer hides routine completed task row', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Completed drawer thread');
+    final turn = StudioTurn(
+      id: 'turn-done-drawer',
+      threadId: thread.id,
+      requestId: 'request-done-drawer',
+      userMessageId: 'message-done-drawer',
+      prompt: 'hello',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-done-drawer',
+          turnId: 'turn-done-drawer',
+          requestId: 'request-done-drawer',
+          threadId: thread.id,
+          content: 'hello',
+          timestamp: DateTime(2026),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Environment'), findsOneWidget);
+    expect(find.text('Task'), findsNothing);
+    expect(find.text('Changes'), findsOneWidget);
+    expect(find.text('No pending changes'), findsOneWidget);
+    expect(find.text('Latest event'), findsOneWidget);
+  });
+
+  testWidgets('Approval card is compact and exposes real review actions', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Approval card thread');
+    final turn = StudioTurn(
+      id: 'turn-approval-card',
+      threadId: thread.id,
+      requestId: 'request-approval-card',
+      userMessageId: 'message-approval-card',
+      prompt: 'verify changes',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.waitingForApproval,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-approval-card',
+          turnId: 'turn-approval-card',
+          requestId: 'request-approval-card',
+          threadId: thread.id,
+          content: 'verify changes',
+          timestamp: DateTime(2026),
+        ),
+        StudioTurnEvent.approval(
+          turnId: 'turn-approval-card',
+          requestId: 'request-approval-card',
+          threadId: thread.id,
+          request: ConfirmationRequest(
+            id: 'approval-card',
+            toolCall: const ToolCallInfo(
+              id: 'tool-approval-card',
+              name: 'run_command',
+              arguments: {'command': 'flutter test'},
+            ),
+            preview: 'flutter test',
+            warnings: const ['Shell command requires review.'],
+          ),
+          timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Approval needed'), findsWidgets);
+    expect(find.text('Review required'), findsOneWidget);
+    expect(find.text('Circuit wants to use run command.'), findsOneWidget);
+    expect(find.text('flutter test'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
+    expect(find.text('Approve for this turn'), findsOneWidget);
+    expect(find.text('Approve once'), findsOneWidget);
+
+    final preview = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) => widget is SelectableText && widget.data == 'flutter test',
+      ),
+    );
+    expect(preview.style?.fontFamily, EditorDefaults.studioMonospaceFontFamily);
+
+    final shieldIcon = tester.widget<Icon>(
+      find.byIcon(Icons.shield_outlined).first,
+    );
+    expect(shieldIcon.size, 14);
+
+    _expectCompactActionStyle(
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, 'Reject'))
+          .style,
+    );
+    _expectCompactActionStyle(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Approve for this turn'),
+          )
+          .style,
+    );
+    _expectCompactActionStyle(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Approve once'),
+          )
+          .style,
+    );
+    expect(tester.widget<Icon>(find.byIcon(Icons.task_alt_outlined)).size, 14);
   });
 
   testWidgets('Progress drawer prefers specific provider failure diagnostics', (
@@ -2437,6 +4488,872 @@ void main() {
     expect(find.text('Provider failed'), findsNothing);
   });
 
+  testWidgets(
+    'Progress drawer prefers prepared changes over provider diagnostics',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Prepared changes thread');
+      final turn = StudioTurn(
+        id: 'turn-prepared-changes',
+        threadId: thread.id,
+        requestId: 'request-prepared-changes',
+        userMessageId: 'message-prepared-changes',
+        prompt: 'implement the plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.failed,
+        lastError:
+            'Runtime rejected the model outcome, but a reviewable patch exists.',
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-prepared-changes',
+            turnId: 'turn-prepared-changes',
+            kind: ProviderLifecycleEventKind.outcomeRejected,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+            model: 'gpt-5-nano',
+            detail:
+                'Runtime rejected the model outcome, but a reviewable patch exists.',
+          ),
+          ProviderLifecycleEvent(
+            requestId: 'request-prepared-changes',
+            turnId: 'turn-prepared-changes',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 2),
+            model: 'gpt-5-nano',
+            detail: 'Provider failed.',
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-prepared-changes',
+            turnId: 'turn-prepared-changes',
+            requestId: 'request-prepared-changes',
+            threadId: thread.id,
+            content: 'implement the plan',
+            timestamp: DateTime(2026),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(
+            ProposedPatchSet(
+              id: 'patch-prepared-changes',
+              title: 'Prepared repair',
+              runId: 'request-prepared-changes',
+              edits: const [
+                ProposedFileEdit(
+                  path: 'lib/main.dart',
+                  type: ProposedFileEditType.modify,
+                  before: 'old',
+                  after: 'new',
+                ),
+              ],
+              createdAt: DateTime(2026),
+            ),
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Prepared changes'), findsWidgets);
+      expect(
+        find.text('Review, revise, or apply the prepared changes.'),
+        findsOneWidget,
+      );
+      expect(find.text('Provider failed'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers patch conflict event over later provider failure',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch conflict thread');
+      final turn = StudioTurn(
+        id: 'turn-patch-conflict-event',
+        threadId: thread.id,
+        requestId: 'request-patch-conflict-event',
+        userMessageId: 'message-patch-conflict-event',
+        prompt: 'implement the plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.failed,
+        lastError:
+            'Provider failed after patch conflict was recorded for review.',
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-patch-conflict-event',
+            turnId: 'turn-patch-conflict-event',
+            kind: ProviderLifecycleEventKind.outcomeRejected,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 2),
+            model: 'gpt-5-nano',
+            detail:
+                'Runtime rejected the model outcome after a patch conflict.',
+          ),
+          ProviderLifecycleEvent(
+            requestId: 'request-patch-conflict-event',
+            turnId: 'turn-patch-conflict-event',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 3),
+            model: 'gpt-5-nano',
+            detail: 'Provider failed.',
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-patch-conflict-event',
+            turnId: 'turn-patch-conflict-event',
+            requestId: 'request-patch-conflict-event',
+            threadId: thread.id,
+            content: 'implement the plan',
+            timestamp: DateTime(2026),
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'patch-conflict-event',
+            turnId: 'turn-patch-conflict-event',
+            requestId: 'request-patch-conflict-event',
+            threadId: thread.id,
+            title: 'Patch conflict',
+            detail:
+                'File changed since proposal: plan/01_mvp_requirements.md\nAsk Circuit to rebase the proposal.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+          StudioTurnEvent.error(
+            turnId: 'turn-patch-conflict-event',
+            requestId: 'request-patch-conflict-event',
+            threadId: thread.id,
+            detail:
+                'Provider failed after patch conflict was recorded for review.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 4),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Patch conflict'), findsWidgets);
+      expect(find.textContaining('File changed since proposal'), findsWidgets);
+      expect(find.text('Provider failed'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers continuation state over later provider failure',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Continuation thread');
+      final turn = StudioTurn(
+        id: 'turn-continuation-event',
+        threadId: thread.id,
+        requestId: 'request-continuation-event',
+        userMessageId: 'message-continuation-event',
+        prompt: 'implement the accepted plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.completed,
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-continuation-event',
+            turnId: 'turn-continuation-event',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 3),
+            model: 'gpt-5-nano',
+            detail: 'Provider failed.',
+          ),
+        ],
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.continuation,
+            status: TurnStepStatus.queued,
+            title: 'Continue next batch',
+            detail:
+                '1 accepted-plan target still needs work. Remaining: README.md.',
+            startedAt: DateTime(2026, 1, 1, 0, 0, 2),
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-continuation-event',
+            turnId: 'turn-continuation-event',
+            requestId: 'request-continuation-event',
+            threadId: thread.id,
+            content: 'implement the accepted plan',
+            timestamp: DateTime(2026),
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'patch-transaction-turn-continuation-event-applied',
+            turnId: 'turn-continuation-event',
+            requestId: 'request-continuation-event',
+            threadId: thread.id,
+            title: 'Applied changes',
+            detail:
+                'Applied 1 files.\nHere’s what changed: lib/main.dart\nNext batch: 1 accepted-plan target still needs work. Remaining: README.md.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(
+            ProposedPatchSet(
+              id: 'patch-continuation-event',
+              title: 'First batch',
+              runId: 'request-continuation-event',
+              edits: const [
+                ProposedFileEdit(
+                  path: 'lib/main.dart',
+                  type: ProposedFileEditType.create,
+                  after: 'void main() {}\n',
+                ),
+              ],
+              createdAt: DateTime(2026),
+              applyStatus: PatchApplyStatus.applied,
+              changedFiles: const ['lib/main.dart'],
+            ),
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Continue next batch'), findsWidgets);
+      expect(find.textContaining('README.md'), findsWidgets);
+      expect(find.text('Provider failed'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers patch conflict over queued continuation',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Conflict continuation thread');
+      final turn = StudioTurn(
+        id: 'turn-conflict-continuation',
+        threadId: thread.id,
+        requestId: 'request-conflict-continuation',
+        userMessageId: 'message-conflict-continuation',
+        prompt: 'continue the accepted plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.completed,
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.continuation,
+            status: TurnStepStatus.queued,
+            title: 'Continue next batch',
+            detail:
+                '1 accepted-plan target still needs work. Remaining: README.md.',
+            startedAt: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-conflict-continuation',
+            turnId: 'turn-conflict-continuation',
+            requestId: 'request-conflict-continuation',
+            threadId: thread.id,
+            content: 'continue the accepted plan',
+            timestamp: DateTime(2026),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(
+            ProposedPatchSet(
+              id: 'patch-conflict-continuation',
+              title: 'Conflicted batch',
+              runId: 'request-conflict-continuation',
+              edits: const [
+                ProposedFileEdit(
+                  path: 'README.md',
+                  type: ProposedFileEditType.modify,
+                  before: 'old',
+                  after: 'new',
+                ),
+              ],
+              createdAt: DateTime(2026),
+              applyStatus: PatchApplyStatus.conflict,
+              conflictMessage: 'File changed since proposal: README.md',
+            ),
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Patch conflict'), findsWidgets);
+      expect(find.textContaining('File changed since proposal'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers patch revision request over provider diagnostics',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch revision thread');
+      final turn = StudioTurn(
+        id: 'turn-patch-revision-event',
+        threadId: thread.id,
+        requestId: 'request-patch-revision-event',
+        userMessageId: 'message-patch-revision-event',
+        prompt: 'implement the plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.failed,
+        lastError:
+            'Provider failed after patch revision was requested for review.',
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-patch-revision-event',
+            turnId: 'turn-patch-revision-event',
+            kind: ProviderLifecycleEventKind.outcomeRejected,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 2),
+            model: 'gpt-5-nano',
+            detail:
+                'Runtime rejected a model draft after revision was requested.',
+          ),
+          ProviderLifecycleEvent(
+            requestId: 'request-patch-revision-event',
+            turnId: 'turn-patch-revision-event',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 3),
+            model: 'gpt-5-nano',
+            detail: 'Provider failed.',
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-patch-revision-event',
+            turnId: 'turn-patch-revision-event',
+            requestId: 'request-patch-revision-event',
+            threadId: thread.id,
+            content: 'implement the plan',
+            timestamp: DateTime(2026),
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'patch-revision-event',
+            turnId: 'turn-patch-revision-event',
+            requestId: 'request-patch-revision-event',
+            threadId: thread.id,
+            title: 'Patch revision requested',
+            detail:
+                'Patch revision requested.\nRefresh this patch against current files.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(
+            ProposedPatchSet(
+              id: 'patch-revision-event',
+              title: 'Revise stale patch',
+              runId: 'request-patch-revision-event',
+              approvalStatus: PatchApprovalStatus.revisionRequested,
+              applyStatus: PatchApplyStatus.revisionRequested,
+              revisionPrompt:
+                  'Refresh this patch against current files and keep the accepted plan targets.',
+              edits: const [
+                ProposedFileEdit(
+                  path: 'plan/01_mvp_requirements.md',
+                  type: ProposedFileEditType.modify,
+                  before: 'old',
+                  after: 'new',
+                ),
+              ],
+              createdAt: DateTime(2026),
+            ),
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Patch revision requested'), findsWidgets);
+      expect(
+        find.textContaining('Refresh this patch against current files'),
+        findsWidgets,
+      );
+      expect(find.text('Provider failed'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers persisted patch revision event without active patch',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Persisted patch revision thread');
+      final turn = StudioTurn(
+        id: 'turn-persisted-patch-revision-event',
+        threadId: thread.id,
+        requestId: 'request-persisted-patch-revision-event',
+        userMessageId: 'message-persisted-patch-revision-event',
+        prompt: 'implement the plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.failed,
+        lastError:
+            'Provider failed after patch revision was requested for review.',
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-persisted-patch-revision-event',
+            turnId: 'turn-persisted-patch-revision-event',
+            kind: ProviderLifecycleEventKind.outcomeRejected,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 2),
+            model: 'gpt-5-nano',
+            detail:
+                'Runtime rejected a model draft after revision was requested.',
+          ),
+          ProviderLifecycleEvent(
+            requestId: 'request-persisted-patch-revision-event',
+            turnId: 'turn-persisted-patch-revision-event',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 3),
+            model: 'gpt-5-nano',
+            detail: 'Provider failed.',
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-persisted-patch-revision-event',
+            turnId: 'turn-persisted-patch-revision-event',
+            requestId: 'request-persisted-patch-revision-event',
+            threadId: thread.id,
+            content: 'implement the plan',
+            timestamp: DateTime(2026),
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'patch-revision-event',
+            turnId: 'turn-persisted-patch-revision-event',
+            requestId: 'request-persisted-patch-revision-event',
+            threadId: thread.id,
+            title: 'Patch revision requested',
+            detail:
+                'Patch revision requested.\nRefresh this patch against current files.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Patch revision requested'), findsWidgets);
+      expect(
+        find.textContaining('Refresh this patch against current files'),
+        findsWidgets,
+      );
+      expect(find.text('Provider failed'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Progress drawer prefers queued continuation over applied summary',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Continuation drawer thread');
+      final now = DateTime(2026);
+      final turn = StudioTurn(
+        id: 'turn-continuation-drawer',
+        threadId: thread.id,
+        requestId: 'request-continuation-drawer',
+        userMessageId: 'message-continuation-drawer',
+        prompt: 'implement the first batch',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.completed,
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.continuation,
+            status: TurnStepStatus.queued,
+            title: 'Continue next batch',
+            detail:
+                '1 accepted-plan target still needs work. Remaining: README.md. Use Continue next batch to keep implementing the accepted plan.',
+            startedAt: now,
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-continuation-drawer',
+            turnId: 'turn-continuation-drawer',
+            requestId: 'request-continuation-drawer',
+            threadId: thread.id,
+            content: 'implement the first batch',
+            timestamp: now,
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'applied-continuation-drawer',
+            turnId: 'turn-continuation-drawer',
+            requestId: 'request-continuation-drawer',
+            threadId: thread.id,
+            title: 'Applied changes',
+            detail: 'Applied 1 files.',
+            timestamp: now.add(const Duration(seconds: 1)),
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+
+      expect(find.text('Continue next batch'), findsOneWidget);
+      expect(
+        find.textContaining('1 accepted-plan target still needs work'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('Progress drawer ignores active patches from another request', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Clean thread');
+    final turn = StudioTurn(
+      id: 'turn-clean-thread',
+      threadId: thread.id,
+      requestId: 'request-clean-thread',
+      userMessageId: 'message-clean-thread',
+      prompt: 'hello',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(
+        rootPath: '/tmp/project',
+        projectLabel: 'project',
+        includedItemCount: 1,
+        estimatedTokens: 42,
+      ),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-clean-thread',
+          turnId: 'turn-clean-thread',
+          requestId: 'request-clean-thread',
+          threadId: thread.id,
+          content: 'hello',
+          timestamp: DateTime(2026),
+        ),
+        StudioTurnEvent.assistantMessage(
+          turnId: 'turn-clean-thread',
+          requestId: 'request-clean-thread',
+          threadId: thread.id,
+          content: 'Hello.',
+          timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026, 1, 1, 0, 0, 1),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container
+        .read(patchProposalProvider.notifier)
+        .preserveProposal(
+          ProposedPatchSet(
+            id: 'patch-other-request',
+            title: 'Other request patch',
+            runId: 'request-other-thread',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/other.dart',
+                type: ProposedFileEditType.create,
+                after: 'void other() {}\n',
+              ),
+            ],
+            createdAt: DateTime(2026),
+          ),
+        );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('No pending changes'), findsOneWidget);
+    expect(find.text('Prepared changes'), findsNothing);
+    expect(
+      find.text('Review, revise, or apply the prepared changes.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Progress drawer ignores running commands from another request', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Clean command thread');
+    final turn = StudioTurn(
+      id: 'turn-clean-command-thread',
+      threadId: thread.id,
+      requestId: 'request-clean-command-thread',
+      userMessageId: 'message-clean-command-thread',
+      prompt: 'hello',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(
+        rootPath: '/tmp/project',
+        projectLabel: 'project',
+        includedItemCount: 1,
+        estimatedTokens: 42,
+      ),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-clean-command-thread',
+          turnId: 'turn-clean-command-thread',
+          requestId: 'request-clean-command-thread',
+          threadId: thread.id,
+          content: 'hello',
+          timestamp: DateTime(2026),
+        ),
+        StudioTurnEvent.assistantMessage(
+          turnId: 'turn-clean-command-thread',
+          requestId: 'request-clean-command-thread',
+          threadId: thread.id,
+          content: 'Hello.',
+          timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026, 1, 1, 0, 0, 1),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    container
+        .read(commandRunProvider.notifier)
+        .start(
+          id: 'command-other-request',
+          command: 'npm run dev',
+          requestId: 'request-other-thread',
+          turnId: 'turn-other-thread',
+        );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Command'), findsNothing);
+    expect(find.text('npm run dev'), findsNothing);
+    expect(find.text('Local'), findsOneWidget);
+    expect(find.text('Ready'), findsOneWidget);
+  });
+
+  testWidgets(
+    'Progress drawer prefers applied change outcome over provider diagnostics',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Applied changes thread');
+      final turn = StudioTurn(
+        id: 'turn-applied-changes',
+        threadId: thread.id,
+        requestId: 'request-applied-changes',
+        userMessageId: 'message-applied-changes',
+        prompt: 'implement the plan',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/project',
+          projectLabel: 'project',
+          includedItemCount: 2,
+          estimatedTokens: 120,
+        ),
+        status: StudioTurnStatus.completed,
+        providerDiagnostics: [
+          ProviderLifecycleEvent(
+            requestId: 'request-applied-changes',
+            turnId: 'turn-applied-changes',
+            kind: ProviderLifecycleEventKind.failed,
+            timestamp: DateTime(2026, 1, 1, 0, 0, 2),
+            model: 'gpt-5-nano',
+            detail: 'Late provider failed diagnostic.',
+          ),
+        ],
+        events: [
+          StudioTurnEvent.userMessage(
+            id: 'message-applied-changes',
+            turnId: 'turn-applied-changes',
+            requestId: 'request-applied-changes',
+            threadId: thread.id,
+            content: 'implement the plan',
+            timestamp: DateTime(2026),
+          ),
+          StudioTurnEvent.completionSummary(
+            id: 'summary-applied-changes',
+            turnId: 'turn-applied-changes',
+            requestId: 'request-applied-changes',
+            threadId: thread.id,
+            title: 'Applied changes',
+            detail: 'Applied 2 files. Recommended next step: run tests.',
+            timestamp: DateTime(2026, 1, 1, 0, 0, 1),
+          ),
+        ],
+        createdAt: DateTime(2026),
+        updatedAt: DateTime(2026),
+        completedAt: DateTime(2026),
+      );
+      container
+          .read(studioThreadProvider.notifier)
+          .upsertTurn(thread.id, turn, select: true);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Applied changes'), findsWidgets);
+      expect(
+        find.text('Applied 2 files. Recommended next step: run tests.'),
+        findsWidgets,
+      );
+      expect(find.text('Provider failed'), findsNothing);
+      expect(find.text('Late provider failed diagnostic.'), findsNothing);
+    },
+  );
+
   testWidgets('Progress drawer prefers timeout over generic provider failure', (
     tester,
   ) async {
@@ -2546,10 +5463,40 @@ void main() {
       ),
     );
 
-    expect(find.text('Circuit wants to change 1 files'), findsOneWidget);
+    expect(find.text('Prepared 1 file'), findsOneWidget);
     expect(find.text('README.md'), findsOneWidget);
     expect(find.text('Apply changes'), findsOneWidget);
     expect(find.text('Ask for revision'), findsOneWidget);
+    _expectCompactActionStyle(
+      tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Apply changes'),
+          )
+          .style,
+    );
+    _expectCompactActionStyle(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Ask for revision'),
+          )
+          .style,
+    );
+
+    expect(tester.widget<Icon>(find.byIcon(Icons.difference)).size, 14);
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.description_outlined)).size,
+      11,
+    );
+    expect(tester.widget<Icon>(find.byIcon(Icons.chevron_right)).size, 13);
+    expect(tester.widget<Icon>(find.byIcon(Icons.check)).size, 13);
+
+    final preview = tester.widget<SelectableText>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SelectableText && (widget.data ?? '').contains('+ new'),
+      ),
+    );
+    expect(preview.style?.fontFamily, EditorDefaults.studioMonospaceFontFamily);
   });
 
   testWidgets('Studio Review Panel file rows open the diff drawer', (
@@ -2602,7 +5549,7 @@ void main() {
             title: 'Build plan',
             edits: const [],
             planMarkdown: '# Plan\n\n- Add lib/app.dart.',
-            plannedFiles: const ['lib/app.dart'],
+            plannedFiles: const ['lib/app.dart — create the app shell'],
           );
 
       await tester.pumpWidget(
@@ -2612,10 +5559,18 @@ void main() {
         ),
       );
 
-      expect(find.text('Circuit created a plan'), findsOneWidget);
+      expect(find.text('Plan ready'), findsOneWidget);
+      expect(find.text('lib/app.dart'), findsOneWidget);
       expect(find.text('Implement this plan'), findsOneWidget);
       expect(find.text('Approve plan'), findsNothing);
       expect(find.text('Apply changes'), findsNothing);
+
+      await tester.tap(find.text('lib/app.dart').first);
+      await tester.pump();
+
+      final drawer = container.read(studioRightDrawerProvider);
+      expect(drawer.mode, StudioDrawerMode.code);
+      expect(drawer.filePath, 'lib/app.dart');
     },
   );
 
@@ -2682,7 +5637,7 @@ void main() {
   );
 
   testWidgets(
-    'Plan implementation sends structured context and produces a patch proposal',
+    'Plan implementation sends structured context and offers next batch after partial apply',
     (tester) async {
       final root = Directory.systemTemp.createTempSync(
         'studio_plan_sender_patch_',
@@ -2699,6 +5654,16 @@ void main() {
             toolCallName: 'propose_patch',
             toolCallArguments:
                 '{"title":"Create greeting","summary":"Add the accepted greeting file.","files":[{"path":"hello.txt","intent":"Add greeting","operation":"create","content":"hello from accepted plan\\n"}]}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'patch-readme',
+            toolCallName: 'propose_patch',
+            toolCallArguments:
+                '{"title":"Document greeting","summary":"Add usage docs for the remaining accepted-plan target.","files":[{"path":"README.md","intent":"Document usage","operation":"create","content":"# Greeting\\n\\nRun the greeting example.\\n"}]}',
           ),
           ChatChunk(isDone: true, finishReason: 'tool_calls'),
         ],
@@ -2738,7 +5703,11 @@ void main() {
             title: 'Accepted greeting plan',
             edits: const [],
             planMarkdown: '# Plan\n\n- Create hello.txt.',
-            plannedFiles: const ['hello.txt — Add greeting'],
+            plannedFiles: const [
+              'hello.txt — Add greeting',
+              'README.md — Document usage',
+            ],
+            verificationRequested: true,
           );
       late WidgetRef capturedRef;
 
@@ -2790,10 +5759,36 @@ void main() {
 
       final thread = container.read(studioThreadProvider).selectedThread;
       expect(thread, isNotNull);
-      final turn = thread!.turns.single;
+      expect(thread!.title, isNot(contains('Implement this approved plan')));
+      expect(thread.title, isNot(contains('accepted plan context')));
+      final turn = thread.turns.single;
       expect(turn.intent, TurnIntent.code);
       expect(turn.status, StudioTurnStatus.completed);
       expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      final run = container
+          .read(agentRunProvider)
+          .recentRuns
+          .firstWhere((candidate) => candidate.id == result!.requestId);
+      expect(run.title, 'Implementing approved plan');
+      expect(run.inputPreview, 'Implementing approved plan');
+      expect(run.retryPrompt, 'Implementing approved plan');
+      final userEvent = turn.events.firstWhere(
+        (event) => event.type == StudioTurnEventType.userMessage,
+      );
+      expect(userEvent.transcriptVisible, isFalse);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+      expect(find.textContaining('Implement this approved plan'), findsNothing);
+      expect(
+        find.textContaining('Use the accepted plan context'),
+        findsNothing,
+      );
+
       final patchState = container.read(patchProposalProvider);
       expect(patchState.active?.title, 'Create greeting');
       expect(patchState.active?.edits.single.path, 'hello.txt');
@@ -2821,11 +5816,30 @@ void main() {
       expect(appliedPatch.applyStatus, PatchApplyStatus.applied);
       expect(appliedPatch.changedFiles, ['hello.txt']);
       expect(appliedPatch.checkpointId, isNotNull);
+      expect(appliedPatch.verificationRequested, isTrue);
+      expect(appliedPatch.verificationSuggestions, isNotEmpty);
       final updatedTurn = container
           .read(studioThreadProvider)
           .selectedThread!
           .turns
           .single;
+      expect(
+        container.read(studioThreadProvider).selectedThread!.status,
+        StudioThreadStatus.continuationReady,
+      );
+      expect(updatedTurn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(
+        updatedTurn.planTargetProgress
+            .firstWhere((target) => target.path == 'hello.txt')
+            .state,
+        PlanTargetProgressState.applied,
+      );
+      expect(
+        updatedTurn.planTargetProgress
+            .firstWhere((target) => target.path == 'README.md')
+            .state,
+        PlanTargetProgressState.pending,
+      );
       final applyEvents = updatedTurn.events.where(
         (event) =>
             event.type == StudioTurnEventType.completionSummary &&
@@ -2834,8 +5848,280 @@ void main() {
       expect(applyEvents, hasLength(1));
       expect(applyEvents.single.detail, contains('Applied 1 files.'));
       expect(applyEvents.single.detail, contains('Created hello.txt'));
+      expect(applyEvents.single.detail, contains('Next batch: 1'));
+      expect(applyEvents.single.detail, contains('README.md'));
+      expect(applyEvents.single.detail, contains('Use Continue next batch'));
+      final verificationStep = updatedTurn.steps
+          .where((step) => step.step == TurnStep.verification)
+          .single;
+      expect(verificationStep.status, TurnStepStatus.queued);
+      expect(verificationStep.title, 'Verification ready');
+      expect(verificationStep.detail, contains('Suggested checks'));
+      expect(verificationStep.detail, contains('Verification was requested'));
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.textContaining('Plan progress: 1/2 targets applied'),
+        findsOneWidget,
+      );
+      expect(find.text('Pending'), findsWidgets);
+      expect(find.textContaining('README.md'), findsWidgets);
+      expect(find.text('Next batch available'), findsOneWidget);
+      expect(find.text('Continue next batch'), findsWidgets);
+
+      await tester.tap(find.text('Continue next batch').first);
+      await tester.runAsync(() async {
+        for (var i = 0; i < 80; i++) {
+          final runtime = container.read(agentTurnRuntimeProvider);
+          if (!runtime.hasActiveStudioRequest &&
+              provider.messages.length >= 2) {
+            final latestTurn = container
+                .read(studioThreadProvider)
+                .selectedThread
+                ?.turns
+                .lastOrNull;
+            if (latestTurn?.status == StudioTurnStatus.completed) {
+              return;
+            }
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+      });
+      await tester.pump();
+
+      expect(provider.messages, hasLength(2));
+      final continuationPrompt = provider.messages.last.last.content;
+      expect(continuationPrompt, contains('accepted plan context'));
+      expect(continuationPrompt, contains('Continue the remaining'));
+      expect(continuationPrompt, contains('README.md'));
+      expect(continuationPrompt, isNot(contains('hello.txt')));
+      expect(provider.exposedTools.last, contains('propose_patch'));
+      expect(provider.exposedTools.last, isNot(contains('apply_patch_set')));
+      expect(provider.exposedTools.last, isNot(contains('run_command')));
+
+      final continuedThread = container
+          .read(studioThreadProvider)
+          .selectedThread!;
+      expect(continuedThread.turns, hasLength(2));
+      final continuationTurn = continuedThread.turns.first;
+      expect(continuationTurn.status, StudioTurnStatus.completed);
+      expect(
+        continuationTurn.acceptedPlanState,
+        AcceptedPlanState.patchProposed,
+      );
+      expect(continuationTurn.acceptedPlanContext?.plannedFiles, [
+        'README.md — Document usage',
+      ]);
     },
   );
+
+  test('Reloaded partial plan apply still derives continuation', () {
+    const acceptedPlan = AcceptedPlanContext(
+      patchSetId: 'plan-reload',
+      title: 'Two batch plan',
+      summary: 'Create the greeting and documentation.',
+      markdown: '# Plan\n\n- Create hello.txt\n- Create README.md',
+      plannedFiles: ['hello.txt — Add greeting', 'README.md — Document usage'],
+    );
+    final now = DateTime(2026);
+    final appliedPatch = ProposedPatchSet(
+      id: 'patch-reload-first-batch',
+      title: 'Create greeting',
+      runId: 'request-reload-partial',
+      edits: const [
+        ProposedFileEdit(
+          path: 'hello.txt',
+          type: ProposedFileEditType.create,
+          after: 'hello after restart\n',
+        ),
+      ],
+      applyStatus: PatchApplyStatus.applied,
+      changedFiles: const ['hello.txt'],
+      checkpointId: 'checkpoint-reload',
+      diffSummary: 'Created hello.txt (+1 lines)',
+      createdAt: now,
+    );
+    final thread = StudioThread(
+      id: 'thread-reload-partial',
+      title: 'Reloaded partial plan',
+      status: StudioThreadStatus.done,
+      phase: StudioSendPhase.completed,
+      turns: [
+        StudioTurn(
+          id: 'turn-reload-partial',
+          threadId: 'thread-reload-partial',
+          requestId: 'request-reload-partial',
+          userMessageId: 'message-reload-partial',
+          prompt: 'Implement accepted plan',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          status: StudioTurnStatus.completed,
+          intent: TurnIntent.code,
+          acceptedPlanState: AcceptedPlanState.patchProposed,
+          acceptedPlanContext: acceptedPlan,
+          planTargetProgress: [
+            PlanTargetProgress(
+              path: 'hello.txt',
+              intent: 'Add greeting',
+              operation: ProposedFileEditType.create,
+              state: PlanTargetProgressState.applied,
+              patchSetId: 'patch-reload-first-batch',
+              updatedAt: now,
+            ),
+            PlanTargetProgress(
+              path: 'README.md',
+              intent: 'Document usage',
+              operation: ProposedFileEditType.create,
+              updatedAt: now,
+            ),
+          ],
+          events: [
+            StudioTurnEvent.completionSummary(
+              id: 'patch-transaction-turn-reload-partial-patch-reload-first-batch-applied',
+              turnId: 'turn-reload-partial',
+              requestId: 'request-reload-partial',
+              threadId: 'thread-reload-partial',
+              title: 'Applied changes',
+              detail:
+                  'Applied 1 files.\nHere’s what changed: hello.txt\nCheckpoint: checkpoint-reload\nCreated hello.txt (+1 lines)\nNext batch: 1 accepted-plan target still needs work (README.md). Use Continue next batch to keep implementing the accepted plan.',
+            ),
+          ],
+          createdAt: now,
+          updatedAt: now,
+          completedAt: now,
+        ),
+      ],
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final continuation = studioPlanContinuationForPatch(
+      patch: appliedPatch,
+      threads: [thread],
+    );
+
+    expect(continuation, isNotNull);
+    expect(continuation!.appliedCount, 1);
+    expect(continuation.totalCount, 2);
+    expect(continuation.summaryLabel, '1 target remains');
+    expect(continuation.remainingTargets.single.path, 'README.md');
+    expect(continuation.acceptedPlan.patchSetId, 'plan-reload:next-batch');
+    expect(continuation.acceptedPlan.plannedFiles, [
+      'README.md — Document usage',
+    ]);
+    expect(continuation.acceptedPlan.markdown, contains('README.md'));
+    expect(continuation.acceptedPlan.markdown, isNot(contains('hello.txt')));
+  });
+
+  test('Reloaded partial plan with proposed target still derives continuation', () {
+    const acceptedPlan = AcceptedPlanContext(
+      patchSetId: 'plan-reload-proposed',
+      title: 'Two batch plan',
+      summary: 'Create the greeting and documentation.',
+      markdown: '# Plan\n\n- Create hello.txt\n- Create README.md',
+      plannedFiles: ['hello.txt — Add greeting', 'README.md — Document usage'],
+    );
+    final now = DateTime(2026);
+    final appliedPatch = ProposedPatchSet(
+      id: 'patch-reload-proposed-batch',
+      title: 'Create greeting',
+      runId: 'request-reload-proposed',
+      edits: const [
+        ProposedFileEdit(
+          path: 'hello.txt',
+          type: ProposedFileEditType.create,
+          after: 'hello after restart\n',
+        ),
+      ],
+      applyStatus: PatchApplyStatus.applied,
+      changedFiles: const ['hello.txt'],
+      checkpointId: 'checkpoint-reload-proposed',
+      diffSummary: 'Created hello.txt (+1 lines)',
+      createdAt: now,
+    );
+    final thread = StudioThread(
+      id: 'thread-reload-proposed',
+      title: 'Reloaded proposed plan target',
+      status: StudioThreadStatus.done,
+      phase: StudioSendPhase.completed,
+      turns: [
+        StudioTurn(
+          id: 'turn-reload-proposed',
+          threadId: 'thread-reload-proposed',
+          requestId: 'request-reload-proposed',
+          userMessageId: 'message-reload-proposed',
+          prompt: 'Implement accepted plan',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          status: StudioTurnStatus.completed,
+          intent: TurnIntent.code,
+          acceptedPlanState: AcceptedPlanState.patchProposed,
+          acceptedPlanContext: acceptedPlan,
+          planTargetProgress: [
+            PlanTargetProgress(
+              path: 'hello.txt',
+              intent: 'Add greeting',
+              operation: ProposedFileEditType.create,
+              state: PlanTargetProgressState.applied,
+              patchSetId: 'patch-reload-proposed-batch',
+              updatedAt: now,
+            ),
+            PlanTargetProgress(
+              path: 'README.md',
+              intent: 'Document usage',
+              operation: ProposedFileEditType.create,
+              state: PlanTargetProgressState.proposed,
+              patchSetId: 'patch-stale-docs',
+              detail: 'Prepared previously but not applied.',
+              updatedAt: now,
+            ),
+          ],
+          events: [
+            StudioTurnEvent.completionSummary(
+              id: 'patch-transaction-turn-reload-proposed-patch-reload-proposed-batch-applied',
+              turnId: 'turn-reload-proposed',
+              requestId: 'request-reload-proposed',
+              threadId: 'thread-reload-proposed',
+              title: 'Applied changes',
+              detail:
+                  'Applied 1 files.\nHere’s what changed: hello.txt\nCheckpoint: checkpoint-reload-proposed\nNext batch: 1 accepted-plan target still needs work (README.md). Use Continue next batch to keep implementing the accepted plan.',
+            ),
+          ],
+          createdAt: now,
+          updatedAt: now,
+          completedAt: now,
+        ),
+      ],
+      createdAt: now,
+      updatedAt: now,
+    );
+
+    final continuation = studioPlanContinuationForPatch(
+      patch: appliedPatch,
+      threads: [thread],
+    );
+
+    expect(continuation, isNotNull);
+    expect(continuation!.appliedCount, 1);
+    expect(continuation.totalCount, 2);
+    expect(continuation.remainingTargets.single.path, 'README.md');
+    expect(
+      continuation.remainingTargets.single.state,
+      PlanTargetProgressState.proposed,
+    );
+    expect(continuation.acceptedPlan.plannedFiles, [
+      'README.md — Document usage',
+    ]);
+    expect(continuation.acceptedPlan.plannedTargets.single.path, 'README.md');
+    expect(continuation.acceptedPlan.markdown, contains('README.md'));
+    expect(continuation.acceptedPlan.markdown, isNot(contains('hello.txt')));
+  });
 
   testWidgets('Plan implementation fails vague prose instead of completing', (
     tester,
@@ -2990,7 +6276,7 @@ void main() {
 
     expect(apply?.status, PatchApplyStatus.applied);
     expect(readme.readAsStringSync(), 'new');
-    expect(find.text('Applied 1 files'), findsOneWidget);
+    expect(find.text('Edited 1 file'), findsOneWidget);
     expect(find.text('Restore checkpoint'), findsOneWidget);
     expect(
       container.read(patchProposalProvider).history.first.applyStatus,
@@ -3081,7 +6367,7 @@ void main() {
       expect(renderedPatch.applyStatus, PatchApplyStatus.applied);
       expect(renderedPatch.changedFiles, ['README.md']);
       expect(renderedPatch.checkpointId, isNotNull);
-      expect(find.text('Applied 1 files'), findsOneWidget);
+      expect(find.text('Edited 1 file'), findsOneWidget);
       expect(find.text('Restore checkpoint'), findsOneWidget);
 
       final restoreButton = find.widgetWithText(
@@ -3181,9 +6467,77 @@ void main() {
         find.textContaining('File changed since proposal'),
         findsOneWidget,
       );
-      expect(find.text('Apply changes'), findsOneWidget);
+      expect(find.text('Apply changes'), findsNothing);
+      expect(find.text('Ask Circuit to rebase'), findsOneWidget);
+
+      await tester.tap(find.text('Ask Circuit to rebase'));
+      await tester.pump();
+
+      final revisedState = container.read(patchProposalProvider);
+      expect(revisedState.active, isNotNull);
+      expect(
+        revisedState.active!.approvalStatus,
+        PatchApprovalStatus.revisionRequested,
+      );
+      expect(
+        revisedState.active!.revisionPrompt,
+        contains('Refresh these proposed changes against the current files'),
+      );
+      expect(revisedState.active!.revisionPrompt, contains('README.md'));
+      final shell = container.read(studioShellProvider);
+      expect(shell.promptMode, StudioPromptMode.code);
+      expect(
+        shell.composerText,
+        contains('Refresh these proposed changes against the current files'),
+      );
+      expect(shell.composerText, contains('README.md'));
     },
   );
+
+  test('Patch rebase send includes structured revision context', () {
+    final patch = ProposedPatchSet(
+      id: 'patch-1',
+      title: 'Update README',
+      edits: const [
+        ProposedFileEdit(
+          path: 'README.md',
+          type: ProposedFileEditType.modify,
+          before: 'old',
+          after: 'new',
+          conflictMessage: 'File changed since proposal: README.md',
+        ),
+      ],
+      createdAt: DateTime(2026, 1, 1),
+      approvalStatus: PatchApprovalStatus.revisionRequested,
+      applyStatus: PatchApplyStatus.conflict,
+      conflictMessage: 'File changed since proposal: README.md',
+      revisionPrompt:
+          'Refresh these proposed changes against the current files and preserve the accepted plan intent. Resolve: File changed since proposal: README.md',
+    );
+
+    final attachment = debugPatchRevisionContextAttachment(patch);
+    expect(attachment.label, 'Patch revision context');
+    expect(attachment.content, contains('Patch revision request'));
+    expect(attachment.content, contains('Patch title: Update README'));
+    expect(
+      attachment.content,
+      contains('Current conflict: File changed since proposal: README.md'),
+    );
+    expect(attachment.content, contains('Current proposed files:'));
+    expect(attachment.content, contains('README.md — modify'));
+
+    final outbound = debugPatchRevisionOutboundPrompt(
+      patch.revisionPrompt!,
+      patch,
+    );
+    expect(outbound, contains('Use the attached "Patch revision context"'));
+    expect(
+      outbound,
+      contains('Produce exactly one concrete `propose_patch` result'),
+    );
+    expect(outbound, contains('Do not run commands'));
+    expect(outbound, contains('Patch to revise: Update README'));
+  });
 
   test(
     'PatchProposalController rejects Windows absolute paths before applying',
@@ -3223,6 +6577,21 @@ void main() {
       expect(state.active!.applyStatus, PatchApplyStatus.conflict);
       expect(state.checkpoints, isEmpty);
     },
+  );
+}
+
+void _expectCompactActionStyle(ButtonStyle? style) {
+  const states = <WidgetState>{};
+  expect(style, isNotNull);
+  expect(style!.minimumSize?.resolve(states), const Size(0, 24));
+  expect(style.tapTargetSize, MaterialTapTargetSize.shrinkWrap);
+  expect(style.textStyle?.resolve(states)?.fontSize, FontSizes.xs);
+  expect(style.textStyle?.resolve(states)?.fontWeight, FontWeight.w600);
+  final shape = style.shape?.resolve(states);
+  expect(shape, isA<RoundedRectangleBorder>());
+  expect(
+    (shape! as RoundedRectangleBorder).borderRadius,
+    BorderRadius.circular(7),
   );
 }
 

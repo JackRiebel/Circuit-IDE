@@ -11,13 +11,16 @@ typedef CommandRunEventCallback = void Function(CommandRunEvent event);
 
 class CommandTools {
   final String workingDir;
+  final Map<String, String> _baseEnvironment;
   final Map<String, Process> _activeProcesses = {};
 
-  CommandTools({required this.workingDir});
+  CommandTools({required this.workingDir, Map<String, String>? environment})
+    : _baseEnvironment = environment ?? Platform.environment;
 
   Future<String> runCommand(
     Map<String, dynamic> args, {
     String? runId,
+    bool allowNetwork = false,
     CommandRunEventCallback? onEvent,
   }) async {
     final command = args['command'] as String;
@@ -40,6 +43,44 @@ class CommandTools {
       );
       return 'Error: Potentially dangerous command blocked: $danger';
     }
+    final networkAccess = CommandSanitizer.checkNetworkAccess(command);
+    final blockedNetworkTarget = CommandSanitizer.checkBlockedNetworkTarget(
+      command,
+    );
+    if (blockedNetworkTarget != null) {
+      onEvent?.call(
+        CommandRunEvent(
+          type: CommandRunEventType.blocked,
+          timestamp: DateTime.now(),
+          text: blockedNetworkTarget,
+        ),
+      );
+      return 'Error: Network target blocked: $blockedNetworkTarget';
+    }
+    if (!allowNetwork && networkAccess != null) {
+      onEvent?.call(
+        CommandRunEvent(
+          type: CommandRunEventType.blocked,
+          timestamp: DateTime.now(),
+          text: networkAccess,
+        ),
+      );
+      return 'Error: Network command blocked: $networkAccess';
+    }
+    final workspaceBoundary = CommandSanitizer.checkWorkspaceBoundary(
+      command,
+      workingDir,
+    );
+    if (workspaceBoundary != null) {
+      onEvent?.call(
+        CommandRunEvent(
+          type: CommandRunEventType.blocked,
+          timestamp: DateTime.now(),
+          text: workspaceBoundary,
+        ),
+      );
+      return 'Error: Workspace boundary blocked: $workspaceBoundary';
+    }
 
     Process? process;
     Timer? timer;
@@ -55,7 +96,7 @@ class CommandTools {
         PlatformUtils.shell,
         [...PlatformUtils.shellArgs, command],
         workingDirectory: workingDir,
-        environment: {...Platform.environment, 'TERM': 'dumb'},
+        environment: _sanitizedEnvironment(),
       );
       if (runId != null) _activeProcesses[runId] = process;
 
@@ -188,5 +229,57 @@ class CommandTools {
       if (cancel(id)) count++;
     }
     return count;
+  }
+
+  Map<String, String> _sanitizedEnvironment() {
+    final env = <String, String>{};
+    for (final entry in _baseEnvironment.entries) {
+      final key = entry.key;
+      if (_isBlockedEnvironmentKey(key)) continue;
+      if (_isAllowedEnvironmentKey(key)) {
+        env[key] = entry.value;
+      }
+    }
+    env['TERM'] = 'dumb';
+    return env;
+  }
+
+  bool _isAllowedEnvironmentKey(String key) {
+    final upper = key.toUpperCase();
+    if (upper.startsWith('LC_')) return true;
+    return const {
+      'ANDROID_HOME',
+      'ANDROID_SDK_ROOT',
+      'CI',
+      'DART_SDK',
+      'DEVELOPER_DIR',
+      'FLUTTER_ROOT',
+      'GEM_HOME',
+      'GEM_PATH',
+      'GRADLE_USER_HOME',
+      'HOME',
+      'JAVA_HOME',
+      'LANG',
+      'LOGNAME',
+      'NPM_CONFIG_CACHE',
+      'PATH',
+      'PUB_CACHE',
+      'PWD',
+      'SDKROOT',
+      'SHELL',
+      'TERM',
+      'TMP',
+      'TMPDIR',
+      'TEMP',
+      'USER',
+      'XCODE_DEVELOPER_DIR_PATH',
+    }.contains(upper);
+  }
+
+  bool _isBlockedEnvironmentKey(String key) {
+    final upper = key.toUpperCase();
+    return RegExp(
+      r'(TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|COOKIE|SESSION|AUTH|API[_-]?KEY|ACCESS[_-]?KEY|CLIENT[_-]?SECRET|SSH_AUTH_SOCK)',
+    ).hasMatch(upper);
   }
 }

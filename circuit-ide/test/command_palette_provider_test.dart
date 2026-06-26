@@ -89,25 +89,25 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: MaterialApp(
-          home: Consumer(
-            builder: (context, ref, child) {
-              return TextButton(
-                onPressed: () => CoreCommandRegistry.register(ref),
-                child: const Text('register'),
-              );
-            },
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                return TextButton(
+                  onPressed: () => CoreCommandRegistry.register(ref),
+                  child: const Text('register'),
+                );
+              },
+            ),
           ),
         ),
-      ),
-    );
-    await tester.tap(find.text('register'));
-    await tester.pump();
+      );
+      await tester.tap(find.text('register'));
+      await tester.pump();
 
-    final commandIds = container
+      final commandIds = container
           .read(commandPaletteProvider)
           .allCommands
           .map((command) => command.id)
@@ -117,9 +117,35 @@ void main() {
       expect(commandIds, contains('studio.newTask'));
       expect(commandIds, contains('settings.open'));
       expect(commandIds, isNot(contains('file.save')));
+      expect(commandIds, isNot(contains('view.tools')));
       expect(commandIds, isNot(contains('view.toggleTerminal')));
+      expect(commandIds, isNot(contains('ai.copyLatestRun')));
       expect(commandIds, isNot(contains('project.startWorkItem')));
       expect(commandIds, isNot(contains('agentWorkspace.startParallelTask')));
+      final registeredText = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .map(
+            (command) =>
+                '${command.id}\n${command.title}\n${command.description ?? ''}',
+          )
+          .join('\n')
+          .toLowerCase();
+      for (final hiddenTerm in [
+        'advanced tools',
+        'mcp',
+        'notebook',
+        'agent workspace',
+        'parallel task',
+        'background agent',
+      ]) {
+        expect(
+          registeredText,
+          isNot(contains(hiddenTerm)),
+          reason:
+              'Studio command palette must not expose $hiddenTerm while advanced Studio surfaces are quarantined.',
+        );
+      }
 
       container
           .read(commandPaletteProvider.notifier)

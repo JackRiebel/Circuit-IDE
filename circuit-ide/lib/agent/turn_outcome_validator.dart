@@ -184,16 +184,6 @@ class TurnOutcomeValidator {
           acceptedPlanState: AcceptedPlanState.none,
         );
       }
-      final concretePatchCount = _concretePatchAttemptCount(
-        toolCalls,
-        toolResults,
-      );
-      if (concretePatchCount > 0) {
-        return const TurnOutcomeValidationResult.invalid(
-          'Plan Mode must create a plan-only review card. Concrete file edits belong in the implementation turn after the plan is accepted.',
-          acceptedPlanState: AcceptedPlanState.none,
-        );
-      }
       final reviewablePlanCount = _reviewablePlanProposalCount(
         toolCalls,
         toolResults,
@@ -204,6 +194,16 @@ class TurnOutcomeValidator {
       if (reviewablePlanCount > 1) {
         return const TurnOutcomeValidationResult.invalid(
           'Plan Mode must finish with exactly one reviewable plan card. Split separate plans into separate turns.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      final concretePatchCount = _concretePatchAttemptCount(
+        toolCalls,
+        toolResults,
+      );
+      if (concretePatchCount > 0) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Plan Mode must create a plan-only review card. Concrete file edits belong in the implementation turn after the plan is accepted.',
           acceptedPlanState: AcceptedPlanState.none,
         );
       }
@@ -248,17 +248,12 @@ class TurnOutcomeValidator {
             'Circuit proposed changes but also claimed they were already applied or verified. Review and apply the patch through CircuitCode instead.',
           );
         }
-        if (!_concretePatchFullyImplementsAcceptedPlan(
+        if (!_concretePatchMatchesAcceptedPlanBatch(
           toolResults,
           acceptedPlan,
         )) {
           return const TurnOutcomeValidationResult.invalid(
-            'The implementation patch does not fully match the accepted plan targets. Revise the patch to cover every planned file, match each planned file intent, and avoid unplanned files, or ask one specific missing-context question explaining why the plan cannot be implemented as written.',
-          );
-        }
-        if (_containsAppHandledApprovalRequest(content)) {
-          return const TurnOutcomeValidationResult.invalid(
-            'This turn asked the user to type approval text. Circuit handles plan and patch approval through the review UI.',
+            'The implementation patch does not match the accepted plan targets. Revise the patch to cover a valid planned batch, match each planned file intent, avoid unplanned files, or ask one specific missing-context question explaining why the plan cannot be implemented as written.',
           );
         }
         return const TurnOutcomeValidationResult.valid(
@@ -304,12 +299,6 @@ class TurnOutcomeValidator {
         if (_containsPrematurePatchCompletionClaim(content)) {
           return const TurnOutcomeValidationResult.invalid(
             'Circuit proposed changes but also claimed they were already applied or verified. Review and apply the patch through CircuitCode instead.',
-            acceptedPlanState: AcceptedPlanState.none,
-          );
-        }
-        if (_containsAppHandledApprovalRequest(content)) {
-          return const TurnOutcomeValidationResult.invalid(
-            'This turn asked the user to type approval text. Circuit handles plan and patch approval through the review UI.',
             acceptedPlanState: AcceptedPlanState.none,
           );
         }
@@ -375,7 +364,7 @@ class TurnOutcomeValidator {
     ).where(_isConcretePatchAttemptPayload).length;
   }
 
-  bool _concretePatchFullyImplementsAcceptedPlan(
+  bool _concretePatchMatchesAcceptedPlanBatch(
     List<ToolResultEnvelope> toolResults,
     AcceptedPlanContext acceptedPlan,
   ) {
@@ -404,34 +393,65 @@ class TurnOutcomeValidator {
         _operationFromValue(file['operation']),
       );
     }
-    final patchTargets = patchTargetSpecs.keys.toSet();
-    if (patchTargets.isEmpty) return false;
+    return _patchTargetsSatisfyAcceptedPlanBatch(
+      plannedTargets,
+      patchTargetSpecs,
+    );
+  }
 
-    if (patchTargets.length != plannedTargets.length ||
-        !patchTargets.every(plannedTargets.containsKey) ||
-        !plannedTargets.keys.every(patchTargets.contains)) {
+  bool _patchTargetsSatisfyAcceptedPlanBatch(
+    Map<String, _PlannedFileSpec> plannedTargets,
+    Map<String, _PlannedFileSpec> patchTargets,
+  ) {
+    if (patchTargets.isEmpty) return false;
+    for (final patchEntry in patchTargets.entries) {
+      final matchingPlannedEntries = plannedTargets.entries
+          .where(
+            (plannedEntry) => _patchPathMatchesPlannedTarget(
+              patchEntry.key,
+              plannedEntry.value.path,
+            ),
+          )
+          .toList(growable: false);
+      if (matchingPlannedEntries.isEmpty) return false;
+      final patchSpec = patchEntry.value;
+      final satisfiesAnyPlannedTarget = matchingPlannedEntries.any(
+        (plannedEntry) =>
+            _patchSpecSatisfiesPlannedSpec(plannedEntry.value, patchSpec),
+      );
+      if (!satisfiesAnyPlannedTarget) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _patchPathMatchesPlannedTarget(String patchPath, String plannedPath) {
+    if (patchPath == plannedPath) return true;
+    final normalizedPlanned = plannedPath.endsWith('/')
+        ? plannedPath
+        : '$plannedPath/';
+    return plannedPath.endsWith('/') && patchPath.startsWith(normalizedPlanned);
+  }
+
+  bool _patchSpecSatisfiesPlannedSpec(
+    _PlannedFileSpec plannedSpec,
+    _PlannedFileSpec patchSpec,
+  ) {
+    if (plannedSpec.operation != null &&
+        patchSpec.operation != plannedSpec.operation) {
       return false;
     }
-
-    for (final entry in plannedTargets.entries) {
-      final plannedSpec = entry.value;
-      final patchSpec = patchTargetSpecs[entry.key];
-      if (patchSpec == null) return false;
-      if (plannedSpec.operation != null &&
-          patchSpec.operation != plannedSpec.operation) {
-        return false;
-      }
-      if (plannedSpec.operation == null &&
-          patchSpec.operation == ProposedFileEditType.delete &&
-          !_intentAllowsDelete(plannedSpec.intent)) {
-        return false;
-      }
-      if (plannedSpec.intent.isEmpty) continue;
-      if (!_intentsAreAligned(plannedSpec.intent, patchSpec.intent)) {
-        return false;
-      }
+    if (plannedSpec.operation == null &&
+        patchSpec.operation == ProposedFileEditType.delete &&
+        !_intentAllowsDelete(plannedSpec.intent)) {
+      return false;
     }
-
+    // Accepted-plan implementation should be strict about target boundaries and
+    // operation safety, but not brittle about natural-language intent wording.
+    // The review UI is the right place to judge whether the proposed change is
+    // good enough; hard rejection here caused useful first-batch patches to be
+    // surfaced as provider failures.
     return true;
   }
 
@@ -569,17 +589,6 @@ class TurnOutcomeValidator {
       'modify' || 'update' => ProposedFileEditType.modify,
       _ => ProposedFileEditType.create,
     };
-  }
-
-  bool _intentsAreAligned(String plannedIntent, String patchIntent) {
-    final planned = _intentTokens(plannedIntent);
-    final patch = _intentTokens(patchIntent);
-    if (planned.isEmpty || patch.isEmpty) return false;
-    if (planned.every(patch.contains)) {
-      return true;
-    }
-    final overlap = planned.intersection(patch).length;
-    return overlap >= 2 && overlap / planned.length >= 0.67;
   }
 
   bool _concretePatchAlignsWithTaskPrompt(
@@ -1047,7 +1056,10 @@ class TurnOutcomeValidator {
       }
       parts.add(part);
     }
-    return parts.join('/').toLowerCase();
+    final normalized = parts.join('/').toLowerCase();
+    return raw.endsWith('/') && normalized.isNotEmpty
+        ? '$normalized/'
+        : normalized;
   }
 
   bool _isUnsafePatchTarget(String path) {
@@ -1100,10 +1112,11 @@ class TurnOutcomeValidator {
       args,
       planMarkdownText,
     );
+    final syntheticPlan = args['synthetic_plan'] == true;
     final hasPlannedFiles = _hasReviewablePlanFiles(args['files']);
 
     return hasPlanMarkdown &&
-        hasPlannedFiles &&
+        (hasPlannedFiles || syntheticPlan) &&
         hasAssumptions &&
         hasVerificationSteps;
   }

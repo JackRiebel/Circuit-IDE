@@ -1,5 +1,7 @@
 import '../../models/accepted_plan_context.dart';
 import '../../models/reviewed_edit.dart';
+import '../../agent/verification_command_filter.dart'
+    as verification_command_filter;
 
 String buildPlanImplementationPrompt(AcceptedPlanContext plan) {
   return [
@@ -40,23 +42,5 @@ String buildPatchVerificationPrompt(ProposedPatchSet patch) {
 }
 
 bool isRunnableVerificationCommand(String value) {
-  final command = value.trim();
-  if (command.isEmpty) return false;
-  if (command.contains('\n')) return false;
-  final first = command.split(RegExp(r'\s+')).first.toLowerCase();
-  const knownCommands = {
-    'cargo',
-    'dart',
-    'flutter',
-    'go',
-    'make',
-    'npm',
-    'pnpm',
-    'python',
-    'python3',
-    'swift',
-    'yarn',
-    'xcodebuild',
-  };
-  return knownCommands.contains(first);
+  return verification_command_filter.isRunnableVerificationCommand(value);
 }
