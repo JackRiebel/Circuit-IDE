@@ -148,11 +148,16 @@ class CommandSanitizer {
 
     final candidates = <String>{
       ..._absolutePathCandidates(command),
+      ..._homePathCandidates(command),
+      ..._environmentPathCandidates(command),
       ..._parentTraversalPathCandidates(command),
     };
     for (final candidate in candidates) {
       final sanitized = candidate.trim().replaceAll('\\', '/');
       if (sanitized.isEmpty) continue;
+      if (_looksLikeShellExpandedPath(sanitized)) {
+        return 'Shell commands may not access paths outside the active workspace';
+      }
       if (_looksLikeWindowsAbsolutePath(sanitized)) {
         return 'Shell commands may not access paths outside the active workspace';
       }
@@ -380,6 +385,27 @@ class CommandSanitizer {
     }
   }
 
+  static Iterable<String> _homePathCandidates(String command) sync* {
+    final pathPattern = RegExp(
+      r'''(?:^|[\s'"(=])((?:~|~[A-Za-z0-9._-]+)(?:/|\\)[^\s'"`|;&<>),\]]*)''',
+    );
+    for (final match in pathPattern.allMatches(command)) {
+      final candidate = _cleanCommandPathCandidate(match.group(1) ?? '');
+      if (candidate.isNotEmpty) yield candidate;
+    }
+  }
+
+  static Iterable<String> _environmentPathCandidates(String command) sync* {
+    final pathPattern = RegExp(
+      r'''(?:^|[\s'"(=])((?:\$(?:HOME|USERPROFILE|TMPDIR|TMP|TEMP|XDG_CONFIG_HOME)|\$\{(?:HOME|USERPROFILE|TMPDIR|TMP|TEMP|XDG_CONFIG_HOME)\})(?:/|\\)[^\s'"`|;&<>),\]]*)''',
+      caseSensitive: false,
+    );
+    for (final match in pathPattern.allMatches(command)) {
+      final candidate = _cleanCommandPathCandidate(match.group(1) ?? '');
+      if (candidate.isNotEmpty) yield candidate;
+    }
+  }
+
   static Iterable<String> _parentTraversalPathCandidates(String command) sync* {
     final pathPattern = RegExp(
       r'''(?:^|[\s'"(=])((?:\.\./|\./\.\./)[^\s'"`|;&<>),\]]+)''',
@@ -392,6 +418,24 @@ class CommandSanitizer {
 
   static String _cleanCommandPathCandidate(String candidate) {
     return candidate.trim().replaceAll(RegExp(r'''[.,:]+$'''), '');
+  }
+
+  static bool _looksLikeShellExpandedPath(String sanitizedPath) {
+    final lower = sanitizedPath.toLowerCase();
+    return sanitizedPath.startsWith('~/') ||
+        RegExp(r'^~[A-Za-z0-9._-]+/').hasMatch(sanitizedPath) ||
+        lower.startsWith(r'$home/') ||
+        lower.startsWith(r'${home}/') ||
+        lower.startsWith(r'$userprofile/') ||
+        lower.startsWith(r'${userprofile}/') ||
+        lower.startsWith(r'$tmpdir/') ||
+        lower.startsWith(r'${tmpdir}/') ||
+        lower.startsWith(r'$tmp/') ||
+        lower.startsWith(r'${tmp}/') ||
+        lower.startsWith(r'$temp/') ||
+        lower.startsWith(r'${temp}/') ||
+        lower.startsWith(r'$xdg_config_home/') ||
+        lower.startsWith(r'${xdg_config_home}/');
   }
 
   static bool _looksLikeWindowsAbsolutePath(String sanitizedPath) {

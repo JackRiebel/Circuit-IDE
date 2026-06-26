@@ -3865,6 +3865,42 @@ void main() {
         approvalGrantKey: testOutsideGrantKey,
       ),
     ).evaluate(testOutsideCommand);
+    const homeOutsideCommand = ToolCallInfo(
+      id: 'home-outside',
+      name: 'run_command',
+      arguments: {'command': 'cat ~/Documents/outside.txt'},
+    );
+    final homeOutside = verifyGrantKeyPolicy.evaluate(homeOutsideCommand);
+    final homeOutsideGrantKey = verifyGrantKeyPolicy.approvalGrantKeyFor(
+      homeOutsideCommand,
+    );
+    final grantedHomeOutside = AgentToolPermissionPolicy(
+      workingDir: root,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: homeOutsideGrantKey,
+      ),
+    ).evaluate(homeOutsideCommand);
+    const envOutsideCommand = ToolCallInfo(
+      id: 'env-outside',
+      name: 'run_command',
+      arguments: {'command': r'python scripts/check.py $HOME/outside.txt'},
+    );
+    final envOutside = verifyGrantKeyPolicy.evaluate(envOutsideCommand);
+    final envOutsideGrantKey = verifyGrantKeyPolicy.approvalGrantKeyFor(
+      envOutsideCommand,
+    );
+    final grantedEnvOutside = AgentToolPermissionPolicy(
+      workingDir: root,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: envOutsideGrantKey,
+      ),
+    ).evaluate(envOutsideCommand);
     final listSecret = verifyGrantKeyPolicy.evaluate(
       const ToolCallInfo(
         id: 'list-secret',
@@ -4219,6 +4255,17 @@ void main() {
       grantedTestOutside.reason,
       ToolPermissionReason.pathOutsideWorkspace,
     );
+    expect(homeOutside.verdict, ToolPermissionVerdict.deny);
+    expect(homeOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(grantedHomeOutside.verdict, ToolPermissionVerdict.deny);
+    expect(
+      grantedHomeOutside.reason,
+      ToolPermissionReason.pathOutsideWorkspace,
+    );
+    expect(envOutside.verdict, ToolPermissionVerdict.deny);
+    expect(envOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(grantedEnvOutside.verdict, ToolPermissionVerdict.deny);
+    expect(grantedEnvOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
     expect(listSecret.verdict, ToolPermissionVerdict.deny);
     expect(listSecret.reason, ToolPermissionReason.secretPath);
     expect(shellWrappedOutside.verdict, ToolPermissionVerdict.deny);
