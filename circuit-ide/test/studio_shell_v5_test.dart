@@ -1140,6 +1140,51 @@ void main() {
     );
   });
 
+  testWidgets(
+    'Studio context payload does not attach enterprise specialist context while gated',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      late WidgetRef capturedRef;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final payload = buildStudioContextPayload(
+        capturedRef,
+        'Size a Cisco branch refresh with EoL switches, Wi-Fi 7 APs, and topology diagrams.',
+      );
+
+      expect(payload.specialistSelection.hasEnterpriseRouting, isFalse);
+      expect(payload.specialistSelection.resolvedAgentIds, isEmpty);
+      expect(
+        payload.specialistSelection.rationale,
+        contains('Enterprise specialist routing is disabled'),
+      );
+      expect(
+        payload.attachments.map((attachment) => attachment.label),
+        isNot(contains('Enterprise specialist routing')),
+      );
+      expect(
+        payload.attachments.map((attachment) => attachment.id),
+        everyElement(isNot(contains('enterprise-specialists'))),
+      );
+      expect(payload.summary.specialistLabels, isEmpty);
+      expect(payload.summary.specialistRouting, isNull);
+    },
+  );
+
   test('Plan continuation text only targets active plan artifacts', () {
     expect(isPlanImplementationContinuationText('go ahead'), isFalse);
     expect(isPlanImplementationContinuationText('Looks good to me.'), isFalse);

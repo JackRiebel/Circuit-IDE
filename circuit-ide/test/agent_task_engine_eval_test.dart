@@ -3779,6 +3779,9 @@ Verification
       final flutterTestGrantKey = grantKeyPolicy.approvalGrantKeyFor(
         flutterTestTool,
       );
+      final networkCommandGrantKey = grantKeyPolicy.approvalGrantKeyFor(
+        networkCommandTool,
+      );
       final grantedVerifyPolicy = AgentToolPermissionPolicy(
         workingDir: root,
         request: ToolPermissionRequest(
@@ -3786,6 +3789,15 @@ Verification
           phase: ToolPermissionPhase.verify,
           approvalGrant: ApprovalGrant.turn,
           approvalGrantKey: flutterTestGrantKey,
+        ),
+      );
+      final grantedNetworkPolicy = AgentToolPermissionPolicy(
+        workingDir: root,
+        request: ToolPermissionRequest(
+          intent: TurnIntent.verify,
+          phase: ToolPermissionPhase.verify,
+          approvalGrant: ApprovalGrant.turn,
+          approvalGrantKey: networkCommandGrantKey,
         ),
       );
 
@@ -4002,6 +4014,34 @@ Verification
         mismatchedNetworkCommand.reason,
         ToolPermissionReason.networkRequiresReview,
       );
+
+      final grantedNetworkCommand = grantedNetworkPolicy.evaluate(
+        networkCommandTool,
+      );
+      expect(grantedNetworkCommand.verdict, ToolPermissionVerdict.allow);
+      expect(
+        grantedNetworkCommand.reason,
+        ToolPermissionReason.approvalGranted,
+      );
+
+      for (final command in [
+        'curl https://example.com/other',
+        'curl https://example.org/status',
+      ]) {
+        final decision = grantedNetworkPolicy.evaluate(
+          ToolCallInfo(
+            id: command,
+            name: 'run_command',
+            arguments: {'command': command},
+          ),
+        );
+        expect(decision.verdict, ToolPermissionVerdict.ask, reason: command);
+        expect(
+          decision.reason,
+          ToolPermissionReason.networkRequiresReview,
+          reason: command,
+        );
+      }
 
       expect(
         decide(verifyPolicy, 'cat .env').reason,

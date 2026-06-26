@@ -508,6 +508,12 @@ void main() {
       expect(updatedThread.turns, hasLength(1));
       expect(updatedThread.turns.single.intent, TurnIntent.plan);
       expect(updatedThread.turns.single.status, StudioTurnStatus.completed);
+      final planTurn = updatedThread.turns.single;
+      _expectStep(planTurn, TurnStep.contextBuild, TurnStepStatus.completed);
+      _expectStep(planTurn, TurnStep.providerRequest, TurnStepStatus.completed);
+      _expectStep(planTurn, TurnStep.toolDecision, TurnStepStatus.running);
+      _expectStep(planTurn, TurnStep.toolExecution, TurnStepStatus.completed);
+      _expectStep(planTurn, TurnStep.finalSummary, TurnStepStatus.completed);
       expect(
         harness.scriptedProvider?.exposedTools.first,
         contains('propose_patch'),
@@ -561,6 +567,31 @@ void main() {
         implementationTurn.acceptedPlanState,
         AcceptedPlanState.patchProposed,
       );
+      _expectStep(
+        implementationTurn,
+        TurnStep.contextBuild,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        implementationTurn,
+        TurnStep.providerRequest,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        implementationTurn,
+        TurnStep.toolDecision,
+        TurnStepStatus.running,
+      );
+      _expectStep(
+        implementationTurn,
+        TurnStep.toolExecution,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        implementationTurn,
+        TurnStep.finalSummary,
+        TurnStepStatus.completed,
+      );
       expect(_targetStates(implementationTurn), {
         'hello.txt': PlanTargetProgressState.proposed,
       });
@@ -590,6 +621,16 @@ void main() {
       expect(
         implementationTurnAfterApply.acceptedPlanState,
         AcceptedPlanState.implemented,
+      );
+      _expectStep(
+        implementationTurnAfterApply,
+        TurnStep.patchProposal,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        implementationTurnAfterApply,
+        TurnStep.verification,
+        TurnStepStatus.queued,
       );
       expect(_targetStates(implementationTurnAfterApply), {
         'hello.txt': PlanTargetProgressState.applied,
@@ -655,6 +696,10 @@ void main() {
         (turn) => turn.requestId == verifyRequestId,
       );
       expect(verifyTurn.status, StudioTurnStatus.completed);
+      _expectStep(verifyTurn, TurnStep.approvalWait, TurnStepStatus.completed);
+      _expectStep(verifyTurn, TurnStep.commandRun, TurnStepStatus.completed);
+      _expectStep(verifyTurn, TurnStep.verification, TurnStepStatus.completed);
+      _expectStep(verifyTurn, TurnStep.finalSummary, TurnStepStatus.completed);
       expect(
         verifyTurn.toolResults
             .where((result) => result.toolName == 'run_command')
@@ -695,6 +740,16 @@ void main() {
         reloadedImplementation.acceptedPlanState,
         AcceptedPlanState.implemented,
       );
+      _expectStep(
+        reloadedImplementation,
+        TurnStep.patchProposal,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        reloadedImplementation,
+        TurnStep.verification,
+        TurnStepStatus.queued,
+      );
       expect(_targetStates(reloadedImplementation), {
         'hello.txt': PlanTargetProgressState.applied,
       });
@@ -709,6 +764,16 @@ void main() {
       );
       final reloadedVerify = reloadedThread.turns.firstWhere(
         (turn) => turn.requestId == verifyRequestId,
+      );
+      _expectStep(
+        reloadedVerify,
+        TurnStep.commandRun,
+        TurnStepStatus.completed,
+      );
+      _expectStep(
+        reloadedVerify,
+        TurnStep.verification,
+        TurnStepStatus.completed,
       );
       expect(
         reloadedVerify.toolResults
@@ -7066,6 +7131,11 @@ Map<String, PlanTargetProgressState> _targetStates(StudioTurn turn) {
   return {
     for (final target in turn.planTargetProgress) target.path: target.state,
   };
+}
+
+void _expectStep(StudioTurn turn, TurnStep step, TurnStepStatus status) {
+  final record = turn.steps.singleWhere((candidate) => candidate.step == step);
+  expect(record.status, status, reason: '${turn.requestId} ${step.name}');
 }
 
 class _RuntimeHarness {
