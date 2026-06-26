@@ -3,12 +3,15 @@ import 'package:circuit_ide/agent/tools/tool_registry.dart';
 import 'package:circuit_ide/agent/turn_outcome_validator.dart';
 import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/agent_tool_permission.dart';
+import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_shell.dart';
+import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
 import 'package:circuit_ide/models/tool_result_envelope.dart';
 import 'package:circuit_ide/models/turn_intent.dart';
 import 'package:circuit_ide/ui/studio/studio_message_sender.dart';
+import 'package:circuit_ide/ui/studio/studio_plan_continuation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -3709,6 +3712,209 @@ Verification
         verifyIrrelevantCommandFalseSuccess.userMessage,
         contains('did not match'),
       );
+    });
+
+    test(
+      'accepted-plan contract permits first-batch patches and rejects drift',
+      () {
+        const validator = TurnOutcomeValidator();
+        const acceptedPlan = AcceptedPlanContext(
+          patchSetId: 'datacenter-plan',
+          title: 'Datacenter sizing app',
+          summary: 'Build the app in reviewable batches.',
+          markdown:
+              '- Create src/sizer.py\n- Create README.md\n\n## Verification\n- Review the generated files after each batch.',
+          plannedTargets: [
+            PlannedFileTarget(
+              path: 'src/sizer.py',
+              intent: 'Create the first sizing engine module',
+              operation: ProposedFileEditType.create,
+            ),
+            PlannedFileTarget(
+              path: 'README.md',
+              intent: 'Document the workflow after the engine exists',
+              operation: ProposedFileEditType.create,
+            ),
+          ],
+        );
+
+        final firstBatch = validator.validate(
+          intent: TurnIntent.code,
+          toolMode: AgentToolMode.code,
+          acceptedPlan: acceptedPlan,
+          content: '',
+          toolCalls: const [
+            ToolCallInfo(
+              id: 'first-batch-patch',
+              name: 'propose_patch',
+              arguments: {
+                'title': 'Create sizing engine first batch',
+                'summary': 'Create the first accepted-plan target.',
+                'files': [
+                  {
+                    'path': 'src/sizer.py',
+                    'intent': 'Create the first sizing engine module',
+                    'operation': 'create',
+                    'content':
+                        'def size_datacenter(inputs):\n    return inputs\n',
+                  },
+                ],
+              },
+            ),
+          ],
+          toolResults: const [
+            ToolResultEnvelope(
+              toolCallId: 'first-batch-patch',
+              toolName: 'propose_patch',
+              status: ToolResultStatus.success,
+              summary: 'Patch proposal created.',
+              data: {
+                'title': 'Create sizing engine first batch',
+                'summary': 'Create the first accepted-plan target.',
+                'files': [
+                  {
+                    'path': 'src/sizer.py',
+                    'intent': 'Create the first sizing engine module',
+                    'operation': 'create',
+                    'content':
+                        'def size_datacenter(inputs):\n    return inputs\n',
+                  },
+                ],
+              },
+            ),
+          ],
+        );
+
+        expect(firstBatch.status, TurnOutcomeValidationStatus.valid);
+        expect(firstBatch.acceptedPlanState, AcceptedPlanState.patchProposed);
+
+        final unplannedBatch = validator.validate(
+          intent: TurnIntent.code,
+          toolMode: AgentToolMode.code,
+          acceptedPlan: acceptedPlan,
+          content: '',
+          toolCalls: const [
+            ToolCallInfo(
+              id: 'unplanned-patch',
+              name: 'propose_patch',
+              arguments: {
+                'title': 'Create unrelated file',
+                'summary': 'This is outside the accepted plan.',
+                'files': [
+                  {
+                    'path': 'scripts/random.py',
+                    'intent': 'Create unrelated helper',
+                    'operation': 'create',
+                    'content': 'print("random")\n',
+                  },
+                ],
+              },
+            ),
+          ],
+          toolResults: const [
+            ToolResultEnvelope(
+              toolCallId: 'unplanned-patch',
+              toolName: 'propose_patch',
+              status: ToolResultStatus.success,
+              summary: 'Patch proposal created.',
+              data: {
+                'title': 'Create unrelated file',
+                'summary': 'This is outside the accepted plan.',
+                'files': [
+                  {
+                    'path': 'scripts/random.py',
+                    'intent': 'Create unrelated helper',
+                    'operation': 'create',
+                    'content': 'print("random")\n',
+                  },
+                ],
+              },
+            ),
+          ],
+        );
+
+        expect(unplannedBatch.status, TurnOutcomeValidationStatus.invalid);
+        expect(unplannedBatch.userMessage, contains('accepted plan targets'));
+      },
+    );
+
+    test('accepted-plan conflict becomes a rebase continuation target', () {
+      final timestamp = DateTime(2026);
+      const acceptedPlan = AcceptedPlanContext(
+        patchSetId: 'conflict-plan',
+        title: 'Customer sizing plan',
+        summary: 'Implement the sizing workflow in safe batches.',
+        markdown: '- Create src/sizer.py\n- Create README.md',
+        plannedTargets: [
+          PlannedFileTarget(
+            path: 'src/sizer.py',
+            intent: 'Create sizing engine',
+            operation: ProposedFileEditType.create,
+          ),
+          PlannedFileTarget(
+            path: 'README.md',
+            intent: 'Document the workflow',
+            operation: ProposedFileEditType.create,
+          ),
+        ],
+      );
+      final turn = StudioTurn(
+        id: 'turn-conflict-eval',
+        threadId: 'thread-conflict-eval',
+        requestId: 'request-conflict-eval',
+        userMessageId: 'message-conflict-eval',
+        prompt: 'Implement this approved plan.',
+        model: 'gpt-5-nano',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        contextSummary: const StudioContextSummary(
+          rootPath: '/tmp/customer-sizing',
+          projectLabel: 'customer-sizing',
+        ),
+        intent: TurnIntent.code,
+        status: StudioTurnStatus.completed,
+        acceptedPlanState: AcceptedPlanState.patchProposed,
+        acceptedPlanContext: acceptedPlan,
+        planTargetProgress: [
+          PlanTargetProgress(
+            path: 'src/sizer.py',
+            intent: 'Create sizing engine',
+            operation: ProposedFileEditType.create,
+            state: PlanTargetProgressState.applied,
+            patchSetId: 'sizer-patch',
+            detail: 'Applied changes',
+            updatedAt: timestamp,
+          ),
+          PlanTargetProgress(
+            path: 'README.md',
+            intent: 'Document the workflow',
+            operation: ProposedFileEditType.create,
+            state: PlanTargetProgressState.conflict,
+            patchSetId: 'readme-patch',
+            detail: 'File changed since proposal.',
+            updatedAt: timestamp,
+          ),
+        ],
+      );
+
+      final continuation = studioPlanContinuationForTurn(turn);
+
+      expect(continuation, isNotNull);
+      expect(continuation!.appliedCount, 1);
+      expect(continuation.totalCount, 2);
+      expect(continuation.remainingTargets.single.path, 'README.md');
+      expect(continuation.acceptedPlan.plannedFiles, [
+        'README.md — Document the workflow',
+      ]);
+      expect(
+        continuation.acceptedPlan.markdown,
+        contains('patch conflict needs rebase/revision'),
+      );
+      expect(
+        continuation.acceptedPlan.markdown,
+        contains('File changed since proposal.'),
+      );
+      expect(continuation.acceptedPlan.markdown, isNot(contains('src/sizer')));
     });
 
     test(
