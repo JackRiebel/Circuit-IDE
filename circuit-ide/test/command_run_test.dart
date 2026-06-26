@@ -95,6 +95,8 @@ void main() {
 
       for (final command in [
         'cat ${outside.path}',
+        'open ${outside.path}',
+        'qlmanage -p ${outside.path}',
         'python3 -c "from pathlib import Path; print(Path(\'../outside-command-file.txt\').read_text())"',
       ]) {
         final events = <CommandRunEvent>[];
