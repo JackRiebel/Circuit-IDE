@@ -466,6 +466,18 @@ class IntentClassifier {
           r'^(i|we)\s+(want|need|would like|am trying|m trying|are trying)\s+to\s+(build|create|make|design|develop|prototype)\b',
         ).hasMatch(normalized) ||
         RegExp(
+          r'^(i|we)\s+(want|need|would\s+like|could\s+use)\s+help\s+(building|creating|making|designing|developing|prototyping)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(d\s+like|would\s+like|should|could|might)\s+to\s+(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(can|could|should)\s+we\s+(please\s+)?(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(let\s+s|lets)\s+(build|create|make|design|develop|prototype)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
           r'^(i|we)\s+(want|need|would like|am trying|m trying|are trying)\s+to\s+(figure out|scope|plan|design|architect)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
         ).hasMatch(normalized) ||
         RegExp(
@@ -484,6 +496,12 @@ class IntentClassifier {
           r'^(i|we)\s+(want|need|would like)\s+(a|an|the)?\s*(new\s+)?([a-z0-9]+\s+){0,3}(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
         ).hasMatch(normalized) ||
         RegExp(
+          r'^(i|we)\s+(want|need|could\s+use|should\s+have|would\s+benefit\s+from)\s+(something|a\s+tool|an\s+app|a\s+dashboard|a\s+portal|a\s+workflow|a\s+system|a\s+platform|a\s+solution)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(d\s+like|would\s+like|should|could|might)\s+(a|an|the)?\s*(new\s+)?([a-z0-9]+\s+){0,3}(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
           r'^(i|we)\s+(have|had|got)\s+(a|an|the)?\s*(new\s+)?(idea|concept)\s+for\s+(a|an|the)?\s*(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
         ).hasMatch(normalized) ||
         RegExp(
@@ -491,6 +509,9 @@ class IntentClassifier {
         ).hasMatch(normalized) ||
         RegExp(
           r'^(i|we)\s+(am|are|m|re)?\s*(thinking|considering)\s+(about|of)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|website|site|web app|mobile app|desktop app)\b',
+        ).hasMatch(normalized) ||
+        RegExp(
+          r'^(i|we)\s+(am|are|m|re)?\s*(thinking|considering)\s+(about|of)\s+(building|creating|making|designing|developing|prototyping)\b.*\b(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
         ).hasMatch(normalized) ||
         RegExp(
           r'^(can|could|would|will)\s+you\s+(please\s+)?(help\s+me\s+)?(with|plan|scope|figure out)\s+(a|an|the)?\s*(new\s+)?(app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|website|site|web app|mobile app|desktop app)\b',
