@@ -4204,6 +4204,106 @@ void main() {
   );
 
   test(
+    'StudioThreadStore skips malformed journal bytes during recovery',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final now = DateTime(2026);
+      final thread = StudioThread(
+        id: 'thread-malformed-journal-recovery',
+        title: 'Malformed journal recovery',
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        turns: [
+          StudioTurn(
+            id: 'turn-malformed-journal-recovery',
+            threadId: 'thread-malformed-journal-recovery',
+            requestId: 'request-malformed-journal-recovery',
+            userMessageId: 'message-malformed-journal-recovery',
+            prompt: 'recover this',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              rootPath: project.path,
+              projectLabel: 'project',
+            ),
+            status: StudioTurnStatus.completed,
+            createdAt: now,
+            updatedAt: now,
+            completedAt: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await store.save(project.path, [thread]);
+      final journal = File(store.journalPath(project.path));
+      final journalBytes = await journal.readAsBytes();
+      await journal.writeAsBytes([0xff, 0xfe, 0xfd, 0x0a, ...journalBytes]);
+      await File(store.historyPath(project.path)).writeAsString('{not json');
+
+      final recovered = await store.load(project.path);
+
+      expect(recovered, hasLength(1));
+      expect(recovered.single.id, 'thread-malformed-journal-recovery');
+      expect(
+        recovered.single.turns.single.id,
+        'turn-malformed-journal-recovery',
+      );
+    },
+  );
+
+  test(
+    'StudioThreadStore appends safely when existing journal has malformed bytes',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final journal = File(store.journalPath(project.path));
+      await journal.parent.create(recursive: true);
+      await journal.writeAsBytes([0xff, 0xfe, 0xfd, 0x0a]);
+      final now = DateTime(2026);
+      final thread = StudioThread(
+        id: 'thread-malformed-journal-append',
+        title: 'Malformed journal append',
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        turns: [
+          StudioTurn(
+            id: 'turn-malformed-journal-append',
+            threadId: 'thread-malformed-journal-append',
+            requestId: 'request-malformed-journal-append',
+            userMessageId: 'message-malformed-journal-append',
+            prompt: 'append this',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              rootPath: project.path,
+              projectLabel: 'project',
+            ),
+            status: StudioTurnStatus.completed,
+            createdAt: now,
+            updatedAt: now,
+            completedAt: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await store.save(project.path, [thread]);
+
+      final journalText = utf8.decode(
+        await journal.readAsBytes(),
+        allowMalformed: true,
+      );
+      expect(journalText, contains('thread-malformed-journal-append'));
+    },
+  );
+
+  test(
     'StudioThreadStore journal preserves lifecycle transitions across saves',
     () async {
       final root = await Directory.systemTemp.createTemp('studio_threads_');

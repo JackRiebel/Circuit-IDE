@@ -155,7 +155,7 @@ class StudioThreadStore {
     if (!await file.exists()) return const [];
     final snapshots = <String, StudioThread>{};
     final snapshotTimes = <String, DateTime>{};
-    final lines = await file.readAsLines();
+    final lines = await _readJournalLines(file);
     final decodedRecords = <Map<String, dynamic>>[];
     for (final rawLine in lines) {
       final line = rawLine.trim();
@@ -1066,11 +1066,27 @@ class StudioThreadStore {
 
   Future<Set<String>> _existingJournalLines(File file) async {
     if (!await file.exists()) return <String>{};
-    final lines = await file.readAsLines();
+    final lines = await _readJournalLines(file);
     return lines
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toSet();
+  }
+
+  Future<List<String>> _readJournalLines(File file) async {
+    try {
+      return await file.readAsLines();
+    } on FileSystemException {
+      final bytes = await file.readAsBytes();
+      return const LineSplitter().convert(
+        utf8.decode(bytes, allowMalformed: true),
+      );
+    } on FormatException {
+      final bytes = await file.readAsBytes();
+      return const LineSplitter().convert(
+        utf8.decode(bytes, allowMalformed: true),
+      );
+    }
   }
 
   Map<String, dynamic>? _contextRetrievalJournalRecord({
