@@ -361,10 +361,10 @@ class CommandSanitizer {
   static bool _looksLikeCommandFileAccess(String command) {
     final lower = command.toLowerCase();
     return RegExp(
-          r'''(^|[\s|;&'"`(])(?:cat|less|more|head|tail|grep|rg|sed|awk|perl|ls|find|stat|du|python|python3|node|ruby|php|git|cp|mv|rm|touch|chmod|chown|tar|zip|unzip|pytest|dart|flutter|npm|pnpm|yarn|bun|cargo|go)\b''',
+          r'''(^|[\s|;&'"`(])(?:cat|less|more|head|tail|grep|rg|sed|awk|perl|ls|find|stat|du|open|xdg-open|gnome-open|kde-open|qlmanage|python|python3|node|ruby|php|git|cp|mv|rm|touch|chmod|chown|tar|zip|unzip|pytest|dart|flutter|npm|pnpm|yarn|bun|cargo|go)\b''',
         ).hasMatch(lower) ||
         RegExp(
-          r'''(^|[\s|;&'"`(])/(?:usr/bin|bin|usr/local/bin|opt/homebrew/bin)/(?:cat|less|more|head|tail|grep|rg|sed|awk|perl|ls|find|stat|du|python|python3|node|ruby|php|git|cp|mv|rm|touch|chmod|chown|tar|zip|unzip|pytest|dart|flutter|npm|pnpm|yarn|bun|cargo|go)\b''',
+          r'''(^|[\s|;&'"`(])/(?:usr/bin|bin|usr/local/bin|opt/homebrew/bin)/(?:cat|less|more|head|tail|grep|rg|sed|awk|perl|ls|find|stat|du|open|xdg-open|gnome-open|kde-open|qlmanage|python|python3|node|ruby|php|git|cp|mv|rm|touch|chmod|chown|tar|zip|unzip|pytest|dart|flutter|npm|pnpm|yarn|bun|cargo|go)\b''',
         ).hasMatch(lower) ||
         RegExp(
           r'\b(?:open\s*\(|readfilesync\s*\(|read_text\s*\(|readbytes\s*\(|file_get_contents\s*\()',

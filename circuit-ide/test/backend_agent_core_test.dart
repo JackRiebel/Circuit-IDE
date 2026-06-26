@@ -3929,6 +3929,24 @@ void main() {
         approvalGrantKey: absoluteUtilityGrantKey,
       ),
     ).evaluate(absoluteUtilityOutsideCommand);
+    const openOutsideCommand = ToolCallInfo(
+      id: 'open-outside',
+      name: 'run_command',
+      arguments: {'command': 'open /etc/passwd'},
+    );
+    final openOutside = verifyGrantKeyPolicy.evaluate(openOutsideCommand);
+    final openOutsideGrantKey = verifyGrantKeyPolicy.approvalGrantKeyFor(
+      openOutsideCommand,
+    );
+    final grantedOpenOutside = AgentToolPermissionPolicy(
+      workingDir: root,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: openOutsideGrantKey,
+      ),
+    ).evaluate(openOutsideCommand);
     const listOutsideCommand = ToolCallInfo(
       id: 'list-outside',
       name: 'run_command',
@@ -4380,6 +4398,13 @@ void main() {
     expect(grantedAbsoluteUtilityOutside.verdict, ToolPermissionVerdict.deny);
     expect(
       grantedAbsoluteUtilityOutside.reason,
+      ToolPermissionReason.pathOutsideWorkspace,
+    );
+    expect(openOutside.verdict, ToolPermissionVerdict.deny);
+    expect(openOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(grantedOpenOutside.verdict, ToolPermissionVerdict.deny);
+    expect(
+      grantedOpenOutside.reason,
       ToolPermissionReason.pathOutsideWorkspace,
     );
     expect(listOutside.verdict, ToolPermissionVerdict.deny);

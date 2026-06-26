@@ -4166,6 +4166,9 @@ Verification
         'cat ../outside.txt',
         'git diff ../outside.txt README.md',
         'git diff --no-index /etc/passwd README.md',
+        'open /etc/passwd',
+        '/usr/bin/open /etc/passwd',
+        'qlmanage -p /etc/passwd',
         'python -c "open(\'../outside.txt\').read()"',
         'node -e "require(\'fs\').readFileSync(\'/etc/passwd\')"',
       ]) {
