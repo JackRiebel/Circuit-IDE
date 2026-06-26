@@ -536,6 +536,232 @@ void main() {
     expect(artifacts.last.id, 'artifact-0');
   });
 
+  test(
+    'StudioSourceArtifactController restores historical patches by request',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(studioSourceArtifactProvider);
+
+      final threadController = container.read(studioThreadProvider.notifier);
+      final owningThread = threadController.createBlankThread(
+        title: 'Owning thread',
+      );
+      final timestamp = DateTime(2026, 1, 2);
+      threadController.upsertTurn(
+        owningThread.id,
+        StudioTurn(
+          id: 'turn-owner',
+          threadId: owningThread.id,
+          requestId: 'request-owner',
+          userMessageId: 'message-owner',
+          prompt: 'Prepare changes',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(projectLabel: 'project'),
+          status: StudioTurnStatus.completed,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          completedAt: timestamp,
+        ),
+        select: true,
+      );
+      final selectedThread = threadController.createBlankThread(
+        title: 'Currently selected thread',
+      );
+      expect(
+        container.read(studioThreadProvider).selectedThread?.id,
+        selectedThread.id,
+      );
+
+      final patchController = container.read(patchProposalProvider.notifier);
+      final patch = patchController.propose(
+        title: 'Historical request patch',
+        runId: 'request-owner',
+        edits: const [
+          ProposedFileEdit(
+            path: 'lib/owner.dart',
+            type: ProposedFileEditType.create,
+            after: 'void owner() {}\n',
+            unifiedDiff:
+                '--- /dev/null\n+++ lib/owner.dart\n@@\n+void owner() {}\n',
+          ),
+        ],
+      );
+      patchController.reject(patch.id);
+
+      final sourceState = container.read(studioSourceArtifactProvider);
+      final owningArtifacts = sourceState.forThread(owningThread.id);
+      expect(
+        owningArtifacts.where((artifact) => artifact.patchSetId == patch.id),
+        isNotEmpty,
+      );
+      expect(
+        owningArtifacts
+            .where(
+              (artifact) =>
+                  artifact.patchSetId == patch.id &&
+                  artifact.kind == StudioSourceArtifactKind.diff,
+            )
+            .single
+            .filePath,
+        'lib/owner.dart',
+      );
+
+      final selectedArtifacts = sourceState
+          .forThread(selectedThread.id)
+          .where((artifact) => artifact.patchSetId == patch.id)
+          .toList();
+      expect(selectedArtifacts, isEmpty);
+    },
+  );
+
+  test('StudioSourceArtifactController scopes live commands by request', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(studioSourceArtifactProvider);
+
+    final threadController = container.read(studioThreadProvider.notifier);
+    final owningThread = threadController.createBlankThread(
+      title: 'Command owner',
+    );
+    final timestamp = DateTime(2026, 1, 3);
+    threadController.upsertTurn(
+      owningThread.id,
+      StudioTurn(
+        id: 'turn-command-owner',
+        threadId: owningThread.id,
+        requestId: 'request-command-owner',
+        userMessageId: 'message-command-owner',
+        prompt: 'Run checks',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        completedAt: timestamp,
+      ),
+      select: true,
+    );
+    final selectedThread = threadController.createBlankThread(
+      title: 'Selected elsewhere',
+    );
+    expect(
+      container.read(studioThreadProvider).selectedThread?.id,
+      selectedThread.id,
+    );
+
+    final commandController = container.read(commandRunProvider.notifier);
+    commandController.start(
+      id: 'cmd-owner',
+      command: 'npm test',
+      requestId: 'request-command-owner',
+      turnId: 'turn-command-owner',
+    );
+    commandController.append(
+      'cmd-owner',
+      CommandRunEventType.stdout,
+      'owner output\nhttp://localhost:4173\n',
+    );
+    commandController.finish(
+      'cmd-owner',
+      status: CommandRunStatus.succeeded,
+      exitCode: 0,
+    );
+
+    final sourceState = container.read(studioSourceArtifactProvider);
+    final owningArtifacts = sourceState.forThread(owningThread.id);
+    expect(
+      owningArtifacts.where((artifact) => artifact.commandRunId == 'cmd-owner'),
+      isNotEmpty,
+    );
+    expect(
+      owningArtifacts
+          .where(
+            (artifact) =>
+                artifact.commandRunId == 'cmd-owner' &&
+                artifact.kind == StudioSourceArtifactKind.localUrl,
+          )
+          .single
+          .localUrl,
+      'http://localhost:4173',
+    );
+    expect(
+      sourceState
+          .forThread(selectedThread.id)
+          .where((artifact) => artifact.commandRunId == 'cmd-owner'),
+      isEmpty,
+    );
+  });
+
+  test('StudioSourceArtifactController restores persisted command events', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(studioSourceArtifactProvider);
+
+    final threadController = container.read(studioThreadProvider.notifier);
+    final owningThread = threadController.createBlankThread(
+      title: 'Persisted command owner',
+    );
+    final timestamp = DateTime(2026, 1, 4);
+    final turn = StudioTurn(
+      id: 'turn-persisted-command',
+      threadId: owningThread.id,
+      requestId: 'request-persisted-command',
+      userMessageId: 'message-persisted-command',
+      prompt: 'Verify',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+      events: [
+        StudioTurnEvent.completionSummary(
+          id: 'command-run-turn-persisted-command-cmd-restored-source',
+          turnId: 'turn-persisted-command',
+          requestId: 'request-persisted-command',
+          threadId: owningThread.id,
+          title: 'Ran command',
+          detail:
+              'Command: npm test\nExit code: 0\nrestored source output\nhttp://localhost:5173\n',
+          timestamp: timestamp,
+        ),
+      ],
+    );
+    threadController.upsertTurn(owningThread.id, turn, select: true);
+
+    final sourceState = container.read(studioSourceArtifactProvider);
+    final owningArtifacts = sourceState.forThread(owningThread.id);
+    expect(
+      owningArtifacts.where(
+        (artifact) => artifact.commandRunId == 'cmd-restored-source',
+      ),
+      isNotEmpty,
+    );
+    expect(
+      owningArtifacts
+          .where(
+            (artifact) =>
+                artifact.commandRunId == 'cmd-restored-source' &&
+                artifact.kind == StudioSourceArtifactKind.command,
+          )
+          .single
+          .value,
+      'restored source output\nhttp://localhost:5173',
+    );
+    expect(
+      owningArtifacts
+          .where(
+            (artifact) =>
+                artifact.commandRunId == 'cmd-restored-source' &&
+                artifact.kind == StudioSourceArtifactKind.localUrl,
+          )
+          .single
+          .localUrl,
+      'http://localhost:5173',
+    );
+  });
+
   testWidgets(
     'Context drawer can include omitted persisted retrieval paths next time',
     (tester) async {
