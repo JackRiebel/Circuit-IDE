@@ -3588,6 +3588,98 @@ void main() {
   );
 
   test(
+    'StudioThreadStore journal recovery does not title internal plan implementation turns',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final journal = File(store.journalPath(project.path));
+      await journal.parent.create(recursive: true);
+      final now = DateTime(2026);
+      final records = [
+        {
+          'kind': 'turn',
+          'threadId': 'thread-internal-title',
+          'threadTitle':
+              'Implement this approved plan. Use the accepted plan context.',
+          'turnId': 'turn-internal-title',
+          'requestId': 'request-internal-title',
+          'intent': TurnIntent.code.name,
+          'status': StudioTurnStatus.completed.name,
+          'model': 'gpt-5-nano',
+          'acceptedPlanState': AcceptedPlanState.patchProposed.name,
+          'createdAt': now.toIso8601String(),
+          'updatedAt': now
+              .add(const Duration(milliseconds: 1))
+              .toIso8601String(),
+          'completedAt': now
+              .add(const Duration(milliseconds: 1))
+              .toIso8601String(),
+        },
+        {
+          'kind': 'turn_event',
+          'threadId': 'thread-internal-title',
+          'threadTitle':
+              'Implement this approved plan. Use the accepted plan context.',
+          'turnId': 'turn-internal-title',
+          'requestId': 'request-internal-title',
+          'event': StudioTurnEvent.userMessage(
+            id: 'message-internal-title',
+            turnId: 'turn-internal-title',
+            requestId: 'request-internal-title',
+            threadId: 'thread-internal-title',
+            content:
+                'Implement this approved plan.\n\nUse the accepted plan context attached to this request as the source of truth.',
+            timestamp: now,
+            transcriptVisible: false,
+          ).toJson(),
+          'capturedAt': now.toIso8601String(),
+        },
+        {
+          'kind': 'accepted_plan',
+          'threadId': 'thread-internal-title',
+          'threadTitle':
+              'Implement this approved plan. Use the accepted plan context.',
+          'turnId': 'turn-internal-title',
+          'requestId': 'request-internal-title',
+          'patchSetId': 'plan-internal-title',
+          'title': 'Network diagram generator plan',
+          'summary': 'Create the network diagram generator in batches.',
+          'markdown': 'Create the CLI and renderer modules.',
+          'acceptedPlanState': AcceptedPlanState.patchProposed.name,
+          'plannedTargets': const [
+            PlannedFileTarget(
+              path: 'tools/network-diagram/cli.py',
+              intent: 'Create CLI entrypoint',
+              operation: ProposedFileEditType.create,
+            ),
+          ].map((target) => target.toJson()).toList(),
+          'updatedAt': now
+              .add(const Duration(milliseconds: 1))
+              .toIso8601String(),
+        },
+      ];
+      await journal.writeAsString('${records.map(jsonEncode).join('\n')}\n');
+
+      final recovered = await store.load(project.path);
+
+      expect(recovered, hasLength(1));
+      expect(recovered.single.title, 'Network diagram generator plan');
+      final turn = recovered.single.turns.single;
+      expect(turn.prompt, isEmpty);
+      expect(
+        turn.events.where(
+          (event) =>
+              event.type == StudioTurnEventType.userMessage &&
+              event.transcriptVisible,
+        ),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
     'StudioThreadStore replays accepted-plan prose conflict paths from journal',
     () async {
       final root = await Directory.systemTemp.createTemp('studio_threads_');

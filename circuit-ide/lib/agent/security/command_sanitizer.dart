@@ -397,7 +397,7 @@ class CommandSanitizer {
 
   static Iterable<String> _environmentPathCandidates(String command) sync* {
     final pathPattern = RegExp(
-      r'''(?:^|[\s'"(=])((?:\$(?:HOME|USERPROFILE|TMPDIR|TMP|TEMP|XDG_CONFIG_HOME)|\$\{(?:HOME|USERPROFILE|TMPDIR|TMP|TEMP|XDG_CONFIG_HOME)\})(?:/|\\)[^\s'"`|;&<>),\]]*)''',
+      r'''(?:^|[\s'"(=])((?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[A-Za-z_][A-Za-z0-9_]*\})(?:/|\\)[^\s'"`|;&<>),\]]*)''',
       caseSensitive: false,
     );
     for (final match in pathPattern.allMatches(command)) {
@@ -424,6 +424,8 @@ class CommandSanitizer {
     final lower = sanitizedPath.toLowerCase();
     return sanitizedPath.startsWith('~/') ||
         RegExp(r'^~[A-Za-z0-9._-]+/').hasMatch(sanitizedPath) ||
+        RegExp(r'^\$[A-Za-z_][A-Za-z0-9_]*/').hasMatch(sanitizedPath) ||
+        RegExp(r'^\$\{[A-Za-z_][A-Za-z0-9_]*\}/').hasMatch(sanitizedPath) ||
         lower.startsWith(r'$home/') ||
         lower.startsWith(r'${home}/') ||
         lower.startsWith(r'$userprofile/') ||

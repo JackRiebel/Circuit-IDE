@@ -3901,6 +3901,42 @@ void main() {
         approvalGrantKey: envOutsideGrantKey,
       ),
     ).evaluate(envOutsideCommand);
+    const pwdTraversalCommand = ToolCallInfo(
+      id: 'pwd-traversal-outside',
+      name: 'run_command',
+      arguments: {'command': r'cat $PWD/../outside.txt'},
+    );
+    final pwdTraversal = verifyGrantKeyPolicy.evaluate(pwdTraversalCommand);
+    final pwdTraversalGrantKey = verifyGrantKeyPolicy.approvalGrantKeyFor(
+      pwdTraversalCommand,
+    );
+    final grantedPwdTraversal = AgentToolPermissionPolicy(
+      workingDir: root,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: pwdTraversalGrantKey,
+      ),
+    ).evaluate(pwdTraversalCommand);
+    const unknownEnvPathCommand = ToolCallInfo(
+      id: 'unknown-env-path-outside',
+      name: 'run_command',
+      arguments: {'command': r'python scripts/check.py ${PROJECT_ROOT}/data'},
+    );
+    final unknownEnvPath = verifyGrantKeyPolicy.evaluate(unknownEnvPathCommand);
+    final unknownEnvPathGrantKey = verifyGrantKeyPolicy.approvalGrantKeyFor(
+      unknownEnvPathCommand,
+    );
+    final grantedUnknownEnvPath = AgentToolPermissionPolicy(
+      workingDir: root,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: unknownEnvPathGrantKey,
+      ),
+    ).evaluate(unknownEnvPathCommand);
     final listSecret = verifyGrantKeyPolicy.evaluate(
       const ToolCallInfo(
         id: 'list-secret',
@@ -4266,6 +4302,20 @@ void main() {
     expect(envOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
     expect(grantedEnvOutside.verdict, ToolPermissionVerdict.deny);
     expect(grantedEnvOutside.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(pwdTraversal.verdict, ToolPermissionVerdict.deny);
+    expect(pwdTraversal.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(grantedPwdTraversal.verdict, ToolPermissionVerdict.deny);
+    expect(
+      grantedPwdTraversal.reason,
+      ToolPermissionReason.pathOutsideWorkspace,
+    );
+    expect(unknownEnvPath.verdict, ToolPermissionVerdict.deny);
+    expect(unknownEnvPath.reason, ToolPermissionReason.pathOutsideWorkspace);
+    expect(grantedUnknownEnvPath.verdict, ToolPermissionVerdict.deny);
+    expect(
+      grantedUnknownEnvPath.reason,
+      ToolPermissionReason.pathOutsideWorkspace,
+    );
     expect(listSecret.verdict, ToolPermissionVerdict.deny);
     expect(listSecret.reason, ToolPermissionReason.secretPath);
     expect(shellWrappedOutside.verdict, ToolPermissionVerdict.deny);

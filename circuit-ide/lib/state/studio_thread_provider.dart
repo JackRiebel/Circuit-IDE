@@ -1796,12 +1796,14 @@ class _JournalThreadBuilder {
   String? title;
   final Map<String, _JournalTurnBuilder> turns = {};
 
-  _JournalThreadBuilder({required this.threadId, String? title})
-    : title = title?.trim().isEmpty == true ? null : title;
+  _JournalThreadBuilder({required this.threadId, String? title}) {
+    mergeTitle(title);
+  }
 
   void mergeTitle(String? value) {
     final next = value?.trim();
     if (next == null || next.isEmpty) return;
+    if (_isInternalPrompt(next)) return;
     title ??= next;
   }
 
@@ -1848,12 +1850,56 @@ class _JournalThreadBuilder {
 
   String _titleFromTurn(StudioTurn turn) {
     final userEvent = turn.events
-        .where((event) => event.type == StudioTurnEventType.userMessage)
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.userMessage &&
+              event.transcriptVisible &&
+              (event.content ?? event.detail).trim().isNotEmpty,
+        )
         .firstOrNull;
-    final titleSource = userEvent?.content ?? turn.prompt;
-    final title = titleSource.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final titleSource =
+        userEvent?.content ??
+        _acceptedPlanTitle(turn) ??
+        _outcomeTitle(turn) ??
+        (_isInternalPrompt(turn.prompt) ? null : turn.prompt);
+    final title = (titleSource ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
     if (title.isEmpty) return 'Recovered Studio thread';
     return title.length <= 80 ? title : '${title.substring(0, 77)}...';
+  }
+
+  String? _acceptedPlanTitle(StudioTurn turn) {
+    final title = turn.acceptedPlanContext?.title.trim();
+    if (title == null || title.isEmpty) return null;
+    return title;
+  }
+
+  String? _outcomeTitle(StudioTurn turn) {
+    final events = turn.events.toList()
+      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final outcome = events
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.assistantMessage ||
+              event.type == StudioTurnEventType.completionSummary ||
+              event.type == StudioTurnEventType.error,
+        )
+        .firstOrNull;
+    final value = (outcome?.content ?? outcome?.detail ?? outcome?.title ?? '')
+        .trim();
+    if (value.isEmpty) return null;
+    return value;
+  }
+
+  bool _isInternalPrompt(String prompt) {
+    final lower = prompt.trim().toLowerCase();
+    const internalPrefixes = [
+      'implement this approved plan',
+      'use the accepted plan context',
+      'running verification',
+      'run verification',
+      'verify the applied patch',
+    ];
+    return internalPrefixes.any(lower.startsWith);
   }
 
   bool _activeTurnStatus(StudioTurnStatus status) {
@@ -2204,6 +2250,14 @@ class _JournalTurnBuilder {
     final userEvent = sortedEvents
         .where((event) => event.type == StudioTurnEventType.userMessage)
         .firstOrNull;
+    final visibleUserEvent = sortedEvents
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.userMessage &&
+              event.transcriptVisible &&
+              (event.content ?? event.detail).trim().isNotEmpty,
+        )
+        .firstOrNull;
     final effectiveRequestId = requestId ?? userEvent?.requestId;
     if (effectiveRequestId == null || effectiveRequestId.trim().isEmpty) {
       return null;
@@ -2231,7 +2285,7 @@ class _JournalTurnBuilder {
       requestId: effectiveRequestId,
       taskId: taskId,
       userMessageId: userEvent?.id ?? 'message-$turnId',
-      prompt: userEvent?.content ?? '',
+      prompt: visibleUserEvent?.content ?? '',
       model: effectiveModel,
       intent: TurnIntent.values.firstWhere(
         (candidate) => candidate.name == intent,
