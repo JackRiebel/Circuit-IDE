@@ -72,6 +72,31 @@ void main() {
       expect(result, contains('network tools'));
     });
 
+    test('blocks network-key IPv6 arguments before direct dispatch', () async {
+      final client = McpClient();
+
+      final result = await client.callToolOnServer('status', 'get_status', {
+        'endpoint': '[::1]',
+      });
+
+      expect(result, contains('MCP tool blocked'));
+      expect(result, contains('network tools'));
+    });
+
+    test(
+      'blocks network-key ambiguous IPv4 aliases before direct dispatch',
+      () async {
+        final client = McpClient();
+
+        final result = await client.callToolOnServer('status', 'get_status', {
+          'endpoint': '2130706433',
+        });
+
+        expect(result, contains('MCP tool blocked'));
+        expect(result, contains('network tools'));
+      },
+    );
+
     test('blocks unknown-risk direct calls before server dispatch', () async {
       final client = McpClient();
 
@@ -194,6 +219,99 @@ void main() {
             id: 'mcp-read-url-arg',
             name: 'mcp_status_get_status',
             arguments: {'target': 'https://example.com/status'},
+          ),
+        ]);
+
+        expect(results.single.success, isFalse);
+        expect(results.single.structured.status, ToolResultStatus.denied);
+        expect(results.single.structured.diagnostic, 'mcpRequiresReview');
+        expect(results.single.result, contains('MCP browser, web, URL'));
+        expect(client.calls, 0);
+      },
+    );
+
+    test(
+      'declared read-only MCP calls are denied for IPv6 network targets',
+      () async {
+        final client = _FakeMcpClient();
+        final executor = ToolExecutor(workingDir: '.')
+          ..setMcpClient(client)
+          ..setPermissionRequest(
+            const ToolPermissionRequest(
+              intent: TurnIntent.ask,
+              phase: ToolPermissionPhase.inspect,
+              mcpToolRisk: McpToolRisk.readOnly,
+              mcpToolName: 'get_status',
+            ),
+          );
+
+        final results = await executor.executeToolCalls([
+          const ToolCallInfo(
+            id: 'mcp-read-ipv6-arg',
+            name: 'mcp_status_get_status',
+            arguments: {'endpoint': 'http://[::1]:8080/health'},
+          ),
+        ]);
+
+        expect(results.single.success, isFalse);
+        expect(results.single.structured.status, ToolResultStatus.denied);
+        expect(results.single.structured.diagnostic, 'mcpRequiresReview');
+        expect(results.single.result, contains('MCP browser, web, URL'));
+        expect(client.calls, 0);
+      },
+    );
+
+    test(
+      'declared read-only MCP calls are denied for private IPv6 host arguments',
+      () async {
+        final client = _FakeMcpClient();
+        final executor = ToolExecutor(workingDir: '.')
+          ..setMcpClient(client)
+          ..setPermissionRequest(
+            const ToolPermissionRequest(
+              intent: TurnIntent.ask,
+              phase: ToolPermissionPhase.inspect,
+              mcpToolRisk: McpToolRisk.readOnly,
+              mcpToolName: 'get_status',
+            ),
+          );
+
+        final results = await executor.executeToolCalls([
+          const ToolCallInfo(
+            id: 'mcp-read-private-ipv6-arg',
+            name: 'mcp_status_get_status',
+            arguments: {'endpoint': 'fd00::1'},
+          ),
+        ]);
+
+        expect(results.single.success, isFalse);
+        expect(results.single.structured.status, ToolResultStatus.denied);
+        expect(results.single.structured.diagnostic, 'mcpRequiresReview');
+        expect(results.single.result, contains('MCP browser, web, URL'));
+        expect(client.calls, 0);
+      },
+    );
+
+    test(
+      'declared read-only MCP calls are denied for ambiguous IPv4 aliases',
+      () async {
+        final client = _FakeMcpClient();
+        final executor = ToolExecutor(workingDir: '.')
+          ..setMcpClient(client)
+          ..setPermissionRequest(
+            const ToolPermissionRequest(
+              intent: TurnIntent.ask,
+              phase: ToolPermissionPhase.inspect,
+              mcpToolRisk: McpToolRisk.readOnly,
+              mcpToolName: 'get_status',
+            ),
+          );
+
+        final results = await executor.executeToolCalls([
+          const ToolCallInfo(
+            id: 'mcp-read-ambiguous-ipv4-arg',
+            name: 'mcp_status_get_status',
+            arguments: {'endpoint': '2130706433'},
           ),
         ]);
 

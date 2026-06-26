@@ -580,13 +580,30 @@ class AgentToolPermissionPolicy {
     ).hasMatch(normalized)) {
       return true;
     }
-    return toolCall.arguments.values.any(_containsNetworkTarget);
+    return toolCall.arguments.entries.any(
+      (entry) => _containsNetworkTarget(entry.value, key: entry.key),
+    );
   }
 
-  bool _containsNetworkTarget(Object? value) {
-    if (value is String) return _networkDomainFromText(value) != null;
-    if (value is Iterable) return value.any(_containsNetworkTarget);
-    if (value is Map) return value.values.any(_containsNetworkTarget);
+  bool _containsNetworkTarget(Object? value, {String? key}) {
+    if (value is String) {
+      return _networkDomainFromText(
+            value,
+            allowBareAmbiguousIpv4: _isNetworkKey(key),
+          ) !=
+          null;
+    }
+    if (value is Iterable) {
+      return value.any((item) => _containsNetworkTarget(item, key: key));
+    }
+    if (value is Map) {
+      return value.entries.any(
+        (entry) => _containsNetworkTarget(
+          entry.value,
+          key: entry.key is String ? entry.key as String : key,
+        ),
+      );
+    }
     return false;
   }
 
@@ -599,7 +616,10 @@ class AgentToolPermissionPolicy {
     for (final key in const ['url', 'uri', 'endpoint', 'domain', 'host']) {
       final value = toolCall.arguments[key];
       if (value is String) {
-        final domain = _networkDomainFromText(value);
+        final domain = _networkDomainFromText(
+          value,
+          allowBareAmbiguousIpv4: true,
+        );
         if (domain != null) return domain;
       }
     }
@@ -616,7 +636,10 @@ class AgentToolPermissionPolicy {
     return _networkAccessKindFromDomain(_networkDomainFromText(text));
   }
 
-  String? _networkDomainFromText(String text) {
+  String? _networkDomainFromText(
+    String text, {
+    bool allowBareAmbiguousIpv4 = false,
+  }) {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return null;
     final uriMatch = RegExp(
@@ -626,31 +649,118 @@ class AgentToolPermissionPolicy {
     final candidate = uriMatch?.group(0) ?? trimmed;
     final uri = Uri.tryParse(candidate);
     final host = uri?.host;
-    if (host != null && host.isNotEmpty) return host.toLowerCase();
+    if (host != null && host.isNotEmpty) return _normalizeNetworkHost(host);
+    final bracketedIpv6 = RegExp(
+      r'\[([0-9a-f:.%]+)\]',
+      caseSensitive: false,
+    ).firstMatch(trimmed)?.group(1);
+    if (bracketedIpv6 != null && _isIpv6Literal(bracketedIpv6)) {
+      return _normalizeNetworkHost(bracketedIpv6);
+    }
+    if (_isIpv6Literal(trimmed)) return _normalizeNetworkHost(trimmed);
+    if (allowBareAmbiguousIpv4 && _looksLikeAmbiguousIpv4Alias(trimmed)) {
+      return _normalizeNetworkHost(trimmed);
+    }
     final bareHost = RegExp(
       r'\b((?:localhost)|(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[a-z0-9-]+\.)+[a-z]{2,})\b',
       caseSensitive: false,
     ).firstMatch(trimmed)?.group(1);
-    return bareHost?.toLowerCase();
+    return bareHost == null ? null : _normalizeNetworkHost(bareHost);
   }
 
   NetworkAccessKind _networkAccessKindFromDomain(String? domain) {
     if (domain == null || domain.trim().isEmpty) {
       return NetworkAccessKind.publicInternet;
     }
-    final normalized = domain.toLowerCase();
+    final normalized = _normalizeNetworkHost(domain);
     if (normalized == 'localhost' ||
         normalized == '::1' ||
         normalized.startsWith('127.')) {
       return NetworkAccessKind.localhost;
     }
-    if (_isPrivateIpv4(normalized) ||
+    if (_looksLikeAmbiguousIpv4Alias(normalized) ||
+        _isPrivateIpv4(normalized) ||
+        _isBlockedIpv6(normalized) ||
         normalized.endsWith('.local') ||
         normalized.endsWith('.internal') ||
         normalized.endsWith('.lan')) {
       return NetworkAccessKind.privateNetwork;
     }
     return NetworkAccessKind.publicInternet;
+  }
+
+  String _normalizeNetworkHost(String host) {
+    var normalized = host.trim().toLowerCase();
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      normalized = normalized.substring(1, normalized.length - 1);
+    }
+    while (normalized.endsWith('.')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  bool _isNetworkKey(String? key) {
+    final normalized = key?.trim().toLowerCase() ?? '';
+    return const {
+      'url',
+      'uri',
+      'endpoint',
+      'domain',
+      'host',
+      'hostname',
+      'target',
+      'origin',
+      'baseurl',
+      'base_url',
+    }.contains(normalized);
+  }
+
+  bool _isIpv6Literal(String host) {
+    final normalized = _normalizeNetworkHost(host);
+    return normalized.contains(':') &&
+        RegExp(r'^[0-9a-f:.%]+$', caseSensitive: false).hasMatch(normalized);
+  }
+
+  bool _isBlockedIpv6(String host) {
+    if (!_isIpv6Literal(host)) return false;
+    final normalized = _normalizeNetworkHost(host);
+    if (normalized == '::' || normalized == '0:0:0:0:0:0:0:0') return true;
+    if (normalized == '::1' || normalized == '0:0:0:0:0:0:0:1') return true;
+    if (normalized.startsWith('fe80:')) return true;
+    if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true;
+    if (normalized.startsWith('ff')) return true;
+    if (normalized.startsWith('::ffff:')) {
+      return _isPrivateIpv4(normalized.substring('::ffff:'.length));
+    }
+    return false;
+  }
+
+  bool _looksLikeAmbiguousIpv4Alias(String host) {
+    final normalized = _normalizeNetworkHost(host);
+    if (_isIpv6Literal(normalized)) return false;
+    if (RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(normalized)) {
+      return true;
+    }
+    if (RegExp(r'^0[0-7]+$').hasMatch(normalized) && normalized.length > 1) {
+      return true;
+    }
+    if (RegExp(r'^\d+$').hasMatch(normalized)) return true;
+    final labels = normalized.split('.');
+    if (labels.length <= 1) return false;
+    final allNumericOrHex = labels.every((label) {
+      if (label.isEmpty) return false;
+      return RegExp(r'^\d+$').hasMatch(label) ||
+          RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label);
+    });
+    if (!allNumericOrHex) return false;
+    if (labels.length != 4) return true;
+    return labels.any((label) {
+      if (RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label)) {
+        return true;
+      }
+      return label.length > 1 && label.startsWith('0');
+    });
   }
 
   bool _isPrivateIpv4(String host) {

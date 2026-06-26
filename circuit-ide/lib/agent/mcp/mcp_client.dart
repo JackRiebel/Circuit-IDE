@@ -346,9 +346,55 @@ class McpClient {
       return true;
     }
     return RegExp(
-      r'\b((?:localhost)|(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[a-z0-9-]+\.)+[a-z]{2,})\b',
-      caseSensitive: false,
-    ).hasMatch(text);
+          r'\b((?:localhost)|(?:\d{1,3}(?:\.\d{1,3}){3})|(?:[a-z0-9-]+\.)+[a-z]{2,})\b',
+          caseSensitive: false,
+        ).hasMatch(text) ||
+        _isIpv6Literal(_normalizeHost(text)) ||
+        _looksLikeAmbiguousIpv4Alias(_normalizeHost(text));
+  }
+
+  String _normalizeHost(String host) {
+    var normalized = host.trim().toLowerCase();
+    if (normalized.startsWith('[') && normalized.endsWith(']')) {
+      normalized = normalized.substring(1, normalized.length - 1);
+    }
+    while (normalized.endsWith('.')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  bool _isIpv6Literal(String host) {
+    final normalized = _normalizeHost(host);
+    return normalized.contains(':') &&
+        RegExp(r'^[0-9a-f:.%]+$', caseSensitive: false).hasMatch(normalized);
+  }
+
+  bool _looksLikeAmbiguousIpv4Alias(String host) {
+    final normalized = _normalizeHost(host);
+    if (_isIpv6Literal(normalized)) return false;
+    if (RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(normalized)) {
+      return true;
+    }
+    if (RegExp(r'^0[0-7]+$').hasMatch(normalized) && normalized.length > 1) {
+      return true;
+    }
+    if (RegExp(r'^\d+$').hasMatch(normalized)) return true;
+    final labels = normalized.split('.');
+    if (labels.length <= 1) return false;
+    final allNumericOrHex = labels.every((label) {
+      if (label.isEmpty) return false;
+      return RegExp(r'^\d+$').hasMatch(label) ||
+          RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label);
+    });
+    if (!allNumericOrHex) return false;
+    if (labels.length != 4) return true;
+    return labels.any((label) {
+      if (RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label)) {
+        return true;
+      }
+      return label.length > 1 && label.startsWith('0');
+    });
   }
 
   String _errorMessage(JsonRpcMessage response) {
