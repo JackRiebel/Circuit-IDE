@@ -268,10 +268,18 @@ void main() {
         'python3 -c "import socket; socket.socket().connect((\'example.com\', 443))"',
         'python3 -c "import socket; socket.gethostbyname(\'example.com\')"',
         'python3 -c "from socket import socket; socket().connect((\'example.com\', 443))"',
+        'python3 -c "import http.client; http.client.HTTPSConnection(\'example.com\')"',
+        'python3 -c "import urllib3; urllib3.PoolManager()"',
+        'python3 -c "import httpx; httpx.Client()"',
+        'python3 -c "import aiohttp; aiohttp.ClientSession()"',
         'node -e "require(\'net\').connect(443, \'example.com\')"',
         'node -e "require(\'tls\').connect(443, \'example.com\')"',
         'ruby -rsocket -e "TCPSocket.open(\'example.com\', 443)"',
+        'ruby -rnet/http -e "Net::HTTP.start(\'example.com\', 443)"',
         'perl -MIO::Socket::INET -e "IO::Socket::INET->new(PeerHost=>\'example.com\', PeerPort=>443)"',
+        'perl -MLWP::UserAgent -e "LWP::UserAgent->new"',
+        'php -r "curl_init(\'example.com\');"',
+        'php -r "fsockopen(\'example.com\', 443);"',
       ]) {
         final events = <CommandRunEvent>[];
         final blocked = await CommandTools(

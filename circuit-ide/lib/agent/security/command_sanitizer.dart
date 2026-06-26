@@ -184,6 +184,9 @@ class CommandSanitizer {
         r'\b(urllib\.request|requests\.(get|post|put|patch|delete)|fetch\s*\(|https?\.get\s*\(|https?\.request\s*\(|axios\.|net/http|invoke-webrequest|invoke-restmethod)\b',
       ),
       RegExp(
+        r'\b(http\.client|httpconnection|httpsconnection|urllib3\.|httpx\.|aiohttp\.|net::http|lwp::useragent|www::mechanize|curl_init\s*\(|fsockopen\s*\(|stream_socket_client\s*\()',
+      ),
+      RegExp(
         r'\b(socket\.create_connection|socket\.socket\s*\([^)]*\)\.connect|socket\(\)\.connect|socket\.gethostbyname|socket\.getaddrinfo|tcpsocket\.open|io::socket::inet)\b',
       ),
       RegExp(r'\bimport\s+socket\b[\s\S]*\.\s*connect\s*\('),
