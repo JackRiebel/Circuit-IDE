@@ -345,7 +345,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
   bool _eventBelongsToActiveChat(Map<String, dynamic> data) {
     final requestId = data['requestId'] as String?;
     final active = state.activeChatRun;
-    if (requestId == null || active == null) return active != null;
+    if (requestId == null || active == null) return false;
     return active.id == requestId;
   }
 

@@ -116,6 +116,15 @@ void main() {
       AgentRunStatus.running,
     );
 
+    service.events.emit(EventType.messageChunk, {'content': 'missing id'});
+
+    expect(
+      container.read(agentRunProvider).activeChatRun?.status,
+      AgentRunStatus.running,
+      reason:
+          'Legacy runtime events without a request id must not mutate Studio-owned runs.',
+    );
+
     service.events.emit(EventType.messageChunk, {
       'requestId': 'current-request',
       'content': 'new',

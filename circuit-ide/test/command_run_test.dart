@@ -222,6 +222,34 @@ void main() {
   );
 
   test(
+    'CommandTools blocks obfuscated private network targets even when network is approved',
+    () async {
+      for (final command in [
+        'printf "%s" "http://0x7f000001:8000/health"',
+        'printf "%s" "http://0177.0.0.1:8000/health"',
+        'printf "%s" "http://2130706433:8000/health"',
+        'printf "%s" "http://[::1]:8000/health"',
+        'printf "%s" "http://[fe80::1]:8000/health"',
+        'printf "%s" "http://[fd00::1]:8000/health"',
+      ]) {
+        final events = <CommandRunEvent>[];
+        final output = await CommandTools(workingDir: '.').runCommand(
+          {'command': command},
+          allowNetwork: true,
+          onEvent: events.add,
+        );
+
+        expect(output, contains('Network target blocked'), reason: command);
+        expect(
+          events.single.type,
+          CommandRunEventType.blocked,
+          reason: command,
+        );
+      }
+    },
+  );
+
+  test(
     'CommandTools blocks DNS and programmatic socket access unless explicitly allowed',
     () async {
       for (final command in [

@@ -2791,6 +2791,78 @@ void main() {
     expect(loaded.single.turns.map((turn) => turn.id), contains('turn-124'));
   });
 
+  test(
+    'StudioThreadStore prefers newer journal snapshot over stale history file',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final now = DateTime(2026);
+
+      StudioTurn turn(String id, int minutes) => StudioTurn(
+        id: id,
+        threadId: 'thread-stale-history',
+        requestId: 'request-$id',
+        userMessageId: 'message-$id',
+        prompt: 'prompt $id',
+        model: 'gpt-5-nano',
+        contextSummary: StudioContextSummary(
+          rootPath: project.path,
+          projectLabel: 'project',
+        ),
+        status: StudioTurnStatus.completed,
+        createdAt: now.add(Duration(minutes: minutes)),
+        updatedAt: now.add(Duration(minutes: minutes)),
+        completedAt: now.add(Duration(minutes: minutes, seconds: 1)),
+      );
+
+      final oldThread = StudioThread(
+        id: 'thread-stale-history',
+        title: 'Stale history thread',
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        turns: [turn('one', 0)],
+        createdAt: now,
+        updatedAt: now,
+      );
+      await store.save(project.path, [oldThread]);
+
+      final newerThread = oldThread.copyWith(
+        turns: [turn('one', 0), turn('two', 1)],
+        updatedAt: now.add(const Duration(minutes: 1)),
+      );
+      final journal = File(store.journalPath(project.path));
+      final newerSnapshot = {
+        'kind': 'thread_snapshot',
+        'threadId': newerThread.id,
+        'threadTitle': newerThread.title,
+        'status': newerThread.status.name,
+        'phase': newerThread.phase.name,
+        'turnCount': newerThread.turns.length,
+        'updatedAt': newerThread.updatedAt.toIso8601String(),
+        'capturedAt': DateTime.now()
+            .add(const Duration(seconds: 1))
+            .toIso8601String(),
+        'thread': newerThread.toJson(),
+      };
+      await journal.writeAsString(
+        '${jsonEncode(newerSnapshot)}\n',
+        mode: FileMode.append,
+        flush: true,
+      );
+
+      final loaded = await store.load(project.path);
+
+      expect(loaded, hasLength(1));
+      expect(loaded.single.turns, hasLength(2));
+      expect(loaded.single.turns.map((loadedTurn) => loadedTurn.id), [
+        'one',
+        'two',
+      ]);
+    },
+  );
+
   test('StudioThreadStore writes a persistent turn journal sidecar', () async {
     final root = await Directory.systemTemp.createTemp('studio_threads_');
     addTearDown(() => root.delete(recursive: true));

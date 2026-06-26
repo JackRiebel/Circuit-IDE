@@ -90,17 +90,64 @@ class StudioThreadStore {
     if (!await file.exists()) return _loadFromJournalSnapshots(rootPath);
     try {
       final json = jsonDecode(await file.readAsString()) as List<dynamic>;
-      return json
+      final historyThreads = json
           .whereType<Map<String, dynamic>>()
           .map(StudioThread.fromJson)
           .nonNulls
           .map(_normalizeLoadedThread)
           .toList();
+      final journalThreads = await _loadFromJournalSnapshots(rootPath);
+      return _mergeLoadedThreads(historyThreads, journalThreads);
     } catch (_) {
       final recovered = await _loadFromJournalSnapshots(rootPath);
       if (recovered.isNotEmpty) return recovered;
       rethrow;
     }
+  }
+
+  List<StudioThread> _mergeLoadedThreads(
+    List<StudioThread> historyThreads,
+    List<StudioThread> journalThreads,
+  ) {
+    if (journalThreads.isEmpty) return historyThreads;
+    final byId = <String, StudioThread>{
+      for (final thread in historyThreads) thread.id: thread,
+    };
+    for (final journalThread in journalThreads) {
+      final historyThread = byId[journalThread.id];
+      if (historyThread == null ||
+          _journalThreadIsNewerOrRicher(journalThread, historyThread)) {
+        byId[journalThread.id] = journalThread;
+      }
+    }
+    return byId.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  bool _journalThreadIsNewerOrRicher(
+    StudioThread journalThread,
+    StudioThread historyThread,
+  ) {
+    if (journalThread.updatedAt.isAfter(historyThread.updatedAt)) return true;
+    if (historyThread.updatedAt.isAfter(journalThread.updatedAt)) return false;
+    if (journalThread.turns.length != historyThread.turns.length) {
+      return journalThread.turns.length > historyThread.turns.length;
+    }
+    return _threadSignalCount(journalThread) >
+        _threadSignalCount(historyThread);
+  }
+
+  int _threadSignalCount(StudioThread thread) {
+    return thread.turns.fold<int>(
+      thread.messages.length,
+      (sum, turn) =>
+          sum +
+          turn.events.length +
+          turn.steps.length +
+          turn.toolResults.length +
+          turn.providerDiagnostics.length +
+          turn.planTargetProgress.length,
+    );
   }
 
   Future<List<StudioThread>> _loadFromJournalSnapshots(String? rootPath) async {
