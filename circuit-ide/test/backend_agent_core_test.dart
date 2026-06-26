@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:circuit_ide/agent/agent.dart';
 import 'package:circuit_ide/agent/config/config.dart';
+import 'package:circuit_ide/agent/context/context_manager.dart';
 import 'package:circuit_ide/agent/providers/cisco_provider.dart';
 import 'package:circuit_ide/agent/providers/provider_interface.dart';
 import 'package:circuit_ide/agent/security/agent_tool_permission_policy.dart';
@@ -85,6 +86,112 @@ void main() {
     expect(response, contains('studio request'));
     expect(agent.history, hasLength(1));
     expect(agent.history.single.content, 'global chat history');
+  });
+
+  test(
+    'ContextManager keeps first and current user anchors when compacting',
+    () {
+      final manager = ContextManager(maxTokens: 90, reserveTokens: 0);
+      final messages = [
+        _msg('system', MessageRole.system, 'system prompt'),
+        _msg('first', MessageRole.user, 'original task: fix auth safely'),
+        _msg('old', MessageRole.assistant, 'old assistant detail ${'x' * 900}'),
+        _msg('middle', MessageRole.user, 'middle turn ${'y' * 700}'),
+        _msg('current', MessageRole.user, 'current request: apply the plan'),
+      ];
+
+      final optimized = manager.optimizeContext(messages);
+      final ids = optimized.map((message) => message.id).toSet();
+
+      expect(ids, containsAll({'system', 'first', 'current'}));
+      expect(ids, isNot(contains('old')));
+      expect(optimized.last.id, 'current');
+    },
+  );
+
+  test('ContextManager keeps assistant tool call and result together', () {
+    final manager = ContextManager(maxTokens: 110, reserveTokens: 0);
+    const toolCall = ToolCallInfo(id: 'call-1', name: 'read_file');
+    final messages = [
+      _msg('system', MessageRole.system, 'system prompt'),
+      _msg('first', MessageRole.user, 'inspect the project'),
+      _msg('orphan-tool', MessageRole.tool, 'orphaned old result'),
+      _msg('old', MessageRole.assistant, 'old assistant detail ${'x' * 900}'),
+      _msg(
+        'assistant-tool',
+        MessageRole.assistant,
+        'I will read the file',
+        toolCalls: [toolCall],
+      ),
+      _msg(
+        'tool-result',
+        MessageRole.tool,
+        'important file result',
+        toolCallId: 'call-1',
+      ),
+      _msg('current', MessageRole.user, 'summarize the file'),
+    ];
+
+    final optimized = manager.optimizeContext(messages);
+    final ids = optimized.map((message) => message.id).toSet();
+
+    expect(ids, containsAll({'assistant-tool', 'tool-result'}));
+    expect(ids, isNot(contains('orphan-tool')));
+    expect(
+      optimized.indexWhere((message) => message.id == 'assistant-tool'),
+      lessThan(optimized.indexWhere((message) => message.id == 'tool-result')),
+    );
+  });
+
+  test(
+    'ContextManager drops oversized tool groups instead of splitting them',
+    () {
+      final manager = ContextManager(maxTokens: 65, reserveTokens: 0);
+      const toolCall = ToolCallInfo(id: 'call-oversized', name: 'search_files');
+      final messages = [
+        _msg('system', MessageRole.system, 'system prompt'),
+        _msg('first', MessageRole.user, 'original task'),
+        _msg(
+          'assistant-tool',
+          MessageRole.assistant,
+          'I will search',
+          toolCalls: [toolCall],
+        ),
+        _msg(
+          'tool-result',
+          MessageRole.tool,
+          'huge result ${'z' * 4000}',
+          toolCallId: 'call-oversized',
+        ),
+        _msg('current', MessageRole.user, 'current request'),
+      ];
+
+      final optimized = manager.optimizeContext(messages);
+      final ids = optimized.map((message) => message.id).toSet();
+
+      expect(ids, containsAll({'system', 'first', 'current'}));
+      expect(ids, isNot(contains('assistant-tool')));
+      expect(ids, isNot(contains('tool-result')));
+    },
+  );
+
+  test('ContextManager compacted output stays within token budget', () {
+    final manager = ContextManager(maxTokens: 75, reserveTokens: 0);
+    final messages = [
+      _msg('system', MessageRole.system, 'system ${'s' * 600}'),
+      _msg('first', MessageRole.user, 'first ${'f' * 900}'),
+      _msg('middle', MessageRole.assistant, 'middle ${'m' * 1200}'),
+      _msg('current', MessageRole.user, 'current ${'c' * 900}'),
+    ];
+
+    final optimized = manager.optimizeContext(messages);
+    final tokenTotal = optimized.fold<int>(
+      0,
+      (sum, message) => sum + manager.estimateTokens(message.content),
+    );
+
+    expect(tokenTotal, lessThanOrEqualTo(manager.availableTokens));
+    expect(optimized.map((message) => message.id), contains('current'));
   });
 
   test('tool modes expose only the expected backend capabilities', () {
@@ -6819,6 +6926,23 @@ Future<void> _delete(Directory directory) async {
   if (await directory.exists()) {
     await directory.delete(recursive: true);
   }
+}
+
+ChatMessage _msg(
+  String id,
+  MessageRole role,
+  String content, {
+  List<ToolCallInfo> toolCalls = const [],
+  String? toolCallId,
+}) {
+  return ChatMessage(
+    id: id,
+    role: role,
+    content: content,
+    timestamp: DateTime(2026),
+    toolCalls: toolCalls,
+    toolCallId: toolCallId,
+  );
 }
 
 class _EchoProvider implements AIProvider {
