@@ -926,6 +926,9 @@ class StudioRequestLifecycleController
     if (turn == null) return false;
     if (IntentClassifier.requestsVerification(turn.prompt)) return true;
     if (turn.acceptedPlanState != AcceptedPlanState.none) {
+      if (turn.acceptedPlanContext?.verificationRequested ?? false) {
+        return true;
+      }
       if (turn.events.any(
         (event) =>
             event.title == 'Accepted plan verification requested' ||

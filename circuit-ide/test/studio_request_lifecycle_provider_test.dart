@@ -1,4 +1,5 @@
 import 'package:circuit_ide/enums/event_type.dart';
+import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/confirmation_request.dart';
 import 'package:circuit_ide/models/agent_workspace.dart';
 import 'package:circuit_ide/models/agent_request.dart';
@@ -1308,9 +1309,23 @@ void main() {
         thread.id,
         summary: const StudioContextSummary(projectLabel: 'project'),
         prompt:
-            'Implement this approved plan.\n\nverificationRequested: true\n\nPlan title: Fix login',
+            'Implement this approved plan.\n\nVerification was explicitly requested. Preserve that request in the patch proposal and suggested checks.',
         acceptedPlanState: AcceptedPlanState.implementationStarted,
       );
+      container
+          .read(studioTurnProvider.notifier)
+          .startAcceptedPlanImplementation(
+            'req-accepted-plan-verify',
+            const AcceptedPlanContext(
+              patchSetId: 'plan-verify',
+              title: 'Fix login',
+              summary: 'Fix the login guard.',
+              markdown:
+                  '# Plan\n\n- Update login guard.\n\n## Verification\n- Run login checks after apply.',
+              plannedFiles: ['lib/login.dart — Fix guard'],
+              verificationRequested: true,
+            ),
+          );
       container
           .read(studioRequestLifecycleProvider.notifier)
           .registerRequest(
