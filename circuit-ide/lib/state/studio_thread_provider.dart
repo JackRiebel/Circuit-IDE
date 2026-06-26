@@ -751,7 +751,8 @@ class StudioThreadStore {
     final expired = turn.expirePendingApprovals();
     final hasActionablePatch = _turnHasActionablePatchReview(expired);
     final hasContinuation = _turnHasRemainingAcceptedPlanTargets(expired);
-    if (!hasActionablePatch && !hasContinuation) return null;
+    final hasConflict = _turnHasAcceptedPlanConflict(expired);
+    if (!hasActionablePatch && !hasContinuation && !hasConflict) return null;
 
     return expired.copyWith(
       status: StudioTurnStatus.completed,

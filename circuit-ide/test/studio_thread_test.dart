@@ -3933,6 +3933,140 @@ void main() {
   );
 
   test(
+    'StudioThreadStore recovers interrupted accepted-plan conflict as reviewable',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final now = DateTime(2026);
+      final turn = StudioTurn(
+        id: 'turn-active-conflict-recover',
+        threadId: 'thread-active-conflict-recover',
+        requestId: 'request-active-conflict-recover',
+        userMessageId: 'message-active-conflict-recover',
+        prompt: 'Implement the accepted plan',
+        model: 'gpt-5-nano',
+        contextSummary: StudioContextSummary(
+          rootPath: project.path,
+          projectLabel: 'project',
+        ),
+        status: StudioTurnStatus.toolRunning,
+        acceptedPlanState: AcceptedPlanState.patchProposed,
+        acceptedPlanContext: const AcceptedPlanContext(
+          patchSetId: 'plan-active-conflict',
+          title: 'Recover conflict plan',
+          summary: 'Create app and docs.',
+          markdown: 'Create lib/app.dart, then README.md.',
+          plannedFiles: [
+            'lib/app.dart — Create app shell',
+            'README.md — Document usage',
+          ],
+          plannedTargets: [
+            PlannedFileTarget(
+              path: 'lib/app.dart',
+              intent: 'Create app shell',
+              operation: ProposedFileEditType.create,
+            ),
+            PlannedFileTarget(
+              path: 'README.md',
+              intent: 'Document usage',
+              operation: ProposedFileEditType.create,
+            ),
+          ],
+        ),
+        planTargetProgress: [
+          PlanTargetProgress(
+            path: 'lib/app.dart',
+            intent: 'Create app shell',
+            operation: ProposedFileEditType.create,
+            state: PlanTargetProgressState.conflict,
+            patchSetId: 'patch-app',
+            detail: 'File changed since proposal.',
+            updatedAt: now.add(const Duration(milliseconds: 1)),
+          ),
+          PlanTargetProgress(
+            path: 'README.md',
+            intent: 'Document usage',
+            operation: ProposedFileEditType.create,
+            state: PlanTargetProgressState.pending,
+            updatedAt: now.add(const Duration(milliseconds: 1)),
+          ),
+        ],
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.patchProposal,
+            status: TurnStepStatus.running,
+            title: 'Patch conflict',
+            detail:
+                'File changed since proposal: lib/app.dart\nAsk Circuit to rebase the proposal.',
+            startedAt: now,
+          ),
+        ],
+        events: [
+          StudioTurnEvent.completionSummary(
+            id: 'patch-conflict-active-conflict-recover',
+            turnId: 'turn-active-conflict-recover',
+            requestId: 'request-active-conflict-recover',
+            threadId: 'thread-active-conflict-recover',
+            title: 'Patch conflict',
+            detail:
+                'File changed since proposal: lib/app.dart\nAsk Circuit to rebase the proposal.',
+            patchSetId: 'patch-app',
+            timestamp: now.add(const Duration(milliseconds: 1)),
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now.add(const Duration(milliseconds: 1)),
+        lastError: 'Provider failed after patch conflict was recorded.',
+      );
+      final thread = StudioThread(
+        id: 'thread-active-conflict-recover',
+        title: 'Active conflict recover',
+        status: StudioThreadStatus.streaming,
+        phase: StudioSendPhase.streaming,
+        requestId: 'request-active-conflict-recover',
+        streamingContent: 'stale draft',
+        turns: [turn],
+        lastError: 'Provider failed after patch conflict was recorded.',
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await store.save(project.path, [thread]);
+
+      final loaded = await store.load(project.path);
+
+      expect(loaded, hasLength(1));
+      expect(loaded.single.status, StudioThreadStatus.reviewingPatch);
+      expect(loaded.single.phase, StudioSendPhase.completed);
+      expect(loaded.single.requestId, isNull);
+      expect(loaded.single.streamingContent, isEmpty);
+      expect(loaded.single.lastError, isNull);
+      final loadedTurn = loaded.single.turns.single;
+      expect(loadedTurn.status, StudioTurnStatus.completed);
+      expect(loadedTurn.lastError, isNull);
+      expect(loadedTurn.acceptedPlanState, AcceptedPlanState.patchProposed);
+      expect(
+        loadedTurn.planTargetProgress
+            .firstWhere((target) => target.path == 'lib/app.dart')
+            .state,
+        PlanTargetProgressState.conflict,
+      );
+      expect(
+        loadedTurn.steps
+            .singleWhere((step) => step.step == TurnStep.patchProposal)
+            .status,
+        TurnStepStatus.completed,
+      );
+      expect(
+        StudioTaskLifecycleState.fromThread(loaded.single).label,
+        'Review',
+      );
+    },
+  );
+
+  test(
     'StudioThreadStore recovers interrupted partial accepted-plan apply as continuation',
     () async {
       final root = await Directory.systemTemp.createTemp('studio_threads_');
