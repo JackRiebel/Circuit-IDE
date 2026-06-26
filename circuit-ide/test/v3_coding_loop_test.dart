@@ -2273,6 +2273,21 @@ void main() {
     final ghostSource = await File(
       'lib/state/ghost_mode_provider.dart',
     ).readAsString();
+    final statusBarSource = await File(
+      'lib/ui/layout/status_bar.dart',
+    ).readAsString();
+    expect(
+      statusBarSource,
+      contains('StudioFeatureFlags.advancedStudioSurfaces'),
+      reason:
+          'Ghost status UI must stay hidden from the stable Studio chrome until Ghost Mode is migrated to the turn runtime.',
+    );
+    expect(
+      statusBarSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
+      lessThan(statusBarSource.indexOf('GhostStatusWidget')),
+      reason:
+          'Ghost status UI should be mounted only behind the advanced Studio surface flag.',
+    );
     final startGhostSource = _methodBody(
       ghostSource,
       'Future<void> startGhost',
@@ -2322,6 +2337,7 @@ void main() {
     final senderSource = await File(
       'lib/ui/studio/studio_message_sender.dart',
     ).readAsString();
+    final agentSource = await File('lib/agent/agent.dart').readAsString();
     final featureFlagSource = await File(
       'lib/core/config/studio_feature_flags.dart',
     ).readAsString();
@@ -2336,6 +2352,13 @@ void main() {
       contains('SpecialistAgentRouter().route(prompt)'),
       reason:
           'Specialist routing may return only after the explicit Studio feature gate is enabled.',
+    );
+    expect(agentSource, contains('StudioFeatureFlags.advancedStudioSurfaces'));
+    expect(
+      agentSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
+      lessThan(agentSource.indexOf('..._mcpTools')),
+      reason:
+          'Legacy CircuitAgent must not expose MCP tools unless advanced surfaces are explicitly enabled.',
     );
 
     final shellProviderSource = await File(

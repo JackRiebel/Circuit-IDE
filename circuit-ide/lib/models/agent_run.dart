@@ -128,6 +128,7 @@ class AgentRun {
   final String? approvalId;
   final String? artifactId;
   final String? mascotAlias;
+  final bool acceptsLegacyEvents;
 
   const AgentRun({
     required this.id,
@@ -155,6 +156,7 @@ class AgentRun {
     this.approvalId,
     this.artifactId,
     this.mascotAlias,
+    this.acceptsLegacyEvents = true,
   });
 
   AgentRun copyWith({
@@ -180,6 +182,7 @@ class AgentRun {
     Object? approvalId = _sentinel,
     Object? artifactId = _sentinel,
     Object? mascotAlias = _sentinel,
+    bool? acceptsLegacyEvents,
   }) {
     return AgentRun(
       id: id,
@@ -220,6 +223,7 @@ class AgentRun {
       mascotAlias: identical(mascotAlias, _sentinel)
           ? this.mascotAlias
           : mascotAlias as String?,
+      acceptsLegacyEvents: acceptsLegacyEvents ?? this.acceptsLegacyEvents,
     );
   }
 
@@ -252,6 +256,7 @@ class AgentRun {
       'approvalId': approvalId,
       'artifactId': artifactId,
       'mascotAlias': mascotAlias,
+      'acceptsLegacyEvents': acceptsLegacyEvents,
       'events': events
           .map(
             (event) => {
@@ -375,6 +380,7 @@ class AgentRun {
         approvalId: json['approvalId'] as String?,
         artifactId: json['artifactId'] as String?,
         mascotAlias: json['mascotAlias'] as String?,
+        acceptsLegacyEvents: json['acceptsLegacyEvents'] as bool? ?? true,
       );
     } catch (_) {
       return null;

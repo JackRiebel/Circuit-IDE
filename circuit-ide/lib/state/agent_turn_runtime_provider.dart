@@ -405,6 +405,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           retryPrompt: retryPrompt,
           retryAttachments: attachments,
           contextAttachmentCount: attachments.length,
+          acceptsLegacyEvents: false,
         );
     ref
         .read(agentRequestProvider.notifier)

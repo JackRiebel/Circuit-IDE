@@ -13,6 +13,7 @@ import '../../state/model_routing_provider.dart';
 import '../../state/workspace_context_provider.dart';
 import '../../enums/connection_status.dart';
 import '../../agent/config/models_config.dart';
+import '../../core/config/studio_feature_flags.dart';
 import '../../models/routing_models.dart';
 import '../../models/workspace_context.dart';
 import '../editor/prediction_status_widget.dart';
@@ -74,8 +75,10 @@ class StatusBar extends ConsumerWidget {
 
           const SizedBox(width: Spacing.lg),
           const BackgroundAgentStatus(),
-          const SizedBox(width: Spacing.lg),
-          const GhostStatusWidget(),
+          if (StudioFeatureFlags.advancedStudioSurfaces) ...[
+            const SizedBox(width: Spacing.lg),
+            const GhostStatusWidget(),
+          ],
           const SizedBox(width: Spacing.lg),
           const _WorkspaceHealthButton(),
           if (workspaceState.isBusy) ...[

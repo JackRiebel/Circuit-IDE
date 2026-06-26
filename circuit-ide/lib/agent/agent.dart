@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 
 import '../core/constants/app_constants.dart';
+import '../core/config/studio_feature_flags.dart';
 import '../core/utils/logger.dart';
 import '../enums/event_type.dart';
 import '../enums/message_role.dart';
@@ -162,7 +163,9 @@ class CircuitAgent {
         final baseTools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
         final allTools = [
           ...baseTools,
-          if (phase == AgentToolPhase.verify) ..._mcpTools,
+          if (StudioFeatureFlags.advancedStudioSurfaces &&
+              phase == AgentToolPhase.verify)
+            ..._mcpTools,
         ];
         events.emit(EventType.agentRunEvent, {
           'requestId': ?requestId,

@@ -136,6 +136,77 @@ void main() {
     );
   });
 
+  test('Studio-owned runs ignore matching legacy service events', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final notifier = container.read(agentRunProvider.notifier);
+    notifier.startRun(
+      id: 'studio-request',
+      kind: AgentRunKind.chat,
+      model: 'gpt-5-nano',
+      message: 'studio',
+      acceptsLegacyEvents: false,
+    );
+
+    final service = container.read(agentServiceProvider);
+    service.events.emit(EventType.messageStarted, {
+      'requestId': 'studio-request',
+    });
+    service.events.emit(EventType.messageChunk, {
+      'requestId': 'studio-request',
+      'content': 'legacy chunk',
+    });
+    service.events.emit(EventType.checkpointCreated, {
+      'requestId': 'studio-request',
+      'checkpoint': null,
+    });
+
+    final run = container.read(agentRunProvider).activeChatRun!;
+    expect(run.status, AgentRunStatus.running);
+    expect(
+      run.events.map((event) => event.type),
+      isNot(contains(AgentRunEventType.streamChunk)),
+    );
+    expect(
+      run.events.map((event) => event.type),
+      isNot(contains(AgentRunEventType.checkpoint)),
+    );
+
+    notifier.markStreaming(AgentRunKind.chat);
+
+    expect(
+      container.read(agentRunProvider).activeChatRun?.status,
+      AgentRunStatus.streaming,
+      reason:
+          'Studio runtime-owned updates should still be able to mutate Studio runs directly.',
+    );
+  });
+
+  test('AgentRun serialization preserves legacy event isolation', () {
+    final isolated = AgentRun(
+      id: 'run-1',
+      kind: AgentRunKind.chat,
+      status: AgentRunStatus.running,
+      model: 'gpt-5-nano',
+      startedAt: DateTime(2026, 6, 26),
+      acceptsLegacyEvents: false,
+    );
+
+    expect(AgentRun.fromJson(isolated.toJson())?.acceptsLegacyEvents, isFalse);
+    expect(
+      AgentRun.fromJson({
+        'id': 'run-2',
+        'kind': 'chat',
+        'status': 'running',
+        'model': 'gpt-5-nano',
+        'startedAt': DateTime(2026, 6, 26).toIso8601String(),
+      })?.acceptsLegacyEvents,
+      isTrue,
+      reason: 'Existing persisted run JSON should keep legacy compatibility.',
+    );
+  });
+
   test('RunDiagnosticsSummary includes request identity and events', () {
     final run = AgentRun(
       id: 'run-1',
