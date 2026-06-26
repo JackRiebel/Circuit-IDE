@@ -57,6 +57,10 @@ class CommandSanitizer {
     RegExp(r'(^|\s)(env|printenv|set)\s*($|[|;&>])', caseSensitive: false):
         'Environment variable dump',
     RegExp(
+      r'''(^|[\s'"`(])(python|python3|node|ruby|php|perl)\b[^\n]*(os\.environ|process\.env|\bENV\b|getenv|dotenv|load_dotenv)''',
+      caseSensitive: false,
+    ): 'Environment variable dump',
+    RegExp(
       r'(<|>|>>|\bsource\b|\.)\s*[^\n]*(\.env\b|\.env\.|secret|credentials|\.npmrc\b|\.netrc\b|id_rsa\b|id_ed25519\b|\.aws/|aws/credentials)',
       caseSensitive: false,
     ): 'Secret or environment file access',
