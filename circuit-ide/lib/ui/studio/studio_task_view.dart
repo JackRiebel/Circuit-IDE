@@ -814,32 +814,27 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
                 ),
               ),
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Row(
                 children: [
-                  Text(
-                    'Implement this plan?',
-                    style: TextStyle(
-                      color: tokens.textPrimary.withValues(alpha: 0.72),
-                      fontSize: FontSizes.sm,
-                      height: 1.2,
-                      fontWeight: FontWeight.w600,
+                  SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      color: tokens.textMuted.withValues(alpha: 0.76),
                     ),
                   ),
-                  const SizedBox(height: Spacing.sm),
-                  _PlanChoiceButton(
-                    index: '1',
-                    label: 'Yes, implement this plan',
-                    enabled: false,
-                    onPressed: () {},
-                  ),
-                  const SizedBox(height: 6),
-                  _PlanChoiceButton(
-                    index: null,
-                    icon: Icons.edit_outlined,
-                    label: 'No, and tell Circuit what to do differently',
-                    enabled: false,
-                    onPressed: () {},
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      'Plan is still being written. Review actions will appear when it is ready.',
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.sm,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
                 ],
               ),

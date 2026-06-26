@@ -3352,21 +3352,18 @@ void main() {
     expect(find.text('Drafting...'), findsOneWidget);
     expect(find.text('Draft plan'), findsOneWidget);
     expect(find.text('Expand plan'), findsOneWidget);
-    expect(find.text('Implement this plan?'), findsOneWidget);
-    expect(find.text('Yes, implement this plan'), findsOneWidget);
     expect(
-      find.text('No, and tell Circuit what to do differently'),
+      find.text(
+        'Plan is still being written. Review actions will appear when it is ready.',
+      ),
       findsOneWidget,
     );
-    final implementChoice = tester.widget<InkWell>(
-      find
-          .ancestor(
-            of: find.text('Yes, implement this plan'),
-            matching: find.byType(InkWell),
-          )
-          .first,
+    expect(find.text('Implement this plan?'), findsNothing);
+    expect(find.text('Yes, implement this plan'), findsNothing);
+    expect(
+      find.text('No, and tell Circuit what to do differently'),
+      findsNothing,
     );
-    expect(implementChoice.onTap, isNull);
     expect(find.text('Circuit AI is responding...'), findsNothing);
   });
 
