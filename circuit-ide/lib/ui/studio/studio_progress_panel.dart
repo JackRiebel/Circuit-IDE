@@ -27,10 +27,7 @@ class StudioProgressPanel extends ConsumerWidget {
     final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
     final latestTurn = _latestTurn(thread);
     final git = ref.watch(gitProvider).status;
-    final patch = _patchForTurn(
-      ref.watch(patchProposalProvider).active,
-      latestTurn,
-    );
+    final patch = _patchForTurn(ref.watch(patchProposalProvider), latestTurn);
     final commands = ref.watch(commandRunProvider).values.toList();
     final hasPendingApproval =
         thread?.turns.any(
@@ -128,9 +125,19 @@ class StudioProgressPanel extends ConsumerWidget {
     return turns.first;
   }
 
-  ProposedPatchSet? _patchForTurn(ProposedPatchSet? patch, StudioTurn? turn) {
-    if (patch == null || turn == null) return null;
-    return patch.runId == turn.requestId ? patch : null;
+  ProposedPatchSet? _patchForTurn(
+    PatchProposalState patchState,
+    StudioTurn? turn,
+  ) {
+    if (turn == null) return null;
+    final active = patchState.active;
+    if (active?.runId == turn.requestId) return active;
+    final history =
+        patchState.history
+            .where((patch) => patch.runId == turn.requestId)
+            .toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return history.firstOrNull;
   }
 
   CommandRun? _runningCommandForTurn(

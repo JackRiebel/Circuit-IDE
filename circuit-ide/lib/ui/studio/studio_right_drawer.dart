@@ -1347,7 +1347,8 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
   @override
   Widget build(BuildContext context) {
     final drawer = ref.watch(studioRightDrawerProvider);
-    final patch = ref.watch(patchProposalProvider).active;
+    final patchState = ref.watch(patchProposalProvider);
+    final patch = _patchForDrawer(patchState, drawer.diffId);
     if (patch == null) {
       return _GitReviewDrawer(
         selectedPath: _selectedPath,
@@ -1398,6 +1399,20 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
         })
         .join('\n\n');
   }
+}
+
+ProposedPatchSet? _patchForDrawer(
+  PatchProposalState patchState,
+  String? requestedPatchId,
+) {
+  final requestedId = requestedPatchId?.trim();
+  if (requestedId != null && requestedId.isNotEmpty) {
+    if (patchState.active?.id == requestedId) return patchState.active;
+    for (final patch in patchState.history) {
+      if (patch.id == requestedId) return patch;
+    }
+  }
+  return patchState.active;
 }
 
 class _GitReviewDrawer extends ConsumerWidget {
@@ -1608,15 +1623,11 @@ class _TerminalDrawer extends ConsumerWidget {
     final drawer = ref.watch(studioRightDrawerProvider);
     final tokens = ref.watch(themeProvider);
     final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
-    final commands =
-        ref
-            .watch(commandRunProvider)
-            .values
-            .where(
-              (command) => _commandBelongsToThread(command, thread, task?.id),
-            )
-            .toList()
-          ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final commands = _commandRunsForThread(
+      liveCommands: ref.watch(commandRunProvider).values,
+      thread: thread,
+      taskId: task?.id,
+    )..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     final selected = commands
         .where((command) => command.id == drawer.commandRunId)
         .firstOrNull;
@@ -1679,6 +1690,129 @@ bool _commandBelongsToThread(
   final requestIds = thread.turns.map((turn) => turn.requestId).toSet();
   return command.turnId != null && turnIds.contains(command.turnId) ||
       command.requestId != null && requestIds.contains(command.requestId);
+}
+
+List<CommandRun> _commandRunsForThread({
+  required Iterable<CommandRun> liveCommands,
+  required StudioThread? thread,
+  required String? taskId,
+}) {
+  final commands = <String, CommandRun>{};
+  for (final command in liveCommands) {
+    if (!_commandBelongsToThread(command, thread, taskId)) continue;
+    commands[command.id] = command;
+  }
+  if (thread != null) {
+    for (final command in _persistedCommandRunsForThread(thread)) {
+      commands.putIfAbsent(command.id, () => command);
+    }
+  }
+  return commands.values.toList();
+}
+
+Iterable<CommandRun> _persistedCommandRunsForThread(StudioThread thread) sync* {
+  for (final turn in thread.turns) {
+    for (final event in turn.events) {
+      if (event.type != StudioTurnEventType.completionSummary) continue;
+      if (!event.id.startsWith('command-run-')) continue;
+      final command = _commandRunFromTurnEvent(thread, turn, event);
+      if (command != null) yield command;
+    }
+  }
+}
+
+CommandRun? _commandRunFromTurnEvent(
+  StudioThread thread,
+  StudioTurn turn,
+  StudioTurnEvent event,
+) {
+  final detail = event.detail.trim();
+  final command = _commandLineFromDetail(detail);
+  if (command == null) return null;
+  final status = _commandRunStatusFromTitle(event.title);
+  final commandRunId = _commandRunIdFromEvent(turn, event);
+  return CommandRun(
+    id: commandRunId,
+    requestId: event.requestId,
+    turnId: turn.id,
+    taskId: thread.taskId,
+    command: command,
+    status: status,
+    startedAt: event.timestamp,
+    endedAt: event.timestamp,
+    exitCode: _exitCodeFromDetail(detail),
+    stdout: _commandOutputFromDetail(detail),
+    events: [
+      CommandRunEvent(
+        type: CommandRunEventType.started,
+        timestamp: event.timestamp,
+        text: command,
+      ),
+      CommandRunEvent(
+        type: status == CommandRunStatus.cancelled
+            ? CommandRunEventType.cancelled
+            : status == CommandRunStatus.timedOut
+            ? CommandRunEventType.timedOut
+            : CommandRunEventType.exited,
+        timestamp: event.timestamp,
+        text: event.title,
+      ),
+    ],
+  );
+}
+
+String _commandRunIdFromEvent(StudioTurn turn, StudioTurnEvent event) {
+  final prefix = 'command-run-${turn.id}-';
+  if (event.id.startsWith(prefix) && event.id.length > prefix.length) {
+    return event.id.substring(prefix.length);
+  }
+  return event.id;
+}
+
+String? _commandLineFromDetail(String detail) {
+  for (final line in detail.split('\n')) {
+    final trimmed = line.trim();
+    if (trimmed.toLowerCase().startsWith('command:')) {
+      final command = trimmed.substring('command:'.length).trim();
+      return command.isEmpty ? null : command;
+    }
+  }
+  return null;
+}
+
+int? _exitCodeFromDetail(String detail) {
+  final match = RegExp(
+    r'^Exit code:\s*(-?\d+)$',
+    multiLine: true,
+  ).firstMatch(detail);
+  if (match == null) return null;
+  return int.tryParse(match.group(1) ?? '');
+}
+
+String _commandOutputFromDetail(String detail) {
+  final lines = detail.split('\n');
+  final output = lines
+      .where((line) {
+        final trimmed = line.trimLeft().toLowerCase();
+        return !trimmed.startsWith('command:') &&
+            !trimmed.startsWith('exit code:');
+      })
+      .join('\n')
+      .trim();
+  return output;
+}
+
+CommandRunStatus _commandRunStatusFromTitle(String title) {
+  final normalized = title.toLowerCase();
+  if (normalized.contains('cancel')) return CommandRunStatus.cancelled;
+  if (normalized.contains('timeout') || normalized.contains('timed out')) {
+    return CommandRunStatus.timedOut;
+  }
+  if (normalized.contains('blocked')) return CommandRunStatus.blocked;
+  if (normalized.contains('failed') || normalized.contains('error')) {
+    return CommandRunStatus.failed;
+  }
+  return CommandRunStatus.succeeded;
 }
 
 class _SourcesDrawer extends ConsumerWidget {

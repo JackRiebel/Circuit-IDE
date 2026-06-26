@@ -4162,6 +4162,69 @@ void main() {
     expect(sourceIcons.first.size, 11);
   });
 
+  testWidgets('Progress panel reports historical patch changes', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Historical patch progress');
+    final turn = StudioTurn(
+      id: 'turn-historical-patch-panel',
+      threadId: thread.id,
+      requestId: 'request-historical-patch-panel',
+      userMessageId: 'message-historical-patch-panel',
+      prompt: 'apply the prepared change',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.userMessage(
+          id: 'message-historical-patch-panel',
+          turnId: 'turn-historical-patch-panel',
+          requestId: 'request-historical-patch-panel',
+          threadId: thread.id,
+          content: 'apply the prepared change',
+          timestamp: DateTime(2026),
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+
+    final patchController = container.read(patchProposalProvider.notifier);
+    final patch = patchController.propose(
+      title: 'Prepared historical changes',
+      runId: 'request-historical-patch-panel',
+      edits: const [
+        ProposedFileEdit(
+          path: 'lib/main.dart',
+          type: ProposedFileEditType.modify,
+          before: 'old',
+          after: 'new',
+        ),
+      ],
+    );
+    patchController.reject(patch.id);
+    expect(container.read(patchProposalProvider).active, isNull);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioProgressPanel())),
+      ),
+    );
+
+    expect(find.text('Changes'), findsOneWidget);
+    expect(find.text('+1'), findsOneWidget);
+    expect(find.text('No pending changes'), findsNothing);
+  });
+
   testWidgets('Right progress drawer hides routine completed task row', (
     tester,
   ) async {

@@ -4,6 +4,7 @@ import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/models/command_run.dart';
 import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/git_models.dart';
+import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_right_drawer.dart';
 import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
@@ -12,6 +13,7 @@ import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/command_run_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/git_provider.dart';
+import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/studio_code_edit_provider.dart';
 import 'package:circuit_ide/state/studio_right_drawer_provider.dart';
 import 'package:circuit_ide/state/studio_source_artifact_provider.dart';
@@ -307,7 +309,7 @@ void main() {
       ),
     );
 
-    expect(find.text('npm test'), findsWidgets);
+    expect(find.text('npm test'), findsNWidgets(2));
     expect(find.textContaining('selected output'), findsOneWidget);
     expect(find.text('npm run dev'), findsNothing);
     expect(find.textContaining('leaked output'), findsNothing);
@@ -320,6 +322,63 @@ void main() {
     expect(find.text('npm run dev'), findsNothing);
     expect(find.textContaining('leaked output'), findsNothing);
     expect(find.textContaining('selected output'), findsOneWidget);
+  });
+
+  testWidgets('Studio terminal drawer restores persisted command logs', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Restored command thread');
+    final timestamp = DateTime(2026, 1, 1, 10);
+    final turn = StudioTurn(
+      id: 'turn-restored-command',
+      threadId: thread.id,
+      requestId: 'request-restored-command',
+      userMessageId: 'message-restored-command',
+      prompt: 'Verify the change',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+      events: [
+        StudioTurnEvent.completionSummary(
+          id: 'command-run-turn-restored-command-cmd-restored',
+          turnId: 'turn-restored-command',
+          requestId: 'request-restored-command',
+          threadId: thread.id,
+          title: 'Ran command',
+          detail: 'Command: npm test\nExit code: 0\nrestored output\n',
+          timestamp: timestamp,
+        ),
+      ],
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, turn, select: true);
+    expect(container.read(commandRunProvider), isEmpty);
+
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.terminal);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: Align(child: StudioRightDrawer())),
+        ),
+      ),
+    );
+
+    expect(find.text('npm test'), findsWidgets);
+    expect(find.textContaining('restored output'), findsOneWidget);
+    expect(find.text('No command logs'), findsNothing);
   });
 
   testWidgets('Studio Git diff drawer is review-only', (tester) async {
@@ -354,6 +413,48 @@ void main() {
     expect(reviewOnly.style?.fontWeight, FontWeight.w600);
     expect(find.text('Stage'), findsNothing);
     expect(find.text('Unstage'), findsNothing);
+  });
+
+  testWidgets('Studio Diff drawer opens historical patch by id', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final patchController = container.read(patchProposalProvider.notifier);
+    final patch = patchController.propose(
+      title: 'Prepared archived changes',
+      edits: const [
+        ProposedFileEdit(
+          path: 'lib/main.dart',
+          type: ProposedFileEditType.modify,
+          before: 'old',
+          after: 'new',
+          unifiedDiff: '@@ -1 +1 @@\n-old\n+new',
+        ),
+      ],
+    );
+    patchController.reject(patch.id);
+    expect(container.read(patchProposalProvider).active, isNull);
+    expect(
+      container.read(patchProposalProvider).history.map((item) => item.id),
+      contains(patch.id),
+    );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile(patch.id, 'lib/main.dart');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: Align(child: StudioRightDrawer())),
+        ),
+      ),
+    );
+
+    expect(find.text('lib/main.dart'), findsOneWidget);
+    expect(find.textContaining('@@ -1 +1 @@'), findsOneWidget);
+    expect(find.text('No changes'), findsNothing);
   });
 
   testWidgets('Studio code drawer is read-only', (tester) async {
