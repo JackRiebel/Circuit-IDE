@@ -81,6 +81,7 @@ class AgentToolPermissionPolicy {
       final blockedTarget = _blockedNetworkDecision(accessKind, domain);
       if (blockedTarget != null) return blockedTarget;
       final granted = _grantDecision(
+        toolCall,
         'Network tool approved for this turn (${_networkDescription(accessKind, domain)}).',
         _networkGrantKey(name, accessKind, domain),
       );
@@ -141,6 +142,7 @@ class AgentToolPermissionPolicy {
       final gitAvailability = _gitMutationAvailabilityDecision();
       if (gitAvailability != null) return gitAvailability;
       final granted = _grantDecision(
+        toolCall,
         'Git mutation approved for this turn.',
         _toolGrantKey(name),
       );
@@ -193,6 +195,7 @@ class AgentToolPermissionPolicy {
       );
     }
     final granted = _grantDecision(
+      toolCall,
       'File write approved for this turn.',
       _toolGrantKey(toolCall.name),
     );
@@ -274,6 +277,7 @@ class AgentToolPermissionPolicy {
       final blockedTarget = _blockedNetworkDecision(accessKind, domain);
       if (blockedTarget != null) return blockedTarget;
       final granted = _grantDecision(
+        toolCall,
         'Network shell command approved for this turn (${_networkDescription(accessKind, domain)}).',
         _commandGrantKey(
           category,
@@ -292,6 +296,7 @@ class AgentToolPermissionPolicy {
     }
     if (category == CommandCategory.install) {
       final granted = _grantDecision(
+        toolCall,
         'Dependency installation approved for this turn.',
         _commandGrantKey(category, command: command),
       );
@@ -304,6 +309,7 @@ class AgentToolPermissionPolicy {
       );
     }
     final granted = _grantDecision(
+      toolCall,
       'Shell command approved for this turn.',
       _commandGrantKey(category, command: command),
     );
@@ -438,6 +444,7 @@ class AgentToolPermissionPolicy {
     final gitAvailability = _gitMutationAvailabilityDecision();
     if (gitAvailability != null) return gitAvailability;
     final granted = _grantDecision(
+      toolCall,
       'Branch mutation approved for this turn.',
       _gitBranchGrantKey(action),
     );
@@ -810,11 +817,18 @@ class AgentToolPermissionPolicy {
     );
   }
 
-  ToolPermissionDecision? _grantDecision(String message, String grantKey) {
+  ToolPermissionDecision? _grantDecision(
+    ToolCallInfo toolCall,
+    String message,
+    String grantKey,
+  ) {
     if (request.approvalGrant == ApprovalGrant.none) return null;
-    if (request.approvalGrantKey == null ||
-        request.approvalGrantKey != grantKey) {
-      return null;
+    final activeGrantKey = request.approvalGrantKey;
+    if (activeGrantKey == null) return null;
+    if (request.approvalGrant == ApprovalGrant.once) {
+      if (activeGrantKey != _onceGrantKey(toolCall)) return null;
+    } else if (request.approvalGrant == ApprovalGrant.turn) {
+      if (activeGrantKey != grantKey) return null;
     }
     return ToolPermissionDecision(
       verdict: ToolPermissionVerdict.allow,
@@ -822,6 +836,11 @@ class AgentToolPermissionPolicy {
       message: message,
     );
   }
+
+  String onceApprovalGrantKeyFor(ToolCallInfo toolCall) =>
+      _onceGrantKey(toolCall);
+
+  String _onceGrantKey(ToolCallInfo toolCall) => 'once:${toolCall.id}';
 
   String _approvalGrantKey(ToolCallInfo toolCall) {
     final name = toolCall.name;

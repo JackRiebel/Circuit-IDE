@@ -4525,6 +4525,74 @@ void main() {
     expect(patchWrongPhase.reason, ToolPermissionReason.writeRequiresReview);
   });
 
+  test('permission policy separates one-shot and turn approval grants', () {
+    const policy = AgentToolPermissionPolicy(
+      workingDir: '/tmp/circuit-policy-root',
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+      ),
+    );
+    const firstCommand = ToolCallInfo(
+      id: 'test-command-1',
+      name: 'run_command',
+      arguments: {'command': 'flutter test'},
+    );
+    const secondCommand = ToolCallInfo(
+      id: 'test-command-2',
+      name: 'run_command',
+      arguments: {'command': 'flutter test'},
+    );
+
+    final turnGrantKey = policy.approvalGrantKeyFor(firstCommand);
+    final onceGrantKey = policy.onceApprovalGrantKeyFor(firstCommand);
+
+    final oneShotPolicy = AgentToolPermissionPolicy(
+      workingDir: '/tmp/circuit-policy-root',
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.once,
+        approvalGrantKey: onceGrantKey,
+      ),
+    );
+    final turnPolicy = AgentToolPermissionPolicy(
+      workingDir: '/tmp/circuit-policy-root',
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.turn,
+        approvalGrantKey: turnGrantKey,
+      ),
+    );
+    final wrongOnceKeyPolicy = AgentToolPermissionPolicy(
+      workingDir: '/tmp/circuit-policy-root',
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: ApprovalGrant.once,
+        approvalGrantKey: turnGrantKey,
+      ),
+    );
+
+    expect(
+      oneShotPolicy.evaluate(firstCommand).reason,
+      ToolPermissionReason.approvalGranted,
+    );
+    expect(
+      oneShotPolicy.evaluate(secondCommand).verdict,
+      ToolPermissionVerdict.ask,
+    );
+    expect(
+      wrongOnceKeyPolicy.evaluate(firstCommand).verdict,
+      ToolPermissionVerdict.ask,
+    );
+    expect(
+      turnPolicy.evaluate(secondCommand).reason,
+      ToolPermissionReason.approvalGranted,
+    );
+  });
+
   test(
     'permission policy classifies deploy cloud and auth commands explicitly',
     () {
