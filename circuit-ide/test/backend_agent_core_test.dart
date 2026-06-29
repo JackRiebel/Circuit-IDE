@@ -19,6 +19,7 @@ import 'package:circuit_ide/models/agent_tool_permission.dart';
 import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
+import 'package:circuit_ide/models/settings_model.dart';
 import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
@@ -32,6 +33,7 @@ import 'package:circuit_ide/state/file_indexer_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/git_provider.dart';
 import 'package:circuit_ide/state/project_profile_provider.dart';
+import 'package:circuit_ide/state/settings_provider.dart';
 import 'package:circuit_ide/services/event_bus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6112,6 +6114,71 @@ class AuthFlow$i {
     },
   );
 
+  test(
+    'context retrieval included candidates match token-budgeted prompt items',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'context_budget_truth_',
+      );
+      addTearDown(() => _delete(root));
+      await Directory(p.join(root.path, 'lib')).create(recursive: true);
+      await File(p.join(root.path, 'lib', 'target_policy.dart')).writeAsString(
+        '''
+class TargetPolicy {
+  String rareBudgetTruthSymbol() {
+    return '${'target implementation detail ' * 240}';
+  }
+}
+''',
+      );
+      await File(
+        p.join(root.path, 'lib', 'secondary_policy.dart'),
+      ).writeAsString('''
+class SecondaryPolicy {
+  String rareBudgetTruthSymbolHelper() {
+    return '${'secondary implementation detail ' * 240}';
+  }
+}
+''');
+
+      final container = ProviderContainer(
+        overrides: [
+          settingsProvider.overrideWith(_TinyContextSettingsNotifier.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final pack = await container
+          .read(contextPackProvider.notifier)
+          .buildForCodingTaskWithFreshIndex(
+            prompt: 'Explain rareBudgetTruthSymbol behavior',
+          );
+
+      final retrieval = pack.retrievalResult!;
+      final sentItemIds = pack.compactedVisibleItems
+          .map((item) => item.id)
+          .toSet();
+      final reportedIncludedIds = retrieval.includedCandidates
+          .map((candidate) => candidate.id)
+          .toSet();
+
+      expect(retrieval.budget.exceeded, isTrue);
+      expect(reportedIncludedIds, sentItemIds);
+      expect(pack.serializePrompt(), contains('Project profile'));
+      expect(
+        retrieval.omittedCandidates
+            .where((candidate) => candidate.path?.startsWith('lib/') == true)
+            .map((candidate) => candidate.reason),
+        everyElement(contains('Omitted by token budget')),
+      );
+      expect(
+        retrieval.warnings.map((warning) => warning.message).join('\n'),
+        contains('omitted by token budget before sending'),
+      );
+    },
+  );
+
   test('context retrieval prunes stale include-next preferences', () async {
     final root = await Directory.systemTemp.createTemp(
       'context_preferences_prune_',
@@ -7177,4 +7244,18 @@ class _ScriptedProvider implements AIProvider {
       yield chunk;
     }
   }
+}
+
+class _TinyContextSettingsNotifier extends SettingsNotifier {
+  @override
+  SettingsModel build() => const SettingsModel(
+    ciscoModel: 'gpt-5-nano',
+    connectorModels: [
+      ConnectorModelInfo(
+        id: 'gpt-5-nano',
+        displayName: 'GPT-5 nano',
+        contextWindow: 4200,
+      ),
+    ],
+  );
 }

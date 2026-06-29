@@ -400,12 +400,13 @@ class ContextPackController extends Notifier<ContextPack?> {
       ...git.staged.map((change) => change.path),
       ...git.unstaged.map((change) => change.path),
       ...git.untracked.map((change) => change.path),
-    }.take(8).toList();
+    };
+    final displayedChangedFiles = changedFiles.take(12).toList();
 
     final relevantFiles = _relevantFileItems(
       prompt,
       rootPath,
-      changedFiles: changedFiles.toSet(),
+      changedFiles: changedFiles,
       alreadyIncludedSources: {
         for (final item in items)
           if (item.source != null) item.source!,
@@ -422,7 +423,9 @@ class ContextPackController extends Notifier<ContextPack?> {
           type: ContextPackItemType.gitDiff,
           title: 'Working tree changes',
           detail: [
-            changedFiles.join('\n'),
+            displayedChangedFiles.join('\n'),
+            if (changedFiles.length > displayedChangedFiles.length)
+              '${changedFiles.length - displayedChangedFiles.length} more changed file${changedFiles.length - displayedChangedFiles.length == 1 ? '' : 's'} considered for context ranking.',
             if (diff.trim().isNotEmpty)
               '\nDiff snippet:\n${_truncate(diff, 8000)}',
           ].join('\n'),
@@ -657,6 +660,20 @@ class ContextPackController extends Notifier<ContextPack?> {
       ).availableForContext,
       usedTokens: used,
     );
+    final scoresById = {
+      for (final item in allItems)
+        item.id: item.retrievalScore ?? _contextScore(item),
+    };
+    final selectedIds = _selectContextItemIdsForBudget(
+      allItems,
+      scoresById: scoresById,
+      budget: budget,
+    );
+    final budgetOmittedCount = allItems
+        .where(
+          (item) => item.includedByDefault && !selectedIds.contains(item.id),
+        )
+        .length;
     final candidates = [
       for (final item in allItems)
         ContextCandidate(
@@ -664,10 +681,12 @@ class ContextPackController extends Notifier<ContextPack?> {
           title: item.title,
           path: item.source,
           sourceKind: item.sourceKind,
-          score: _contextScore(item),
+          score: scoresById[item.id] ?? _contextScore(item),
           estimatedTokens: item.estimatedTokens,
-          included: item.includedByDefault,
-          reason: _contextReason(item),
+          included: item.includedByDefault && selectedIds.contains(item.id),
+          reason: selectedIds.contains(item.id)
+              ? _contextReason(item)
+              : '${_contextReason(item)} Omitted by token budget.',
         ),
       ...omittedCandidates,
     ]..sort((a, b) => b.score.compareTo(a.score));
@@ -684,9 +703,50 @@ class ContextPackController extends Notifier<ContextPack?> {
             message:
                 '${omittedCandidates.length} high-scoring context candidate${omittedCandidates.length == 1 ? '' : 's'} omitted from this turn.',
           ),
+        if (budgetOmittedCount > 0)
+          ContextPackWarning(
+            message:
+                '$budgetOmittedCount visible context item${budgetOmittedCount == 1 ? '' : 's'} omitted by token budget before sending.',
+          ),
         ..._instructionPolicyWarnings(instructionItems),
       ],
     );
+  }
+
+  Set<String> _selectContextItemIdsForBudget(
+    List<ContextPackItem> items, {
+    required Map<String, int> scoresById,
+    required ContextBudgetReport budget,
+  }) {
+    final includedItems = items
+        .where((item) => item.includedByDefault)
+        .toList(growable: false);
+    if (includedItems.isEmpty) return const {};
+    if (budget.availableForContext <= 0 ||
+        budget.usedTokens <= budget.availableForContext) {
+      return {for (final item in includedItems) item.id};
+    }
+
+    final ranked = [...includedItems]
+      ..sort((a, b) {
+        if (a.removable != b.removable) return a.removable ? 1 : -1;
+        final scoreA = scoresById[a.id] ?? _contextScore(a);
+        final scoreB = scoresById[b.id] ?? _contextScore(b);
+        final scoreCompare = scoreB.compareTo(scoreA);
+        if (scoreCompare != 0) return scoreCompare;
+        return includedItems.indexOf(a).compareTo(includedItems.indexOf(b));
+      });
+
+    final selected = <String>{};
+    var used = 0;
+    for (final item in ranked) {
+      final nextUsed = used + item.estimatedTokens;
+      if (selected.isEmpty || nextUsed <= budget.availableForContext) {
+        selected.add(item.id);
+        used = nextUsed;
+      }
+    }
+    return selected;
   }
 
   List<ContextPackWarning> _instructionPolicyWarnings(
