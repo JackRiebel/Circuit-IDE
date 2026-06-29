@@ -150,6 +150,7 @@ class StudioRequestLifecycleController
 
     on(EventType.messageStarted, _handleMessageStarted);
     on(EventType.messageChunk, _handleMessageChunk);
+    on(EventType.planDraftUpdated, _handlePlanDraftUpdated);
     on(EventType.tokensUpdated, _handleTokensUpdated);
     on(EventType.toolCallStarted, _handleToolStarted);
     on(EventType.toolCallCompleted, _handleToolCompleted);
@@ -196,6 +197,20 @@ class StudioRequestLifecycleController
           detail: 'Circuit AI accepted the request.',
           status: StudioTurnStatus.waitingForModel,
         );
+  }
+
+  void _handlePlanDraftUpdated(Event event) {
+    final entry = _entryFor(event);
+    if (entry == null) return;
+    final content = event.data['content'] as String? ?? '';
+    ref
+        .read(studioTurnProvider.notifier)
+        .replaceAssistantDraft(entry.requestId, content);
+    _touch(
+      entry,
+      StudioRequestLifecycleEventKind.streaming,
+      detail: 'Circuit AI is drafting a plan.',
+    );
   }
 
   void _handleProviderLifecycle(
@@ -889,6 +904,9 @@ class StudioRequestLifecycleController
               _verificationRequestedFor(entry.requestId) ||
               _proposalRequestsVerification(args, planMarkdown),
         );
+    ref
+        .read(studioTurnProvider.notifier)
+        .replaceAssistantDraft(entry.requestId, '');
     ref
         .read(studioTurnProvider.notifier)
         .markProgress(

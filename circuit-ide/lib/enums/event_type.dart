@@ -8,6 +8,7 @@ enum EventType {
   // Chat events
   messageStarted,
   messageChunk,
+  planDraftUpdated,
   messageCompleted,
   messageError,
 

@@ -5976,6 +5976,62 @@ void main() {
   );
 
   test(
+    'AgentTurnRuntime streams propose_patch arguments into plan draft',
+    () async {
+      final provider = _GatedPlanToolProvider();
+      final harness = await _RuntimeHarness.create(provider: provider);
+      addTearDown(harness.dispose);
+      const requestId = 'runtime-plan-tool-draft';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'create a plan',
+        intent: TurnIntent.plan,
+      );
+
+      final runFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'create a plan',
+            attachments: const [],
+            historyOverride: const <ChatMessage>[],
+            toolMode: AgentToolMode.plan,
+            intent: TurnIntent.plan,
+            model: 'gpt-5-nano',
+            retryPrompt: 'create a plan',
+            finishTask: false,
+          );
+
+      await provider.waitForDraftChunk;
+      await _waitUntil(() {
+        final turn = harness.thread(thread.id).turns.single;
+        return turn.assistantDraft.contains('Streaming tool plan');
+      });
+
+      final streamingTurn = harness.thread(thread.id).turns.single;
+      expect(streamingTurn.status, StudioTurnStatus.streaming);
+      expect(
+        streamingTurn.assistantDraft,
+        contains('Build a plan while the card updates.'),
+      );
+      expect(streamingTurn.assistantDraft, contains('First live step'));
+
+      provider.release();
+      await runFuture;
+
+      final completedTurn = harness.thread(thread.id).turns.single;
+      expect(completedTurn.status, StudioTurnStatus.completed);
+      expect(completedTurn.assistantDraft, isEmpty);
+      final patch = harness.container.read(patchProposalProvider).active;
+      expect(patch, isNotNull);
+      expect(patch!.isPlanOnly, isTrue);
+      expect(patch.planMarkdown, contains('Second live step'));
+    },
+  );
+
+  test(
     'AgentTurnRuntime does not reject plan card artifacts on plan validation failure',
     () async {
       final harness = await _RuntimeHarness.create(
@@ -7303,6 +7359,86 @@ class _ScriptedProvider implements AIProvider {
     for (final chunk in round) {
       yield chunk;
     }
+  }
+
+  @override
+  Future<void> connect(Map<String, String> credentials) async {}
+
+  @override
+  void cancelActiveRequest() {}
+
+  @override
+  Future<ConnectorHealth> checkHealth() async => ConnectorHealth(
+    status: ConnectorHealthStatus.connected,
+    message: 'Connected',
+    checkedAt: DateTime.now(),
+  );
+
+  @override
+  void disconnect() {}
+
+  @override
+  Future<List<ConnectorModelInfo>> refreshModels() async => const [
+    ConnectorModelInfo(id: 'gpt-5-nano', displayName: 'GPT-5 nano'),
+  ];
+}
+
+class _GatedPlanToolProvider implements AIProvider {
+  final Completer<void> _draftChunkSent = Completer<void>();
+  final Completer<void> _release = Completer<void>();
+
+  Future<void> get waitForDraftChunk => _draftChunkSent.future;
+
+  void release() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  List<ModelInfo> get availableModels => const [
+    ModelInfo(id: 'gpt-5-nano', displayName: 'GPT-5 nano', contextWindow: 1000),
+  ];
+
+  @override
+  ProviderCapabilities get capabilities => const ProviderCapabilities();
+
+  @override
+  ProviderDescriptor get descriptor => const ProviderDescriptor(
+    id: 'gated-plan',
+    displayName: 'Gated Plan',
+    shortName: 'gated',
+  );
+
+  @override
+  bool get isConnected => true;
+
+  @override
+  String get name => 'gated-plan';
+
+  @override
+  Stream<ChatChunk> chat(
+    List<ChatMessage> messages, {
+    required String model,
+    required List<ToolDefinition> tools,
+    String? systemPrompt,
+    double temperature = 0.7,
+    int maxTokens = 4096,
+  }) async* {
+    yield const ChatChunk(lifecycleKind: ProviderLifecycleEventKind.firstByte);
+    yield const ChatChunk(
+      toolCallIndex: 0,
+      toolCallId: 'patch',
+      toolCallName: 'propose_patch',
+      toolCallArguments:
+          '{"title":"Streaming tool plan","summary":"Build a plan while the card updates.","plan_markdown":"# Streaming tool plan\\n\\n- First live step',
+    );
+    if (!_draftChunkSent.isCompleted) _draftChunkSent.complete();
+    await _release.future;
+    yield const ChatChunk(
+      toolCallIndex: 0,
+      toolCallArguments:
+          '\\n- Second live step","assumptions":["Plan acceptance comes before edits."],"verification_steps":["Review the plan card."],"files":[{"path":"lib/example.dart","intent":"Add the example after plan acceptance","operation":"create"}]}',
+    );
+    yield const ChatChunk(finishReason: 'tool_calls', isDone: true);
   }
 
   @override

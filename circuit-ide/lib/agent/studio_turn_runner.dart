@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:uuid/uuid.dart';
 
@@ -114,6 +115,7 @@ class StudioTurnRunner {
     var sawTimeoutDiagnostic = false;
     var emittedNoFirstByteDiagnostic = false;
     var toolOnlyNonTerminalRounds = 0;
+    var lastPlanDraft = '';
     String? pendingRepairValidationMessage;
 
     try {
@@ -133,6 +135,7 @@ class StudioTurnRunner {
           noProgressRounds = 0;
           sawAnyText = false;
           sawAnyTool = false;
+          lastPlanDraft = '';
           requestHistory.add(
             ChatMessage(
               id: _uuid.v4(),
@@ -268,6 +271,17 @@ class StudioTurnRunner {
                 name: chunk.toolCallName,
                 arguments: chunk.toolCallArguments,
               );
+              if (intent == TurnIntent.plan) {
+                final toolCall = response.toolCalls[chunk.toolCallIndex!];
+                final draft = _draftMarkdownFromPlanToolCall(toolCall);
+                if (draft.isNotEmpty && draft != lastPlanDraft) {
+                  lastPlanDraft = draft;
+                  events.emit(EventType.planDraftUpdated, {
+                    'content': draft,
+                    'requestId': requestId,
+                  });
+                }
+              }
             }
             if (chunk.promptTokens > 0 || chunk.completionTokens > 0) {
               response.updateUsage(chunk.promptTokens, chunk.completionTokens);
@@ -835,6 +849,134 @@ class StudioTurnRunner {
       synthesizedToolCall: syntheticCall,
       synthesizedToolResult: syntheticResult,
     );
+  }
+
+  String _draftMarkdownFromPlanToolCall(StreamingToolCall toolCall) {
+    if (toolCall.name.isNotEmpty && toolCall.name != 'propose_patch') {
+      return '';
+    }
+    final buffer = toolCall.argumentsBuffer;
+    if (buffer.trim().isEmpty) return '';
+
+    final decoded = _tryDecodeToolArguments(buffer);
+    if (decoded != null) return _draftMarkdownFromPlanArguments(decoded);
+
+    final title = _partialJsonStringValue(buffer, 'title');
+    final summary = _partialJsonStringValue(buffer, 'summary');
+    final planMarkdown = _partialJsonStringValue(buffer, 'plan_markdown');
+    final partialArgs = <String, dynamic>{};
+    if (title != null) partialArgs['title'] = title;
+    if (summary != null) partialArgs['summary'] = summary;
+    if (planMarkdown != null) partialArgs['plan_markdown'] = planMarkdown;
+    return _draftMarkdownFromPlanArguments(partialArgs);
+  }
+
+  Map<String, dynamic>? _tryDecodeToolArguments(String buffer) {
+    try {
+      final decoded = jsonDecode(buffer);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  String _draftMarkdownFromPlanArguments(Map<String, dynamic> args) {
+    final title = (args['title'] as String? ?? '').trim();
+    final summary = (args['summary'] as String? ?? '').trim();
+    final planMarkdown = (args['plan_markdown'] as String? ?? '').trim();
+    final assumptions = _stringList(args['assumptions']);
+    final verificationSteps = _stringList(args['verification_steps']);
+    final files = args['files'];
+    final plannedFiles = <String>[];
+    if (files is List) {
+      for (final file in files) {
+        if (file is! Map) continue;
+        final path = (file['path'] as String? ?? '').trim();
+        if (path.isEmpty) continue;
+        final operation = (file['operation'] as String? ?? '').trim();
+        final intent = (file['intent'] as String? ?? '').trim();
+        plannedFiles.add(
+          [
+            path,
+            if (operation.isNotEmpty) operation,
+            if (intent.isNotEmpty) intent,
+          ].join(' - '),
+        );
+      }
+    }
+
+    final parts = <String>[];
+    if (title.isNotEmpty) parts.add('# $title');
+    if (summary.isNotEmpty) parts.add('## Summary\n$summary');
+    if (planMarkdown.isNotEmpty) parts.add(planMarkdown);
+    if (plannedFiles.isNotEmpty) {
+      parts.add(
+        '## Planned files\n${plannedFiles.map((file) => '- $file').join('\n')}',
+      );
+    }
+    if (assumptions.isNotEmpty) {
+      parts.add(
+        '## Assumptions\n${assumptions.map((item) => '- $item').join('\n')}',
+      );
+    }
+    if (verificationSteps.isNotEmpty) {
+      parts.add(
+        '## Verification\n${verificationSteps.map((item) => '- $item').join('\n')}',
+      );
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final item in value)
+        if (item is String && item.trim().isNotEmpty) item.trim(),
+    ];
+  }
+
+  String? _partialJsonStringValue(String source, String key) {
+    final keyIndex = source.indexOf('"$key"');
+    if (keyIndex < 0) return null;
+    final colonIndex = source.indexOf(':', keyIndex + key.length + 2);
+    if (colonIndex < 0) return null;
+    var index = colonIndex + 1;
+    while (index < source.length && source.codeUnitAt(index) <= 32) {
+      index++;
+    }
+    if (index >= source.length || source[index] != '"') return null;
+    index++;
+    final buffer = StringBuffer();
+    while (index < source.length) {
+      final char = source[index];
+      if (char == '"') break;
+      if (char != '\\') {
+        buffer.write(char);
+        index++;
+        continue;
+      }
+      if (index + 1 >= source.length) break;
+      final escaped = source[index + 1];
+      switch (escaped) {
+        case 'n':
+          buffer.write('\n');
+        case 'r':
+          buffer.write('\r');
+        case 't':
+          buffer.write('\t');
+        case '"':
+          buffer.write('"');
+        case '\\':
+          buffer.write('\\');
+        default:
+          buffer.write(escaped);
+      }
+      index += 2;
+    }
+    final value = buffer.toString().trim();
+    return value.isEmpty ? null : value;
   }
 
   Map<String, dynamic> _planOnlyPatchArguments(Map<String, dynamic> args) {

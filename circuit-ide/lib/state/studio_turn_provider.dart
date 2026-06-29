@@ -313,6 +313,47 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     );
   }
 
+  void replaceAssistantDraft(
+    String requestId,
+    String content, {
+    bool allowArchived = false,
+  }) {
+    final turnRef = allowArchived
+        ? state.archivedRefForRequest(requestId)
+        : state.refForRequest(requestId);
+    if (turnRef == null) return;
+    final draft = content.trimRight();
+    final thread = ref
+        .read(studioThreadProvider)
+        .threads
+        .where((candidate) => candidate.id == turnRef.threadId)
+        .firstOrNull;
+    final turn = thread?.turns
+        .where((candidate) => candidate.id == turnRef.turnId)
+        .firstOrNull;
+    final status = turn?.completedAt == null
+        ? StudioTurnStatus.streaming
+        : null;
+    ref
+        .read(studioThreadProvider.notifier)
+        .updateTurn(
+          turnRef.threadId,
+          turnRef.turnId,
+          status: status,
+          assistantDraft: draft,
+        );
+    if (draft.isNotEmpty) {
+      recordStep(
+        requestId,
+        step: TurnStep.streaming,
+        status: TurnStepStatus.running,
+        title: 'Drafting plan',
+        detail: 'Circuit AI is writing a reviewable plan.',
+        allowArchived: allowArchived,
+      );
+    }
+  }
+
   void upsertTool(
     String requestId, {
     required String toolCallId,
