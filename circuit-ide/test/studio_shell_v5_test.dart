@@ -5729,6 +5729,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Patch conflict'), findsWidgets);
+    expect(find.textContaining('Needs rebase before apply'), findsWidgets);
     expect(find.text('View current file'), findsOneWidget);
     expect(find.text('Ask Circuit to rebase'), findsOneWidget);
     expect(find.text('Dismiss conflict'), findsOneWidget);
@@ -6713,7 +6715,8 @@ void main() {
       expect(state.active!.changedFiles, isEmpty);
       expect(state.checkpoints, isEmpty);
       expect(readme.readAsStringSync(), 'changed on disk');
-      expect(find.text('Patch needs attention'), findsOneWidget);
+      expect(find.text('Patch conflict'), findsOneWidget);
+      expect(find.textContaining('Needs rebase before apply'), findsOneWidget);
       expect(
         find.textContaining('File changed since proposal'),
         findsOneWidget,

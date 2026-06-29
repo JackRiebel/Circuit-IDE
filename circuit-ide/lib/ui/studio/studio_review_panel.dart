@@ -197,7 +197,7 @@ String _reviewTitle(ProposedPatchSet patch) {
     PatchApplyStatus.applied => 'Edited ${_fileCountLabel(patch.fileCount)}',
     PatchApplyStatus.restored => 'Checkpoint restored',
     PatchApplyStatus.revisionRequested => 'Patch revision requested',
-    PatchApplyStatus.conflict => 'Patch needs attention',
+    PatchApplyStatus.conflict => 'Patch conflict',
     PatchApplyStatus.failed => 'Patch failed',
     PatchApplyStatus.rejected => 'Patch rejected',
     null => 'Prepared ${_fileCountLabel(patch.fileCount)}',
@@ -227,7 +227,7 @@ class _ReviewHeader extends ConsumerWidget {
         : patch.applyStatus == PatchApplyStatus.applied
         ? 'Applied'
         : patch.applyStatus == PatchApplyStatus.conflict
-        ? 'Needs review'
+        ? 'Needs rebase before apply'
         : patch.applyStatus == PatchApplyStatus.revisionRequested
         ? 'Revision requested'
         : 'Review';

@@ -1517,9 +1517,12 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
         ? 'Edited ${_formatFileCount(patch.fileCount)}'
         : patch.applyStatus == PatchApplyStatus.restored
         ? 'Restored ${_formatFileCount(patch.changedFiles.length)}'
+        : patch.applyStatus == PatchApplyStatus.conflict
+        ? 'Patch conflict'
         : patch.applyStatus == PatchApplyStatus.revisionRequested
         ? 'Revision requested'
         : 'Prepared ${_formatFileCount(patch.fileCount)}';
+    final statusNote = _patchHeaderStatusNote(patch);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -1592,6 +1595,24 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
                                 style: TextStyle(
                                   color: tokens.textMuted,
                                   fontSize: FontSizes.xs,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                            if (statusNote != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                statusNote,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color:
+                                      patch.applyStatus ==
+                                          PatchApplyStatus.conflict
+                                      ? tokens.warning
+                                      : tokens.textMuted,
+                                  fontSize: FontSizes.xs,
+                                  height: 1.25,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -2238,6 +2259,19 @@ String? _patchStatusDetail(ProposedPatchSet patch) {
     PatchApplyStatus.revisionRequested =>
       'Revision requested. Circuit will use the current files and patch context to prepare an updated proposal.',
     null => null,
+  };
+}
+
+String? _patchHeaderStatusNote(ProposedPatchSet patch) {
+  return switch (patch.applyStatus) {
+    PatchApplyStatus.conflict =>
+      'Needs rebase before apply. Review the current file or ask Circuit to rebase.',
+    PatchApplyStatus.revisionRequested =>
+      'Revision requested. Circuit will prepare an updated proposal.',
+    PatchApplyStatus.restored => 'Checkpoint restored.',
+    PatchApplyStatus.failed => 'Apply failed. Review the message below.',
+    PatchApplyStatus.rejected => 'Rejected.',
+    PatchApplyStatus.applied || null => null,
   };
 }
 
