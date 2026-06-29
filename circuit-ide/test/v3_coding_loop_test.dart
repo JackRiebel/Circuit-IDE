@@ -2201,6 +2201,28 @@ void main() {
   });
 
   test(
+    'Studio task title does not fall back to unrelated selected thread',
+    () async {
+      final source = await File(
+        'lib/ui/studio/studio_shell.dart',
+      ).readAsString();
+
+      expect(
+        source,
+        contains('threadState.threadForTaskView(studio.selectedTaskId);'),
+      );
+      expect(
+        source,
+        isNot(
+          contains('threadState.threadForTaskView(studio.selectedTaskId) ??'),
+        ),
+        reason:
+            'A missing task-scoped thread should show the neutral task title instead of leaking another selected thread.',
+      );
+    },
+  );
+
+  test(
     'legacy chat token state is explicitly quarantined outside Studio',
     () async {
       final legacyTokenSource = await File(

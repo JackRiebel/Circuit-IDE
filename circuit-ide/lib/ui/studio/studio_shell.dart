@@ -77,9 +77,7 @@ class _StudioTopBar extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final studio = ref.watch(studioShellProvider);
     final threadState = ref.watch(studioThreadProvider);
-    final thread =
-        threadState.threadForTaskView(studio.selectedTaskId) ??
-        threadState.selectedThread;
+    final thread = threadState.threadForTaskView(studio.selectedTaskId);
     final title = switch (studio.mode) {
       StudioMode.home => '',
       StudioMode.project => '',
