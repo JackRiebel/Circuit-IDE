@@ -716,6 +716,22 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     );
   }
 
+  void dismissConflict(String patchSetId) {
+    final patchSet = _find(patchSetId);
+    if (patchSet == null || patchSet.applyStatus != PatchApplyStatus.conflict) {
+      return;
+    }
+    final updated = patchSet.copyWith(applyStatus: null, conflictMessage: null);
+    state = state.copyWith(
+      active: state.active?.id == patchSetId ? updated : state.active,
+      history: _replace(updated),
+      message: 'Patch conflict dismissed.',
+    );
+    _persistSync();
+    ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
+  }
+
   Future<PatchApplyResult> restoreCheckpoint(String checkpointId) async {
     final checkpoint = state.checkpoints[checkpointId];
     final rootPath = ref.read(fileTreeProvider).rootPath;

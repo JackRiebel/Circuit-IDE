@@ -5604,6 +5604,94 @@ void main() {
     expect(preview.style?.fontFamily, EditorDefaults.studioMonospaceFontFamily);
   });
 
+  testWidgets('Inline patch conflict card exposes recovery actions', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync('studio_inline_conflict_');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    File('${root.path}/README.md').writeAsStringSync('changed on disk');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.runAsync(
+      () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    await tester.runAsync(
+      () => container.read(studioThreadProvider.notifier).reload(),
+    );
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Patch conflict thread');
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+    container
+        .read(studioTurnProvider.notifier)
+        .registerTurn(
+          requestId: 'request-inline-conflict',
+          threadId: thread.id,
+          taskId: null,
+          userMessageId: 'message-inline-conflict',
+          prompt: 'Apply patch',
+          model: 'gpt-5-nano',
+          contextSummary: StudioContextSummary(
+            rootPath: root.path,
+            projectLabel: 'project',
+          ),
+          intent: TurnIntent.code,
+        );
+    final patch = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Update readme',
+          runId: 'request-inline-conflict',
+          edits: const [
+            ProposedFileEdit(
+              path: 'README.md',
+              type: ProposedFileEditType.modify,
+              before: 'old',
+              after: 'new',
+            ),
+          ],
+        );
+
+    final result = await tester.runAsync(
+      () => container.read(patchProposalProvider.notifier).apply(patch.id),
+    );
+    expect(result?.status, PatchApplyStatus.conflict);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('View current file'), findsOneWidget);
+    expect(find.text('Ask Circuit to rebase'), findsOneWidget);
+    expect(find.text('Dismiss conflict'), findsOneWidget);
+
+    await tester.tap(find.text('View current file'));
+    await tester.pump();
+    var drawer = container.read(studioRightDrawerProvider);
+    expect(drawer.mode, StudioDrawerMode.code);
+    expect(drawer.filePath, 'README.md');
+
+    await tester.tap(find.text('Dismiss conflict'));
+    await tester.pump();
+    final dismissed = container.read(patchProposalProvider).active!;
+    expect(dismissed.applyStatus, isNull);
+    expect(dismissed.conflictMessage, isNull);
+    expect(
+      container.read(patchProposalProvider).message,
+      'Patch conflict dismissed.',
+    );
+  });
+
   testWidgets('Studio Review Panel file rows open the diff drawer', (
     tester,
   ) async {

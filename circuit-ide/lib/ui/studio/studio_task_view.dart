@@ -1632,12 +1632,23 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
                         ),
                       ] else ...[
                         if (!isPlan &&
-                            patch.applyStatus == PatchApplyStatus.conflict)
+                            patch.applyStatus == PatchApplyStatus.conflict) ...[
+                          OutlinedButton(
+                            style: _patchSecondaryActionStyle(tokens),
+                            onPressed: () => _viewConflictFile(ref),
+                            child: const Text('View current file'),
+                          ),
                           OutlinedButton(
                             style: _patchSecondaryActionStyle(tokens),
                             onPressed: () => _rebasePatch(ref),
                             child: const Text('Ask Circuit to rebase'),
                           ),
+                          TextButton(
+                            style: _patchTextActionStyle(tokens),
+                            onPressed: () => _dismissConflict(ref),
+                            child: const Text('Dismiss conflict'),
+                          ),
+                        ],
                         if (canRestore)
                           OutlinedButton(
                             style: _patchSecondaryActionStyle(tokens),
@@ -1986,6 +1997,16 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
     shellNotifier.setPromptMode(StudioPromptMode.code);
     shellNotifier.setComposerText(prompt);
   }
+
+  void _viewConflictFile(WidgetRef ref) {
+    final path = _primaryConflictPath(widget.patch);
+    if (path == null) return;
+    ref.read(studioRightDrawerProvider.notifier).openFile(path);
+  }
+
+  void _dismissConflict(WidgetRef ref) {
+    ref.read(patchProposalProvider.notifier).dismissConflict(widget.patch.id);
+  }
 }
 
 class _PlanContinuationCard extends ConsumerWidget {
@@ -2218,6 +2239,16 @@ String? _patchStatusDetail(ProposedPatchSet patch) {
       'Revision requested. Circuit will use the current files and patch context to prepare an updated proposal.',
     null => null,
   };
+}
+
+String? _primaryConflictPath(ProposedPatchSet patch) {
+  final message = patch.conflictMessage?.trim();
+  if (message != null && message.isNotEmpty) {
+    final match = RegExp(r':\s*([^\n]+)').firstMatch(message);
+    final parsed = match?.group(1)?.trim();
+    if (parsed != null && parsed.isNotEmpty) return parsed;
+  }
+  return patch.edits.firstOrNull?.path;
 }
 
 String _formatFileCount(int count) => '$count ${count == 1 ? 'file' : 'files'}';
