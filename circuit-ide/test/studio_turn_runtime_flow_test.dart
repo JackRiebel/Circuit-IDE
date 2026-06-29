@@ -298,6 +298,18 @@ void main() {
       expect(transactionEvents.single.detail, contains('Applied 1 files.'));
       expect(transactionEvents.single.detail, contains('Created hello.txt'));
       expect(transactionEvents.single.detail, contains('Checkpoint:'));
+      expect(
+        transactionEvents.single.detail,
+        contains(
+          'Recommended next step: review the changed files, then continue with the next batch or ask for revisions.',
+        ),
+      );
+      final finalSummaryStep = threadAfterApply.turns.single.steps
+          .where((step) => step.step == TurnStep.finalSummary)
+          .single;
+      expect(finalSummaryStep.status, TurnStepStatus.completed);
+      expect(finalSummaryStep.title, 'Patch applied');
+      expect(finalSummaryStep.detail, contains('Applied 1 files.'));
     },
   );
 

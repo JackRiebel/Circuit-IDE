@@ -1065,6 +1065,9 @@ class PatchProposalController extends Notifier<PatchProposalState> {
           'Suggested checks: ${result.verificationSuggestions.join(' · ')}',
         if (result.verificationSuggestions.isNotEmpty)
           'Recommended next step: run the suggested checks to verify the applied changes.',
+        if (result.verificationSuggestions.isEmpty &&
+            !result.verificationRequested)
+          'Recommended next step: review the changed files, then continue with the next batch or ask for revisions.',
         if (result.verificationRequested)
           'Verification was requested for this patch.',
       ];

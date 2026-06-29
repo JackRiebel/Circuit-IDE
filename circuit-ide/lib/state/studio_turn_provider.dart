@@ -840,6 +840,16 @@ class StudioTurnController extends Notifier<StudioTurnState> {
       actionableDetail,
       applyStatus,
     );
+    if (applyStatus == PatchApplyStatus.applied) {
+      recordStep(
+        requestId,
+        step: TurnStep.finalSummary,
+        status: TurnStepStatus.completed,
+        title: 'Patch applied',
+        detail: transactionDetail,
+        allowArchived: true,
+      );
+    }
     ref
         .read(studioThreadProvider.notifier)
         .upsertTurnEvent(
