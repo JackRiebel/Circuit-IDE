@@ -693,6 +693,70 @@ void main() {
     expect(verificationStep.detail, contains('flutter test'));
   });
 
+  test(
+    'CommandRunController runs direct verification command on Studio turn',
+    () async {
+      final root = Directory.systemTemp.createTempSync(
+        'direct_verify_command_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Direct verify command');
+      final turn = container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'request-direct-command-turn',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'message-direct-command-turn',
+            prompt: 'Run verification',
+            model: 'gpt-5-nano',
+            contextSummary: StudioContextSummary(
+              rootPath: root.path,
+              projectLabel: 'project',
+            ),
+            intent: TurnIntent.verify,
+          );
+
+      final run = await container
+          .read(commandRunProvider.notifier)
+          .runVerificationCommand(
+            id: 'cmd-direct-turn',
+            command: 'python3 -c "print(\'direct-ok\')"',
+            workingDir: root.path,
+            requestId: 'request-direct-command-turn',
+            turnId: turn.id,
+          );
+
+      expect(run.status, CommandRunStatus.succeeded);
+      expect(run.stdout, contains('direct-ok'));
+      final updatedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((candidate) => candidate.id == thread.id)
+          .turns
+          .singleWhere((candidate) => candidate.id == turn.id);
+      final event = updatedTurn.events.singleWhere(
+        (candidate) =>
+            candidate.type == StudioTurnEventType.completionSummary &&
+            candidate.title == 'Ran command',
+      );
+      expect(event.id, 'command-run-${turn.id}-cmd-direct-turn');
+      expect(event.detail, contains('Command: python3 -c'));
+      expect(event.detail, contains('direct-ok'));
+      final verificationStep = updatedTurn.steps.singleWhere(
+        (candidate) => candidate.step == TurnStep.verification,
+      );
+      expect(verificationStep.status, TurnStepStatus.completed);
+      expect(verificationStep.detail, contains('direct-ok'));
+    },
+  );
+
   test('CommandRun serializes status, output, and event timeline', () {
     final run = CommandRun(
       id: 'cmd-json',

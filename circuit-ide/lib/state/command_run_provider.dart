@@ -4,6 +4,7 @@ import '../enums/event_type.dart';
 import '../enums/tool_status.dart';
 import '../models/command_run.dart';
 import '../models/tool_call_info.dart';
+import '../agent/tools/command_tools.dart';
 import 'agent_turn_runtime_provider.dart';
 import 'agent_workspace_provider.dart';
 import 'studio_turn_provider.dart';
@@ -13,6 +14,7 @@ import '../services/event_bus.dart';
 class CommandRunController extends Notifier<Map<String, CommandRun>> {
   final Map<String, String> _lastOutputById = {};
   final Map<String, _CommandRunEventBinding> _runtimeEventBindings = {};
+  final Map<String, CommandTools> _directCommandTools = {};
 
   @override
   Map<String, CommandRun> build() {
@@ -21,6 +23,7 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
         binding.dispose();
       }
       _runtimeEventBindings.clear();
+      _directCommandTools.clear();
     });
     return const {};
   }
@@ -133,11 +136,103 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
     }
   }
 
+  Future<CommandRun> runVerificationCommand({
+    required String id,
+    required String command,
+    required String workingDir,
+    String? requestId,
+    String? turnId,
+    String? taskId,
+    int timeout = 120,
+  }) async {
+    start(
+      id: id,
+      command: command,
+      requestId: requestId,
+      turnId: turnId,
+      taskId: taskId,
+    );
+    ref.read(workItemProvider.notifier).recordCommandRun(id, command);
+    final commandTools = CommandTools(workingDir: workingDir);
+    _directCommandTools[id] = commandTools;
+
+    void finishIfNeeded(CommandRunStatus status, {int? exitCode}) {
+      final current = state[id];
+      if (current == null || _isTerminal(current.status)) return;
+      finish(id, status: status, exitCode: exitCode);
+    }
+
+    void handleEvent(CommandRunEvent event) {
+      switch (event.type) {
+        case CommandRunEventType.started:
+          break;
+        case CommandRunEventType.stdout:
+        case CommandRunEventType.stderr:
+          append(id, event.type, event.text);
+          break;
+        case CommandRunEventType.blocked:
+          append(id, CommandRunEventType.stderr, event.text);
+          finishIfNeeded(CommandRunStatus.blocked);
+          break;
+        case CommandRunEventType.timedOut:
+          append(id, CommandRunEventType.stderr, event.text);
+          finishIfNeeded(CommandRunStatus.timedOut);
+          break;
+        case CommandRunEventType.cancelled:
+          finishIfNeeded(CommandRunStatus.cancelled);
+          break;
+        case CommandRunEventType.exited:
+          final exitCode = _exitCodeFromEvent(event);
+          finishIfNeeded(
+            exitCode == 0
+                ? CommandRunStatus.succeeded
+                : CommandRunStatus.failed,
+            exitCode: exitCode,
+          );
+          break;
+      }
+    }
+
+    try {
+      final output = await commandTools.runCommand(
+        {'command': command, 'timeout': timeout},
+        runId: id,
+        onEvent: handleEvent,
+      );
+      final current = state[id];
+      if (current != null && !_isTerminal(current.status)) {
+        final exitCode = _exitCodeFromOutput(output);
+        final status = _statusFromOutput(output, exitCode: exitCode);
+        finishIfNeeded(status, exitCode: exitCode);
+      }
+    } finally {
+      _directCommandTools.remove(id);
+    }
+
+    return state[id]!;
+  }
+
+  bool cancel(String id) {
+    final killed = _directCommandTools.remove(id)?.cancel(id) ?? false;
+    if (killed) {
+      finish(id, status: CommandRunStatus.cancelled);
+      return true;
+    }
+    final current = state[id];
+    if (current != null &&
+        (current.status == CommandRunStatus.running ||
+            current.status == CommandRunStatus.queued)) {
+      finish(id, status: CommandRunStatus.cancelled);
+      return true;
+    }
+    return false;
+  }
+
   void cancelRunningCommands() {
     for (final entry in state.entries) {
       if (entry.value.status == CommandRunStatus.running ||
           entry.value.status == CommandRunStatus.queued) {
-        finish(entry.key, status: CommandRunStatus.cancelled);
+        cancel(entry.key);
       }
     }
   }
@@ -214,6 +309,40 @@ class CommandRunController extends Notifier<Map<String, CommandRun>> {
         break;
     }
   }
+}
+
+bool _isTerminal(CommandRunStatus status) {
+  return switch (status) {
+    CommandRunStatus.succeeded ||
+    CommandRunStatus.failed ||
+    CommandRunStatus.cancelled ||
+    CommandRunStatus.timedOut ||
+    CommandRunStatus.blocked => true,
+    CommandRunStatus.queued || CommandRunStatus.running => false,
+  };
+}
+
+int? _exitCodeFromEvent(CommandRunEvent event) {
+  final match = RegExp(r'exit\s+(-?\d+)').firstMatch(event.text.trim());
+  return int.tryParse(match?.group(1) ?? '');
+}
+
+int? _exitCodeFromOutput(String output) {
+  final match = RegExp(r'\[exit code:\s*(-?\d+)\]').firstMatch(output);
+  return int.tryParse(match?.group(1) ?? '');
+}
+
+CommandRunStatus _statusFromOutput(String output, {int? exitCode}) {
+  final normalized = output.trim().toLowerCase();
+  if (normalized.startsWith('error: command timed out')) {
+    return CommandRunStatus.timedOut;
+  }
+  if (normalized.startsWith('error:') && normalized.contains('blocked')) {
+    return CommandRunStatus.blocked;
+  }
+  if (exitCode != null && exitCode != 0) return CommandRunStatus.failed;
+  if (normalized.startsWith('error:')) return CommandRunStatus.failed;
+  return CommandRunStatus.succeeded;
 }
 
 class _CommandRunEventBinding {

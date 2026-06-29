@@ -2597,6 +2597,33 @@ _PatchVerificationStatus? _verificationStatusForPatch(
       detail: 'The Verify turn was cancelled before completion.',
     );
   }
+  final verificationStep = turn.steps
+      .where((step) => step.step == TurnStep.verification)
+      .lastOrNull;
+  if (verificationStep?.status == TurnStepStatus.failed) {
+    return _PatchVerificationStatus(
+      kind: _PatchVerificationStatusKind.failed,
+      title: 'Verification failed',
+      detail: verificationStep?.detail ?? 'Verification failed.',
+    );
+  }
+  final failedSummary = turn.events
+      .where((event) => event.type == StudioTurnEventType.completionSummary)
+      .where((event) {
+        final text = '${event.title}\n${event.detail}'.toLowerCase();
+        return text.contains('verification failed') ||
+            text.contains('command failed') ||
+            text.contains('command blocked') ||
+            text.contains('timed out');
+      })
+      .lastOrNull;
+  if (failedSummary != null) {
+    return _PatchVerificationStatus(
+      kind: _PatchVerificationStatusKind.failed,
+      title: 'Verification failed',
+      detail: failedSummary.detail,
+    );
+  }
   final successfulCommands = commandResults
       .where((result) => result.status.name == 'success')
       .toList(growable: false);

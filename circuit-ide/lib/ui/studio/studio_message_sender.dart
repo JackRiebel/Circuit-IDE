@@ -9,6 +9,7 @@ import '../../enums/message_role.dart';
 import '../../models/agent_preflight.dart';
 import '../../models/accepted_plan_context.dart';
 import '../../models/chat_message.dart';
+import '../../models/command_run.dart';
 import '../../models/context_attachment.dart';
 import '../../models/context_pack.dart';
 import '../../models/reviewed_edit.dart';
@@ -28,6 +29,7 @@ import '../../state/studio_request_lifecycle_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/studio_turn_provider.dart';
+import '../../state/command_run_provider.dart';
 import '../../state/workspace_session_provider.dart';
 import '../../core/config/studio_feature_flags.dart';
 import 'studio_plan_prompts.dart';
@@ -549,34 +551,177 @@ Future<StudioSendResult> verifyPatchFromStudio(
 }) async {
   final shell = ref.read(studioShellProvider);
   final resolvedTaskId = taskId ?? shell.selectedTaskId ?? patch.agentTaskId;
+  final rootPath = ref.read(fileTreeProvider).rootPath;
+  final commands = patch.verificationSuggestions
+      .where(isRunnableVerificationCommand)
+      .toSet()
+      .take(3)
+      .toList(growable: false);
+  if (rootPath == null || rootPath.trim().isEmpty) {
+    return const StudioSendResult.failed(
+      'Open a project folder before running verification.',
+    );
+  }
+  if (commands.isEmpty) {
+    return const StudioSendResult.failed(
+      'No runnable verification command was available for this patch.',
+    );
+  }
+
   final shellNotifier = ref.read(studioShellProvider.notifier);
-  final previousPlanMode = shell.planModeEnabled;
-  final previousPromptMode = shell.promptMode;
-  final selectedThread = ref.read(studioThreadProvider).selectedThread;
   shellNotifier.setPlanModeEnabled(false);
   shellNotifier.setPromptMode(StudioPromptMode.ask);
-  final prompt = buildPatchVerificationPrompt(patch);
-  final result = await sendStudioMessage(
-    ref,
-    prompt,
-    taskId: resolvedTaskId,
-    finishTask: finishTask || resolvedTaskId != null,
-    displayText: displayText,
-    threadTitle: selectedThread?.title ?? patch.title,
-    outboundTextOverride: prompt,
-    userMessageTranscriptVisible: false,
+  final threadNotifier = ref.read(studioThreadProvider.notifier);
+  final selectedThread = ref.read(studioThreadProvider).selectedThread;
+  final model = selectedThread?.model ?? ref.read(settingsProvider).ciscoModel;
+  final thread =
+      selectedThread ??
+      threadNotifier.createBlankThread(title: patch.title, model: model);
+  shellNotifier.openThread(thread.id);
+  final requestId = _uuid.v4();
+  final userMessageId = _uuid.v4();
+  final contextSummary = StudioContextSummary(
+    rootPath: rootPath,
+    projectLabel: p.basename(rootPath),
+    includedItemCount: commands.length,
+    estimatedTokens: commands.join('\n').length ~/ 4,
+    selectedFiles: patch.changedFiles.isNotEmpty
+        ? patch.changedFiles
+        : patch.edits.map((edit) => edit.path).toList(growable: false),
   );
-  if (!result.registeredRequest ||
-      (result.status != StudioSendStatus.sent &&
-          result.status != StudioSendStatus.completed)) {
-    shellNotifier.setPlanModeEnabled(previousPlanMode);
-    shellNotifier.setPromptMode(previousPromptMode);
-  } else if (result.requestId != null) {
-    ref
-        .read(patchProposalProvider.notifier)
-        .markVerificationStarted(patch.id, result.requestId!);
+  final turn = ref
+      .read(studioTurnProvider.notifier)
+      .registerTurn(
+        requestId: requestId,
+        threadId: thread.id,
+        taskId: resolvedTaskId,
+        userMessageId: userMessageId,
+        prompt: displayText,
+        model: model,
+        contextSummary: contextSummary,
+        intent: TurnIntent.verify,
+        userMessageTranscriptVisible: false,
+      );
+  ref
+      .read(studioRequestLifecycleProvider.notifier)
+      .registerRequest(
+        requestId: requestId,
+        threadId: thread.id,
+        taskId: resolvedTaskId,
+        model: model,
+        intent: TurnIntent.verify,
+        contextSummary: contextSummary,
+      );
+  ref
+      .read(patchProposalProvider.notifier)
+      .markVerificationStarted(patch.id, requestId);
+  ref
+      .read(studioTurnProvider.notifier)
+      .recordStep(
+        requestId,
+        step: TurnStep.verification,
+        status: TurnStepStatus.running,
+        title: 'Verification running',
+        detail: 'Running ${commands.length} approved verification check(s).',
+      );
+  unawaited(
+    _runDeterministicPatchVerification(
+      ref,
+      patch: patch,
+      requestId: requestId,
+      threadId: thread.id,
+      turnId: turn.id,
+      taskId: resolvedTaskId,
+      rootPath: rootPath,
+      commands: commands,
+    ),
+  );
+  return StudioSendResult.sent(
+    requestId: requestId,
+    threadId: thread.id,
+    taskId: resolvedTaskId,
+    contextSummary: contextSummary,
+    registeredRequest: true,
+  );
+}
+
+Future<void> _runDeterministicPatchVerification(
+  WidgetRef ref, {
+  required ProposedPatchSet patch,
+  required String requestId,
+  required String threadId,
+  required String turnId,
+  required String? taskId,
+  required String rootPath,
+  required List<String> commands,
+}) async {
+  final commandRuns = <CommandRun>[];
+  for (var index = 0; index < commands.length; index++) {
+    final command = commands[index];
+    final runId = 'verify-$requestId-${index + 1}';
+    final run = await ref
+        .read(commandRunProvider.notifier)
+        .runVerificationCommand(
+          id: runId,
+          command: command,
+          workingDir: rootPath,
+          requestId: requestId,
+          turnId: turnId,
+          taskId: taskId,
+        );
+    commandRuns.add(run);
+    if (run.status != CommandRunStatus.succeeded) break;
   }
-  return result;
+  final summary = _verificationSummaryForRuns(commandRuns, commands);
+  ref
+      .read(studioTurnProvider.notifier)
+      .complete(requestId, content: '', summary: summary);
+}
+
+String _verificationSummaryForRuns(
+  List<CommandRun> runs,
+  List<String> requestedCommands,
+) {
+  if (runs.isEmpty) {
+    return 'Verification did not run.\n\nNo command was started.';
+  }
+  final failed = runs
+      .where((run) => run.status != CommandRunStatus.succeeded)
+      .firstOrNull;
+  final lines = <String>[
+    failed == null ? 'Verification completed.' : 'Verification failed.',
+    '',
+    'Commands run:',
+    for (final run in runs)
+      '- `${run.command}` — ${_verificationRunStatusLabel(run)}',
+  ];
+  final remaining = requestedCommands.skip(runs.length).toList();
+  if (remaining.isNotEmpty) {
+    lines.addAll([
+      '',
+      'Skipped after first failure:',
+      for (final command in remaining) '- `$command`',
+    ]);
+  }
+  if (failed != null) {
+    lines.addAll([
+      '',
+      'Next step: inspect the command output, fix the failure, then rerun verification.',
+    ]);
+  }
+  return lines.join('\n');
+}
+
+String _verificationRunStatusLabel(CommandRun run) {
+  final exit = run.exitCode == null ? '' : ' (exit ${run.exitCode})';
+  return switch (run.status) {
+    CommandRunStatus.succeeded => 'passed$exit',
+    CommandRunStatus.failed => 'failed$exit',
+    CommandRunStatus.cancelled => 'cancelled',
+    CommandRunStatus.timedOut => 'timed out',
+    CommandRunStatus.blocked => 'blocked',
+    CommandRunStatus.queued || CommandRunStatus.running => 'still running',
+  };
 }
 
 Set<String> _acceptedPlanFileContextPaths(AcceptedPlanContext? acceptedPlan) {

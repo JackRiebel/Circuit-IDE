@@ -8,6 +8,7 @@ import 'package:circuit_ide/agent/studio_agent_environment.dart';
 import 'package:circuit_ide/models/agent_workspace.dart';
 import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/chat_message.dart';
+import 'package:circuit_ide/models/command_run.dart';
 import 'package:circuit_ide/models/confirmation_request.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
@@ -1561,7 +1562,7 @@ void main() {
   });
 
   testWidgets(
-    'Patch verification helper starts hidden Verify turn with internal prompt',
+    'Patch verification helper runs suggested checks without model mediation',
     (tester) async {
       final root = Directory.systemTemp.createTempSync(
         'studio_patch_verify_sender_',
@@ -1569,46 +1570,14 @@ void main() {
       addTearDown(() async {
         if (await root.exists()) await root.delete(recursive: true);
       });
-      final service = AgentService();
-      final provider = _ScriptedStudioProvider([
-        const [
-          ChatChunk(
-            toolCallIndex: 0,
-            toolCallId: 'verify-cmd',
-            toolCallName: 'run_command',
-            toolCallArguments: '{"command":"flutter analyze"}',
-          ),
-          ChatChunk(isDone: true, finishReason: 'tool_calls'),
-        ],
-      ]);
-      final container = ProviderContainer(
-        overrides: [
-          agentServiceProvider.overrideWithValue(service),
-          workspaceSessionProvider.overrideWith(
-            () => _ReadyWorkspaceSessionController(root.path),
-          ),
-          studioAgentEnvironmentOverrideProvider.overrideWithValue(
-            StudioAgentEnvironment(
-              provider: provider,
-              model: 'gpt-5-nano',
-              workspaceRoot: root.path,
-              permissionPolicy: tool_policy.AgentToolPermissionPolicy(
-                workingDir: root.path,
-              ),
-              events: service.events,
-              onProviderEvent: (_) {},
-            ),
-          ),
-        ],
-      );
-      addTearDown(service.dispose);
+      final container = ProviderContainer();
       addTearDown(container.dispose);
-      container
-          .read(connectionStatusProvider.notifier)
-          .set(ConnectionStatus.connected);
       await tester.runAsync(
         () =>
             container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      await tester.runAsync(
+        () => container.read(studioThreadProvider.notifier).reload(),
       );
       final thread = container
           .read(studioThreadProvider.notifier)
@@ -1629,7 +1598,7 @@ void main() {
         changedFiles: const ['lib/login.dart'],
         applyStatus: PatchApplyStatus.applied,
         verificationRequested: true,
-        verificationSuggestions: const ['flutter analyze'],
+        verificationSuggestions: const ['python3 -c "print(\'verify-ok\')"'],
         createdAt: DateTime(2026),
       );
       container.read(patchProposalProvider.notifier).preserveProposal(patch);
@@ -1656,13 +1625,7 @@ void main() {
         for (var i = 0; i < 60; i++) {
           final updated = container.read(studioThreadProvider).selectedThread;
           final turn = updated?.turns.lastOrNull;
-          if (turn?.events.any(
-                (event) =>
-                    event.type == StudioTurnEventType.approvalRequest &&
-                    event.approvalId == 'verify-cmd' &&
-                    event.approvalState == ApprovalRequestState.pending,
-              ) ==
-              true) {
+          if (turn?.status == StudioTurnStatus.completed) {
             return;
           }
           await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -1671,17 +1634,13 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.status, StudioSendStatus.sent, reason: result.error);
-      expect(provider.exposedTools.single, contains('run_command'));
-      expect(
-        provider.messages.single.last.content,
-        contains('flutter analyze'),
-      );
       final updatedThread = container
           .read(studioThreadProvider)
           .selectedThread!;
       final turn = updatedThread.turns.last;
       expect(turn.intent, TurnIntent.verify);
       expect(turn.prompt, 'Running verification');
+      expect(turn.status, StudioTurnStatus.completed);
       expect(
         turn.events
             .singleWhere(
@@ -1701,13 +1660,27 @@ void main() {
           contains('Run these verification checks for the completed work.'),
         ),
       );
+      final commandRun = container.read(commandRunProvider).values.single;
+      expect(commandRun.command, 'python3 -c "print(\'verify-ok\')"');
+      expect(commandRun.status, CommandRunStatus.succeeded);
+      expect(commandRun.combinedOutput, contains('verify-ok'));
+      expect(
+        turn.events
+            .where(
+              (event) =>
+                  event.type == StudioTurnEventType.completionSummary &&
+                  event.detail.contains('Verification completed.'),
+            )
+            .single
+            .detail,
+        contains('passed'),
+      );
       final storedPatch = container
           .read(patchProposalProvider)
           .history
           .where((candidate) => candidate.id == patch.id)
           .firstOrNull;
       expect(storedPatch?.verificationRequestId, result.requestId);
-      container.read(agentTurnRuntimeProvider.notifier).cancel(turn.requestId);
       await tester.pump();
     },
   );
@@ -3841,6 +3814,91 @@ void main() {
 
     expect(find.text('Verification completed'), findsOneWidget);
     expect(find.text('flutter analyze passed.'), findsOneWidget);
+    expect(find.text('Run verification'), findsNothing);
+  });
+
+  testWidgets('Applied patch card shows deterministic verification failure', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Verification failure thread');
+    final verifyTurn = StudioTurn(
+      id: 'turn-verify-failed-result',
+      threadId: thread.id,
+      requestId: 'request-verify-failed-result',
+      userMessageId: 'message-verify-failed-result',
+      prompt: 'Running verification',
+      model: 'gpt-5-nano',
+      intent: TurnIntent.verify,
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      steps: [
+        TurnStepRecord(
+          step: TurnStep.verification,
+          status: TurnStepStatus.failed,
+          title: 'Command failed',
+          detail: 'Command: python3 -c "import sys; sys.exit(2)"\nExit code: 2',
+          startedAt: DateTime(2026),
+          completedAt: DateTime(2026),
+        ),
+      ],
+      events: [
+        StudioTurnEvent.completionSummary(
+          turnId: 'turn-verify-failed-result',
+          requestId: 'request-verify-failed-result',
+          threadId: thread.id,
+          title: 'Verification failed',
+          detail:
+              'Verification failed.\n\nCommands run:\n- `python3 -c "import sys; sys.exit(2)"` — failed (exit 2)',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    container
+        .read(studioThreadProvider.notifier)
+        .upsertTurn(thread.id, verifyTurn, select: true);
+    container
+        .read(patchProposalProvider.notifier)
+        .preserveProposal(
+          ProposedPatchSet(
+            id: 'patch-verify-failed-card',
+            title: 'Applied patch',
+            runId: 'request-apply-failed-result',
+            edits: const [
+              ProposedFileEdit(
+                path: 'lib/login.dart',
+                type: ProposedFileEditType.modify,
+                before: 'old',
+                after: 'new',
+              ),
+            ],
+            changedFiles: const ['lib/login.dart'],
+            applyStatus: PatchApplyStatus.applied,
+            diffSummary: 'Updated login copy.',
+            verificationRequested: true,
+            verificationRequestId: 'request-verify-failed-result',
+            verificationSuggestions: const [
+              'python3 -c "import sys; sys.exit(2)"',
+            ],
+            createdAt: DateTime(2026),
+          ),
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(find.text('Verification failed'), findsWidgets);
+    expect(find.textContaining('failed (exit 2)'), findsWidgets);
     expect(find.text('Run verification'), findsNothing);
   });
 
