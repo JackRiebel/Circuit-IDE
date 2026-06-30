@@ -542,9 +542,16 @@ Executive-ready summary for a final customer handoff.
     final pdfText = String.fromCharCodes(bytes);
     expect(pdfText, contains('/Type /Catalog'));
     expect(pdfText, contains('/Type /Page'));
+    expect(pdfText, contains('/Info 6 0 R'));
+    expect(pdfText, contains('/Title (Campus Refresh Handoff)'));
+    expect(pdfText, contains('CircuitCode customer handoff report'));
     expect(pdfText, contains('Campus Refresh Handoff'));
     expect(pdfText, contains('Access layer needs multigig validation'));
+    expect(pdfText, contains('Sources / Evidence'));
     expect(pdfText, contains('Workshop notes'));
+    expect(pdfText, contains('CircuitCode - Generated artifact'));
+    expect(pdfText, contains('Page 1 of'));
+    expect(pdfText, contains(' re S'));
   });
 
   test('topology prompt creates a real SVG diagram artifact', () async {
