@@ -307,6 +307,70 @@ Executive summary for a customer handoff.
     },
   );
 
+  test('business case brief prompt creates a shaped DOCX artifact', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a business case brief for Acme Manufacturing',
+          content: '''
+# Acme Manufacturing Business Use Case Brief
+
+Acme needs an executive-ready brief that connects business signals to prioritized technology use cases.
+
+## Company Context
+- 40 facilities across North America
+- Legacy WAN and inconsistent plant connectivity
+
+## Pain Points
+- Production downtime creates missed shipment risk.
+- Security operations are fragmented across plants.
+
+## Priority Use Cases
+- Predictive maintenance telemetry for critical equipment.
+- Secure branch modernization for plant and office sites.
+
+## Recommended Solutions
+- Cisco SD-WAN for resilient plant connectivity.
+- Secure access and observability for OT-adjacent workflows.
+
+## Value And Impact
+- Reduce downtime exposure.
+- Improve incident response and operational visibility.
+
+## Next Steps
+- Run a discovery workshop with operations, security, and network owners.
+
+## Assumptions
+- Public research must be validated with the account team.
+
+## Sources
+- Acme annual report
+''',
+          turnId: 'turn-business-brief',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.docx);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.docx'));
+    expect(artifact.summary, contains('business use case brief'));
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('word/document.xml'));
+    expect(packageText, contains('Acme Manufacturing Business Use Case Brief'));
+    expect(packageText, contains('Executive Summary'));
+    expect(packageText, contains('Priority Use Cases'));
+    expect(packageText, contains('Value And Impact'));
+    expect(packageText, contains('Sources / Evidence'));
+    expect(packageText, contains('Acme annual report'));
+  });
+
   test('PDF prompt creates a real handoff report artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
@@ -505,6 +569,16 @@ graph LR
     expect(
       registry.descriptorForPrompt('create a business case for Acme')?.id,
       'business_use_case_brief',
+    );
+    expect(
+      detectGeneratedArtifactKind('create a business case brief for Acme'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      isGeneratedArtifactRequest(
+        'create a business case brief inline in chat without writing files',
+      ),
+      isFalse,
     );
     expect(
       registry.descriptorForPrompt('create a product comparison matrix')?.id,

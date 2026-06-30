@@ -198,6 +198,11 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
     return GeneratedArtifactKind.chart;
   }
   if (RegExp(
+    r'\b(business case|business use cases?|use case brief|company research brief|market research brief|industry research brief|executive brief|customer brief|account plan|sales play|value proposition|roi analysis|case study)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
+  }
+  if (RegExp(
     r'\b(markdown|md|readme|report|brief|document)\b',
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.markdown;
@@ -207,6 +212,11 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
 
 bool isGeneratedArtifactRequest(String text) {
   final normalized = text.toLowerCase();
+  if (RegExp(
+    r'\b(inline|in chat|chat only|without (?:writing|creating|saving) (?:a )?files?|without writing files|no files?|do not (?:write|create|save)|don.t write|don’t write)\b',
+  ).hasMatch(normalized)) {
+    return false;
+  }
   if (detectGeneratedArtifactKind(normalized) == null) return false;
   return RegExp(
     r'\b(create|make|generate|build|export|save|write|turn|convert|put)\b',

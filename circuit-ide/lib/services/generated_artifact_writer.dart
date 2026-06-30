@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'business_use_case_brief_builder.dart';
 import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
@@ -25,6 +26,7 @@ class GeneratedArtifactWriter {
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
+  final BusinessUseCaseBriefBuilder businessUseCaseBuilder;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -36,6 +38,7 @@ class GeneratedArtifactWriter {
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
+    this.businessUseCaseBuilder = const BusinessUseCaseBriefBuilder(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -94,9 +97,21 @@ class GeneratedArtifactWriter {
     required String content,
     required ArtifactDocument document,
   }) {
+    final documentForOutput =
+        businessUseCaseBuilder.matches(prompt) &&
+            (requestedKind == GeneratedArtifactKind.docx ||
+                requestedKind == GeneratedArtifactKind.pdf ||
+                requestedKind == GeneratedArtifactKind.powerPoint)
+        ? businessUseCaseBuilder.build(
+            prompt: prompt,
+            content: content,
+            document: document,
+          )
+        : document;
+
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
-      final slideCount = powerPointRenderer.slideCountFor(document);
-      final bytes = powerPointRenderer.render(document);
+      final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
+      final bytes = powerPointRenderer.render(documentForOutput);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
         status: GeneratedArtifactStatus.ready,
@@ -104,34 +119,36 @@ class GeneratedArtifactWriter {
         bytes: bytes,
         summary:
             'Created a PowerPoint deck with $slideCount slides from the response structure.',
-        previewRows: document.previewRows,
+        previewRows: documentForOutput.previewRows,
         sheetCount: slideCount,
       );
     }
 
     if (requestedKind == GeneratedArtifactKind.docx) {
-      final bytes = docxRenderer.render(document);
+      final bytes = docxRenderer.render(documentForOutput);
+      final businessUseCase = businessUseCaseBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.docx,
         status: GeneratedArtifactStatus.ready,
         extension: 'docx',
         bytes: bytes,
-        summary:
-            'Created a Word report with ${document.sections.length} sections from the response structure.',
-        previewRows: document.previewRows,
+        summary: businessUseCase
+            ? 'Created a business use case brief with executive summary, use cases, value, next steps, assumptions, and sources.'
+            : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
+        previewRows: documentForOutput.previewRows,
       );
     }
 
     if (requestedKind == GeneratedArtifactKind.pdf) {
-      final bytes = pdfRenderer.render(document);
+      final bytes = pdfRenderer.render(documentForOutput);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.pdf,
         status: GeneratedArtifactStatus.ready,
         extension: 'pdf',
         bytes: bytes,
         summary:
-            'Created a PDF report with ${document.sections.length} sections from the response structure.',
-        previewRows: document.previewRows,
+            'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
+        previewRows: documentForOutput.previewRows,
       );
     }
 
