@@ -141,6 +141,56 @@ Executive summary for a customer handoff.
     },
   );
 
+  test('PDF prompt creates a real handoff report artifact', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a PDF architecture handoff report',
+          content: '''
+# Campus Refresh Handoff
+
+Executive-ready summary for a final customer handoff.
+
+## Findings
+- Access layer needs multigig validation.
+- WAN design needs redundancy confirmation.
+
+## Recommendations
+- Confirm growth assumptions.
+- Validate power and uplink budgets.
+
+| Area | Status |
+| --- | --- |
+| Switching | Review |
+
+## Assumptions
+- Customer will provide final site counts.
+
+## Sources
+- Workshop notes
+''',
+          turnId: 'turn-pdf',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.pdf);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.pdf'));
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));
+    final pdfText = String.fromCharCodes(bytes);
+    expect(pdfText, contains('/Type /Catalog'));
+    expect(pdfText, contains('/Type /Page'));
+    expect(pdfText, contains('Campus Refresh Handoff'));
+    expect(pdfText, contains('Access layer needs multigig validation'));
+    expect(pdfText, contains('Workshop notes'));
+  });
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));

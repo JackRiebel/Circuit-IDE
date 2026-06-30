@@ -1208,7 +1208,7 @@ String _studioOutboundPromptWithArtifactContract({
     GeneratedArtifactKind.csv => 'CSV',
     GeneratedArtifactKind.json => 'JSON',
     GeneratedArtifactKind.markdown => 'Markdown',
-    GeneratedArtifactKind.pdf => 'Markdown fallback for PDF',
+    GeneratedArtifactKind.pdf => 'PDF report',
     GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
     GeneratedArtifactKind.docx => 'Word report',
     GeneratedArtifactKind.diagram => 'diagram Markdown',
@@ -1225,6 +1225,7 @@ Artifact output contract:
 - For spreadsheet/Excel/CSV outputs, include one complete Markdown table with all required rows and columns; Circuit will save it as a workspace artifact instead of making chat the final output surface. Excel requests become real .xlsx files when table data is available.
 - For PowerPoint/deck outputs, use clear Markdown headings and concise bullets; Circuit will save that structure as a .pptx deck.
 - For Word/DOCX/report outputs, use clear Markdown headings, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .docx report.
+- For PDF/report outputs, use clear Markdown headings, concise paragraphs, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .pdf handoff report.
 - Do not say you cannot create files unless the requested data is missing. If data is missing, ask one specific missing-data question.
 - Keep the human-facing explanation short because Circuit will render a file artifact card after the turn.
 ''';
