@@ -595,6 +595,48 @@ graph LR
     expect(svg, contains('dual WAN'));
   });
 
+  test('topology prose creates a tiered enterprise network SVG', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a topology diagram for this Cisco campus',
+          content: '''
+# Cisco Campus Topology
+
+Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 core switches,
+3 IDFs with C9300-48P UPOE access switches, 90 CW9176 Wi-Fi 7 APs, and client devices.
+
+## Assumptions
+- Validate PoE budget before final model selection.
+- Validate WAN handoff speeds at every branch.
+''',
+          turnId: 'turn-enterprise-diagram',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.diagram);
+    expect(artifact.previewRows.first, ['From', 'To', 'Label']);
+    expect(artifact.previewRows.expand((row) => row), contains('WAN / ISP'));
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final svg = File(artifact.filePath).readAsStringSync();
+    expect(svg, contains('Logical topology'));
+    expect(svg, contains('WAN / Cloud'));
+    expect(svg, contains('Security Edge'));
+    expect(svg, contains('MDF / Core'));
+    expect(svg, contains('IDF / Access'));
+    expect(svg, contains('Wireless / Clients'));
+    expect(svg, contains('MX250'));
+    expect(svg, contains('C9500'));
+    expect(svg, contains('C9300'));
+    expect(svg, contains('CW9176'));
+    expect(svg, contains('Assumptions'));
+    expect(svg, contains('Validate PoE budget'));
+  });
+
   test(
     'chart prompt creates a real SVG chart artifact from table data',
     () async {
