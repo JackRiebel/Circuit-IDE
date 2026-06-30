@@ -9,6 +9,7 @@ import '../models/reviewed_edit.dart';
 import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
+import '../services/generated_artifact_exporter.dart';
 import '../services/generated_artifact_writer.dart';
 import 'command_run_provider.dart';
 import 'patch_proposal_provider.dart';
@@ -65,6 +66,8 @@ class StudioSourceArtifactController
   final Set<String> _artifactMaterializationInFlight = {};
   final GeneratedArtifactWriter _generatedArtifactWriter =
       const GeneratedArtifactWriter();
+  final GeneratedArtifactExporter _generatedArtifactExporter =
+      const GeneratedArtifactExporter();
 
   @override
   StudioSourceArtifactState build() {
@@ -81,6 +84,52 @@ class StudioSourceArtifactController
 
   void add(StudioSourceArtifact artifact) {
     _upsert(artifact);
+  }
+
+  List<GeneratedArtifactKind> supportedExportTargets(
+    GeneratedArtifact artifact,
+  ) {
+    return _generatedArtifactExporter.supportedTargets(artifact);
+  }
+
+  Future<GeneratedArtifact?> exportGeneratedArtifact(
+    GeneratedArtifact artifact,
+    GeneratedArtifactKind targetKind,
+  ) async {
+    final exported = await _generatedArtifactExporter.export(
+      artifact: artifact,
+      targetKind: targetKind,
+    );
+    if (exported == null) return null;
+    _upsertArtifact(exported.toSourceArtifact());
+    final threadId = exported.threadId;
+    if (threadId != null) {
+      final thread = ref
+          .read(studioThreadProvider)
+          .threads
+          .where((thread) => thread.id == threadId)
+          .firstOrNull;
+      final turn = thread?.turns
+          .where((turn) => turn.requestId == exported.requestId)
+          .firstOrNull;
+      if (turn != null) {
+        ref
+            .read(studioThreadProvider.notifier)
+            .upsertTurnEvent(
+              threadId,
+              turn.id,
+              StudioTurnEvent.completionSummary(
+                id: 'artifact-export-${exported.id}',
+                turnId: turn.id,
+                requestId: turn.requestId,
+                threadId: threadId,
+                title: 'Exported ${exported.typeLabel} file',
+                detail: '${exported.summary}\nFile: ${exported.fileName}',
+              ),
+            );
+      }
+    }
+    return exported;
   }
 
   void _syncThreads(Iterable<StudioThread> threads) {

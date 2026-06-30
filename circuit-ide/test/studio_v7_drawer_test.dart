@@ -1029,6 +1029,87 @@ void main() {
     expect(drawer.filePath, file.path);
   });
 
+  testWidgets('Artifacts drawer exposes CSV export targets', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final root = Directory.systemTemp.createTempSync('studio_artifact_export_');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final outputDir = Directory('${root.path}/outputs')..createSync();
+    final file = File('${outputDir.path}/inventory.csv')
+      ..writeAsStringSync('Product,Count\nC9300,6\nCW9176,90\n');
+    final artifact = GeneratedArtifact(
+      id: 'csv-1',
+      kind: GeneratedArtifactKind.csv,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'inventory.csv',
+      filePath: file.path,
+      summary: 'Created a CSV inventory.',
+      byteSize: file.lengthSync(),
+      previewRows: const [
+        ['Product', 'Count'],
+        ['C9300', '6'],
+      ],
+      createdAt: DateTime(2026, 6, 30, 9, 25),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Export'), findsOneWidget);
+    await tester.tap(find.text('Export'));
+    await tester.pumpAndSettle();
+    expect(find.text('Excel workbook'), findsOneWidget);
+    expect(find.text('Markdown'), findsOneWidget);
+  });
+
+  test(
+    'StudioSourceArtifactController exports CSV artifacts to XLSX',
+    () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final root = Directory.systemTemp.createTempSync(
+        'studio_artifact_export_',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final outputDir = Directory('${root.path}/outputs')..createSync();
+      final file = File('${outputDir.path}/inventory.csv')
+        ..writeAsStringSync('Product,Count\nC9300,6\nCW9176,90\n');
+      final artifact = GeneratedArtifact(
+        id: 'csv-controller-1',
+        kind: GeneratedArtifactKind.csv,
+        status: GeneratedArtifactStatus.ready,
+        fileName: 'inventory.csv',
+        filePath: file.path,
+        summary: 'Created a CSV inventory.',
+        byteSize: file.lengthSync(),
+        previewRows: const [
+          ['Product', 'Count'],
+          ['C9300', '6'],
+        ],
+        createdAt: DateTime(2026, 6, 30, 9, 25),
+      );
+
+      final exported = await container
+          .read(studioSourceArtifactProvider.notifier)
+          .exportGeneratedArtifact(artifact, GeneratedArtifactKind.excel);
+
+      expect(exported, isNotNull);
+      expect(exported!.kind, GeneratedArtifactKind.excel);
+      expect(File(exported.filePath).existsSync(), isTrue);
+    },
+  );
+
   test(
     'StudioSourceArtifactController restores historical patches by request',
     () {

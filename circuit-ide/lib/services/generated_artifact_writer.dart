@@ -94,6 +94,59 @@ class GeneratedArtifactWriter {
     );
   }
 
+  Future<GeneratedArtifact?> writeStructuredArtifact({
+    required String rootPath,
+    required String prompt,
+    required String content,
+    required GeneratedArtifactKind targetKind,
+    required String turnId,
+    required String? threadId,
+    required String? requestId,
+  }) async {
+    if (content.trim().isEmpty) return null;
+    final root = p.normalize(rootPath);
+    final outputDir = Directory(p.join(root, 'outputs'));
+    if (!p.isWithin(root, outputDir.path) && outputDir.path != root) {
+      return null;
+    }
+    await outputDir.create(recursive: true);
+
+    final document = composer.fromAssistantOutput(
+      prompt: prompt,
+      content: content,
+    );
+    final resolved = _resolveOutput(
+      requestedKind: targetKind,
+      prompt: prompt,
+      content: content,
+      document: document,
+    );
+    if (resolved == null) return null;
+
+    final baseName = _safeBaseName(prompt);
+    final fileName = '$baseName.${resolved.extension}';
+    final filePath = p.join(outputDir.path, fileName);
+    final normalizedFilePath = p.normalize(filePath);
+    if (!p.isWithin(root, normalizedFilePath)) return null;
+    final file = File(normalizedFilePath);
+    await file.writeAsBytes(resolved.bytes);
+    final size = await file.length();
+    return GeneratedArtifact(
+      id: turnId,
+      kind: resolved.kind,
+      status: resolved.status,
+      fileName: fileName,
+      filePath: normalizedFilePath,
+      summary: resolved.summary,
+      byteSize: size,
+      previewRows: resolved.previewRows,
+      sheetCount: resolved.sheetCount,
+      threadId: threadId,
+      requestId: requestId,
+      createdAt: DateTime.now(),
+    );
+  }
+
   _ResolvedArtifact? _resolveOutput({
     required GeneratedArtifactKind requestedKind,
     required String prompt,

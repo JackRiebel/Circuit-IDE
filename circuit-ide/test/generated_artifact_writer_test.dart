@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/services/artifact_type_registry.dart';
+import 'package:circuit_ide/services/generated_artifact_exporter.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -733,5 +734,46 @@ graph LR
       registry.descriptorForPrompt('create an LDOS lifecycle report')?.id,
       'lifecycle_eox_report',
     );
+  });
+
+  test('CSV artifacts can export to a real XLSX workbook', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-artifact-export-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final source = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a CSV file from this',
+          content: '''
+| Product | Count |
+| --- | ---: |
+| C9300 | 6 |
+| CW9176 | 90 |
+''',
+          turnId: 'turn-csv',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(source, isNotNull);
+    expect(source!.kind, GeneratedArtifactKind.csv);
+
+    final exported = await const GeneratedArtifactExporter().export(
+      artifact: source,
+      targetKind: GeneratedArtifactKind.excel,
+    );
+
+    expect(exported, isNotNull);
+    expect(exported!.kind, GeneratedArtifactKind.excel);
+    expect(exported.fileName, endsWith('.xlsx'));
+    expect(File(exported.filePath).existsSync(), isTrue);
+    expect(File(exported.filePath).readAsBytesSync().take(4), [
+      0x50,
+      0x4b,
+      0x03,
+      0x04,
+    ]);
+    expect(exported.previewRows.first, ['Product', 'Count']);
   });
 }

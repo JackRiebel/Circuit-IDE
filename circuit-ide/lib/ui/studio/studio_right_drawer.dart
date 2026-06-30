@@ -127,6 +127,7 @@ class _DrawerHeader extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 9, 7, 3),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Text(
@@ -212,6 +213,7 @@ class _DrawerModeStrip extends ConsumerWidget {
         ),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           for (final mode in _visibleDrawerModes)
             _ModeIconButton(mode: mode, active: mode == drawer.mode),
@@ -3467,6 +3469,9 @@ class _ArtifactDrawerActions extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final exportTargets = ref
+        .read(studioSourceArtifactProvider.notifier)
+        .supportedExportTargets(artifact);
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -3474,7 +3479,10 @@ class _ArtifactDrawerActions extends ConsumerWidget {
         ),
       ),
       padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
-      child: Row(
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           TextButton(
             style: _compactDrawerActionStyle(tokens),
@@ -3495,7 +3503,51 @@ class _ArtifactDrawerActions extends ConsumerWidget {
             onPressed: onReview,
             child: const Text('Review'),
           ),
-          const Spacer(),
+          if (exportTargets.isNotEmpty)
+            PopupMenuButton<GeneratedArtifactKind>(
+              tooltip: 'Export as',
+              color: tokens.studioPanel,
+              elevation: 10,
+              position: PopupMenuPosition.under,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+                side: BorderSide(
+                  color: tokens.studioDivider.withValues(alpha: 0.6),
+                ),
+              ),
+              onSelected: (kind) async {
+                await ref
+                    .read(studioSourceArtifactProvider.notifier)
+                    .exportGeneratedArtifact(artifact, kind);
+              },
+              itemBuilder: (context) => [
+                for (final kind in exportTargets)
+                  PopupMenuItem<GeneratedArtifactKind>(
+                    value: kind,
+                    height: 32,
+                    child: Text(
+                      _exportLabel(kind),
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xs,
+                        height: 1.1,
+                      ),
+                    ),
+                  ),
+              ],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 7),
+                child: Text(
+                  'Export',
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: FontSizes.xxs,
+                    height: 1,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
           StudioChromeIconButton(
             tooltip: 'Copy path',
             onTap: artifact.filePath.isEmpty
@@ -3511,6 +3563,21 @@ class _ArtifactDrawerActions extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _exportLabel(GeneratedArtifactKind kind) {
+  return switch (kind) {
+    GeneratedArtifactKind.excel => 'Excel workbook',
+    GeneratedArtifactKind.csv => 'CSV',
+    GeneratedArtifactKind.markdown => 'Markdown',
+    GeneratedArtifactKind.json => 'JSON',
+    GeneratedArtifactKind.pdf => 'PDF report',
+    GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
+    GeneratedArtifactKind.docx => 'Word report',
+    GeneratedArtifactKind.diagram => 'Diagram',
+    GeneratedArtifactKind.chart => 'Chart',
+    GeneratedArtifactKind.report => 'Report',
+  };
 }
 
 ButtonStyle _compactDrawerActionStyle(ThemeTokens tokens) {
