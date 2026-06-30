@@ -95,6 +95,7 @@ class ArtifactTypeRegistry {
       label: 'Product Comparison Matrix',
       supportedKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.csv],
       useCases: ['model comparison', 'fit scoring'],
+      requiredInputs: ['candidate models', 'capabilities', 'requirements'],
     ),
     ArtifactTypeDescriptor(
       id: 'business_use_case_brief',

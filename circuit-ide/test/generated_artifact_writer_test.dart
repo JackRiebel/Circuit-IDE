@@ -137,6 +137,67 @@ Here is the data.
   });
 
   test(
+    'product comparison prompt creates a multi-sheet comparison matrix',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt:
+                'create a product comparison matrix comparing C9300-48P, C9400, and Meraki MS355 for Wi-Fi 7 UPOE access',
+            content: '''
+# Access Switching Product Comparison
+
+| Model | Positioning | PoE | Uplinks | Lifecycle | Fit Score | Recommendation |
+| --- | --- | --- | --- | --- | ---: | --- |
+| C9300-48P | Standard campus access | UPOE options | 10G/25G modular | Verify LDOS | 4 | Good default if power budget fits |
+| C9400 | Modular campus access | High power chassis | 40G/100G options | Verify current supervisor | 3 | Use for chassis requirements |
+| Meraki MS355 | Cloud-managed access | UPOE models | 10G/40G options | Verify dashboard/licensing | 4 | Good fit for Meraki operations |
+
+## Alternatives
+- Older EoX migration PID: reject if it lacks multigig or UPOE for Wi-Fi 7.
+
+## Assumptions
+- Customer requires Wi-Fi 7 AP power headroom.
+- Final recommendation needs sourced datasheet validation.
+''',
+            turnId: 'turn-comparison',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.excel);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.xlsx'));
+      expect(artifact.summary, contains('product comparison matrix'));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(5));
+      expect(artifact.previewRows.first, [
+        'Product / Model',
+        'Positioning',
+        'Key capabilities',
+        'Constraints / caveats',
+        'Lifecycle / risk',
+        'Fit score',
+        'Recommendation',
+      ]);
+      final bytes = File(artifact.filePath).readAsBytesSync();
+      expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+      final packageText = String.fromCharCodes(bytes);
+      expect(packageText, contains('Comparison Matrix'));
+      expect(packageText, contains('Fit Scoring'));
+      expect(packageText, contains('Requirements'));
+      expect(packageText, contains('Alternatives'));
+      expect(packageText, contains('Assumptions'));
+      expect(packageText, contains('C9300-48P'));
+      expect(packageText, contains('Meraki MS355'));
+      expect(packageText, contains('Wi-Fi 7'));
+      expect(packageText, contains('UPOE'));
+    },
+  );
+
+  test(
     'DOCX prompt creates a real Word artifact from structured markdown',
     () async {
       final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
@@ -387,6 +448,10 @@ graph LR
     expect(
       registry.descriptorForPrompt('create a business case for Acme')?.id,
       'business_use_case_brief',
+    );
+    expect(
+      registry.descriptorForPrompt('create a product comparison matrix')?.id,
+      'product_comparison_matrix',
     );
   });
 }

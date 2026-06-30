@@ -1224,6 +1224,7 @@ Artifact output contract:
 - Produce concise assistant text plus clean machine-readable content when needed.
 - For spreadsheet/Excel/CSV outputs, include one complete Markdown table with all required rows and columns; Circuit will save it as a workspace artifact instead of making chat the final output surface. Excel requests become real .xlsx files when table data is available.
 - For solution sizing workbook outputs, include requirements, recommendations, validation checks, assumptions, and any source tables; Circuit will organize those into multi-sheet .xlsx workbooks.
+- For product comparison matrix outputs, include candidate products/models, capabilities, constraints, lifecycle risk, fit score, recommendation, assumptions, and source tables; Circuit will organize those into multi-sheet .xlsx workbooks.
 - For PowerPoint/deck outputs, use clear Markdown headings and concise bullets; Circuit will save that structure as a .pptx deck.
 - For Word/DOCX/report outputs, use clear Markdown headings, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .docx report.
 - For PDF/report outputs, use clear Markdown headings, concise paragraphs, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .pdf handoff report.

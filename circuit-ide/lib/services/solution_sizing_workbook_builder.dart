@@ -1,11 +1,5 @@
 import '../models/artifact_document.dart';
-
-class WorkbookTable {
-  final String name;
-  final List<List<String>> rows;
-
-  const WorkbookTable({required this.name, required this.rows});
-}
+import 'workbook_table.dart';
 
 class SolutionSizingWorkbookBuilder {
   const SolutionSizingWorkbookBuilder();

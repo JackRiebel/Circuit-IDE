@@ -11,6 +11,7 @@ import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
+import 'product_comparison_workbook_builder.dart';
 import 'solution_sizing_workbook_builder.dart';
 
 class GeneratedArtifactWriter {
@@ -20,6 +21,7 @@ class GeneratedArtifactWriter {
   final PdfArtifactRenderer pdfRenderer;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
+  final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
 
   const GeneratedArtifactWriter({
@@ -29,6 +31,7 @@ class GeneratedArtifactWriter {
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
+    this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
   });
 
@@ -162,9 +165,18 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.excel ||
         requestedKind == GeneratedArtifactKind.csv) {
-      final tables =
+      final productComparison =
           requestedKind == GeneratedArtifactKind.excel &&
-              solutionSizingBuilder.matches(prompt)
+          productComparisonBuilder.matches(prompt);
+      final sizingWorkbook =
+          requestedKind == GeneratedArtifactKind.excel &&
+          solutionSizingBuilder.matches(prompt);
+      final tables = productComparison
+          ? productComparisonBuilder
+                .build(prompt: prompt, content: content, document: document)
+                .map((table) => _TableData(name: table.name, rows: table.rows))
+                .toList(growable: false)
+          : sizingWorkbook
           ? solutionSizingBuilder
                 .build(prompt: prompt, content: content, document: document)
                 .map((table) => _TableData(name: table.name, rows: table.rows))
@@ -172,13 +184,14 @@ class GeneratedArtifactWriter {
           : _extractTables(content);
       if (tables.isNotEmpty && requestedKind == GeneratedArtifactKind.excel) {
         final workbook = _xlsxBytes(tables);
-        final sizingWorkbook = solutionSizingBuilder.matches(prompt);
         return _ResolvedArtifact(
           kind: GeneratedArtifactKind.excel,
           status: GeneratedArtifactStatus.ready,
           extension: 'xlsx',
           bytes: workbook,
-          summary: sizingWorkbook
+          summary: productComparison
+              ? 'Created a product comparison matrix with fit scoring, requirements, alternatives, assumptions, and source sheets.'
+              : sizingWorkbook
               ? 'Created a solution sizing workbook with requirements, inputs, recommendations, validation, and assumptions sheets.'
               : tables.length == 1
               ? 'Created an Excel workbook with formatted headers and frozen first row.'
