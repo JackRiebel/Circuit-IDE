@@ -2946,6 +2946,7 @@ class _ArtifactsDrawer extends ConsumerWidget {
     final artifactView = ref.watch(
       studioSourceArtifactsForThreadProvider(threadId),
     );
+    final drawer = ref.watch(studioRightDrawerProvider);
     final artifacts = artifactView.artifacts
         .where(
           (artifact) =>
@@ -2962,17 +2963,45 @@ class _ArtifactsDrawer extends ConsumerWidget {
             'Generated files, spreadsheets, reports, diagrams, and charts appear here.',
       );
     }
+    StudioSourceArtifact? sourceFor(GeneratedArtifact artifact) {
+      return artifactView.artifacts
+          .where((candidate) => candidate.id == 'generated-${artifact.id}')
+          .firstOrNull;
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
       children: [
         for (final artifact in artifacts)
-          _ArtifactDrawerCard(
-            artifact: artifact,
-            onTap: () {
-              final source = artifactView.artifacts.firstWhere(
-                (candidate) => candidate.id == 'generated-${artifact.id}',
+          Builder(
+            builder: (context) {
+              final source = sourceFor(artifact);
+              final selected = source?.id == drawer.selectedArtifactId;
+              return _ArtifactDrawerCard(
+                artifact: artifact,
+                selected: selected,
+                onTap: source == null
+                    ? null
+                    : () {
+                        ref
+                            .read(studioRightDrawerProvider.notifier)
+                            .openArtifact(source);
+                      },
+                onReview: () {
+                  if (artifact.filePath.trim().isEmpty) return;
+                  if (_artifactOpensInCodeReview(artifact.kind)) {
+                    ref
+                        .read(studioRightDrawerProvider.notifier)
+                        .openFile(artifact.filePath);
+                    return;
+                  }
+                  if (source != null) {
+                    ref
+                        .read(studioRightDrawerProvider.notifier)
+                        .openArtifact(source);
+                  }
+                },
               );
-              ref.read(studioRightDrawerProvider.notifier).openArtifact(source);
             },
           ),
       ],
@@ -2982,9 +3011,16 @@ class _ArtifactsDrawer extends ConsumerWidget {
 
 class _ArtifactDrawerCard extends ConsumerWidget {
   final GeneratedArtifact artifact;
-  final VoidCallback onTap;
+  final bool selected;
+  final VoidCallback? onTap;
+  final VoidCallback onReview;
 
-  const _ArtifactDrawerCard({required this.artifact, required this.onTap});
+  const _ArtifactDrawerCard({
+    required this.artifact,
+    required this.selected,
+    required this.onTap,
+    required this.onReview,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2996,7 +3032,9 @@ class _ArtifactDrawerCard extends ConsumerWidget {
           color: tokens.studioCard.withValues(alpha: 0.76),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.3),
+            color: selected
+                ? tokens.accent.withValues(alpha: 0.38)
+                : tokens.studioDivider.withValues(alpha: 0.3),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -3064,7 +3102,8 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                 ),
               ),
             _ArtifactDrawerPreview(artifact: artifact),
-            _ArtifactDrawerActions(artifact: artifact, onReview: onTap),
+            if (selected) _ArtifactDrawerDetailGrid(artifact: artifact),
+            _ArtifactDrawerActions(artifact: artifact, onReview: onReview),
           ],
         ),
       ),
@@ -3092,12 +3131,114 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       parts.add(switch (artifact.kind) {
         GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
         GeneratedArtifactKind.docx => '${artifact.sheetCount} sections',
+        GeneratedArtifactKind.pdf => '${artifact.sheetCount} pages',
+        GeneratedArtifactKind.chart => '${artifact.sheetCount} charts',
         _ => '${artifact.sheetCount} sheets',
       });
     }
     if (artifact.byteSize > 0) parts.add(_formatBytes(artifact.byteSize));
     parts.add(artifact.statusLabel);
     return parts.join(' • ');
+  }
+}
+
+bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
+  return switch (kind) {
+    GeneratedArtifactKind.csv ||
+    GeneratedArtifactKind.markdown ||
+    GeneratedArtifactKind.json ||
+    GeneratedArtifactKind.diagram ||
+    GeneratedArtifactKind.chart ||
+    GeneratedArtifactKind.report => true,
+    GeneratedArtifactKind.excel ||
+    GeneratedArtifactKind.pdf ||
+    GeneratedArtifactKind.powerPoint ||
+    GeneratedArtifactKind.docx => false,
+  };
+}
+
+class _ArtifactDrawerDetailGrid extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+
+  const _ArtifactDrawerDetailGrid({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final rows = <(String, String)>[
+      ('Status', artifact.statusLabel),
+      ('Created', _compactDate(artifact.createdAt)),
+      if (artifact.sheetCount > 0)
+        (_countLabel(artifact.kind), '${artifact.sheetCount}'),
+      if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
+        ('Request', artifact.requestId!),
+      if (artifact.filePath.trim().isNotEmpty) ('Path', artifact.filePath),
+    ];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 58,
+                    child: Text(
+                      row.$1,
+                      style: TextStyle(
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xxs,
+                        height: 1.2,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      row.$2,
+                      maxLines: row.$1 == 'Path' ? 2 : 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xxs,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _countLabel(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.powerPoint => 'Slides',
+      GeneratedArtifactKind.docx => 'Sections',
+      GeneratedArtifactKind.pdf => 'Pages',
+      GeneratedArtifactKind.chart => 'Charts',
+      GeneratedArtifactKind.excel => 'Sheets',
+      _ => 'Items',
+    };
+  }
+
+  String _compactDate(DateTime value) {
+    final local = value.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final suffix = local.hour >= 12 ? 'PM' : 'AM';
+    return '${local.month}/${local.day}/${local.year} $hour:$minute $suffix';
   }
 }
 
@@ -3196,7 +3337,10 @@ class _BinaryArtifactPreview extends ConsumerWidget {
             ? '${artifact.sheetCount} sheet workbook'
             : 'Excel workbook',
       GeneratedArtifactKind.docx => 'Word document',
-      GeneratedArtifactKind.pdf => 'PDF document',
+      GeneratedArtifactKind.pdf =>
+        artifact.sheetCount > 0
+            ? '${artifact.sheetCount} page PDF document'
+            : 'PDF document',
       _ => artifact.typeLabel,
     };
     return Container(

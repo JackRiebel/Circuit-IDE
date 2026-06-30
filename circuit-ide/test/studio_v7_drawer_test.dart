@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/models/command_run.dart';
 import 'package:circuit_ide/models/context_pack.dart';
+import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/models/git_models.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_right_drawer.dart';
@@ -935,6 +936,97 @@ void main() {
     expect(artifacts, hasLength(130));
     expect(artifacts.first.id, 'artifact-129');
     expect(artifacts.last.id, 'artifact-0');
+  });
+
+  testWidgets(
+    'Artifacts drawer shows selected artifact metadata and binary preview',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final artifact = GeneratedArtifact(
+        id: 'pdf-1',
+        kind: GeneratedArtifactKind.pdf,
+        status: GeneratedArtifactStatus.ready,
+        fileName: 'campus-refresh.pdf',
+        filePath: '/tmp/campus-refresh.pdf',
+        summary: 'Created a PDF handoff report.',
+        byteSize: 2048,
+        sheetCount: 2,
+        threadId: null,
+        requestId: 'request-pdf',
+        createdAt: DateTime(2026, 6, 30, 9, 12),
+      );
+      container
+          .read(studioSourceArtifactProvider.notifier)
+          .add(artifact.toSourceArtifact());
+      container
+          .read(studioRightDrawerProvider.notifier)
+          .openMode(StudioDrawerMode.artifacts);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('campus-refresh.pdf'), findsOneWidget);
+      expect(find.textContaining('PDF • 2 pages'), findsOneWidget);
+      expect(find.textContaining('2 page PDF document'), findsOneWidget);
+
+      await tester.tap(find.text('campus-refresh.pdf'));
+      await tester.pump();
+
+      expect(find.text('Status'), findsOneWidget);
+      expect(find.text('Pages'), findsOneWidget);
+      expect(find.text('Request'), findsOneWidget);
+      expect(find.text('Path'), findsOneWidget);
+      expect(find.text('request-pdf'), findsOneWidget);
+      expect(find.text('/tmp/campus-refresh.pdf'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Artifacts drawer Review opens text artifacts in code mode', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final root = Directory.systemTemp.createTempSync('studio_artifact_review_');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/report.md')..writeAsStringSync('# Report');
+    final artifact = GeneratedArtifact(
+      id: 'markdown-1',
+      kind: GeneratedArtifactKind.markdown,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'report.md',
+      filePath: file.path,
+      summary: 'Created a Markdown report.',
+      byteSize: file.lengthSync(),
+      createdAt: DateTime(2026, 6, 30, 9, 20),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('report.md'), findsOneWidget);
+    await tester.tap(find.text('Review'));
+    await tester.pump();
+
+    final drawer = container.read(studioRightDrawerProvider);
+    expect(drawer.mode, StudioDrawerMode.code);
+    expect(drawer.filePath, file.path);
   });
 
   test(

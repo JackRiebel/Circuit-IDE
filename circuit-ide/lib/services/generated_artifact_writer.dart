@@ -159,6 +159,7 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.pdf) {
       final bytes = pdfRenderer.render(documentForOutput);
+      final pageCount = _pdfPageCount(bytes);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.pdf,
         status: GeneratedArtifactStatus.ready,
@@ -167,6 +168,7 @@ class GeneratedArtifactWriter {
         summary:
             'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: documentForOutput.previewRows,
+        sheetCount: pageCount,
       );
     }
 
@@ -622,6 +624,12 @@ class GeneratedArtifactWriter {
         .toList();
     final base = words.isEmpty ? 'generated-artifact' : words.join('-');
     return base.length > 48 ? base.substring(0, 48) : base;
+  }
+
+  int _pdfPageCount(List<int> bytes) {
+    final text = latin1.decode(bytes, allowInvalid: true);
+    final count = RegExp(r'/Type /Page\b').allMatches(text).length;
+    return count <= 0 ? 1 : count;
   }
 }
 
