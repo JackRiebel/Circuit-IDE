@@ -231,6 +231,46 @@ graph LR
     expect(svg, contains('dual WAN'));
   });
 
+  test(
+    'chart prompt creates a real SVG chart artifact from table data',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a chart report for PoE budget risk',
+            content: '''
+# PoE Budget Risk
+
+| Site | Watts Required | Risk |
+| --- | ---: | --- |
+| HQ | 7200 | Medium |
+| Branch 1 | 2800 | Low |
+| Branch 2 | 3900 | Medium |
+| Branch 3 | 5100 | High |
+''',
+            turnId: 'turn-chart',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.chart);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.svg'));
+      expect(artifact.summary, contains('SVG chart'));
+      expect(artifact.previewRows.first, ['Metric', 'Watts Required']);
+      expect(artifact.sheetCount, 1);
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      final svg = File(artifact.filePath).readAsStringSync();
+      expect(svg, startsWith('<svg'));
+      expect(svg, contains('PoE Budget Risk'));
+      expect(svg, contains('Branch 3'));
+      expect(svg, contains('5100'));
+    },
+  );
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));

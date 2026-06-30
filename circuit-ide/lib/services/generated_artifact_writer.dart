@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
 import 'pdf_artifact_renderer.dart';
@@ -17,6 +18,7 @@ class GeneratedArtifactWriter {
   final DocxArtifactRenderer docxRenderer;
   final PdfArtifactRenderer pdfRenderer;
   final DiagramArtifactRenderer diagramRenderer;
+  final ChartArtifactRenderer chartRenderer;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -24,6 +26,7 @@ class GeneratedArtifactWriter {
     this.docxRenderer = const DocxArtifactRenderer(),
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
+    this.chartRenderer = const ChartArtifactRenderer(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -136,6 +139,21 @@ class GeneratedArtifactWriter {
         summary:
             'Created an SVG topology diagram with ${diagram.nodeCount} nodes and ${diagram.edgeCount} links.',
         previewRows: diagram.previewRows,
+      );
+    }
+
+    if (requestedKind == GeneratedArtifactKind.chart) {
+      final chart = chartRenderer.render(document);
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.chart,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'svg',
+        bytes: chart.bytes,
+        summary: chart.chartCount == 1
+            ? 'Created an SVG chart artifact from the response data.'
+            : 'Created an SVG chart pack with ${chart.chartCount} charts from the response data.',
+        previewRows: chart.previewRows,
+        sheetCount: chart.chartCount,
       );
     }
 

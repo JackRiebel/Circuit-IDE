@@ -187,16 +187,18 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
+  if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.diagram;
+  }
+  if (RegExp(
+    r'\b(chart|charts|graph|graphs|visualization)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.chart;
+  }
   if (RegExp(
     r'\b(markdown|md|readme|report|brief|document)\b',
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.markdown;
-  }
-  if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.diagram;
-  }
-  if (RegExp(r'\b(chart|graph)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.chart;
   }
   return null;
 }
