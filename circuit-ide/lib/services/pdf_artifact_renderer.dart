@@ -7,6 +7,41 @@ import '../models/artifact_document.dart';
 class PdfArtifactRenderer {
   const PdfArtifactRenderer();
 
+  List<List<String>> previewRowsFor(
+    ArtifactDocument document, {
+    int pageCount = 0,
+  }) {
+    return [
+      ['Section', 'Type', 'Items'],
+      if (pageCount > 0) ['0', 'Pages', '$pageCount'],
+      ['1', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
+      for (var i = 0; i < document.sections.length; i++)
+        [
+          '${i + 2}',
+          document.sections[i].title,
+          '${document.sections[i].bullets.length + (document.sections[i].body.trim().isEmpty ? 0 : 1)}',
+        ],
+      if (document.tables.isNotEmpty)
+        [
+          '${document.sections.length + 2}',
+          'Data Tables',
+          '${document.tables.length}',
+        ],
+      if (document.assumptions.isNotEmpty)
+        [
+          '${document.sections.length + 3}',
+          'Assumptions',
+          '${document.assumptions.length}',
+        ],
+      if (document.citations.isNotEmpty)
+        [
+          '${document.sections.length + 4}',
+          'Sources / Evidence',
+          '${document.citations.length}',
+        ],
+    ];
+  }
+
   Uint8List render(ArtifactDocument document) {
     final pages = _paginate(_itemsFor(document));
     final objects = <int, List<int>>{};
@@ -85,6 +120,28 @@ class PdfArtifactRenderer {
         gapAfter: 18,
       ),
       const _PdfText(
+        'Report Overview',
+        size: 15,
+        bold: true,
+        gapBefore: 6,
+        gapAfter: 6,
+      ),
+      _PdfText(
+        'Sections: ${document.sections.length}   Tables: ${document.tables.length}   Assumptions: ${document.assumptions.length}   Sources: ${document.citations.length}',
+        size: 10.2,
+        color: _PdfColor.muted,
+        gapAfter: 8,
+      ),
+      const _PdfText(
+        'Document Map',
+        size: 15,
+        bold: true,
+        gapBefore: 6,
+        gapAfter: 6,
+      ),
+      for (final item in _documentMap(document).take(12))
+        _PdfText('- $item', size: 9.8, indent: 14, gapAfter: 1),
+      const _PdfText(
         'Executive Summary',
         size: 16,
         bold: true,
@@ -153,6 +210,20 @@ class PdfArtifactRenderer {
       }
     }
     return items;
+  }
+
+  List<String> _documentMap(ArtifactDocument document) {
+    return [
+      'Executive Summary - decision-ready overview',
+      for (final section in document.sections)
+        '${section.title} - ${section.bullets.isNotEmpty ? '${section.bullets.length} key point${section.bullets.length == 1 ? '' : 's'}' : 'narrative section'}',
+      if (document.tables.isNotEmpty)
+        'Data Tables - ${document.tables.length} structured table${document.tables.length == 1 ? '' : 's'}',
+      if (document.assumptions.isNotEmpty)
+        'Assumptions - ${document.assumptions.length} captured caveat${document.assumptions.length == 1 ? '' : 's'}',
+      if (document.citations.isNotEmpty)
+        'Sources / Evidence - ${document.citations.length} source item${document.citations.length == 1 ? '' : 's'}',
+    ];
   }
 
   Iterable<String> _paragraphs(String body) {

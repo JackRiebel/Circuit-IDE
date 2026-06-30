@@ -326,6 +326,15 @@ Executive summary for a customer handoff.
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(artifact.fileName, endsWith('.docx'));
       expect(artifact.sheetCount, greaterThanOrEqualTo(3));
+      expect(artifact.previewRows.first, ['Section', 'Type', 'Items']);
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Findings')),
+      );
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Sources / Evidence')),
+      );
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -337,13 +346,16 @@ Executive summary for a customer handoff.
       expect(packageText, contains('word/footer1.xml'));
       expect(packageText, contains('Branch Network Architecture Report'));
       expect(packageText, contains('CircuitCode generated report'));
+      expect(packageText, contains('Report Overview'));
+      expect(packageText, contains('Document Map'));
       expect(packageText, contains('WAN redundancy is required'));
       expect(packageText, contains('PoE budget unknown'));
       expect(packageText, contains('<w:numPr>'));
       expect(packageText, contains('<w:tblGrid>'));
       expect(packageText, contains('<w:tblW w:w="9120" w:type="dxa"/>'));
       expect(packageText, contains('<w:shd w:fill="E2E8F0"/>'));
-      expect(packageText, contains('Sources / Evidence'));
+      expect(packageText, contains('Appendix A: Assumptions'));
+      expect(packageText, contains('Appendix B: Sources / Evidence'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
     },
   );
@@ -549,6 +561,15 @@ Executive-ready summary for a final customer handoff.
     expect(artifact!.kind, GeneratedArtifactKind.pdf);
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.pdf'));
+    expect(artifact.previewRows.first, ['Section', 'Type', 'Items']);
+    expect(
+      artifact.previewRows.map((row) => row.join(' / ')),
+      contains(contains('Pages')),
+    );
+    expect(
+      artifact.previewRows.map((row) => row.join(' / ')),
+      contains(contains('Recommendations')),
+    );
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));
@@ -559,6 +580,8 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('/Title (Campus Refresh Handoff)'));
     expect(pdfText, contains('CircuitCode customer handoff report'));
     expect(pdfText, contains('Campus Refresh Handoff'));
+    expect(pdfText, contains('Report Overview'));
+    expect(pdfText, contains('Document Map'));
     expect(pdfText, contains('Access layer needs multigig validation'));
     expect(pdfText, contains('Sources / Evidence'));
     expect(pdfText, contains('Workshop notes'));
