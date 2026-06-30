@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
@@ -8,6 +9,15 @@ class PowerPointArtifactRenderer {
 
   int slideCountFor(ArtifactDocument document) {
     return _slidesFor(document).take(24).length;
+  }
+
+  List<List<String>> previewRowsFor(ArtifactDocument document) {
+    final slides = _slidesFor(document).take(24).toList(growable: false);
+    return [
+      ['Slide', 'Type', 'Title'],
+      for (var i = 0; i < slides.length; i++)
+        ['${i + 1}', slides[i].kind.label, slides[i].title],
+    ];
   }
 
   Uint8List render(ArtifactDocument document) {
@@ -71,6 +81,7 @@ class PowerPointArtifactRenderer {
             'Assumptions and sources',
         ],
       ),
+      _decisionSnapshot(document, sections),
       if (document.summary.isNotEmpty)
         _DeckSlide(
           title: 'Executive Summary',
@@ -97,6 +108,7 @@ class PowerPointArtifactRenderer {
         );
     }
     if (document.tables.isNotEmpty) {
+      slides.add(_dataSnapshot(document));
       for (final table in document.tables.take(4)) {
         slides.add(
           _DeckSlide(
@@ -123,6 +135,71 @@ class PowerPointArtifactRenderer {
       );
     }
     return slides;
+  }
+
+  _DeckSlide _decisionSnapshot(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+    ]);
+    final risk = _firstMatchingBullet(sections, ['risk', 'caveat', 'concern']);
+    final next = _firstMatchingBullet(sections, ['next', 'phase', 'action']);
+    return _DeckSlide(
+      title: 'Decision Snapshot',
+      eyebrow: 'Executive readout',
+      kind: _DeckSlideKind.snapshot,
+      bullets: [
+        recommendation == null
+            ? 'Recommendation: Review the proposed approach and confirm the desired implementation path.'
+            : 'Recommendation: $recommendation',
+        risk == null
+            ? 'Risk: Validate assumptions, source data, and implementation constraints before final approval.'
+            : 'Risk: $risk',
+        next == null
+            ? 'Next step: Align on scope, owners, and verification criteria.'
+            : 'Next step: $next',
+        if (document.tables.isNotEmpty)
+          'Evidence: ${document.tables.length} structured data table${document.tables.length == 1 ? '' : 's'} included.',
+      ],
+    );
+  }
+
+  _DeckSlide _dataSnapshot(ArtifactDocument document) {
+    return _DeckSlide(
+      title: 'Data Snapshot',
+      eyebrow: 'Supporting detail',
+      kind: _DeckSlideKind.dataSnapshot,
+      bullets: [
+        for (final table in document.tables.take(6))
+          '${table.title}: ${math.max(0, table.rows.length - 1)} row${table.rows.length == 2 ? '' : 's'} across ${table.rows.isEmpty ? 0 : table.rows.first.length} column${table.rows.isNotEmpty && table.rows.first.length == 1 ? '' : 's'}',
+        if (document.tables.length > 6)
+          '${document.tables.length - 6} additional table${document.tables.length - 6 == 1 ? '' : 's'} available in the source artifact.',
+      ],
+    );
+  }
+
+  String? _firstMatchingBullet(
+    List<ArtifactSection> sections,
+    List<String> terms,
+  ) {
+    for (final section in sections) {
+      final title = section.title.toLowerCase();
+      final titleMatches = terms.any(title.contains);
+      final candidates = [
+        ...section.bullets,
+        ..._sentences(section.body).take(3),
+      ];
+      if (titleMatches && candidates.isNotEmpty) return candidates.first;
+      for (final candidate in candidates) {
+        final normalized = candidate.toLowerCase();
+        if (terms.any(normalized.contains)) return candidate;
+      }
+    }
+    return null;
   }
 
   String _sectionEyebrow(String title) {
@@ -285,6 +362,11 @@ class PowerPointArtifactRenderer {
     final body = slide.tableRows.isNotEmpty
         ? _tableSlideBody(slide, bodyY: bodyY, accent: accent)
         : _bulletSlideBody(slide, bodyY: bodyY);
+    final panelColor =
+        slide.kind == _DeckSlideKind.title ||
+            slide.kind == _DeckSlideKind.sectionDivider
+        ? background
+        : '202020';
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
@@ -292,8 +374,10 @@ class PowerPointArtifactRenderer {
         '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
         '${_shape(id: 2, name: 'Background', x: 0, y: 0, w: 12192000, h: 6858000, color: background)}'
         '${_shape(id: 3, name: 'Accent', x: 0, y: 0, w: 145000, h: 6858000, color: accent)}'
-        '${_shape(id: 8, name: 'Content panel', x: 540000, y: 1640000, w: 11100000, h: 4550000, color: slide.kind == _DeckSlideKind.title || slide.kind == _DeckSlideKind.sectionDivider ? background : '202020')}'
+        '${_shape(id: 8, name: 'Content panel', x: 540000, y: 1640000, w: 11100000, h: 4550000, color: panelColor)}'
+        '${_shape(id: 9, name: 'Header rule', x: 600000, y: 1510000, w: 2600000, h: 28000, color: accent)}'
         '${_textBox(id: 4, name: 'Eyebrow', x: 600000, y: 320000, w: 6500000, h: 320000, text: _xml(slide.eyebrow), size: 1200, bold: true, color: accent)}'
+        '${_textBox(id: 7, name: 'Slide type', x: 9700000, y: 340000, w: 1700000, h: 280000, text: _xml(slide.kind.label), size: 1000, bold: true, color: '8A8F98')}'
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
         '$body'
         '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact', size: 1000, bold: false, color: '8A8F98')}'
@@ -304,6 +388,12 @@ class PowerPointArtifactRenderer {
     final bullets = slide.bullets
         .where((bullet) => bullet.trim().isNotEmpty)
         .take(slide.kind == _DeckSlideKind.title ? 5 : 8)
+        .toList(growable: false);
+    if (slide.kind == _DeckSlideKind.snapshot ||
+        slide.kind == _DeckSlideKind.dataSnapshot) {
+      return _tileSlideBody(slide, bullets: bullets, bodyY: bodyY);
+    }
+    final body = bullets
         .map(
           (bullet) =>
               '<a:p><a:r><a:rPr lang="en-US" sz="${slide.kind == _DeckSlideKind.title ? 2300 : 2050}"><a:solidFill><a:srgbClr val="F4F4F5"/></a:solidFill></a:rPr><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
@@ -311,7 +401,73 @@ class PowerPointArtifactRenderer {
         .join();
     return '<p:sp><p:nvSpPr><p:cNvPr id="6" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
         '<p:spPr><a:xfrm><a:off x="760000" y="$bodyY"/><a:ext cx="10680000" cy="4300000"/></a:xfrm></p:spPr>'
-        '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>$bullets</p:txBody></p:sp>';
+        '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>$body</p:txBody></p:sp>';
+  }
+
+  String _tileSlideBody(
+    _DeckSlide slide, {
+    required List<String> bullets,
+    required int bodyY,
+  }) {
+    final accent = _accentFor(slide.kind);
+    final parts = <String>[];
+    const x = 760000;
+    const tileWidth = 5000000;
+    const tileHeight = 880000;
+    var id = 120;
+    for (var i = 0; i < bullets.take(4).length; i++) {
+      final bullet = bullets[i];
+      final tileX = x + ((i % 2) * 5360000);
+      final tileY = bodyY + ((i ~/ 2) * 1120000);
+      final label = i == 0
+          ? '01'
+          : i == 1
+          ? '02'
+          : i == 2
+          ? '03'
+          : '04';
+      parts
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Insight tile',
+            x: tileX,
+            y: tileY,
+            w: tileWidth,
+            h: tileHeight,
+            color: '242424',
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Insight number',
+            x: tileX + 160000,
+            y: tileY + 120000,
+            w: 420000,
+            h: 250000,
+            text: label,
+            size: 1200,
+            bold: true,
+            color: accent,
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Insight text',
+            x: tileX + 620000,
+            y: tileY + 120000,
+            w: tileWidth - 820000,
+            h: tileHeight - 180000,
+            text: _xml(_truncate(bullet, 150)),
+            size: 1350,
+            bold: false,
+            color: 'F4F4F5',
+          ),
+        );
+    }
+    return parts.join();
   }
 
   String _tableSlideBody(
@@ -395,6 +551,8 @@ class PowerPointArtifactRenderer {
     return switch (kind) {
       _DeckSlideKind.title => '7FB7B2',
       _DeckSlideKind.agenda => '7A9CC6',
+      _DeckSlideKind.snapshot => '78AAA5',
+      _DeckSlideKind.dataSnapshot => 'B48EAD',
       _DeckSlideKind.sectionDivider => 'C7A77B',
       _DeckSlideKind.recommendation => 'A7C080',
       _DeckSlideKind.table => 'B48EAD',
@@ -406,6 +564,7 @@ class PowerPointArtifactRenderer {
   String _backgroundFor(_DeckSlideKind kind) {
     return switch (kind) {
       _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
+      _DeckSlideKind.snapshot => '121715',
       _ => '161616',
     };
   }
@@ -514,11 +673,27 @@ class _DeckSlide {
 enum _DeckSlideKind {
   title,
   agenda,
+  snapshot,
+  dataSnapshot,
   sectionDivider,
   content,
   recommendation,
   table,
-  appendix,
+  appendix;
+
+  String get label {
+    return switch (this) {
+      _DeckSlideKind.title => 'Title',
+      _DeckSlideKind.agenda => 'Agenda',
+      _DeckSlideKind.snapshot => 'Decision',
+      _DeckSlideKind.dataSnapshot => 'Data',
+      _DeckSlideKind.sectionDivider => 'Section',
+      _DeckSlideKind.content => 'Content',
+      _DeckSlideKind.recommendation => 'Recommendation',
+      _DeckSlideKind.table => 'Table',
+      _DeckSlideKind.appendix => 'Appendix',
+    };
+  }
 }
 
 class _PptxFile {

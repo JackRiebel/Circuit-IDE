@@ -51,8 +51,17 @@ Short executive summary for the customer.
       expect(artifact!.kind, GeneratedArtifactKind.powerPoint);
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(artifact.fileName, endsWith('.pptx'));
-      expect(artifact.sheetCount, greaterThanOrEqualTo(6));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(8));
       expect(artifact.summary, contains('PowerPoint deck'));
+      expect(artifact.previewRows.first, ['Slide', 'Type', 'Title']);
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Decision Snapshot')),
+      );
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Data Snapshot')),
+      );
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -60,9 +69,12 @@ Short executive summary for the customer.
       expect(packageText, contains('ppt/presentation.xml'));
       expect(packageText, contains('ppt/slides/slide1.xml'));
       expect(packageText, contains('Agenda'));
+      expect(packageText, contains('Decision Snapshot'));
       expect(packageText, contains('Executive Summary'));
       expect(packageText, contains('Current State'));
       expect(packageText, contains('Recommended Architecture'));
+      expect(packageText, contains('Data Snapshot'));
+      expect(packageText, contains('Executive readout'));
       expect(packageText, contains('Data table'));
       expect(packageText, contains('Dual 2 Gbps'));
       expect(packageText, contains('Assumptions &amp; Sources'));
