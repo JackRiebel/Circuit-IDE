@@ -677,6 +677,71 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     },
   );
 
+  test('chart pack prompt creates enterprise PoE WAN lifecycle panels', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter().writeFromAssistantOutput(
+      rootPath: root.path,
+      prompt:
+          'create a chart pack for PoE budgets, WAN capacity, lifecycle risk, and product comparison',
+      content: '''
+# Enterprise Sizing Chart Pack
+
+## PoE Budget
+
+| Site | Watts Required | PoE Budget | Risk |
+| --- | ---: | ---: | --- |
+| MDF | 7200 | 9600 | Medium |
+| IDF 1 | 5100 | 7400 | Low |
+| IDF 2 | 6800 | 7400 | High |
+
+## WAN Capacity
+
+| Site | Mbps Required | WAN Mbps | Headroom |
+| --- | ---: | ---: | ---: |
+| HQ | 1800 | 2500 | 700 |
+| Branch 1 | 600 | 1000 | 400 |
+| Branch 2 | 850 | 1000 | 150 |
+
+## Lifecycle Risk
+
+| Product | Lifecycle Status | LDOS | Risk |
+| --- | --- | --- | --- |
+| AIR-AP2802I | End of Support | 2026 | High |
+| C9300-48P | Active | 2029 | Review |
+| CW9176I | Current | 2031 | Low |
+
+## Product Comparison
+
+| Model | Fit Score | Uplinks | Recommendation |
+| --- | ---: | --- | --- |
+| C9300X-48HX | 5 | 25G | Best UPOE access fit |
+| C9400 | 3 | 100G | Use for chassis sites |
+| MS355 | 4 | 40G | Cloud-managed fit |
+''',
+      turnId: 'turn-chart-pack',
+      threadId: 'thread-1',
+      requestId: 'request-1',
+    );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.chart);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.svg'));
+    expect(artifact.summary, contains('chart pack'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(4));
+    expect(artifact.previewRows.first, ['Metric', 'Watts Required']);
+    final svg = File(artifact.filePath).readAsStringSync();
+    expect(svg, contains('PoE Budget'));
+    expect(svg, contains('WAN Capacity'));
+    expect(svg, contains('Lifecycle'));
+    expect(svg, contains('Comparison'));
+    expect(svg, contains('Compare required load'));
+    expect(svg, contains('Compare demand'));
+    expect(svg, contains('High=3'));
+    expect(svg, contains('C9300X-48HX'));
+  });
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
