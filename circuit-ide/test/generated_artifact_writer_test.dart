@@ -29,6 +29,17 @@ Short executive summary for the customer.
 - Use resilient edge pairs
 - Standardize access switching
 - Validate PoE budgets
+
+| Site | Users | WAN |
+| --- | ---: | --- |
+| HQ | 500 | Dual 2 Gbps |
+| Branch | 120 | Dual 500 Mbps |
+
+## Assumptions
+- Customer will validate final user counts.
+
+## Sources
+- Customer workshop notes
 ''',
             turnId: 'turn-pptx',
             threadId: 'thread-1',
@@ -48,8 +59,14 @@ Short executive summary for the customer.
       expect(packageText, contains('ppt/presentation.xml'));
       expect(packageText, contains('ppt/slides/slide1.xml'));
       expect(packageText, contains('Agenda'));
+      expect(packageText, contains('Executive Summary'));
       expect(packageText, contains('Current State'));
       expect(packageText, contains('Recommended Architecture'));
+      expect(packageText, contains('Data table'));
+      expect(packageText, contains('Dual 2 Gbps'));
+      expect(packageText, contains('Assumptions &amp; Sources'));
+      expect(packageText, contains('Customer workshop notes'));
+      expect(packageText, contains('CircuitCode - Generated artifact'));
     },
   );
 
