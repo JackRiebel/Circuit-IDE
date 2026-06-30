@@ -6,15 +6,18 @@ import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'docx_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
 
 class GeneratedArtifactWriter {
   final ArtifactComposer composer;
   final PowerPointArtifactRenderer powerPointRenderer;
+  final DocxArtifactRenderer docxRenderer;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
     this.powerPointRenderer = const PowerPointArtifactRenderer(),
+    this.docxRenderer = const DocxArtifactRenderer(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -88,6 +91,19 @@ class GeneratedArtifactWriter {
       );
     }
 
+    if (requestedKind == GeneratedArtifactKind.docx) {
+      final bytes = docxRenderer.render(document);
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.docx,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'docx',
+        bytes: bytes,
+        summary:
+            'Created a Word report with ${document.sections.length} sections from the response structure.',
+        previewRows: document.previewRows,
+      );
+    }
+
     if (requestedKind == GeneratedArtifactKind.excel ||
         requestedKind == GeneratedArtifactKind.csv) {
       final tables = _extractTables(content);
@@ -147,21 +163,15 @@ class GeneratedArtifactWriter {
     }
 
     return _ResolvedArtifact(
-      kind:
-          requestedKind == GeneratedArtifactKind.pdf ||
-              requestedKind == GeneratedArtifactKind.docx
+      kind: requestedKind == GeneratedArtifactKind.pdf
           ? GeneratedArtifactKind.markdown
           : requestedKind,
-      status:
-          requestedKind == GeneratedArtifactKind.pdf ||
-              requestedKind == GeneratedArtifactKind.docx
+      status: requestedKind == GeneratedArtifactKind.pdf
           ? GeneratedArtifactStatus.fallback
           : GeneratedArtifactStatus.ready,
       extension: 'md',
       bytes: utf8.encode(content.trim()),
-      summary:
-          requestedKind == GeneratedArtifactKind.pdf ||
-              requestedKind == GeneratedArtifactKind.docx
+      summary: requestedKind == GeneratedArtifactKind.pdf
           ? '${_kindLabel(requestedKind)} export is not available in this build, so the content was saved as Markdown.'
           : 'Created a Markdown artifact.',
     );

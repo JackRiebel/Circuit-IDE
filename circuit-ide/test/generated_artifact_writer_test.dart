@@ -88,6 +88,59 @@ Here is the data.
     },
   );
 
+  test(
+    'DOCX prompt creates a real Word artifact from structured markdown',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a DOCX architecture report',
+            content: '''
+# Branch Network Architecture Report
+
+Executive summary for a customer handoff.
+
+## Findings
+- WAN redundancy is required.
+- Access switching needs PoE validation.
+
+## Recommendations
+- Standardize branch edge design.
+- Create validation checkpoints before deployment.
+
+| Risk | Severity |
+| --- | --- |
+| PoE budget unknown | Medium |
+
+## Assumptions
+- Customer will confirm AP counts.
+
+## Sources
+- Customer inventory export
+''',
+            turnId: 'turn-docx',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.docx);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.docx'));
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      final bytes = File(artifact.filePath).readAsBytesSync();
+      expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+      final packageText = String.fromCharCodes(bytes);
+      expect(packageText, contains('word/document.xml'));
+      expect(packageText, contains('word/styles.xml'));
+      expect(packageText, contains('Branch Network Architecture Report'));
+      expect(packageText, contains('WAN redundancy is required'));
+      expect(packageText, contains('PoE budget unknown'));
+    },
+  );
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
