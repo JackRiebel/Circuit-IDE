@@ -12,6 +12,7 @@ import '../../models/chat_message.dart';
 import '../../models/command_run.dart';
 import '../../models/context_attachment.dart';
 import '../../models/context_pack.dart';
+import '../../models/generated_artifact.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/specialist_agent.dart';
 import '../../models/studio_shell.dart';
@@ -237,7 +238,7 @@ Future<StudioSendResult> sendStudioMessage(
   final outboundText =
       outboundTextOverride ??
       (patchRevisionContext == null
-          ? studioOutboundPromptForIntent(
+          ? _studioOutboundPromptWithArtifactContract(
               text: text,
               intent: intent,
               planModeEnabled: planModeEnabled,
@@ -362,7 +363,7 @@ Future<StudioSendResult> sendStudioMessage(
       taskId: taskId,
       outboundText: outboundText,
       attachments: payload.attachments,
-      historyOverride: priorThreadMessages,
+      modelHistory: priorThreadMessages,
       toolMode: _toolModeForStudioTurn(
         intent: intent,
         promptMode: promptMode,
@@ -695,6 +696,12 @@ String _verificationSummaryForRuns(
     for (final run in runs)
       '- `${run.command}` — ${_verificationRunStatusLabel(run)}',
   ];
+  if (failed != null) {
+    final outputPreview = _verificationOutputPreviewForRun(failed);
+    if (outputPreview.isNotEmpty) {
+      lines.addAll(['', 'Failure output:', outputPreview]);
+    }
+  }
   final remaining = requestedCommands.skip(runs.length).toList();
   if (remaining.isNotEmpty) {
     lines.addAll([
@@ -706,10 +713,25 @@ String _verificationSummaryForRuns(
   if (failed != null) {
     lines.addAll([
       '',
-      'Next step: inspect the command output, fix the failure, then rerun verification.',
+      'Next step: fix the failing command output above, then rerun verification.',
     ]);
   }
   return lines.join('\n');
+}
+
+String _verificationOutputPreviewForRun(CommandRun run) {
+  final output = run.combinedOutput.trim();
+  if (output.isEmpty) return '';
+  const maxPreview = 900;
+  final preview = output.length <= maxPreview
+      ? output
+      : 'Output tail (${output.length} chars total):\n${output.substring(output.length - maxPreview)}';
+  return preview
+      .split('\n')
+      .map((line) => line.trimRight())
+      .where((line) => line.trim().isNotEmpty)
+      .take(24)
+      .join('\n');
 }
 
 String _verificationRunStatusLabel(CommandRun run) {
@@ -1164,6 +1186,46 @@ String studioOutboundPromptForIntent({
   return text;
 }
 
+String _studioOutboundPromptWithArtifactContract({
+  required String text,
+  required TurnIntent intent,
+  required bool planModeEnabled,
+}) {
+  final prompt = studioOutboundPromptForIntent(
+    text: text,
+    intent: intent,
+    planModeEnabled: planModeEnabled,
+  );
+  if (!isGeneratedArtifactRequest(text) ||
+      intent == TurnIntent.chat ||
+      intent == TurnIntent.review ||
+      intent == TurnIntent.verify) {
+    return prompt;
+  }
+  final kind = detectGeneratedArtifactKind(text);
+  final artifactLabel = switch (kind) {
+    GeneratedArtifactKind.excel => 'Excel workbook',
+    GeneratedArtifactKind.csv => 'CSV',
+    GeneratedArtifactKind.json => 'JSON',
+    GeneratedArtifactKind.markdown => 'Markdown',
+    GeneratedArtifactKind.pdf => 'Markdown fallback for PDF',
+    GeneratedArtifactKind.diagram => 'diagram Markdown',
+    GeneratedArtifactKind.chart => 'chart/report Markdown',
+    GeneratedArtifactKind.report => 'report Markdown',
+    null => 'file',
+  };
+  return '''
+$prompt
+
+Artifact output contract:
+- The user asked for a generated $artifactLabel artifact.
+- Produce concise assistant text plus clean machine-readable content when needed.
+- For spreadsheet/Excel/CSV outputs, include one complete Markdown table with all required rows and columns; Circuit will save it as a workspace artifact instead of making chat the final output surface. Excel requests become real .xlsx files when table data is available.
+- Do not say you cannot create files unless the requested data is missing. If data is missing, ask one specific missing-data question.
+- Keep the human-facing explanation short because Circuit will render a file artifact card after the turn.
+''';
+}
+
 AgentToolMode studioToolModeForIntent({
   required TurnIntent intent,
   required StudioPromptMode promptMode,
@@ -1496,6 +1558,8 @@ StudioContextSummary _buildContextSummary(
         ? 'No project selected'
         : p.basename(rootPath),
     includedItemCount: contextPack.visibleItems.length,
+    omittedCandidateCount:
+        contextPack.retrievalResult?.omittedCandidates.length ?? 0,
     estimatedTokens: attachments.fold<int>(
       0,
       (sum, attachment) => sum + attachment.estimatedTokens,

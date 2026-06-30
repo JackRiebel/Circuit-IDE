@@ -33,30 +33,29 @@ class StudioLeftRail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final settings = ref.watch(settingsProvider);
-    final history = ref.watch(studioProjectHistoryProvider);
+    final recentProjects = ref.watch(
+      settingsProvider.select((settings) => settings.recentProjects),
+    );
+    final historyPathKey = ref.watch(
+      studioProjectHistoryProvider.select(
+        (state) => state.byPath.keys.join('\u001f'),
+      ),
+    );
+    final historyPaths = historyPathKey.isEmpty
+        ? const <String>[]
+        : historyPathKey.split('\u001f');
     final projectPaths = [
-      ...settings.recentProjects,
-      for (final path in history.byPath.keys)
-        if (!settings.recentProjects.contains(path)) path,
+      ...recentProjects,
+      for (final path in historyPaths)
+        if (!recentProjects.contains(path)) path,
     ];
     return Container(
       width: 236,
       decoration: BoxDecoration(
         color: tokens.studioRail,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            tokens.studioRail.withValues(alpha: 0.98),
-            tokens.studioRail,
-            tokens.bgMain.withValues(alpha: 0.9),
-          ],
-          stops: const [0, 0.64, 1],
-        ),
         border: Border(
           right: BorderSide(
-            color: tokens.studioDivider.withValues(alpha: 0.46),
+            color: tokens.studioDivider.withValues(alpha: 0.34),
           ),
         ),
       ),
@@ -86,14 +85,13 @@ class StudioLeftRail extends ConsumerWidget {
             const _RailSearchBox(),
             const SizedBox(height: 9),
             Expanded(
-              child: ListView(
+              child: ListView.builder(
                 padding: EdgeInsets.zero,
-                children: [
-                  const _RailSectionLabel('Projects'),
-                  for (final path in projectPaths)
-                    _RecentProjectGroup(path: path),
-                  if (projectPaths.isEmpty)
-                    Padding(
+                itemCount: projectPaths.isEmpty ? 2 : projectPaths.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == 0) return const _RailSectionLabel('Projects');
+                  if (projectPaths.isEmpty) {
+                    return Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: Spacing.lg,
                         vertical: Spacing.sm,
@@ -105,8 +103,14 @@ class StudioLeftRail extends ConsumerWidget {
                           fontSize: FontSizes.xs,
                         ),
                       ),
-                    ),
-                ],
+                    );
+                  }
+                  final path = projectPaths[index - 1];
+                  return _RecentProjectGroup(
+                    key: ValueKey('studio-rail-project-$path'),
+                    path: path,
+                  );
+                },
               ),
             ),
             _RailAction(
@@ -201,20 +205,22 @@ class _RailSearchBox extends ConsumerWidget {
 class _RailTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final studio = ref.watch(studioShellProvider);
+    final navigation = ref.watch(
+      studioShellProvider.select(
+        (state) => (
+          canNavigateBack: state.canNavigateBack,
+          canNavigateForward: state.canNavigateForward,
+        ),
+      ),
+    );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(
         children: [
-          const _WindowDot(color: Color(0xFFFF5F57)),
-          const SizedBox(width: 8),
-          const _WindowDot(color: Color(0xFFFFBD2E)),
-          const SizedBox(width: 8),
-          const _WindowDot(color: Color(0xFF28C840)),
-          const SizedBox(width: 17),
+          const SizedBox(width: 72),
           StudioChromeIconButton(
             tooltip: 'Back',
-            onTap: studio.canNavigateBack
+            onTap: navigation.canNavigateBack
                 ? ref.read(studioShellProvider.notifier).navigateBack
                 : null,
             icon: Icons.arrow_back,
@@ -225,7 +231,7 @@ class _RailTopBar extends ConsumerWidget {
           const SizedBox(width: 4),
           StudioChromeIconButton(
             tooltip: 'Forward',
-            onTap: studio.canNavigateForward
+            onTap: navigation.canNavigateForward
                 ? ref.read(studioShellProvider.notifier).navigateForward
                 : null,
             icon: Icons.arrow_forward,
@@ -237,30 +243,13 @@ class _RailTopBar extends ConsumerWidget {
           StudioChromeIconButton(
             tooltip: 'Open project folder',
             onTap: () => unawaited(_chooseProjectRoot(ref)),
-            icon: Icons.arrow_downward,
-            active: true,
-            prominent: true,
-            width: 28,
-            height: 28,
+            icon: Icons.folder_open_outlined,
+            width: 26,
+            height: 24,
             iconSize: 14,
           ),
         ],
       ),
-    );
-  }
-}
-
-class _WindowDot extends StatelessWidget {
-  final Color color;
-
-  const _WindowDot({required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -563,31 +552,61 @@ class _RailSectionLabel extends ConsumerWidget {
   }
 }
 
-class _RecentProjectGroup extends ConsumerWidget {
+const _maxCollapsedRailConversations = 8;
+
+class _RecentProjectGroup extends ConsumerStatefulWidget {
   final String path;
 
-  const _RecentProjectGroup({required this.path});
+  const _RecentProjectGroup({super.key, required this.path});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_RecentProjectGroup> createState() =>
+      _RecentProjectGroupState();
+}
+
+class _RecentProjectGroupState extends ConsumerState<_RecentProjectGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = widget.path;
     final name = p.basename(path);
-    final rootPath = ref.watch(fileTreeProvider).rootPath;
+    final rootPath = ref.watch(
+      fileTreeProvider.select((state) => state.rootPath),
+    );
     final isSelectedProject = rootPath == path;
     final query = ref
         .watch(studioThreadSearchProvider)
         .query
         .trim()
         .toLowerCase();
-    final workspace = ref.watch(agentWorkspaceProvider);
-    final threadState = ref.watch(studioThreadProvider);
-    final history = ref.watch(studioProjectHistoryProvider).byPath[path];
-    final commands = ref.watch(commandRunProvider).values;
-    final tasks = isSelectedProject ? workspace.tasks : history?.tasks ?? [];
+    final history = isSelectedProject
+        ? null
+        : ref.watch(
+            studioProjectHistoryProvider.select((state) => state.byPath[path]),
+          );
+    final workspace = isSelectedProject
+        ? ref.watch(agentWorkspaceProvider)
+        : null;
+    final threadState = isSelectedProject
+        ? ref.watch(studioThreadProvider)
+        : null;
+    final runningCommandTaskKey = isSelectedProject
+        ? ref.watch(commandRunProvider.select(_runningCommandTaskKey))
+        : '';
+    final runningCommandTaskIds = runningCommandTaskKey.isEmpty
+        ? const <String>{}
+        : runningCommandTaskKey.split('\u001f').toSet();
+    final tasks = isSelectedProject
+        ? workspace?.tasks ?? []
+        : history?.tasks ?? [];
     final threads = isSelectedProject
-        ? threadState.threads
-        : history?.threads ?? [];
-    final selectedTaskId = ref.watch(studioShellProvider).selectedTaskId;
-    final selectedThreadId = threadState.selectedThreadId;
+        ? (threadState?.threads ?? []).where((thread) => !thread.archived)
+        : (history?.threads ?? []).where((thread) => !thread.archived);
+    final selectedTaskId = isSelectedProject
+        ? ref.watch(studioShellProvider.select((state) => state.selectedTaskId))
+        : null;
+    final selectedThreadId = threadState?.selectedThreadId;
     final threadTaskIds = threads
         .map((thread) => thread.taskId)
         .whereType<String>()
@@ -613,7 +632,7 @@ class _RecentProjectGroup extends ConsumerWidget {
               task,
               threads.where((thread) => thread.taskId == task.id).firstOrNull,
               isSelected: isSelectedProject && task.id == selectedTaskId,
-              commands: commands,
+              hasRunningCommand: runningCommandTaskIds.contains(task.id),
             ),
           ),
     ];
@@ -633,6 +652,15 @@ class _RecentProjectGroup extends ConsumerWidget {
             ),
           ),
     ];
+    final conversationEntries = [
+      for (final task in taskSummaries) (summary: task, isTask: true),
+      for (final thread in threadSummaries) (summary: thread, isTask: false),
+    ];
+    final displayedEntries = _visibleConversationEntries(
+      conversationEntries,
+      expanded: _expanded || query.isNotEmpty,
+    );
+    final hiddenCount = conversationEntries.length - displayedEntries.length;
     if (query.isNotEmpty &&
         !name.toLowerCase().contains(query) &&
         taskSummaries.isEmpty &&
@@ -645,22 +673,63 @@ class _RecentProjectGroup extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _ProjectRow(summary: projectSummary),
-          for (final task in taskSummaries)
+          for (final entry in displayedEntries)
             _ConversationRow(
-              summary: task,
-              onTap: () =>
-                  unawaited(_openTask(ref, projectPath: path, taskId: task.id)),
-            ),
-          for (final thread in threadSummaries)
-            _ConversationRow(
-              summary: thread,
+              summary: entry.summary,
+              onArchive: isSelectedProject && !entry.isTask
+                  ? () => ref
+                        .read(studioThreadProvider.notifier)
+                        .archiveThread(entry.summary.id)
+                  : null,
               onTap: () => unawaited(
-                _openThread(ref, projectPath: path, threadId: thread.id),
+                entry.isTask
+                    ? _openTask(
+                        ref,
+                        projectPath: path,
+                        taskId: entry.summary.id,
+                      )
+                    : _openThread(
+                        ref,
+                        projectPath: path,
+                        threadId: entry.summary.id,
+                      ),
               ),
+            ),
+          if (hiddenCount > 0)
+            _ShowMoreConversationsRow(
+              hiddenCount: hiddenCount,
+              onTap: () => setState(() => _expanded = true),
+            ),
+          if (_expanded &&
+              query.isEmpty &&
+              conversationEntries.length > _maxCollapsedRailConversations)
+            _ShowMoreConversationsRow(
+              label: 'Show fewer',
+              onTap: () => setState(() => _expanded = false),
             ),
         ],
       ),
     );
+  }
+
+  List<({StudioRailTaskSummary summary, bool isTask})>
+  _visibleConversationEntries(
+    List<({StudioRailTaskSummary summary, bool isTask})> entries, {
+    required bool expanded,
+  }) {
+    if (expanded || entries.length <= _maxCollapsedRailConversations) {
+      return entries;
+    }
+    final visible = entries.take(_maxCollapsedRailConversations).toList();
+    for (final entry in entries.skip(_maxCollapsedRailConversations)) {
+      if (entry.summary.selected &&
+          !visible.any(
+            (candidate) => candidate.summary.id == entry.summary.id,
+          )) {
+        visible.add(entry);
+      }
+    }
+    return visible;
   }
 
   Future<void> _openTask(
@@ -711,15 +780,61 @@ class _RecentProjectGroup extends ConsumerWidget {
   }
 }
 
+class _ShowMoreConversationsRow extends ConsumerWidget {
+  final int? hiddenCount;
+  final String? label;
+  final VoidCallback onTap;
+
+  const _ShowMoreConversationsRow({
+    this.hiddenCount,
+    this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final text = label ?? 'Show $hiddenCount more';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(31, 1, 10, 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.md),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textMuted.withValues(alpha: 0.82),
+              fontSize: FontSizes.xs,
+              height: 1.1,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 TaskDisplayState _displayStateForTask(
   AgentTask task,
   StudioThread? thread, {
   required bool isSelected,
-  required Iterable<CommandRun> commands,
+  required bool hasRunningCommand,
 }) {
   if (thread != null) {
     return TaskDisplayState.fromLifecycle(
       StudioTaskLifecycleState.fromThread(thread),
+    );
+  }
+  if (isSelected && hasRunningCommand) {
+    return const TaskDisplayState(
+      kind: TaskDisplayKind.runningCommand,
+      label: 'Running',
+      isActive: true,
     );
   }
   return TaskDisplayState.derive(
@@ -728,11 +843,21 @@ TaskDisplayState _displayStateForTask(
     isChatStreaming: false,
     hasAssistantResponse: false,
     hasPendingApproval: false,
-    commands: isSelected
-        ? commands.where((command) => command.taskId == task.id)
-        : const [],
+    commands: const [],
     chatError: null,
   );
+}
+
+String _runningCommandTaskKey(Map<String, CommandRun> state) {
+  final ids =
+      state.values
+          .where((command) => command.status == CommandRunStatus.running)
+          .map((command) => command.taskId)
+          .whereType<String>()
+          .toSet()
+          .toList()
+        ..sort();
+  return ids.join('\u001f');
 }
 
 class _ProjectRow extends ConsumerWidget {
@@ -799,8 +924,13 @@ class _ProjectRow extends ConsumerWidget {
 class _ConversationRow extends ConsumerWidget {
   final StudioRailTaskSummary summary;
   final VoidCallback onTap;
+  final VoidCallback? onArchive;
 
-  const _ConversationRow({required this.summary, required this.onTap});
+  const _ConversationRow({
+    required this.summary,
+    required this.onTap,
+    this.onArchive,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -813,6 +943,16 @@ class _ConversationRow extends ConsumerWidget {
       selected: selected,
       leftIndent: Spacing.xxl,
       onTap: onTap,
+      hoverTrailing: onArchive == null
+          ? null
+          : StudioChromeIconButton(
+              icon: Icons.visibility_off_outlined,
+              tooltip: 'Hide from rail',
+              width: 22,
+              height: 22,
+              iconSize: 12,
+              onTap: onArchive,
+            ),
       trailing: showStatusIndicator
           ? _RailStatusIndicator(display: display)
           : ageLabel == null

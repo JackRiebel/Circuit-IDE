@@ -37,6 +37,7 @@ class StudioContextSummary {
   final String? rootPath;
   final String projectLabel;
   final int includedItemCount;
+  final int omittedCandidateCount;
   final int estimatedTokens;
   final List<String> selectedFiles;
   final bool includesGit;
@@ -49,6 +50,7 @@ class StudioContextSummary {
     this.rootPath,
     required this.projectLabel,
     this.includedItemCount = 0,
+    this.omittedCandidateCount = 0,
     this.estimatedTokens = 0,
     this.selectedFiles = const [],
     this.includesGit = false,
@@ -65,6 +67,8 @@ class StudioContextSummary {
     final parts = [
       if (rootPath != null) rootPath! else 'No project folder selected',
       '$includedItemCount items',
+      if (omittedCandidateCount > 0)
+        '$omittedCandidateCount omitted high-score',
       '~$estimatedTokens tokens',
       if (selectedFiles.isNotEmpty) '${selectedFiles.length} files',
       if (includesGit) 'git',
@@ -81,6 +85,7 @@ class StudioContextSummary {
       'rootPath': rootPath,
       'projectLabel': projectLabel,
       'includedItemCount': includedItemCount,
+      'omittedCandidateCount': omittedCandidateCount,
       'estimatedTokens': estimatedTokens,
       'selectedFiles': selectedFiles,
       'includesGit': includesGit,
@@ -99,6 +104,7 @@ class StudioContextSummary {
       rootPath: json['rootPath'] as String?,
       projectLabel: json['projectLabel'] as String? ?? 'Project',
       includedItemCount: json['includedItemCount'] as int? ?? 0,
+      omittedCandidateCount: json['omittedCandidateCount'] as int? ?? 0,
       estimatedTokens: json['estimatedTokens'] as int? ?? 0,
       selectedFiles:
           (json['selectedFiles'] as List<dynamic>?)?.cast<String>() ?? const [],
@@ -179,6 +185,7 @@ class StudioThread {
   final String streamingContent;
   final TokenUsage tokenUsage;
   final String? lastError;
+  final bool archived;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -197,6 +204,7 @@ class StudioThread {
     this.streamingContent = '',
     this.tokenUsage = const TokenUsage(),
     this.lastError,
+    this.archived = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -234,6 +242,7 @@ class StudioThread {
     String? streamingContent,
     TokenUsage? tokenUsage,
     Object? lastError = _sentinel,
+    bool? archived,
     DateTime? updatedAt,
   }) {
     return StudioThread(
@@ -257,6 +266,7 @@ class StudioThread {
       lastError: identical(lastError, _sentinel)
           ? this.lastError
           : lastError as String?,
+      archived: archived ?? this.archived,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -284,6 +294,7 @@ class StudioThread {
         'totalTokens': tokenUsage.totalTokens,
       },
       'lastError': lastError,
+      'archived': archived,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -331,6 +342,7 @@ class StudioThread {
           totalTokens: usage?['totalTokens'] as int? ?? 0,
         ),
         lastError: json['lastError'] as String?,
+        archived: json['archived'] as bool? ?? false,
         createdAt:
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),
@@ -361,17 +373,17 @@ class StudioTaskLifecycleState {
     return switch (_effectiveStatus(thread)) {
       StudioThreadStatus.preflighting => const StudioTaskLifecycleState(
         status: StudioThreadStatus.preflighting,
-        label: 'Checking',
+        label: 'Waiting',
         isActive: true,
       ),
       StudioThreadStatus.buildingContext => const StudioTaskLifecycleState(
         status: StudioThreadStatus.buildingContext,
-        label: 'Context',
+        label: 'Running',
         isActive: true,
       ),
       StudioThreadStatus.streaming => const StudioTaskLifecycleState(
         status: StudioThreadStatus.streaming,
-        label: 'Working',
+        label: 'Running',
         isActive: true,
       ),
       StudioThreadStatus.waitingForApproval => const StudioTaskLifecycleState(
@@ -387,13 +399,13 @@ class StudioTaskLifecycleState {
       ),
       StudioThreadStatus.reviewingPatch => const StudioTaskLifecycleState(
         status: StudioThreadStatus.reviewingPatch,
-        label: 'Review',
+        label: 'Needs review',
         isActive: true,
         needsAttention: true,
       ),
       StudioThreadStatus.continuationReady => const StudioTaskLifecycleState(
         status: StudioThreadStatus.continuationReady,
-        label: 'Continue',
+        label: 'Needs review',
         needsAttention: true,
       ),
       StudioThreadStatus.done => const StudioTaskLifecycleState(

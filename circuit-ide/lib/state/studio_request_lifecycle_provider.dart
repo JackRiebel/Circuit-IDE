@@ -435,12 +435,6 @@ class StudioRequestLifecycleController
     final entry = _entryFor(event);
     if (entry == null) return;
     final content = event.data['content'] as String? ?? '';
-    final thread = ref
-        .read(studioThreadProvider)
-        .threads
-        .where((candidate) => candidate.id == entry.threadId)
-        .firstOrNull;
-    final streamingContent = '${thread?.streamingContent ?? ''}$content';
     _touch(
       entry,
       StudioRequestLifecycleEventKind.streaming,
@@ -458,7 +452,6 @@ class StudioRequestLifecycleController
           requestId: entry.requestId,
           model: entry.model,
           contextSummary: entry.contextSummary,
-          streamingContent: streamingContent,
         );
   }
 

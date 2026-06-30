@@ -92,26 +92,29 @@ class ThemeTokens {
   Color get outlineSubtle => outlineSoft;
   Color get outlineStrong => borderLight.withValues(alpha: 0.78);
 
-  Color get studioCanvas => bgDark;
+  Color get studioCanvas =>
+      brightness == Brightness.dark ? const Color(0xFF111111) : bgDark;
   Color get studioRail => activityBarBg;
   Color get studioTopBar =>
-      brightness == Brightness.dark ? const Color(0xFF151514) : bgMain;
+      brightness == Brightness.dark ? const Color(0xFF141414) : bgMain;
   Color get studioPanel => surfacePanel;
   Color get studioDrawer =>
-      brightness == Brightness.dark ? const Color(0xFF242321) : surfacePanel;
-  Color get studioCard => surfacePopover.withValues(alpha: 0.54);
+      brightness == Brightness.dark ? const Color(0xFF202020) : surfacePanel;
+  Color get studioCard => brightness == Brightness.dark
+      ? const Color(0xFF1B1B1B)
+      : surfacePopover.withValues(alpha: 0.54);
   Color get studioComposer =>
-      brightness == Brightness.dark ? const Color(0xFF2B2A28) : inputBg;
+      brightness == Brightness.dark ? const Color(0xFF262626) : inputBg;
   Color get studioBubble =>
-      brightness == Brightness.dark ? const Color(0xFF2A2928) : userMsgBg;
+      brightness == Brightness.dark ? const Color(0xFF242424) : userMsgBg;
   Color get studioControl =>
-      brightness == Brightness.dark ? const Color(0xFF33312F) : surfacePanel;
+      brightness == Brightness.dark ? const Color(0xFF2C2C2C) : surfacePanel;
   Color get studioActivityRow =>
-      brightness == Brightness.dark ? const Color(0xFF1F1F1D) : surfacePanel;
+      brightness == Brightness.dark ? const Color(0xFF191919) : surfacePanel;
   Color get studioRailSelected =>
-      brightness == Brightness.dark ? const Color(0xFF34322F) : surfacePressed;
+      brightness == Brightness.dark ? const Color(0xFF333333) : surfacePressed;
   Color get studioTaskSelected =>
-      brightness == Brightness.dark ? const Color(0xFF273330) : surfacePressed;
+      brightness == Brightness.dark ? const Color(0xFF2A2A2A) : surfacePressed;
   Color get studioDivider => outlineSoft;
   Color get studioHover => surfaceHover;
 
@@ -182,55 +185,55 @@ class ThemeTokens {
     name: 'dark',
     displayName: 'Dark',
     brightness: Brightness.dark,
-    bgDark: Color(0xFF121211),
-    bgMain: Color(0xFF181716),
-    bgLight: Color(0xFF22211F),
-    bgLighter: Color(0xFF2D2B28),
-    border: Color(0xFF302E2B),
-    borderLight: Color(0xFF403D39),
-    textPrimary: Color(0xFFEDE9E2),
-    textSecondary: Color(0xFFC4BEB5),
-    textMuted: Color(0xFF918B83),
-    textDisabled: Color(0xFF5E5953),
+    bgDark: Color(0xFF111111),
+    bgMain: Color(0xFF151515),
+    bgLight: Color(0xFF202020),
+    bgLighter: Color(0xFF2A2A2A),
+    border: Color(0xFF2D2D2D),
+    borderLight: Color(0xFF3A3A3A),
+    textPrimary: Color(0xFFECECEC),
+    textSecondary: Color(0xFFC9C9C9),
+    textMuted: Color(0xFF8E8E8E),
+    textDisabled: Color(0xFF5C5C5C),
     accent: Color(0xFF7EA7A0),
     accentHover: Color(0xFF95BBB4),
     success: Color(0xFF7FB58B),
     warning: Color(0xFFD4B06A),
     error: Color(0xFFE27D73),
     info: Color(0xFF8FAFCE),
-    activityBarBg: Color(0xFF1D1C1A),
-    activityBarIcon: Color(0xFF8C857B),
-    activityBarIconActive: Color(0xFFE7E2DA),
+    activityBarBg: Color(0xFF1C1C1C),
+    activityBarIcon: Color(0xFF8E8E8E),
+    activityBarIconActive: Color(0xFFE6E6E6),
     activityBarBadge: Color(0xFF7EA7A0),
-    editorBg: Color(0xFF171717),
-    editorLineHighlight: Color(0xFF232322),
+    editorBg: Color(0xFF131313),
+    editorLineHighlight: Color(0xFF222222),
     editorSelection: Color(0xFF354A4A),
-    editorCursor: Color(0xFFD8D1C7),
-    editorLineNumber: Color(0xFF625D56),
-    editorLineNumberActive: Color(0xFFC1B9AE),
-    userMsgBg: Color(0xFF2A2A28),
-    agentMsgBg: Color(0xFF181817),
-    codeBlockBg: Color(0xFF151514),
-    codeBlockBorder: Color(0xFF3E3C39),
-    inputBg: Color(0xFF252421),
-    inputBorder: Color(0xFF3D3A36),
+    editorCursor: Color(0xFFDCDCDC),
+    editorLineNumber: Color(0xFF666666),
+    editorLineNumberActive: Color(0xFFC2C2C2),
+    userMsgBg: Color(0xFF242424),
+    agentMsgBg: Color(0xFF151515),
+    codeBlockBg: Color(0xFF111111),
+    codeBlockBorder: Color(0xFF343434),
+    inputBg: Color(0xFF242424),
+    inputBorder: Color(0xFF343434),
     inputFocusBorder: Color(0xFF7EA7A0),
     tabActive: Color(0xFF171717),
-    tabInactive: Color(0xFF242321),
-    tabHover: Color(0xFF302E2B),
+    tabInactive: Color(0xFF202020),
+    tabHover: Color(0xFF2B2B2B),
     tabIndicator: Color(0xFF7EA7A0),
-    statusBarBg: Color(0xFF272624),
-    statusBarText: Color(0xFFD8D1C7),
+    statusBarBg: Color(0xFF222222),
+    statusBarText: Color(0xFFDCDCDC),
     circuitColor: Color(0xFF9AC7C0),
-    terminalBg: Color(0xFF151514),
-    terminalText: Color(0xFFD8D1C7),
-    surfaceBase: Color(0xFF181716),
-    surfacePanel: Color(0xFF22211F),
-    surfaceInset: Color(0xFF141413),
-    surfacePopover: Color(0xFF2D2B28),
-    surfaceHover: Color(0x14E7E2DA),
+    terminalBg: Color(0xFF111111),
+    terminalText: Color(0xFFDCDCDC),
+    surfaceBase: Color(0xFF151515),
+    surfacePanel: Color(0xFF202020),
+    surfaceInset: Color(0xFF101010),
+    surfacePopover: Color(0xFF2A2A2A),
+    surfaceHover: Color(0x14E6E6E6),
     surfacePressed: Color(0x1F7EA7A0),
-    outlineSoft: Color(0x553E3C39),
+    outlineSoft: Color(0x553A3A3A),
     outlineFocus: Color(0x887EA7A0),
   );
 

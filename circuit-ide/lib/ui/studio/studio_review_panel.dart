@@ -393,6 +393,15 @@ class _ReviewActions extends ConsumerWidget {
                 : 'Ask for revision',
           ),
         ),
+        if (patch.applyStatus == PatchApplyStatus.conflict)
+          OutlinedButton.icon(
+            style: _secondaryActionStyle(tokens),
+            onPressed: isApplying
+                ? null
+                : () => _requestPatchRefresh(ref, patch),
+            icon: const Icon(Icons.refresh, size: 13),
+            label: const Text('Refresh patch'),
+          ),
         OutlinedButton.icon(
           style: _subtleActionStyle(tokens),
           onPressed: isApplying
@@ -417,6 +426,18 @@ class _ReviewActions extends ConsumerWidget {
   }
 }
 
+void _requestPatchRefresh(WidgetRef ref, ProposedPatchSet patch) {
+  final prompt = _refreshPrompt(patch);
+  ref
+      .read(patchProposalProvider.notifier)
+      .requestRevision(
+        PatchProposalRevisionRequest(patchSetId: patch.id, prompt: prompt),
+      );
+  ref.read(studioShellProvider.notifier)
+    ..setPromptMode(StudioPromptMode.code)
+    ..setComposerText(prompt);
+}
+
 void _requestPatchUpdate(WidgetRef ref, ProposedPatchSet patch) {
   final prompt = patch.applyStatus == PatchApplyStatus.conflict
       ? _rebasePrompt(patch)
@@ -437,6 +458,14 @@ String _rebasePrompt(ProposedPatchSet patch) {
       ? ''
       : ' Resolve: $conflict';
   return 'Refresh these proposed changes against the current files and preserve the accepted plan intent.$suffix';
+}
+
+String _refreshPrompt(ProposedPatchSet patch) {
+  final conflict = patch.conflictMessage?.trim();
+  final suffix = conflict == null || conflict.isEmpty
+      ? ''
+      : ' Resolve the current conflict: $conflict';
+  return 'Refresh this patch against the current file contents without expanding scope.$suffix';
 }
 
 ButtonStyle _primaryActionStyle(ThemeTokens tokens) {

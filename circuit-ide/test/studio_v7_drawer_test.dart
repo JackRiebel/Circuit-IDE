@@ -6,6 +6,7 @@ import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/git_models.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_right_drawer.dart';
+import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
@@ -16,6 +17,7 @@ import 'package:circuit_ide/state/git_provider.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/studio_code_edit_provider.dart';
 import 'package:circuit_ide/state/studio_right_drawer_provider.dart';
+import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:circuit_ide/state/studio_source_artifact_provider.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/ui/studio/studio_right_drawer.dart';
@@ -25,6 +27,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  Future<void> flushStudioThreadPersist(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 1000));
+  }
+
   test('detectLocalUrls finds local preview URLs and strips punctuation', () {
     final urls = detectLocalUrls(
       'Preview at http://127.0.0.1:4173. Also open http://localhost:3000/app), '
@@ -116,11 +122,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Progress'), findsWidgets);
+    expect(find.text('Artifacts'), findsOneWidget);
     expect(find.text('Code'), findsWidgets);
     expect(find.text('Diff'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
     expect(find.text('Terminal output'), findsOneWidget);
-    expect(find.text('Sources'), findsWidgets);
     expect(find.text('Context details'), findsOneWidget);
     expect(find.byTooltip('Browser preview'), findsNothing);
   });
@@ -137,6 +143,52 @@ void main() {
       expect(source, contains('StudioDrawerMode.sources'));
     },
   );
+
+  test('Studio source artifacts quarantine browser comments', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(
+          StudioSourceArtifact(
+            id: 'browser-comment',
+            kind: StudioSourceArtifactKind.browserComment,
+            title: 'Browser comment',
+            subtitle: 'http://localhost:3000',
+            value: 'note',
+            threadId: 'thread-1',
+            localUrl: 'http://localhost:3000',
+            createdAt: DateTime(2026),
+          ),
+        );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(
+          StudioSourceArtifact(
+            id: 'file-artifact',
+            kind: StudioSourceArtifactKind.file,
+            title: 'lib/main.dart',
+            subtitle: 'Context file',
+            value: 'lib/main.dart',
+            threadId: 'thread-1',
+            filePath: 'lib/main.dart',
+            createdAt: DateTime(2026),
+          ),
+        );
+
+    final artifacts = container
+        .read(studioSourceArtifactProvider)
+        .forThread('thread-1');
+    expect(
+      artifacts.map((artifact) => artifact.kind),
+      isNot(contains(StudioSourceArtifactKind.browserComment)),
+    );
+    expect(
+      artifacts.map((artifact) => artifact.kind),
+      contains(StudioSourceArtifactKind.file),
+    );
+  });
 
   testWidgets('Studio drawer typography and icons match compact chrome scale', (
     tester,
@@ -164,9 +216,9 @@ void main() {
     expect(find.byTooltip('Open drawer view'), findsNothing);
     expect(find.text('Status'), findsNothing);
     expect(find.byTooltip('Progress'), findsOneWidget);
+    expect(find.byTooltip('Artifacts'), findsOneWidget);
     expect(find.byTooltip('Context details'), findsOneWidget);
-    expect(find.byIcon(Icons.language), findsNWidgets(24));
-    expect(tester.widget<Icon>(find.byIcon(Icons.language).last).size, 11);
+    expect(find.byIcon(Icons.language), findsNothing);
 
     container
         .read(studioRightDrawerProvider.notifier)
@@ -259,6 +311,7 @@ void main() {
     container
         .read(studioThreadProvider.notifier)
         .upsertTurn(thread.id, turn, select: true);
+    await flushStudioThreadPersist(tester);
 
     final commandController = container.read(commandRunProvider.notifier);
     commandController.start(
@@ -361,6 +414,7 @@ void main() {
     container
         .read(studioThreadProvider.notifier)
         .upsertTurn(thread.id, turn, select: true);
+    await flushStudioThreadPersist(tester);
     expect(container.read(commandRunProvider), isEmpty);
 
     container
@@ -418,6 +472,9 @@ void main() {
   testWidgets('Studio Diff drawer opens historical patch by id', (
     tester,
   ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final patchController = container.read(patchProposalProvider.notifier);
@@ -430,6 +487,12 @@ void main() {
           before: 'old',
           after: 'new',
           unifiedDiff: '@@ -1 +1 @@\n-old\n+new',
+        ),
+        ProposedFileEdit(
+          path: 'lib/feature.dart',
+          type: ProposedFileEditType.create,
+          after: 'feature',
+          unifiedDiff: '@@ -0,0 +1 @@\n+feature',
         ),
       ],
     );
@@ -452,9 +515,347 @@ void main() {
       ),
     );
 
-    expect(find.text('lib/main.dart'), findsOneWidget);
+    expect(find.text('Prepared archived changes'), findsOneWidget);
+    expect(find.textContaining('2 files', findRichText: true), findsOneWidget);
+    expect(find.text('lib/main.dart'), findsWidgets);
     expect(find.textContaining('@@ -1 +1 @@'), findsOneWidget);
     expect(find.text('No changes'), findsNothing);
+
+    await tester.tap(find.text('lib/feature.dart').first);
+    await tester.pump();
+
+    final drawer = container.read(studioRightDrawerProvider);
+    expect(drawer.diffId, patch.id);
+    expect(drawer.patchFilePath, 'lib/feature.dart');
+    expect(find.textContaining('@@ -0,0 +1 @@'), findsOneWidget);
+  });
+
+  testWidgets('Studio Diff drawer defaults to selected thread patch history', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final threadController = container.read(studioThreadProvider.notifier);
+    final thread = threadController.createBlankThread(title: 'Patch owner');
+    final timestamp = DateTime(2026, 1, 2);
+    threadController.upsertTurn(
+      thread.id,
+      StudioTurn(
+        id: 'turn-owner',
+        threadId: thread.id,
+        requestId: 'request-owner',
+        userMessageId: 'message-owner',
+        prompt: 'Prepare changes',
+        model: 'gpt-5-nano',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.completed,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        completedAt: timestamp,
+      ),
+      select: true,
+    );
+    await flushStudioThreadPersist(tester);
+
+    final patchController = container.read(patchProposalProvider.notifier);
+    final threadPatch = patchController.propose(
+      title: 'Thread-owned prepared changes',
+      runId: 'request-owner',
+      edits: const [
+        ProposedFileEdit(
+          path: 'lib/thread_owned.dart',
+          type: ProposedFileEditType.create,
+          after: 'void threadOwned() {}\n',
+          unifiedDiff:
+              '--- /dev/null\n+++ lib/thread_owned.dart\n@@\n+void threadOwned() {}\n',
+        ),
+      ],
+    );
+    patchController.preserveProposal(
+      threadPatch.copyWith(
+        applyStatus: PatchApplyStatus.applied,
+        changedFiles: const ['lib/thread_owned.dart'],
+        diffSummary: 'Created lib/thread_owned.dart (+1 lines)',
+      ),
+    );
+    patchController.propose(
+      title: 'Unrelated active patch',
+      runId: 'request-other',
+      edits: const [
+        ProposedFileEdit(
+          path: 'lib/unrelated.dart',
+          type: ProposedFileEditType.create,
+          after: 'void unrelated() {}\n',
+          unifiedDiff:
+              '--- /dev/null\n+++ lib/unrelated.dart\n@@\n+void unrelated() {}\n',
+        ),
+      ],
+    );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.diff);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: Align(child: StudioRightDrawer())),
+        ),
+      ),
+    );
+
+    expect(find.text('Thread-owned prepared changes'), findsOneWidget);
+    expect(find.text('lib/thread_owned.dart'), findsWidgets);
+    expect(find.textContaining('void threadOwned'), findsOneWidget);
+    expect(find.text('Unrelated active patch'), findsNothing);
+    expect(find.text('No changes'), findsNothing);
+  });
+
+  testWidgets('Studio Diff drawer explains stale selected patch review', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile('missing-patch', 'lib/missing.dart');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(
+          home: Scaffold(body: Align(child: StudioRightDrawer())),
+        ),
+      ),
+    );
+
+    expect(find.text('Patch review unavailable'), findsOneWidget);
+    expect(find.textContaining('missing-patch'), findsOneWidget);
+    expect(find.text('No changes'), findsNothing);
+
+    await tester.tap(find.text('Show repo changes'));
+    await tester.pump();
+
+    final drawer = container.read(studioRightDrawerProvider);
+    expect(drawer.mode, StudioDrawerMode.diff);
+    expect(drawer.diffId, isNull);
+    expect(drawer.patchFilePath, isNull);
+  });
+
+  testWidgets('Studio Diff drawer virtualizes large patch bodies', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final largeDiff = [
+      '@@ -0,0 +600 @@',
+      for (var index = 0; index < 600; index++)
+        '+line-${index.toString().padLeft(3, '0')}',
+    ].join('\n');
+    final patch = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Prepared large changes',
+          edits: [
+            ProposedFileEdit(
+              path: 'lib/large.dart',
+              type: ProposedFileEditType.create,
+              after: List.generate(
+                600,
+                (index) => 'line-${index.toString().padLeft(3, '0')}',
+              ).join('\n'),
+              unifiedDiff: largeDiff,
+            ),
+          ],
+        );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile(patch.id, 'lib/large.dart');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+
+    expect(find.text('+line-000'), findsOneWidget);
+    expect(find.text('+line-599'), findsNothing);
+
+    await tester.dragUntilVisible(
+      find.text('+line-599'),
+      find.byKey(const ValueKey('studio-virtualized-text-lines')),
+      const Offset(0, -500),
+    );
+
+    expect(find.text('+line-599'), findsOneWidget);
+  });
+
+  testWidgets('Studio Diff drawer exposes patch review actions', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final patch = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Prepared drawer changes',
+          edits: const [
+            ProposedFileEdit(
+              path: 'README.md',
+              type: ProposedFileEditType.modify,
+              before: 'old',
+              after: 'new',
+              unifiedDiff: '@@ -1 +1 @@\n-old\n+new',
+            ),
+          ],
+        );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile(patch.id, 'README.md');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+
+    expect(find.text('Apply changes'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
+    expect(find.text('Ask for revision'), findsOneWidget);
+
+    await tester.tap(find.text('Ask for revision'));
+    await tester.pump();
+
+    final updatedPatch = container.read(patchProposalProvider).active!;
+    expect(updatedPatch.id, patch.id);
+    expect(updatedPatch.approvalStatus, PatchApprovalStatus.revisionRequested);
+    final shell = container.read(studioShellProvider);
+    expect(shell.promptMode, StudioPromptMode.code);
+    expect(shell.composerText, 'Revise these proposed changes. Change: ');
+  });
+
+  testWidgets('Studio Diff drawer builds readable diffs from before after text', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final patch = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Prepared content-only changes',
+          edits: const [
+            ProposedFileEdit(
+              path: 'lib/content_only.dart',
+              type: ProposedFileEditType.modify,
+              before: 'class Example {\n  int value = 1;\n}\n',
+              after:
+                  'class Example {\n  int value = 2;\n  String label = "ready";\n}\n',
+            ),
+          ],
+        );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile(patch.id, 'lib/content_only.dart');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+
+    expect(find.text('Prepared content-only changes'), findsOneWidget);
+    expect(find.textContaining('+2 -1', findRichText: true), findsOneWidget);
+    expect(find.text('@@ -1,3 +1,4 @@'), findsOneWidget);
+    expect(find.text(' class Example {'), findsOneWidget);
+    expect(find.text('-  int value = 1;'), findsOneWidget);
+    expect(find.text('+  int value = 2;'), findsOneWidget);
+    expect(find.text('+  String label = "ready";'), findsOneWidget);
+    expect(find.text('- class Example {\\n  int value = 1;\\n}'), findsNothing);
+  });
+
+  testWidgets('Studio Diff drawer refreshes conflicted patch in place', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync('studio_drawer_refresh_');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    File('${root.path}/README.md').writeAsStringSync('changed on disk');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.runAsync(
+      () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    final patch = container
+        .read(patchProposalProvider.notifier)
+        .propose(
+          title: 'Conflicted drawer changes',
+          edits: const [
+            ProposedFileEdit(
+              path: 'README.md',
+              type: ProposedFileEditType.modify,
+              before: 'old',
+              after: 'new',
+              unifiedDiff: '@@ -1 +1 @@\n-old\n+new',
+            ),
+          ],
+        );
+    final result = await tester.runAsync(
+      () => container.read(patchProposalProvider.notifier).apply(patch.id),
+    );
+    expect(result?.status, PatchApplyStatus.conflict);
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openPatchFile(patch.id, 'README.md');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+
+    expect(find.text('Refresh patch'), findsOneWidget);
+    expect(find.text('Ask Circuit to rebase'), findsOneWidget);
+
+    await tester.tap(find.text('Refresh patch'));
+    await tester.pump();
+
+    final refreshedPatch = container.read(patchProposalProvider).active!;
+    expect(refreshedPatch.id, patch.id);
+    expect(
+      refreshedPatch.approvalStatus,
+      PatchApprovalStatus.revisionRequested,
+    );
+    final shell = container.read(studioShellProvider);
+    expect(shell.promptMode, StudioPromptMode.code);
+    expect(
+      shell.composerText,
+      contains('Refresh this patch against the current file contents'),
+    );
+    expect(shell.composerText, isNot(contains('accepted plan intent')));
   });
 
   testWidgets('Studio code drawer is read-only', (tester) async {
@@ -504,7 +905,7 @@ void main() {
     expect(copyDecoration, isA<BoxDecoration>());
     expect(
       (copyDecoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(7),
+      BorderRadius.circular(6),
     );
     expect(find.text('Edit'), findsNothing);
     expect(find.text('Save'), findsNothing);
@@ -723,7 +1124,7 @@ void main() {
           threadId: owningThread.id,
           title: 'Ran command',
           detail:
-              'Command: npm test\nExit code: 0\nrestored source output\nhttp://localhost:5173\n',
+              'Command: npm test\nExit code: 0\nrestored source output\nhttp://localhost:5173\nFull log: /tmp/circuit-command.log\n',
           timestamp: timestamp,
         ),
       ],
@@ -748,6 +1149,17 @@ void main() {
           .single
           .value,
       'restored source output\nhttp://localhost:5173',
+    );
+    expect(
+      owningArtifacts
+          .where(
+            (artifact) =>
+                artifact.commandRunId == 'cmd-restored-source' &&
+                artifact.kind == StudioSourceArtifactKind.command,
+          )
+          .single
+          .filePath,
+      '/tmp/circuit-command.log',
     );
     expect(
       owningArtifacts
@@ -840,6 +1252,7 @@ void main() {
       container
           .read(studioThreadProvider.notifier)
           .upsertTurn(thread.id, turn, select: true);
+      await flushStudioThreadPersist(tester);
       container.read(studioRightDrawerProvider.notifier).openContext();
 
       expect(container.read(contextPackProvider), isNull);
@@ -974,6 +1387,7 @@ void main() {
       container
           .read(studioThreadProvider.notifier)
           .upsertTurn(thread.id, turn, select: true);
+      await flushStudioThreadPersist(tester);
       container.read(studioRightDrawerProvider.notifier).openContext();
 
       await tester.pumpWidget(
@@ -1129,6 +1543,7 @@ void main() {
     container
         .read(studioThreadProvider.notifier)
         .upsertTurn(thread.id, turn, select: true);
+    await flushStudioThreadPersist(tester);
     container.read(studioRightDrawerProvider.notifier).openContext();
 
     await tester.pumpWidget(
@@ -1215,6 +1630,7 @@ void main() {
     container
         .read(studioThreadProvider.notifier)
         .upsertTurn(thread.id, turn, select: true);
+    await flushStudioThreadPersist(tester);
     container.read(studioRightDrawerProvider.notifier).openContext();
 
     await tester.pumpWidget(
@@ -1302,7 +1718,7 @@ void main() {
       expect(closeDecoration, isA<BoxDecoration>());
       expect(
         (closeDecoration! as BoxDecoration).borderRadius,
-        BorderRadius.circular(7),
+        BorderRadius.circular(6),
       );
 
       await tester.tap(removeButton.first);

@@ -22,7 +22,7 @@ class StudioShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final studio = ref.watch(studioShellProvider);
+    final mode = ref.watch(studioShellProvider.select((state) => state.mode));
 
     return Row(
       children: [
@@ -31,12 +31,9 @@ class StudioShell extends ConsumerWidget {
           child: Container(
             decoration: BoxDecoration(
               color: tokens.studioCanvas,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14),
-              ),
               border: Border(
                 left: BorderSide(
-                  color: tokens.studioDivider.withValues(alpha: 0.48),
+                  color: tokens.studioDivider.withValues(alpha: 0.34),
                 ),
               ),
             ),
@@ -44,7 +41,7 @@ class StudioShell extends ConsumerWidget {
             child: Column(
               children: [
                 _StudioTopBar(),
-                Expanded(child: _StudioBody(mode: studio.mode)),
+                Expanded(child: _StudioBody(mode: mode)),
               ],
             ),
           ),
@@ -75,26 +72,37 @@ class _StudioTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final studio = ref.watch(studioShellProvider);
-    final threadState = ref.watch(studioThreadProvider);
-    final thread = threadState.threadForTaskView(studio.selectedTaskId);
-    final title = switch (studio.mode) {
-      StudioMode.home => '',
-      StudioMode.project => '',
-      StudioMode.task => thread?.title ?? 'Circuit task',
-      StudioMode.review => 'Review changes',
-      StudioMode.settings => 'Settings',
-    };
+    final studio = ref.watch(
+      studioShellProvider.select(
+        (state) => (
+          mode: state.mode,
+          selectedTaskId: state.selectedTaskId,
+          rightProgressPanelVisible: state.rightProgressPanelVisible,
+        ),
+      ),
+    );
+    final title = ref.watch(
+      studioThreadProvider.select((threadState) {
+        final thread = threadState.threadForTaskView(studio.selectedTaskId);
+        return switch (studio.mode) {
+          StudioMode.home => '',
+          StudioMode.project => '',
+          StudioMode.task => thread?.title ?? 'Circuit task',
+          StudioMode.review => 'Review changes',
+          StudioMode.settings => 'Settings',
+        };
+      }),
+    );
     final showThreadMarker = studio.mode == StudioMode.task;
 
     return Container(
-      height: 40,
+      height: 43,
       padding: const EdgeInsets.fromLTRB(14, 0, 7, 0),
       decoration: BoxDecoration(
         color: tokens.studioTopBar,
         border: Border(
           bottom: BorderSide(
-            color: tokens.studioDivider.withValues(alpha: 0.42),
+            color: tokens.studioDivider.withValues(alpha: 0.36),
           ),
         ),
       ),
@@ -119,25 +127,6 @@ class _StudioTopBar extends ConsumerWidget {
           ),
           const SizedBox(width: 3),
           StudioChromeIconButton(
-            tooltip: 'Studio settings',
-            onTap: () => ref.read(studioShellProvider.notifier).openSettings(),
-            icon: Icons.info_outline,
-            width: 25,
-            height: 22,
-            iconSize: 13,
-          ),
-          const SizedBox(width: 3),
-          StudioChromeIconButton(
-            tooltip: 'Open review',
-            onTap: () => ref.read(studioShellProvider.notifier).openReview(),
-            icon: Icons.rate_review_outlined,
-            active: studio.mode == StudioMode.review,
-            width: 25,
-            height: 22,
-            iconSize: 13,
-          ),
-          const SizedBox(width: 3),
-          StudioChromeIconButton(
             tooltip: studio.rightProgressPanelVisible
                 ? 'Hide Progress panel'
                 : 'Show Progress panel',
@@ -146,7 +135,7 @@ class _StudioTopBar extends ConsumerWidget {
                 .toggleRightProgressPanel(),
             icon: Icons.view_sidebar_outlined,
             active: studio.rightProgressPanelVisible,
-            width: 26,
+            width: 25,
             height: 22,
             iconSize: 13,
           ),
@@ -262,13 +251,13 @@ class _TopBarOpenInMenu extends ConsumerWidget {
         ),
       ],
       child: Container(
-        height: 28,
+        height: 26,
         padding: const EdgeInsets.only(left: 8, right: 6),
         decoration: BoxDecoration(
-          color: tokens.studioControl.withValues(alpha: 0.38),
-          borderRadius: BorderRadius.circular(8),
+          color: tokens.studioControl.withValues(alpha: 0.32),
+          borderRadius: BorderRadius.circular(7),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.46),
+            color: tokens.studioDivider.withValues(alpha: 0.36),
           ),
         ),
         child: Row(
@@ -284,7 +273,7 @@ class _TopBarOpenInMenu extends ConsumerWidget {
               'Open in',
               style: TextStyle(
                 color: tokens.textSecondary,
-                fontSize: FontSizes.sm,
+                fontSize: FontSizes.xs,
                 height: 1,
                 fontWeight: FontWeight.w600,
               ),
@@ -387,7 +376,9 @@ class _TopBarOverflowMenu extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final studio = ref.watch(studioShellProvider);
+    final rightProgressPanelVisible = ref.watch(
+      studioShellProvider.select((state) => state.rightProgressPanelVisible),
+    );
     return PopupMenuButton<_TopBarOverflowAction>(
       tooltip: 'Thread options',
       color: tokens.studioPanel,
@@ -427,7 +418,7 @@ class _TopBarOverflowMenu extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6),
           child: _OverflowMenuRow(
             icon: Icons.view_sidebar_outlined,
-            label: studio.rightProgressPanelVisible
+            label: rightProgressPanelVisible
                 ? 'Hide Progress panel'
                 : 'Show Progress panel',
           ),

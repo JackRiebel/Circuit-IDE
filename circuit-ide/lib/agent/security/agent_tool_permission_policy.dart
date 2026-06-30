@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:path/path.dart' as p;
 
 import '../../models/agent_tool_permission.dart';
@@ -83,7 +85,7 @@ class AgentToolPermissionPolicy {
       final granted = _grantDecision(
         toolCall,
         'Network tool approved for this turn (${_networkDescription(accessKind, domain)}).',
-        _networkGrantKey(name, accessKind, domain),
+        _networkGrantKey(name, accessKind, domain, toolCall: toolCall),
       );
       if (granted != null) return granted;
       return ToolPermissionDecision(
@@ -139,6 +141,8 @@ class AgentToolPermissionPolicy {
     if (name == 'apply_patch_set') return _writeDecision(toolCall);
     if (name == 'run_command') return _commandDecision(toolCall);
     if (_gitMutationTools.contains(name)) {
+      final gitPathDecision = _gitMutationArgumentDecision(toolCall);
+      if (gitPathDecision != null) return gitPathDecision;
       final gitAvailability = _gitMutationAvailabilityDecision();
       if (gitAvailability != null) return gitAvailability;
       final granted = _grantDecision(
@@ -441,6 +445,17 @@ class AgentToolPermissionPolicy {
         isReadOnly: true,
       );
     }
+    if (action != 'create' && action != 'switch' && action != 'delete') {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.gitMutationRequiresReview,
+        message: 'Unknown branch action is not available.',
+      );
+    }
+    final branchNameDecision = _gitBranchNameDecision(
+      toolCall.arguments['name'] as String?,
+    );
+    if (branchNameDecision != null) return branchNameDecision;
     final gitAvailability = _gitMutationAvailabilityDecision();
     if (gitAvailability != null) return gitAvailability;
     final granted = _grantDecision(
@@ -456,6 +471,43 @@ class AgentToolPermissionPolicy {
     );
   }
 
+  ToolPermissionDecision? _gitBranchNameDecision(String? rawName) {
+    final name = rawName?.trim() ?? '';
+    if (name.isEmpty) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.gitMutationRequiresReview,
+        message: 'Branch mutation requires a branch name.',
+      );
+    }
+    if (!_isSafeGitBranchName(name)) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.gitMutationRequiresReview,
+        message:
+            'Branch names must be plain safe Git refs, not options, revisions, path traversal, or pathspec-like values.',
+      );
+    }
+    return null;
+  }
+
+  bool _isSafeGitBranchName(String name) {
+    if (name.startsWith('-')) return false;
+    if (name.startsWith('/') || name.endsWith('/')) return false;
+    if (name.contains('..') || name.contains('@{')) return false;
+    if (name == '@') return false;
+    if (name.endsWith('.lock') || name.endsWith('.')) return false;
+    if (name.contains('//')) return false;
+    if (RegExp(r'''[\s\\~^:?*\[\]\x00-\x1f\x7f]''').hasMatch(name)) {
+      return false;
+    }
+    final parts = name.split('/');
+    if (parts.any((part) => part.isEmpty || part == '.' || part == '..')) {
+      return false;
+    }
+    return true;
+  }
+
   ToolPermissionDecision? _gitMutationAvailabilityDecision() {
     if (request.intent != TurnIntent.verify ||
         request.phase != ToolPermissionPhase.verify) {
@@ -463,6 +515,46 @@ class AgentToolPermissionPolicy {
         verdict: ToolPermissionVerdict.deny,
         reason: ToolPermissionReason.gitMutationRequiresReview,
         message: 'Git mutation is only available from a reviewed Verify turn.',
+      );
+    }
+    return null;
+  }
+
+  ToolPermissionDecision? _gitMutationArgumentDecision(ToolCallInfo toolCall) {
+    if (toolCall.name != 'git_commit') return null;
+    final files = toolCall.arguments['files'];
+    if (files == null) return null;
+    if (files is! List) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.pathOutsideWorkspace,
+        message: 'Git commit file list must contain plain relative paths.',
+      );
+    }
+    for (final entry in files) {
+      if (entry is! String || entry.trim().isEmpty) {
+        return const ToolPermissionDecision(
+          verdict: ToolPermissionVerdict.deny,
+          reason: ToolPermissionReason.pathOutsideWorkspace,
+          message: 'Git commit file list contains an invalid path.',
+        );
+      }
+      final pathspecDecision = _gitPathspecDecision(entry);
+      if (pathspecDecision != null) return pathspecDecision;
+      final pathDecision = _pathDecisionForRawPath(entry);
+      if (pathDecision != null) return pathDecision;
+    }
+    return null;
+  }
+
+  ToolPermissionDecision? _gitPathspecDecision(String rawPath) {
+    final path = rawPath.trim();
+    if (path.startsWith('-') || path.startsWith(':(')) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.pathOutsideWorkspace,
+        message:
+            'Git commit file entries must be plain workspace-relative paths, not options or pathspec magic.',
       );
     }
     return null;
@@ -531,38 +623,7 @@ class AgentToolPermissionPolicy {
   }
 
   bool _looksSecret(String rawPath) {
-    final normalized = rawPath.toLowerCase();
-    return normalized == '.env' ||
-        normalized.startsWith('.env.') ||
-        normalized.contains('/.env') ||
-        normalized.contains('secret') ||
-        normalized.contains('credentials') ||
-        normalized == '.npmrc' ||
-        normalized.endsWith('/.npmrc') ||
-        normalized == '.netrc' ||
-        normalized.endsWith('/.netrc') ||
-        normalized == 'id_rsa' ||
-        normalized.endsWith('/id_rsa') ||
-        normalized == 'id_ed25519' ||
-        normalized.endsWith('/id_ed25519') ||
-        normalized == '.ssh' ||
-        normalized.startsWith('.ssh/') ||
-        normalized.contains('/.ssh/') ||
-        normalized == '.aws' ||
-        normalized.startsWith('.aws/') ||
-        normalized.contains('/.aws/') ||
-        normalized == '.azure' ||
-        normalized.startsWith('.azure/') ||
-        normalized.contains('/.azure/') ||
-        normalized == '.kube/config' ||
-        normalized.endsWith('/.kube/config') ||
-        normalized == '.docker/config.json' ||
-        normalized.endsWith('/.docker/config.json') ||
-        normalized == '.config/gh/hosts.yml' ||
-        normalized.endsWith('/.config/gh/hosts.yml') ||
-        normalized == '.config/gcloud' ||
-        normalized.startsWith('.config/gcloud/') ||
-        normalized.contains('/.config/gcloud/');
+    return CommandSanitizer.looksSensitivePath(rawPath);
   }
 
   McpToolRisk _mcpRiskFromToolName(String toolName) {
@@ -865,6 +926,7 @@ class AgentToolPermissionPolicy {
         name,
         _networkAccessKindFromDomain(domain),
         domain,
+        toolCall: toolCall,
       );
     }
     if (name == 'git_branch') {
@@ -914,20 +976,60 @@ class AgentToolPermissionPolicy {
   String _networkGrantKey(
     String toolName,
     NetworkAccessKind accessKind,
-    String? domain,
-  ) {
+    String? domain, {
+    ToolCallInfo? toolCall,
+  }) {
     final normalizedDomain = domain?.trim().toLowerCase();
+    final fingerprint = normalizedDomain == null || normalizedDomain.isEmpty
+        ? _toolArgumentsFingerprint(toolCall)
+        : null;
     return [
       'network',
       toolName.toLowerCase(),
       accessKind.name,
       if (normalizedDomain != null && normalizedDomain.isNotEmpty)
         normalizedDomain,
+      ?fingerprint,
     ].join(':');
   }
 
   String _mcpGrantKey(String toolName, McpToolRisk risk) =>
       'mcp:${risk.name}:${toolName.toLowerCase()}';
+
+  String? _toolArgumentsFingerprint(ToolCallInfo? toolCall) {
+    if (toolCall == null) return null;
+    return _commandFingerprint(_stableJson(toolCall.arguments));
+  }
+
+  String _stableJson(Object? value) {
+    if (value is Map) {
+      final normalized = <String, Object?>{};
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      for (final key in keys) {
+        normalized[key] = _stableJsonValue(value[key]);
+      }
+      return jsonEncode(normalized);
+    }
+    return jsonEncode(_stableJsonValue(value));
+  }
+
+  Object? _stableJsonValue(Object? value) {
+    if (value is Map) {
+      final normalized = <String, Object?>{};
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      for (final key in keys) {
+        normalized[key] = _stableJsonValue(value[key]);
+      }
+      return normalized;
+    }
+    if (value is Iterable) {
+      return value.map(_stableJsonValue).toList();
+    }
+    if (value is num || value is bool || value is String || value == null) {
+      return value;
+    }
+    return value.toString();
+  }
 
   String? _commandFingerprint(String? command) {
     final normalized = command

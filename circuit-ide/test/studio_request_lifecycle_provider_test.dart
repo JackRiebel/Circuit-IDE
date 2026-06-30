@@ -140,7 +140,7 @@ void main() {
     );
   });
 
-  test('streaming chunks update the registered Studio thread live', () {
+  test('streaming chunks update the registered Studio turn live', () async {
     final container = _lifecycleContainer();
     addTearDown(container.dispose);
 
@@ -171,11 +171,12 @@ void main() {
       'requestId': 'req-stream',
       'content': ' world',
     });
+    await Future<void>.delayed(const Duration(milliseconds: 120));
 
     final updated = container.read(studioThreadProvider).selectedThread!;
     expect(updated.status, StudioThreadStatus.streaming);
     expect(updated.phase, StudioSendPhase.streaming);
-    expect(updated.streamingContent, 'Hello world');
+    expect(updated.streamingContent, isEmpty);
     expect(updated.turns.single.assistantDraft, 'Hello world');
   });
 

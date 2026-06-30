@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:markdown_widget/markdown_widget.dart';
+import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
@@ -11,15 +14,18 @@ import '../../models/accepted_plan_context.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_right_drawer.dart';
 import '../../models/studio_shell.dart';
+import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../models/turn_intent.dart';
+import '../../models/generated_artifact.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/agent_turn_runtime_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
+import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/theme_tokens.dart';
@@ -37,18 +43,28 @@ class StudioTaskView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final studio = ref.watch(studioShellProvider);
+    final shell = ref.watch(
+      studioShellProvider.select(
+        (state) => (
+          selectedTaskId: state.selectedTaskId,
+          rightProgressPanelVisible: state.rightProgressPanelVisible,
+        ),
+      ),
+    );
     final workspace = ref.watch(agentWorkspaceProvider);
-    final task = studio.selectedTaskId == null
+    final task = shell.selectedTaskId == null
         ? null
         : workspace.tasks
-              .where((candidate) => candidate.id == studio.selectedTaskId)
+              .where((candidate) => candidate.id == shell.selectedTaskId)
               .firstOrNull;
 
     return Row(
       children: [
-        Expanded(child: _TaskTranscript(task: task)),
-        if (studio.rightProgressPanelVisible) StudioRightDrawer(task: task),
+        Expanded(
+          child: RepaintBoundary(child: _TaskTranscript(task: task)),
+        ),
+        if (shell.rightProgressPanelVisible)
+          RepaintBoundary(child: StudioRightDrawer(task: task)),
       ],
     );
   }
@@ -61,46 +77,49 @@ class _TaskTranscript extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final threadState = ref.watch(studioThreadProvider);
-    final thread = threadState.threadForTaskView(task?.id);
-    final patchState = ref.watch(patchProposalProvider);
-    final effectiveTaskId = task?.id ?? thread?.taskId;
-    final patches = _visiblePatchesForTask(patchState, effectiveTaskId);
-    final title = thread?.title ?? task?.goal ?? 'New Circuit task';
-    final lifecycle = StudioTaskLifecycleState.fromThread(thread);
-    final displayState = TaskDisplayState.fromLifecycle(lifecycle);
-    final turns = thread?.turns ?? const <StudioTurn>[];
-    final turnWidgets = _buildTurnWidgets(
-      context,
-      ref,
-      turns,
-      patches,
-      effectiveTaskId,
+    final transcriptIndex = ref.watch(
+      studioThreadProvider.select(
+        (state) => _TaskTranscriptIndex.fromState(state, task),
+      ),
     );
     return Column(
       children: [
         Expanded(
-          child: SingleChildScrollView(
+          child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(40, 24, 40, 18),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 744),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _TranscriptStatusHeader(
-                      label: _statusLabel(thread, displayState),
-                      active: displayState.isActive,
-                    ),
-                    const SizedBox(height: Spacing.lg),
-                    if (turnWidgets.isEmpty)
-                      _EmptyThreadState(title: title)
-                    else
-                      ...turnWidgets,
-                  ],
+            itemCount: transcriptIndex.turnIds.isEmpty
+                ? 2
+                : transcriptIndex.turnIds.length + 1,
+            itemBuilder: (context, itemIndex) {
+              if (itemIndex == 0) {
+                return _TranscriptItemFrame(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _TranscriptStatusHeader(
+                        label: transcriptIndex.statusLabel,
+                        active: transcriptIndex.statusActive,
+                      ),
+                      const SizedBox(height: Spacing.lg),
+                    ],
+                  ),
+                );
+              }
+              if (transcriptIndex.turnIds.isEmpty) {
+                return _TranscriptItemFrame(
+                  child: _EmptyThreadState(title: transcriptIndex.title),
+                );
+              }
+              final turnIndex = itemIndex - 1;
+              return _TranscriptItemFrame(
+                child: _TurnTranscriptItem(
+                  turnId: transcriptIndex.turnIds[turnIndex],
+                  taskId: transcriptIndex.effectiveTaskId,
+                  isLatestTurn: turnIndex == transcriptIndex.turnIds.length - 1,
+                  builder: _buildTurnWidget,
                 ),
-              ),
-            ),
+              );
+            },
           ),
         ),
         Padding(
@@ -108,17 +127,19 @@ class _TaskTranscript extends ConsumerWidget {
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 744),
-              child: StudioPromptComposer(
-                compact: true,
-                taskId: effectiveTaskId,
-                hintText: 'Ask for follow-up changes',
-                submitTooltip: 'Send follow-up',
-                onSubmit: (text) => unawaited(
-                  sendStudioMessage(
-                    ref,
-                    text,
-                    taskId: effectiveTaskId,
-                    finishTask: effectiveTaskId != null,
+              child: RepaintBoundary(
+                child: StudioPromptComposer(
+                  compact: true,
+                  taskId: transcriptIndex.effectiveTaskId,
+                  hintText: 'Ask for follow-up changes',
+                  submitTooltip: 'Send follow-up',
+                  onSubmit: (text) => unawaited(
+                    sendStudioMessage(
+                      ref,
+                      text,
+                      taskId: transcriptIndex.effectiveTaskId,
+                      finishTask: transcriptIndex.effectiveTaskId != null,
+                    ),
                   ),
                 ),
               ),
@@ -129,203 +150,196 @@ class _TaskTranscript extends ConsumerWidget {
     );
   }
 
-  String _elapsed(DateTime start) {
-    final delta = DateTime.now().difference(start);
-    if (delta.inMinutes < 1) return '${delta.inSeconds}s';
-    return '${delta.inMinutes}m ${delta.inSeconds.remainder(60)}s';
-  }
-
-  String _statusLabel(StudioThread? thread, TaskDisplayState displayState) {
-    if (!displayState.isActive) {
-      final workedFor = _workedDuration(thread);
-      if (workedFor != null && displayState.kind == TaskDisplayKind.done) {
-        return 'Worked for $workedFor';
-      }
-      return displayState.label;
-    }
-    final startedAt = _activeTurnStartedAt(thread);
-    final elapsed = startedAt == null ? '' : ' for ${_elapsed(startedAt)}';
-    return '${displayState.label}$elapsed';
-  }
-
-  String? _workedDuration(StudioThread? thread) {
-    if (thread == null || thread.turns.isEmpty) return null;
-    final completedTurns = thread.turns.where(
-      (turn) =>
-          turn.completedAt != null &&
-          !turn.completedAt!.isBefore(turn.createdAt),
-    );
-    if (completedTurns.isEmpty) return null;
-    final latest = completedTurns.reduce(
-      (a, b) => a.completedAt!.isAfter(b.completedAt!) ? a : b,
-    );
-    return _formatDuration(latest.completedAt!.difference(latest.createdAt));
-  }
-
-  DateTime? _activeTurnStartedAt(StudioThread? thread) {
-    if (thread == null || thread.turns.isEmpty) return null;
-    final activeTurns = thread.turns.where(
-      (turn) => switch (turn.status) {
-        StudioTurnStatus.queued ||
-        StudioTurnStatus.buildingContext ||
-        StudioTurnStatus.sent ||
-        StudioTurnStatus.waitingForModel ||
-        StudioTurnStatus.streaming ||
-        StudioTurnStatus.toolRunning ||
-        StudioTurnStatus.waitingForApproval => true,
-        StudioTurnStatus.completed ||
-        StudioTurnStatus.failed ||
-        StudioTurnStatus.cancelled => false,
-      },
-    );
-    final candidates = activeTurns.isEmpty ? thread.turns : activeTurns;
-    return candidates
-        .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b)
-        .createdAt;
-  }
-
-  String _formatDuration(Duration delta) {
-    if (delta.inHours > 0) {
-      return '${delta.inHours}h ${delta.inMinutes.remainder(60)}m';
-    }
-    if (delta.inMinutes > 0) {
-      return '${delta.inMinutes}m ${delta.inSeconds.remainder(60)}s';
-    }
-    return '${delta.inSeconds}s';
-  }
-
-  List<Widget> _buildTurnWidgets(
+  Widget _buildTurnWidget(
     BuildContext context,
     WidgetRef ref,
-    List<StudioTurn> turns,
-    List<ProposedPatchSet> patches,
-    String? taskId,
-  ) {
-    final orderedTurns = turns.toList()
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    StudioTurn turn,
+    ProposedPatchSet? turnPatch, {
+    required String? taskId,
+  }) {
     final widgets = <Widget>[];
-    for (var i = 0; i < orderedTurns.length; i++) {
-      final turn = orderedTurns[i];
-      final turnPatch = _patchForTurn(
-        patches,
-        turn,
-        isLatestTurn: i == orderedTurns.length - 1,
+    var patchAdded = false;
+    var artifactCardsAdded = false;
+    final generatedArtifacts = ref.watch(
+      studioSourceArtifactProvider.select(
+        (state) => state.artifacts
+            .where(
+              (artifact) =>
+                  artifact.kind == StudioSourceArtifactKind.generatedArtifact &&
+                  artifact.requestId == turn.requestId,
+            )
+            .toList(growable: false),
+      ),
+    );
+    final events = turn.events.toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    final visibleUserMessage = events
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.userMessage &&
+              event.transcriptVisible &&
+              (event.content ?? event.detail).trim().isNotEmpty,
+        )
+        .firstOrNull;
+    if (visibleUserMessage != null) {
+      widgets.add(
+        _ChatTranscriptLine(
+          isUser: true,
+          text: visibleUserMessage.content ?? visibleUserMessage.detail,
+        ),
       );
-      var patchAdded = false;
-      final events = turn.events.toList()
-        ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      final visibleUserMessage = events
-          .where(
-            (event) =>
-                event.type == StudioTurnEventType.userMessage &&
-                event.transcriptVisible &&
-                (event.content ?? event.detail).trim().isNotEmpty,
-          )
-          .firstOrNull;
-      if (visibleUserMessage != null) {
-        widgets.add(
-          _ChatTranscriptLine(
-            isUser: true,
-            text: visibleUserMessage.content ?? visibleUserMessage.detail,
-          ),
-        );
-      } else if (_shouldRenderFallbackPrompt(turn, events)) {
-        widgets.add(_ChatTranscriptLine(isUser: true, text: turn.prompt));
-      }
-      for (final event in events) {
-        switch (event.type) {
-          case StudioTurnEventType.userMessage:
+    } else if (_shouldRenderFallbackPrompt(turn, events)) {
+      widgets.add(_ChatTranscriptLine(isUser: true, text: turn.prompt));
+    }
+    for (final event in events) {
+      switch (event.type) {
+        case StudioTurnEventType.userMessage:
+          break;
+        case StudioTurnEventType.context:
+          // Routine context details stay in the progress drawer. Keeping them
+          // out of chat prevents every request from becoming a stack of bars.
+          break;
+        case StudioTurnEventType.progress:
+          if (turnPatch != null &&
+              (event.title == 'Plan ready for review' ||
+                  event.title == 'Patch ready')) {
             break;
-          case StudioTurnEventType.context:
-            // Routine context details stay in the progress drawer. Keeping them
-            // out of chat prevents every request from becoming a stack of bars.
-            break;
-          case StudioTurnEventType.progress:
-            if (turnPatch != null &&
-                (event.title == 'Plan ready for review' ||
-                    event.title == 'Patch ready')) {
-              break;
-            }
-            break;
-          case StudioTurnEventType.tool:
-            break;
-          case StudioTurnEventType.approvalRequest:
-            widgets.add(_StudioTurnApprovalCard(event: event));
-          case StudioTurnEventType.assistantMessage:
-            final assistantContent = (event.content ?? '').trim();
-            final duplicatePlanContent =
-                turnPatch != null &&
-                _isDuplicatePlanAssistantContent(assistantContent, turnPatch);
-            if (assistantContent.isNotEmpty && !duplicatePlanContent) {
-              widgets.add(
-                _ChatTranscriptLine(isUser: false, text: assistantContent),
-              );
-            }
-            if (turnPatch != null && !patchAdded) {
-              widgets.add(_reviewArtifactCard(turnPatch));
-              patchAdded = true;
-            }
-          case StudioTurnEventType.error:
+          }
+          break;
+        case StudioTurnEventType.tool:
+          break;
+        case StudioTurnEventType.approvalRequest:
+          widgets.add(_StudioTurnApprovalCard(event: event));
+        case StudioTurnEventType.assistantMessage:
+          final assistantContent = (event.content ?? '').trim();
+          final duplicatePlanContent =
+              turnPatch != null &&
+              _isDuplicatePlanAssistantContent(assistantContent, turnPatch);
+          final displayContent = _assistantContentForArtifacts(
+            assistantContent,
+            generatedArtifacts,
+          );
+          if (displayContent.isNotEmpty && !duplicatePlanContent) {
             widgets.add(
-              _TranscriptEvent(
-                icon: Icons.error_outline,
-                title: event.title,
-                detail: event.detail,
-              ),
+              _ChatTranscriptLine(isUser: false, text: displayContent),
             );
-          case StudioTurnEventType.completionSummary:
-            if (_isGenericReadySummary(event)) break;
-            widgets.add(
-              _TranscriptEvent(
-                icon: Icons.check_circle_outline,
-                title: event.title,
-                detail: event.detail,
-              ),
-            );
-        }
-      }
-      final hasFinalAssistant = events.any(
-        (event) => event.type == StudioTurnEventType.assistantMessage,
-      );
-      if (!hasFinalAssistant && turn.assistantDraft.trim().isNotEmpty) {
-        widgets.add(
-          turn.intent == TurnIntent.plan
-              ? _PlanDraftCard(markdown: turn.assistantDraft)
-              : _ChatTranscriptLine(isUser: false, text: turn.assistantDraft),
-        );
-      }
-      if (turnPatch != null && !patchAdded) {
-        widgets.add(_reviewArtifactCard(turnPatch));
-      } else if (turnPatch == null) {
-        final continuation = studioPlanContinuationForTurn(turn);
-        if (continuation != null) {
+          }
+          if (generatedArtifacts.isNotEmpty && !artifactCardsAdded) {
+            widgets.add(_GeneratedArtifactStack(artifacts: generatedArtifacts));
+            artifactCardsAdded = true;
+          }
+          if (turnPatch != null && !patchAdded) {
+            widgets.add(_reviewArtifactCard(turnPatch));
+            patchAdded = true;
+          }
+        case StudioTurnEventType.error:
           widgets.add(
-            Padding(
-              padding: const EdgeInsets.only(bottom: 22),
-              child: _PlanContinuationCard(
-                continuation: continuation,
-                onContinue: () => unawaited(
-                  implementAcceptedPlanFromStudio(
-                    ref,
-                    continuation.acceptedPlan,
-                    taskId: taskId,
-                    finishTask: taskId != null,
-                    displayText: 'Continuing approved plan',
-                  ),
+            _TranscriptEvent(
+              icon: Icons.error_outline,
+              title: event.title,
+              detail: event.detail,
+            ),
+          );
+        case StudioTurnEventType.completionSummary:
+          if (_isGenericReadySummary(event)) break;
+          widgets.add(
+            _TranscriptEvent(
+              icon: Icons.check_circle_outline,
+              title: event.title,
+              detail: event.detail,
+            ),
+          );
+      }
+    }
+    final hasFinalAssistant = events.any(
+      (event) => event.type == StudioTurnEventType.assistantMessage,
+    );
+    if (!hasFinalAssistant && turn.assistantDraft.trim().isNotEmpty) {
+      final draftContent = _assistantContentForArtifacts(
+        turn.assistantDraft,
+        generatedArtifacts,
+      );
+      if (turn.intent == TurnIntent.plan) {
+        widgets.add(_PlanDraftCard(markdown: turn.assistantDraft));
+      } else if (draftContent.isNotEmpty) {
+        widgets.add(_ChatTranscriptLine(isUser: false, text: draftContent));
+      }
+    }
+    if (generatedArtifacts.isNotEmpty && !artifactCardsAdded) {
+      widgets.add(_GeneratedArtifactStack(artifacts: generatedArtifacts));
+    }
+    if (turnPatch != null && !patchAdded) {
+      widgets.add(_reviewArtifactCard(turnPatch));
+    } else if (turnPatch == null) {
+      final continuation = studioPlanContinuationForTurn(turn);
+      if (continuation != null) {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 22),
+            child: _PlanContinuationCard(
+              continuation: continuation,
+              onContinue: () => unawaited(
+                implementAcceptedPlanFromStudio(
+                  ref,
+                  continuation.acceptedPlan,
+                  taskId: taskId,
+                  finishTask: taskId != null,
+                  displayText: 'Continuing approved plan',
                 ),
               ),
             ),
-          );
-        }
+          ),
+        );
       }
     }
-    return widgets;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: widgets,
+    );
   }
 
   Widget _reviewArtifactCard(ProposedPatchSet patch) {
     return patch.isPlanOnly
         ? _PlanSummaryCard(patch: patch)
         : _PatchSummaryCard(patch: patch);
+  }
+
+  String _assistantContentForArtifacts(
+    String content,
+    List<StudioSourceArtifact> artifacts,
+  ) {
+    final trimmed = content.trim();
+    if (trimmed.isEmpty || artifacts.isEmpty) return trimmed;
+    if (!_containsLargeMarkdownTable(trimmed)) return trimmed;
+    final intro = trimmed
+        .split('\n')
+        .takeWhile((line) {
+          final value = line.trim();
+          return value.isEmpty || !value.contains('|');
+        })
+        .join('\n')
+        .trim();
+    final artifact = GeneratedArtifact.fromSourceArtifact(artifacts.first);
+    final fileName = artifact?.fileName ?? artifacts.first.title;
+    final summary = artifact?.summary ?? 'Created a file artifact.';
+    return [
+      if (intro.isNotEmpty) intro,
+      '$summary See `$fileName` below.',
+    ].join('\n\n');
+  }
+
+  bool _containsLargeMarkdownTable(String content) {
+    var tableRows = 0;
+    for (final line in content.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.contains('|') && trimmed.split('|').length >= 3) {
+        tableRows++;
+        if (tableRows >= 5) return true;
+      } else if (tableRows > 0) {
+        tableRows = 0;
+      }
+    }
+    return false;
   }
 
   bool _isDuplicatePlanAssistantContent(
@@ -387,8 +401,196 @@ class _TaskTranscript extends ConsumerWidget {
     ];
     return !internalPrefixes.any(lower.startsWith);
   }
+}
 
-  ProposedPatchSet? _patchForTurn(
+class _TaskTranscriptIndex {
+  final String title;
+  final String? effectiveTaskId;
+  final String statusLabel;
+  final bool statusActive;
+  final List<String> turnIds;
+
+  const _TaskTranscriptIndex({
+    required this.title,
+    required this.effectiveTaskId,
+    required this.statusLabel,
+    required this.statusActive,
+    required this.turnIds,
+  });
+
+  factory _TaskTranscriptIndex.fromState(
+    StudioThreadState state,
+    AgentTask? task,
+  ) {
+    final thread = state.threadForTaskView(task?.id);
+    final effectiveTaskId = task?.id ?? thread?.taskId;
+    final lifecycle = StudioTaskLifecycleState.fromThread(thread);
+    final displayState = TaskDisplayState.fromLifecycle(lifecycle);
+    final orderedTurns = (thread?.turns ?? const <StudioTurn>[]).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return _TaskTranscriptIndex(
+      title: thread?.title ?? task?.goal ?? 'New Circuit task',
+      effectiveTaskId: effectiveTaskId,
+      statusLabel: _statusLabel(thread, displayState),
+      statusActive: displayState.isActive,
+      turnIds: [for (final turn in orderedTurns) turn.id],
+    );
+  }
+
+  static String _elapsed(DateTime start) {
+    final delta = DateTime.now().difference(start);
+    if (delta.inMinutes < 1) return '${delta.inSeconds}s';
+    return '${delta.inMinutes}m ${delta.inSeconds.remainder(60)}s';
+  }
+
+  static String _statusLabel(
+    StudioThread? thread,
+    TaskDisplayState displayState,
+  ) {
+    if (!displayState.isActive) {
+      final workedFor = _workedDuration(thread);
+      if (workedFor != null && displayState.kind == TaskDisplayKind.done) {
+        return 'Worked for $workedFor';
+      }
+      return displayState.label;
+    }
+    final startedAt = _activeTurnStartedAt(thread);
+    final elapsed = startedAt == null ? '' : ' for ${_elapsed(startedAt)}';
+    return '${displayState.label}$elapsed';
+  }
+
+  static String? _workedDuration(StudioThread? thread) {
+    if (thread == null || thread.turns.isEmpty) return null;
+    final completedTurns = thread.turns.where(
+      (turn) =>
+          turn.completedAt != null &&
+          !turn.completedAt!.isBefore(turn.createdAt),
+    );
+    if (completedTurns.isEmpty) return null;
+    final latest = completedTurns.reduce(
+      (a, b) => a.completedAt!.isAfter(b.completedAt!) ? a : b,
+    );
+    return _formatDuration(latest.completedAt!.difference(latest.createdAt));
+  }
+
+  static DateTime? _activeTurnStartedAt(StudioThread? thread) {
+    if (thread == null || thread.turns.isEmpty) return null;
+    final activeTurns = thread.turns.where(
+      (turn) => switch (turn.status) {
+        StudioTurnStatus.queued ||
+        StudioTurnStatus.buildingContext ||
+        StudioTurnStatus.sent ||
+        StudioTurnStatus.waitingForModel ||
+        StudioTurnStatus.streaming ||
+        StudioTurnStatus.toolRunning ||
+        StudioTurnStatus.waitingForApproval => true,
+        StudioTurnStatus.completed ||
+        StudioTurnStatus.failed ||
+        StudioTurnStatus.cancelled => false,
+      },
+    );
+    final candidates = activeTurns.isEmpty ? thread.turns : activeTurns;
+    return candidates
+        .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b)
+        .createdAt;
+  }
+
+  static String _formatDuration(Duration delta) {
+    if (delta.inHours > 0) {
+      return '${delta.inHours}h ${delta.inMinutes.remainder(60)}m';
+    }
+    if (delta.inMinutes > 0) {
+      return '${delta.inMinutes}m ${delta.inSeconds.remainder(60)}s';
+    }
+    return '${delta.inSeconds}s';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is _TaskTranscriptIndex &&
+        title == other.title &&
+        effectiveTaskId == other.effectiveTaskId &&
+        statusLabel == other.statusLabel &&
+        statusActive == other.statusActive &&
+        listEquals(turnIds, other.turnIds);
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    title,
+    effectiveTaskId,
+    statusLabel,
+    statusActive,
+    Object.hashAll(turnIds),
+  );
+}
+
+typedef _TurnTranscriptBuilder =
+    Widget Function(
+      BuildContext context,
+      WidgetRef ref,
+      StudioTurn turn,
+      ProposedPatchSet? turnPatch, {
+      required String? taskId,
+    });
+
+class _TurnTranscriptItem extends ConsumerWidget {
+  final String turnId;
+  final String? taskId;
+  final bool isLatestTurn;
+  final _TurnTranscriptBuilder builder;
+
+  const _TurnTranscriptItem({
+    required this.turnId,
+    required this.taskId,
+    required this.isLatestTurn,
+    required this.builder,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final turn = ref.watch(
+      studioThreadProvider.select(
+        (state) => _turnById(state, turnId, taskId: taskId),
+      ),
+    );
+    if (turn == null) return const SizedBox.shrink();
+    final turnPatch = ref.watch(
+      patchProposalProvider.select(
+        (state) => _patchForTurn(
+          _visiblePatchesForTask(state, taskId),
+          turn,
+          isLatestTurn: isLatestTurn,
+        ),
+      ),
+    );
+    return KeyedSubtree(
+      key: ValueKey('studio-turn-${turn.id}'),
+      child: builder(context, ref, turn, turnPatch, taskId: taskId),
+    );
+  }
+
+  static StudioTurn? _turnById(
+    StudioThreadState state,
+    String turnId, {
+    required String? taskId,
+  }) {
+    final thread = state.threadForTaskView(taskId);
+    if (thread != null) {
+      for (final turn in thread.turns) {
+        if (turn.id == turnId) return turn;
+      }
+    }
+    final selectedThread = state.selectedThread;
+    if (selectedThread != null && selectedThread.id != thread?.id) {
+      for (final turn in selectedThread.turns) {
+        if (turn.id == turnId) return turn;
+      }
+    }
+    return null;
+  }
+
+  static ProposedPatchSet? _patchForTurn(
     List<ProposedPatchSet> patches,
     StudioTurn turn, {
     required bool isLatestTurn,
@@ -401,7 +603,7 @@ class _TaskTranscript extends ConsumerWidget {
             : null);
   }
 
-  List<ProposedPatchSet> _visiblePatchesForTask(
+  static List<ProposedPatchSet> _visiblePatchesForTask(
     PatchProposalState state,
     String? taskId,
   ) {
@@ -420,6 +622,22 @@ class _TaskTranscript extends ConsumerWidget {
     }
     return byId.values.toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+}
+
+class _TranscriptItemFrame extends StatelessWidget {
+  final Widget child;
+
+  const _TranscriptItemFrame({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 744),
+        child: child,
+      ),
+    );
   }
 }
 
@@ -659,6 +877,235 @@ class _StudioTurnApprovalCard extends ConsumerWidget {
   }
 }
 
+class _GeneratedArtifactStack extends StatelessWidget {
+  final List<StudioSourceArtifact> artifacts;
+
+  const _GeneratedArtifactStack({required this.artifacts});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final artifact in artifacts) _GeneratedArtifactCard(artifact),
+      ],
+    );
+  }
+}
+
+class _GeneratedArtifactCard extends ConsumerWidget {
+  final StudioSourceArtifact sourceArtifact;
+
+  const _GeneratedArtifactCard(this.sourceArtifact);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final artifact = GeneratedArtifact.fromSourceArtifact(sourceArtifact);
+    final fileName = artifact?.fileName ?? sourceArtifact.title;
+    final filePath = artifact?.filePath ?? sourceArtifact.filePath ?? '';
+    final summary = artifact?.summary ?? sourceArtifact.subtitle;
+    final typeLabel = artifact?.typeLabel ?? 'Artifact';
+    final byteSize = artifact == null ? null : _formatArtifactSize(artifact);
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 760),
+      margin: const EdgeInsets.only(bottom: 22),
+      decoration: BoxDecoration(
+        color: tokens.studioCard.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.34)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 11),
+            child: Row(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tokens.studioControl.withValues(alpha: 0.54),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _artifactIcon(artifact?.kind),
+                    color: tokens.textSecondary,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textPrimary,
+                          fontSize: FontSizes.md,
+                          height: 1.18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        [typeLabel, ?byteSize].join(' • '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.textMuted,
+                          fontSize: FontSizes.xs,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _ArtifactCardAction(
+                  label: 'Open',
+                  onPressed: filePath.isEmpty
+                      ? null
+                      : () => _launchArtifactPath(context, filePath),
+                ),
+                _ArtifactCardAction(
+                  label: 'Reveal',
+                  onPressed: filePath.isEmpty
+                      ? null
+                      : () => _launchArtifactPath(context, p.dirname(filePath)),
+                ),
+                _ArtifactCardAction(
+                  label: 'Review',
+                  onPressed: () => ref
+                      .read(studioRightDrawerProvider.notifier)
+                      .openArtifact(sourceArtifact),
+                ),
+              ],
+            ),
+          ),
+          if (summary.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 11),
+              child: Text(
+                summary,
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: FontSizes.sm,
+                  height: 1.32,
+                ),
+              ),
+            ),
+          Container(
+            decoration: BoxDecoration(
+              color: tokens.surfacePanel.withValues(alpha: 0.12),
+              border: Border(
+                top: BorderSide(
+                  color: tokens.studioDivider.withValues(alpha: 0.32),
+                ),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 7, 10, 7),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    filePath,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xs,
+                      height: 1.2,
+                      fontFamily: EditorDefaults.studioMonospaceFontFamily,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  style: _patchTextActionStyle(tokens),
+                  onPressed: filePath.isEmpty
+                      ? null
+                      : () {
+                          Clipboard.setData(ClipboardData(text: filePath));
+                          _showArtifactSnack(context, 'Copied artifact path');
+                        },
+                  child: const Text('Copy path'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static IconData _artifactIcon(GeneratedArtifactKind? kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.csv => Icons.table_chart_outlined,
+      GeneratedArtifactKind.json => Icons.data_object_outlined,
+      GeneratedArtifactKind.pdf => Icons.picture_as_pdf_outlined,
+      GeneratedArtifactKind.diagram ||
+      GeneratedArtifactKind.chart => Icons.account_tree_outlined,
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.report ||
+      null => Icons.description_outlined,
+    };
+  }
+
+  static String _formatArtifactSize(GeneratedArtifact artifact) {
+    if (artifact.byteSize < 1024) return '${artifact.byteSize} B';
+    final kb = artifact.byteSize / 1024;
+    if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
+    final mb = kb / 1024;
+    return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  }
+
+  static Future<void> _launchArtifactPath(
+    BuildContext context,
+    String filePath,
+  ) async {
+    final uri = Uri.file(filePath);
+    if (!await launchUrl(uri)) {
+      if (!context.mounted) return;
+      _showArtifactSnack(context, 'Could not open artifact');
+    }
+  }
+
+  static void _showArtifactSnack(BuildContext context, String message) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1100),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
+}
+
+class _ArtifactCardAction extends ConsumerWidget {
+  final String label;
+  final VoidCallback? onPressed;
+
+  const _ArtifactCardAction({required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return TextButton(
+      style: _patchTextActionStyle(tokens),
+      onPressed: onPressed,
+      child: Text(label),
+    );
+  }
+}
+
 class _PlanDraftCard extends ConsumerStatefulWidget {
   final String markdown;
 
@@ -686,10 +1133,10 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
         constraints: const BoxConstraints(maxWidth: 694),
         margin: const EdgeInsets.only(bottom: 22),
         decoration: BoxDecoration(
-          color: tokens.studioActivityRow.withValues(alpha: 0.48),
-          borderRadius: BorderRadius.circular(12),
+          color: tokens.studioCard.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.38),
+            color: tokens.studioDivider.withValues(alpha: 0.28),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -697,7 +1144,7 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 13, 18, 4),
+              padding: const EdgeInsets.fromLTRB(16, 12, 14, 3),
               child: Row(
                 children: [
                   Expanded(
@@ -748,12 +1195,12 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
                 title,
                 style: TextStyle(
                   color: tokens.textPrimary,
-                  fontSize: 23,
+                  fontSize: FontSizes.xxl,
                   height: 1.12,
                   letterSpacing: 0,
                   fontWeight: FontWeight.w700,
@@ -761,7 +1208,7 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 17, 18, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
               child: _PlanCardBody(
                 markdown: body.isEmpty ? content : body,
                 expanded: _expanded,
@@ -806,42 +1253,110 @@ class _PlanDraftCardState extends ConsumerState<_PlanDraftCard> {
             Container(
               margin: const EdgeInsets.only(top: 14),
               decoration: BoxDecoration(
-                color: tokens.surfacePanel.withValues(alpha: 0.35),
+                color: tokens.surfacePanel.withValues(alpha: 0.28),
                 border: Border(
                   top: BorderSide(
-                    color: tokens.studioDivider.withValues(alpha: 0.58),
+                    color: tokens.studioDivider.withValues(alpha: 0.42),
                   ),
                 ),
               ),
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 1.5,
-                      color: tokens.textMuted.withValues(alpha: 0.76),
-                    ),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      'Plan is still being written. Review actions will appear when it is ready.',
-                      style: TextStyle(
-                        color: tokens.textSecondary,
-                        fontSize: FontSizes.sm,
-                        height: 1.25,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              child: _DraftPlanActionFooter(tokens: tokens),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _DraftPlanActionFooter extends StatelessWidget {
+  final ThemeTokens tokens;
+
+  const _DraftPlanActionFooter({required this.tokens});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            SizedBox(
+              width: 15,
+              height: 15,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: tokens.textMuted.withValues(alpha: 0.76),
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                'Implement this plan?',
+                style: TextStyle(
+                  color: tokens.textPrimary.withValues(alpha: 0.82),
+                  fontSize: FontSizes.sm,
+                  height: 1.2,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Text(
+              'Not ready yet',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+                height: 1.2,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.sm),
+        _PlanChoiceButton(
+          index: '1',
+          label: 'Yes, implement this plan',
+          enabled: false,
+          onPressed: () {},
+        ),
+        const SizedBox(height: 6),
+        _PlanChoiceButton(
+          index: null,
+          icon: Icons.edit_outlined,
+          label: 'No, and tell Circuit what to do differently',
+          enabled: false,
+          onPressed: () {},
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              style: _patchTextActionStyle(tokens),
+              onPressed: null,
+              child: const Text('Dismiss'),
+            ),
+            const SizedBox(width: Spacing.sm),
+            FilledButton(
+              style: _patchPrimaryActionStyle(tokens),
+              onPressed: null,
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Actions unlock when Circuit finishes writing the plan.',
+          textAlign: TextAlign.right,
+          style: TextStyle(
+            color: tokens.textMuted.withValues(alpha: 0.82),
+            fontSize: FontSizes.xs,
+            height: 1.2,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -874,13 +1389,19 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
   @override
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
-    final thread = ref.watch(studioThreadProvider).selectedThread;
     final patch = widget.patch;
+    final targetProgress = ref
+        .watch(
+          studioThreadProvider.select(
+            (state) =>
+                _PlanProgressSnapshot.forPatch(state.selectedThread, patch),
+          ),
+        )
+        .targets;
     final accepted = patch.approvalStatus == PatchApprovalStatus.approved;
     final markdown = (patch.planMarkdown ?? patch.comparisonSummary ?? '')
         .trim();
     final title = _planCardTitle(patch, markdown);
-    final targetProgress = _planProgressForPatch(thread, patch);
     final appliedTargetCount = targetProgress
         .where((target) => target.state == PlanTargetProgressState.applied)
         .length;
@@ -897,10 +1418,10 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
         constraints: const BoxConstraints(maxWidth: 694),
         margin: const EdgeInsets.only(bottom: 24),
         decoration: BoxDecoration(
-          color: tokens.studioActivityRow.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(12),
+          color: tokens.studioCard.withValues(alpha: 0.94),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.38),
+            color: tokens.studioDivider.withValues(alpha: 0.28),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -908,7 +1429,7 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 13, 12, 4),
+              padding: const EdgeInsets.fromLTRB(16, 12, 12, 3),
               child: Row(
                 children: [
                   Expanded(
@@ -951,12 +1472,12 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 20, 18, 0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Text(
                 title,
                 style: TextStyle(
                   color: tokens.textPrimary,
-                  fontSize: 23,
+                  fontSize: FontSizes.xxl,
                   height: 1.12,
                   letterSpacing: 0,
                   fontWeight: FontWeight.w700,
@@ -965,7 +1486,7 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
             ),
             if (targetProgress.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -996,7 +1517,7 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
               )
             else if (patch.effectivePlannedTargets.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Wrap(
                   spacing: 6,
                   runSpacing: 6,
@@ -1012,7 +1533,7 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
               ),
             if (markdown.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.fromLTRB(18, 17, 18, 0),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
                 child: _PlanCardBody(markdown: markdown, expanded: _expanded),
               ),
             if (!_expanded && markdown.isNotEmpty)
@@ -1053,10 +1574,10 @@ class _PlanSummaryCardState extends ConsumerState<_PlanSummaryCard> {
             Container(
               margin: const EdgeInsets.only(top: 14),
               decoration: BoxDecoration(
-                color: tokens.surfacePanel.withValues(alpha: 0.35),
+                color: tokens.surfacePanel.withValues(alpha: 0.28),
                 border: Border(
                   top: BorderSide(
-                    color: tokens.studioDivider.withValues(alpha: 0.58),
+                    color: tokens.studioDivider.withValues(alpha: 0.42),
                   ),
                 ),
               ),
@@ -1242,6 +1763,38 @@ List<PlanTargetProgress> _planProgressForPatch(
   return matchingTurns.first.planTargetProgress;
 }
 
+class _PlanProgressSnapshot {
+  final List<PlanTargetProgress> targets;
+  final int _fingerprint;
+
+  const _PlanProgressSnapshot(this.targets, this._fingerprint);
+
+  factory _PlanProgressSnapshot.forPatch(
+    StudioThread? thread,
+    ProposedPatchSet patch,
+  ) {
+    final targets = _planProgressForPatch(thread, patch);
+    return _PlanProgressSnapshot(targets, _planTargetFingerprint(targets));
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is _PlanProgressSnapshot && _fingerprint == other._fingerprint;
+  }
+
+  @override
+  int get hashCode => _fingerprint;
+}
+
+int _planTargetFingerprint(List<PlanTargetProgress> targets) {
+  return Object.hashAll(
+    targets.map(
+      (target) =>
+          Object.hash(target.path, target.intent, target.state, target.detail),
+    ),
+  );
+}
+
 class _PlanCardBody extends ConsumerWidget {
   final String markdown;
   final bool expanded;
@@ -1290,8 +1843,8 @@ class _PlanCardBody extends ConsumerWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        tokens.studioActivityRow.withValues(alpha: 0),
-                        tokens.studioActivityRow.withValues(alpha: 0.96),
+                        tokens.studioCard.withValues(alpha: 0),
+                        tokens.studioCard.withValues(alpha: 0.96),
                       ],
                     ),
                   ),
@@ -1529,10 +2082,10 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
         constraints: const BoxConstraints(maxWidth: 694),
         margin: const EdgeInsets.only(bottom: 22),
         decoration: BoxDecoration(
-          color: tokens.studioActivityRow.withValues(alpha: 0.36),
+          color: tokens.studioCard.withValues(alpha: 0.86),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: tokens.studioDivider.withValues(alpha: 0.32),
+            color: tokens.studioDivider.withValues(alpha: 0.28),
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1551,7 +2104,7 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
                         height: 24,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: tokens.bgDark.withValues(alpha: 0.5),
+                          color: tokens.surfaceInset.withValues(alpha: 0.66),
                           borderRadius: BorderRadius.circular(7),
                         ),
                         child: Icon(
@@ -1661,6 +2214,11 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
                           ),
                           OutlinedButton(
                             style: _patchSecondaryActionStyle(tokens),
+                            onPressed: () => _refreshPatch(ref),
+                            child: const Text('Refresh patch'),
+                          ),
+                          OutlinedButton(
+                            style: _patchSecondaryActionStyle(tokens),
                             onPressed: () => _rebasePatch(ref),
                             child: const Text('Ask Circuit to rebase'),
                           ),
@@ -1689,14 +2247,14 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
               ),
             ),
             Divider(
-              color: tokens.studioDivider.withValues(alpha: 0.44),
+              color: tokens.studioDivider.withValues(alpha: 0.34),
               height: 1,
             ),
             for (final file in _patchFiles(patch))
               _PatchFileRow(patch: patch, file: file),
             if (!isPlan && _patchStatusDetail(patch) != null) ...[
               Divider(
-                color: tokens.studioDivider.withValues(alpha: 0.44),
+                color: tokens.studioDivider.withValues(alpha: 0.34),
                 height: 1,
               ),
               Padding(
@@ -1720,7 +2278,7 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
             ],
             if (!isPlan && _hasPatchTransactionEvidence(patch)) ...[
               Divider(
-                color: tokens.studioDivider.withValues(alpha: 0.44),
+                color: tokens.studioDivider.withValues(alpha: 0.34),
                 height: 1,
               ),
               Padding(
@@ -1735,7 +2293,7 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
             ],
             if (continuation != null) ...[
               Divider(
-                color: tokens.studioDivider.withValues(alpha: 0.44),
+                color: tokens.studioDivider.withValues(alpha: 0.34),
                 height: 1,
               ),
               Padding(
@@ -1753,7 +2311,7 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
             ],
             if (isPlan) ...[
               Divider(
-                color: tokens.studioDivider.withValues(alpha: 0.44),
+                color: tokens.studioDivider.withValues(alpha: 0.34),
                 height: 1,
               ),
               Padding(
@@ -2007,6 +2565,24 @@ class _PatchSummaryCardState extends ConsumerState<_PatchSummaryCard> {
     final prompt =
         'Refresh these proposed changes against the current files and preserve the accepted plan intent.'
         '${conflict == null || conflict.isEmpty ? '' : ' Resolve: $conflict'}';
+    ref
+        .read(patchProposalProvider.notifier)
+        .requestRevision(
+          PatchProposalRevisionRequest(
+            patchSetId: widget.patch.id,
+            prompt: prompt,
+          ),
+        );
+    shellNotifier.setPromptMode(StudioPromptMode.code);
+    shellNotifier.setComposerText(prompt);
+  }
+
+  void _refreshPatch(WidgetRef ref) {
+    final shellNotifier = ref.read(studioShellProvider.notifier);
+    final conflict = widget.patch.conflictMessage?.trim();
+    final prompt =
+        'Refresh this patch against the current file contents without expanding scope.'
+        '${conflict == null || conflict.isEmpty ? '' : ' Resolve the current conflict: $conflict'}';
     ref
         .read(patchProposalProvider.notifier)
         .requestRevision(
@@ -2313,14 +2889,15 @@ class _PatchTransactionEvidence extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final thread = ref.watch(studioThreadProvider).selectedThread;
     final summary = (patch.diffSummary ?? '').trim();
     final verificationCommands = _runnableVerificationSuggestions(patch);
-    final verificationTurn = _verificationTurnForPatch(thread, patch);
-    final verificationStatus = _verificationStatusForPatch(
-      patch,
-      verificationTurn,
+    final verificationSnapshot = ref.watch(
+      studioThreadProvider.select(
+        (state) =>
+            _PatchVerificationSnapshot.forPatch(state.selectedThread, patch),
+      ),
     );
+    final verificationStatus = verificationSnapshot.status;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2385,7 +2962,7 @@ class _PatchTransactionEvidence extends ConsumerWidget {
             _PatchVerificationStatusView(status: verificationStatus),
           ],
           if (shouldOfferPatchVerification(patch) &&
-              !_verificationIsInFlight(verificationTurn)) ...[
+              !verificationSnapshot.inFlight) ...[
             const SizedBox(height: Spacing.sm),
             FilledButton(
               style: _patchPrimaryActionStyle(tokens),
@@ -2684,6 +3261,50 @@ _PatchVerificationStatus? _verificationStatusForPatch(
   return null;
 }
 
+class _PatchVerificationSnapshot {
+  final bool inFlight;
+  final _PatchVerificationStatus? status;
+  final int _fingerprint;
+
+  const _PatchVerificationSnapshot({
+    required this.inFlight,
+    required this.status,
+    required int fingerprint,
+  }) : _fingerprint = fingerprint;
+
+  factory _PatchVerificationSnapshot.forPatch(
+    StudioThread? thread,
+    ProposedPatchSet patch,
+  ) {
+    final turn = _verificationTurnForPatch(thread, patch);
+    final status = _verificationStatusForPatch(patch, turn);
+    return _PatchVerificationSnapshot(
+      inFlight: _verificationIsInFlight(turn),
+      status: status,
+      fingerprint: Object.hash(
+        patch.verificationRequestId,
+        turn?.id,
+        turn?.status,
+        turn?.lastError,
+        turn?.events.length,
+        turn?.toolResults.length,
+        status?.kind,
+        status?.title,
+        status?.detail,
+      ),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is _PatchVerificationSnapshot &&
+        _fingerprint == other._fingerprint;
+  }
+
+  @override
+  int get hashCode => _fingerprint;
+}
+
 String? _latestErrorDetail(StudioTurn turn) {
   return turn.events
       .where((event) => event.type == StudioTurnEventType.error)
@@ -2961,7 +3582,7 @@ class _AssistantMessageBlockState extends State<_AssistantMessageBlock> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 680),
+      constraints: const BoxConstraints(maxWidth: 760),
       margin: const EdgeInsets.only(bottom: 22),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

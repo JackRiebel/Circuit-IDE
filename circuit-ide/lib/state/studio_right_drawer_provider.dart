@@ -45,6 +45,20 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     );
   }
 
+  void openRepositoryDiff() {
+    state = state.copyWith(
+      mode: StudioDrawerMode.diff,
+      collapsed: false,
+      diffId: null,
+      patchFilePath: null,
+      selectedArtifactId: null,
+    );
+  }
+
+  void openArtifacts() {
+    state = state.copyWith(mode: StudioDrawerMode.artifacts, collapsed: false);
+  }
+
   void openBrowser(String url) {
     if (!StudioFeatureFlags.advancedStudioSurfaces) {
       state = state.copyWith(
@@ -107,6 +121,7 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
         StudioDrawerMode.browser,
       ),
       StudioSourceArtifactKind.file => StudioDrawerMode.code,
+      StudioSourceArtifactKind.generatedArtifact => StudioDrawerMode.artifacts,
       StudioSourceArtifactKind.diff ||
       StudioSourceArtifactKind.gitChange ||
       StudioSourceArtifactKind.gitHunk ||

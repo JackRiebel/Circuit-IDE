@@ -12,6 +12,7 @@ enum StudioSourceArtifactKind {
   gitHunk,
   terminalSession,
   reviewComment,
+  generatedArtifact,
   topology,
   sizing,
   lifecycle,
@@ -138,6 +139,41 @@ class StudioSourceArtifact {
       return null;
     }
   }
+
+  @override
+  bool operator ==(Object other) {
+    return other is StudioSourceArtifact &&
+        id == other.id &&
+        kind == other.kind &&
+        title == other.title &&
+        subtitle == other.subtitle &&
+        value == other.value &&
+        threadId == other.threadId &&
+        requestId == other.requestId &&
+        relatedMessageId == other.relatedMessageId &&
+        filePath == other.filePath &&
+        localUrl == other.localUrl &&
+        commandRunId == other.commandRunId &&
+        patchSetId == other.patchSetId &&
+        createdAt == other.createdAt;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    kind,
+    title,
+    subtitle,
+    value,
+    threadId,
+    requestId,
+    relatedMessageId,
+    filePath,
+    localUrl,
+    commandRunId,
+    patchSetId,
+    createdAt,
+  );
 }
 
 List<String> detectLocalUrls(String text) {

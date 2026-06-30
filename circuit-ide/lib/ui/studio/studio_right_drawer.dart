@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,7 @@ import '../../core/config/studio_feature_flags.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/context_pack.dart';
+import '../../models/generated_artifact.dart';
 import '../../models/git_models.dart';
 import '../../models/provider_lifecycle_event.dart';
 import '../../models/reviewed_edit.dart';
@@ -28,9 +31,11 @@ import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_browser_provider.dart';
 import '../../state/studio_code_edit_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
+import '../../state/studio_shell_provider.dart';
 import '../../state/studio_source_artifact_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
+import '../../theme/theme_tokens.dart';
 import 'studio_chrome.dart';
 
 class StudioRightDrawer extends ConsumerWidget {
@@ -48,16 +53,16 @@ class StudioRightDrawer extends ConsumerWidget {
       duration: AnimationDurations.panel,
       curve: AnimationCurves.smooth,
       width: width,
-      margin: const EdgeInsets.fromLTRB(0, 56, 14, 18),
+      margin: const EdgeInsets.fromLTRB(0, 48, 12, 16),
       decoration: BoxDecoration(
-        color: tokens.studioDrawer.withValues(alpha: 0.91),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.38)),
+        color: tokens.studioDrawer.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.28)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 7),
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -77,11 +82,11 @@ class StudioRightDrawer extends ConsumerWidget {
 
 const _visibleDrawerModes = <StudioDrawerMode>[
   StudioDrawerMode.progress,
+  StudioDrawerMode.artifacts,
   StudioDrawerMode.code,
   StudioDrawerMode.diff,
   StudioDrawerMode.files,
   StudioDrawerMode.terminal,
-  StudioDrawerMode.sources,
   StudioDrawerMode.context,
 ];
 
@@ -120,7 +125,7 @@ class _DrawerHeader extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final drawer = ref.watch(studioRightDrawerProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 10, 7, 4),
+      padding: const EdgeInsets.fromLTRB(16, 9, 7, 3),
       child: Row(
         children: [
           Expanded(
@@ -181,6 +186,7 @@ class _DrawerHeader extends ConsumerWidget {
       StudioDrawerMode.code => 'Code',
       StudioDrawerMode.diff => 'Diff',
       StudioDrawerMode.files => 'Files',
+      StudioDrawerMode.artifacts => 'Artifacts',
       StudioDrawerMode.terminal => 'Terminal',
       StudioDrawerMode.sources => 'Sources',
       StudioDrawerMode.context => 'Context',
@@ -196,12 +202,12 @@ class _DrawerModeStrip extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final drawer = ref.watch(studioRightDrawerProvider);
     return Container(
-      height: 37,
-      padding: const EdgeInsets.fromLTRB(11, 4, 11, 7),
+      height: 35,
+      padding: const EdgeInsets.fromLTRB(11, 3, 11, 7),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: tokens.studioDivider.withValues(alpha: 0.28),
+            color: tokens.studioDivider.withValues(alpha: 0.24),
           ),
         ),
       ),
@@ -301,12 +307,12 @@ class _ModeIconButton extends ConsumerWidget {
           margin: EdgeInsets.only(right: compact ? 0 : 4),
           decoration: BoxDecoration(
             color: active
-                ? tokens.studioControl.withValues(alpha: 0.52)
+                ? tokens.studioControl.withValues(alpha: 0.42)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(7),
             border: active
                 ? Border.all(
-                    color: tokens.studioDivider.withValues(alpha: 0.42),
+                    color: tokens.studioDivider.withValues(alpha: 0.32),
                   )
                 : null,
           ),
@@ -324,6 +330,7 @@ IconData _drawerModeIcon(StudioDrawerMode mode) {
     StudioDrawerMode.code => Icons.code,
     StudioDrawerMode.diff => Icons.difference_outlined,
     StudioDrawerMode.files => Icons.folder_outlined,
+    StudioDrawerMode.artifacts => Icons.file_present_outlined,
     StudioDrawerMode.terminal => Icons.terminal_outlined,
     StudioDrawerMode.sources => Icons.travel_explore,
     StudioDrawerMode.context => Icons.inventory_2_outlined,
@@ -337,6 +344,7 @@ String _drawerModeLabel(StudioDrawerMode mode) {
     StudioDrawerMode.code => 'Code',
     StudioDrawerMode.diff => 'Diff',
     StudioDrawerMode.files => 'Files',
+    StudioDrawerMode.artifacts => 'Artifacts',
     StudioDrawerMode.terminal => 'Terminal output',
     StudioDrawerMode.sources => 'Sources',
     StudioDrawerMode.context => 'Context details',
@@ -360,8 +368,9 @@ class _DrawerBody extends ConsumerWidget {
       StudioDrawerMode.progress => _ProgressDrawer(task: task),
       StudioDrawerMode.browser => const _BrowserDrawer(),
       StudioDrawerMode.code => const _CodeDrawer(),
-      StudioDrawerMode.diff => const _DiffDrawer(),
+      StudioDrawerMode.diff => _DiffDrawer(task: task),
       StudioDrawerMode.files => const _FilesDrawer(),
+      StudioDrawerMode.artifacts => _ArtifactsDrawer(task: task),
       StudioDrawerMode.terminal => _TerminalDrawer(task: task),
       StudioDrawerMode.sources => _SourcesDrawer(task: task),
       StudioDrawerMode.context => _ContextDrawer(task: task),
@@ -377,8 +386,9 @@ class _ProgressDrawer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final threadState = ref.watch(studioThreadProvider);
-    final thread = threadState.threadForTaskView(task?.id);
+    final thread = ref.watch(
+      studioThreadProvider.select((state) => state.threadForTaskView(task?.id)),
+    );
     final latestTurn = _latestTurn(thread);
     final latestEvent = _latestEvent(latestTurn);
     final latestActionableEvent = _latestActionableEvent(latestTurn);
@@ -389,10 +399,17 @@ class _ProgressDrawer extends ConsumerWidget {
       ProviderLifecycleEventKind.outcomeRepair,
     );
     final hasPendingApproval = _hasPendingApproval(latestTurn);
-    final git = ref.watch(gitProvider).status;
-    final patch = _patchForTurn(ref.watch(patchProposalProvider), latestTurn);
-    final commands = ref.watch(commandRunProvider).values.toList();
-    final runningCommand = _runningCommandForTurn(commands, latestTurn);
+    final branch = ref.watch(
+      gitProvider.select((state) => state.status.branch),
+    );
+    final patch = ref.watch(
+      patchProposalProvider.select((state) => _patchForTurn(state, latestTurn)),
+    );
+    final runningCommand = ref.watch(
+      commandRunProvider.select(
+        (state) => _runningCommandForTurn(state.values, latestTurn),
+      ),
+    );
     final displayState = TaskDisplayState.fromLifecycle(
       StudioTaskLifecycleState.fromThread(thread),
     );
@@ -457,7 +474,7 @@ class _ProgressDrawer extends ConsumerWidget {
       const StudioProgressRow(label: 'Local', value: 'Ready'),
       StudioProgressRow(
         label: 'Branch',
-        value: git.branch.isEmpty ? 'main' : git.branch,
+        value: branch.isEmpty ? 'main' : branch,
       ),
     ];
 
@@ -467,14 +484,6 @@ class _ProgressDrawer extends ConsumerWidget {
         const _DrawerSectionHeader(title: 'Environment'),
         const SizedBox(height: 7),
         for (final row in rows) _ProgressRow(row: row),
-        const SizedBox(height: 10),
-        Divider(color: tokens.studioDivider.withValues(alpha: 0.32), height: 1),
-        const SizedBox(height: 10),
-        const _DrawerSectionHeader(title: 'Sources'),
-        const SizedBox(height: 6),
-        _SourceDotGrid(
-          activeCount: _sourceCount(thread, runningCommand != null),
-        ),
         const SizedBox(height: 10),
         Divider(color: tokens.studioDivider.withValues(alpha: 0.32), height: 1),
         const SizedBox(height: 10),
@@ -501,13 +510,6 @@ class _ProgressDrawer extends ConsumerWidget {
         ),
       ],
     );
-  }
-
-  int _sourceCount(StudioThread? thread, bool hasCommands) {
-    if (hasCommands) return 3;
-    return (thread?.contextSummary?.includedItemCount ?? 0)
-        .clamp(1, 24)
-        .toInt();
   }
 
   StudioTurn? _latestTurn(StudioThread? thread) {
@@ -816,32 +818,6 @@ class _DrawerSectionHeader extends ConsumerWidget {
   }
 }
 
-class _SourceDotGrid extends ConsumerWidget {
-  final int activeCount;
-
-  const _SourceDotGrid({required this.activeCount});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final tokens = ref.watch(themeProvider);
-    final count = activeCount.clamp(1, 24).toInt();
-    return Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: [
-        for (var index = 0; index < 24; index++)
-          Icon(
-            Icons.language,
-            size: 11,
-            color: index < count
-                ? tokens.textMuted.withValues(alpha: 0.76)
-                : tokens.textMuted.withValues(alpha: 0.18),
-          ),
-      ],
-    );
-  }
-}
-
 class _BrowserDrawer extends ConsumerStatefulWidget {
   const _BrowserDrawer();
 
@@ -945,10 +921,9 @@ class _BrowserDrawerState extends ConsumerState<_BrowserDrawer> {
 
   StudioSourceArtifact? _selectedArtifact(WidgetRef ref) {
     final drawer = ref.watch(studioRightDrawerProvider);
-    final artifacts = ref.watch(studioSourceArtifactProvider).artifacts;
-    return artifacts
-        .where((artifact) => artifact.id == drawer.selectedArtifactId)
-        .firstOrNull;
+    return ref.watch(
+      studioSourceArtifactByIdProvider(drawer.selectedArtifactId),
+    );
   }
 
   void _load(String url, int reloadNonce) {
@@ -1211,10 +1186,9 @@ class _CodeDrawer extends ConsumerWidget {
 
   StudioSourceArtifact? _selectedArtifact(WidgetRef ref) {
     final drawer = ref.watch(studioRightDrawerProvider);
-    final artifacts = ref.watch(studioSourceArtifactProvider).artifacts;
-    return artifacts
-        .where((artifact) => artifact.id == drawer.selectedArtifactId)
-        .firstOrNull;
+    return ref.watch(
+      studioSourceArtifactByIdProvider(drawer.selectedArtifactId),
+    );
   }
 }
 
@@ -1308,20 +1282,14 @@ class _CodePreviewView extends ConsumerWidget {
               height: 1,
             ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.md,
-                  Spacing.sm,
-                  Spacing.md,
-                  Spacing.lg,
-                ),
-                child: SelectableText(
-                  state.draft.isEmpty ? '(empty)' : state.draft,
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: FontSizes.xs,
-                    height: 1.42,
-                    fontFamily: EditorDefaults.studioMonospaceFontFamily,
+              child: RepaintBoundary(
+                child: _VirtualizedTextDocumentBody(
+                  text: state.draft,
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    Spacing.sm,
+                    Spacing.md,
+                    Spacing.lg,
                   ),
                 ),
               ),
@@ -1333,8 +1301,165 @@ class _CodePreviewView extends ConsumerWidget {
   }
 }
 
+class _VirtualizedTextDocumentBody extends ConsumerStatefulWidget {
+  final String text;
+  final EdgeInsets padding;
+
+  const _VirtualizedTextDocumentBody({
+    required this.text,
+    required this.padding,
+  });
+
+  @override
+  ConsumerState<_VirtualizedTextDocumentBody> createState() =>
+      _VirtualizedTextDocumentBodyState();
+}
+
+class _VirtualizedTextDocumentBodyState
+    extends ConsumerState<_VirtualizedTextDocumentBody> {
+  late List<String> _lines;
+  late int _maxLineLength;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareLines();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VirtualizedTextDocumentBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _prepareLines();
+    }
+  }
+
+  void _prepareLines() {
+    final text = widget.text.isEmpty ? '(empty)' : widget.text;
+    _lines = text.split('\n');
+    _maxLineLength = 0;
+    for (final line in _lines) {
+      if (line.length > _maxLineLength) _maxLineLength = line.length;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = ref.watch(themeProvider);
+    final lineNumberWidth = (_lines.length + 1).toString().length * 7.0 + 28;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final estimatedTextWidth =
+            (_maxLineLength * 7.1) + lineNumberWidth + 48;
+        final contentWidth = estimatedTextWidth
+            .clamp(constraints.maxWidth, 2200.0)
+            .toDouble();
+        return Scrollbar(
+          notificationPredicate: (notification) =>
+              notification.metrics.axis == Axis.horizontal,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: contentWidth,
+              child: ListView.builder(
+                key: const ValueKey('studio-virtualized-text-lines'),
+                padding: widget.padding,
+                itemCount: _lines.length,
+                itemBuilder: (context, index) {
+                  final line = _lines[index];
+                  return _VirtualizedTextLine(
+                    lineNumber: index + 1,
+                    lineNumberWidth: lineNumberWidth,
+                    line: line,
+                    tokens: tokens,
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _VirtualizedTextLine extends StatelessWidget {
+  final int lineNumber;
+  final double lineNumberWidth;
+  final String line;
+  final ThemeTokens tokens;
+
+  const _VirtualizedTextLine({
+    required this.lineNumber,
+    required this.lineNumberWidth,
+    required this.line,
+    required this.tokens,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _lineColor(line, tokens);
+    return SizedBox(
+      height: 19,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: lineNumberWidth,
+            child: Text(
+              '$lineNumber',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: tokens.textMuted.withValues(alpha: 0.56),
+                fontSize: FontSizes.xs,
+                height: 1.42,
+                fontFamily: EditorDefaults.studioMonospaceFontFamily,
+              ),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              line.isEmpty ? ' ' : line,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+              style: TextStyle(
+                color: color,
+                fontSize: FontSizes.xs,
+                height: 1.42,
+                fontFamily: EditorDefaults.studioMonospaceFontFamily,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _lineColor(String line, ThemeTokens tokens) {
+    if (line.startsWith('+') && !line.startsWith('+++')) {
+      return tokens.success.withValues(alpha: 0.92);
+    }
+    if (line.startsWith('-') && !line.startsWith('---')) {
+      return tokens.error.withValues(alpha: 0.92);
+    }
+    if (line.startsWith('@@')) {
+      return tokens.accent.withValues(alpha: 0.9);
+    }
+    if (line.startsWith('diff ') ||
+        line.startsWith('index ') ||
+        line.startsWith('+++') ||
+        line.startsWith('---')) {
+      return tokens.textMuted;
+    }
+    return tokens.textSecondary;
+  }
+}
+
 class _DiffDrawer extends ConsumerStatefulWidget {
-  const _DiffDrawer();
+  final AgentTask? task;
+
+  const _DiffDrawer({this.task});
 
   @override
   ConsumerState<_DiffDrawer> createState() => _DiffDrawerState();
@@ -1348,8 +1473,23 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
   Widget build(BuildContext context) {
     final drawer = ref.watch(studioRightDrawerProvider);
     final patchState = ref.watch(patchProposalProvider);
-    final patch = _patchForDrawer(patchState, drawer.diffId);
+    final thread = ref
+        .watch(studioThreadProvider)
+        .threadForTaskView(widget.task?.id);
+    final patch = _patchForDrawer(
+      patchState,
+      drawer.diffId,
+      thread: thread,
+      taskId: widget.task?.id,
+      selectedPath: drawer.patchFilePath,
+    );
     if (patch == null) {
+      if ((drawer.diffId ?? '').trim().isNotEmpty) {
+        return _MissingPatchReviewDrawer(
+          patchSetId: drawer.diffId!,
+          selectedPath: drawer.patchFilePath,
+        );
+      }
       return _GitReviewDrawer(
         selectedPath: _selectedPath,
         selectedStaged: _selectedStaged,
@@ -1362,9 +1502,10 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
       );
     }
     final selectedPath = drawer.patchFilePath;
-    return _TextDocumentView(
-      title: selectedPath ?? patch.title,
-      text: _diffPreview(patch, selectedPath),
+    return _PatchDiffReviewDrawer(
+      patch: patch,
+      selectedPath: selectedPath,
+      diffText: _diffPreview(patch, selectedPath),
     );
   }
 
@@ -1389,22 +1530,891 @@ class _DiffDrawerState extends ConsumerState<_DiffDrawer> {
             '+++ ${edit.path}',
             if (edit.unifiedDiff?.isNotEmpty == true)
               edit.unifiedDiff!
-            else ...[
-              if ((edit.before ?? '').trim().isNotEmpty)
-                '- ${(edit.before ?? '').trim()}',
-              if ((edit.after ?? '').trim().isNotEmpty)
-                '+ ${(edit.after ?? '').trim()}',
-            ],
+            else
+              _fallbackUnifiedDiff(edit),
           ].join('\n');
         })
         .join('\n\n');
   }
 }
 
+String _fallbackUnifiedDiff(ProposedFileEdit edit) {
+  final before = edit.before ?? '';
+  final after = edit.after ?? '';
+  final beforeLines = _splitDiffLines(before);
+  final afterLines = _splitDiffLines(after);
+  return switch (edit.type) {
+    ProposedFileEditType.create => [
+      '@@ -0,0 +1,${afterLines.length} @@',
+      for (final line in afterLines) '+$line',
+    ].join('\n'),
+    ProposedFileEditType.delete => [
+      '@@ -1,${beforeLines.length} +0,0 @@',
+      for (final line in beforeLines) '-$line',
+    ].join('\n'),
+    ProposedFileEditType.modify => _lineDiff(beforeLines, afterLines),
+  };
+}
+
+List<String> _splitDiffLines(String value) {
+  if (value.isEmpty) return const [];
+  final normalized = value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  final lines = normalized.split('\n');
+  if (lines.isNotEmpty && lines.last.isEmpty) {
+    return lines.sublist(0, lines.length - 1);
+  }
+  return lines;
+}
+
+String _lineDiff(List<String> before, List<String> after) {
+  final rows = _diffRows(before, after);
+  final result = <String>['@@ -1,${before.length} +1,${after.length} @@'];
+  for (final row in rows) {
+    switch (row.type) {
+      case _DiffRowType.unchanged:
+        result.add(' ${row.value}');
+        break;
+      case _DiffRowType.removed:
+        result.add('-${row.value}');
+        break;
+      case _DiffRowType.added:
+        result.add('+${row.value}');
+        break;
+    }
+  }
+  return result.join('\n');
+}
+
+List<_DiffRow> _diffRows(List<String> before, List<String> after) {
+  final lcs = List.generate(
+    before.length + 1,
+    (_) => List<int>.filled(after.length + 1, 0),
+  );
+  for (var i = before.length - 1; i >= 0; i--) {
+    for (var j = after.length - 1; j >= 0; j--) {
+      lcs[i][j] = before[i] == after[j]
+          ? lcs[i + 1][j + 1] + 1
+          : (lcs[i + 1][j] >= lcs[i][j + 1] ? lcs[i + 1][j] : lcs[i][j + 1]);
+    }
+  }
+
+  final rows = <_DiffRow>[];
+  var i = 0;
+  var j = 0;
+  while (i < before.length && j < after.length) {
+    if (before[i] == after[j]) {
+      rows.add(_DiffRow(_DiffRowType.unchanged, before[i]));
+      i++;
+      j++;
+    } else if (lcs[i + 1][j] >= lcs[i][j + 1]) {
+      rows.add(_DiffRow(_DiffRowType.removed, before[i]));
+      i++;
+    } else {
+      rows.add(_DiffRow(_DiffRowType.added, after[j]));
+      j++;
+    }
+  }
+  while (i < before.length) {
+    rows.add(_DiffRow(_DiffRowType.removed, before[i]));
+    i++;
+  }
+  while (j < after.length) {
+    rows.add(_DiffRow(_DiffRowType.added, after[j]));
+    j++;
+  }
+  return rows;
+}
+
+enum _DiffRowType { unchanged, removed, added }
+
+class _DiffRow {
+  final _DiffRowType type;
+  final String value;
+
+  const _DiffRow(this.type, this.value);
+}
+
+class _MissingPatchReviewDrawer extends ConsumerWidget {
+  final String patchSetId;
+  final String? selectedPath;
+
+  const _MissingPatchReviewDrawer({
+    required this.patchSetId,
+    required this.selectedPath,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.lg),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(Spacing.lg),
+          decoration: BoxDecoration(
+            color: tokens.surfaceInset.withValues(alpha: 0.54),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: tokens.studioDivider.withValues(alpha: 0.62),
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.difference_outlined,
+                    size: 17,
+                    color: tokens.textMuted,
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Patch review unavailable',
+                      style: TextStyle(
+                        color: tokens.textPrimary,
+                        fontSize: FontSizes.sm,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                selectedPath == null || selectedPath!.trim().isEmpty
+                    ? 'Circuit could not find the selected patch review. It may have been dismissed, restored from older history, or not loaded for this thread yet.'
+                    : 'Circuit could not find the selected patch review for $selectedPath. It may have been dismissed, restored from older history, or not loaded for this thread yet.',
+                style: TextStyle(
+                  color: tokens.textSecondary,
+                  fontSize: FontSizes.xs,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              SelectableText(
+                'Patch id: $patchSetId',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xs,
+                  height: 1.3,
+                  fontFamily: EditorDefaults.studioMonospaceFontFamily,
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+              Wrap(
+                spacing: Spacing.sm,
+                runSpacing: Spacing.sm,
+                children: [
+                  OutlinedButton(
+                    style: _drawerSecondaryActionStyle(tokens),
+                    onPressed: () => ref
+                        .read(studioRightDrawerProvider.notifier)
+                        .openRepositoryDiff(),
+                    child: const Text('Show repo changes'),
+                  ),
+                  OutlinedButton(
+                    style: _drawerSecondaryActionStyle(tokens),
+                    onPressed:
+                        selectedPath == null || selectedPath!.trim().isEmpty
+                        ? null
+                        : () => ref
+                              .read(studioRightDrawerProvider.notifier)
+                              .openFile(selectedPath!),
+                    child: const Text('Open current file'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PatchDiffReviewDrawer extends ConsumerWidget {
+  final ProposedPatchSet patch;
+  final String? selectedPath;
+  final String diffText;
+
+  const _PatchDiffReviewDrawer({
+    required this.patch,
+    required this.selectedPath,
+    required this.diffText,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final edits = patch.edits;
+    final effectiveSelectedPath = selectedPath ?? edits.firstOrNull?.path;
+    final selectedEdit = effectiveSelectedPath == null
+        ? null
+        : edits.where((edit) => edit.path == effectiveSelectedPath).firstOrNull;
+    final stats = _patchReviewStats(patch);
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.md),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tokens.surfaceInset.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
+            color: tokens.studioDivider.withValues(alpha: 0.68),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.sm,
+                Spacing.sm,
+                Spacing.sm,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: tokens.bgDark.withValues(alpha: 0.48),
+                      borderRadius: BorderRadius.circular(Radii.md),
+                    ),
+                    child: Icon(
+                      patch.isPlanOnly
+                          ? Icons.alt_route_outlined
+                          : Icons.difference_outlined,
+                      color: tokens.textMuted,
+                      size: 13,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          patch.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.textSecondary,
+                            fontSize: FontSizes.xs,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(text: _formatFileCount(patch.fileCount)),
+                              if (stats.additions > 0 || stats.deletions > 0)
+                                TextSpan(
+                                  text:
+                                      '  +${stats.additions} -${stats.deletions}',
+                                ),
+                              if (patch.applyStatus != null)
+                                TextSpan(text: '  ${patch.applyStatus!.name}'),
+                            ],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tokens.textMuted,
+                            fontSize: FontSizes.xs,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (effectiveSelectedPath != null) ...[
+                    StudioChromeIconButton(
+                      tooltip: 'Open current file',
+                      onTap: () => ref
+                          .read(studioRightDrawerProvider.notifier)
+                          .openFile(effectiveSelectedPath),
+                      icon: Icons.open_in_new,
+                      width: 26,
+                      height: 24,
+                      iconSize: 14,
+                    ),
+                    const SizedBox(width: Spacing.xs),
+                  ],
+                  StudioChromeIconButton(
+                    tooltip: 'Copy diff',
+                    onTap: () =>
+                        Clipboard.setData(ClipboardData(text: diffText)),
+                    icon: Icons.copy,
+                    width: 26,
+                    height: 24,
+                    iconSize: 14,
+                  ),
+                ],
+              ),
+            ),
+            Divider(
+              color: tokens.studioDivider.withValues(alpha: 0.72),
+              height: 1,
+            ),
+            _PatchReviewActionBar(patch: patch),
+            Divider(
+              color: tokens.studioDivider.withValues(alpha: 0.72),
+              height: 1,
+            ),
+            if (edits.length > 1)
+              SizedBox(
+                height: 104,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+                  itemCount: edits.length,
+                  separatorBuilder: (_, _) => Divider(
+                    color: tokens.studioDivider.withValues(alpha: 0.42),
+                    height: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    final edit = edits[index];
+                    return _PatchDiffFileRow(
+                      edit: edit,
+                      selected: edit.path == effectiveSelectedPath,
+                      onTap: () => ref
+                          .read(studioRightDrawerProvider.notifier)
+                          .openPatchFile(patch.id, edit.path),
+                    );
+                  },
+                ),
+              ),
+            if (edits.length > 1)
+              Divider(
+                color: tokens.studioDivider.withValues(alpha: 0.72),
+                height: 1,
+              ),
+            if (selectedEdit != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.md,
+                  Spacing.xs,
+                  Spacing.md,
+                  0,
+                ),
+                child: _PatchDiffSelectedFileHeader(edit: selectedEdit),
+              ),
+            Expanded(
+              child: RepaintBoundary(
+                child: _VirtualizedTextDocumentBody(
+                  text: diffText,
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    Spacing.sm,
+                    Spacing.md,
+                    Spacing.lg,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PatchReviewActionBar extends ConsumerWidget {
+  final ProposedPatchSet patch;
+
+  const _PatchReviewActionBar({required this.patch});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    if (patch.isPlanOnly) {
+      return _PatchReviewActionStrip(
+        children: [
+          Text(
+            'Plan review',
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      );
+    }
+    final canApply =
+        patch.edits.isNotEmpty &&
+        patch.approvalStatus != PatchApprovalStatus.revisionRequested &&
+        patch.applyStatus != PatchApplyStatus.conflict &&
+        patch.applyStatus != PatchApplyStatus.applied &&
+        patch.applyStatus != PatchApplyStatus.rejected &&
+        patch.applyStatus != PatchApplyStatus.revisionRequested;
+    final canRestore =
+        patch.checkpointId != null &&
+        patch.applyStatus == PatchApplyStatus.applied;
+    if (canApply) {
+      return _PatchReviewActionStrip(
+        children: [
+          TextButton(
+            style: _drawerTextActionStyle(tokens),
+            onPressed: () =>
+                ref.read(patchProposalProvider.notifier).reject(patch.id),
+            child: const Text('Reject'),
+          ),
+          OutlinedButton(
+            style: _drawerSecondaryActionStyle(tokens),
+            onPressed: () => _requestRevision(ref),
+            child: const Text('Ask for revision'),
+          ),
+          FilledButton(
+            style: _drawerPrimaryActionStyle(tokens),
+            onPressed: () => _applyPatch(context, ref),
+            child: const Text('Apply changes'),
+          ),
+        ],
+      );
+    }
+    if (patch.applyStatus == PatchApplyStatus.conflict) {
+      return _PatchReviewActionStrip(
+        children: [
+          OutlinedButton(
+            style: _drawerSecondaryActionStyle(tokens),
+            onPressed: () => _openConflictFile(ref),
+            child: const Text('View current file'),
+          ),
+          OutlinedButton(
+            style: _drawerSecondaryActionStyle(tokens),
+            onPressed: () => _requestRefresh(ref),
+            child: const Text('Refresh patch'),
+          ),
+          OutlinedButton(
+            style: _drawerSecondaryActionStyle(tokens),
+            onPressed: () => _requestRebase(ref),
+            child: const Text('Ask Circuit to rebase'),
+          ),
+          TextButton(
+            style: _drawerTextActionStyle(tokens),
+            onPressed: () => ref
+                .read(patchProposalProvider.notifier)
+                .dismissConflict(patch.id),
+            child: const Text('Dismiss conflict'),
+          ),
+        ],
+      );
+    }
+    if (canRestore) {
+      return _PatchReviewActionStrip(
+        children: [
+          Text(
+            'Applied',
+            style: TextStyle(
+              color: tokens.success,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          OutlinedButton(
+            style: _drawerSecondaryActionStyle(tokens),
+            onPressed: () => _restoreCheckpoint(context, ref),
+            child: const Text('Restore checkpoint'),
+          ),
+        ],
+      );
+    }
+    final label = switch (patch.applyStatus) {
+      PatchApplyStatus.restored => 'Checkpoint restored',
+      PatchApplyStatus.rejected => 'Rejected',
+      PatchApplyStatus.revisionRequested => 'Revision requested',
+      PatchApplyStatus.failed => 'Apply failed',
+      PatchApplyStatus.applied => 'Applied',
+      PatchApplyStatus.conflict => 'Conflict',
+      null => 'Review',
+    };
+    return _PatchReviewActionStrip(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: patch.applyStatus == PatchApplyStatus.failed
+                ? tokens.error
+                : tokens.textMuted,
+            fontSize: FontSizes.xs,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _applyPatch(BuildContext context, WidgetRef ref) async {
+    final result = await ref
+        .read(patchProposalProvider.notifier)
+        .apply(patch.id);
+    if (!context.mounted) return;
+    _showPatchSnack(
+      context,
+      result.applied
+          ? result.message ?? 'Applied ${result.changedFiles.length} files.'
+          : result.conflictMessage ?? result.message ?? 'Patch not applied.',
+    );
+  }
+
+  Future<void> _restoreCheckpoint(BuildContext context, WidgetRef ref) async {
+    final checkpointId = patch.checkpointId;
+    if (checkpointId == null) return;
+    final result = await ref
+        .read(patchProposalProvider.notifier)
+        .restoreCheckpoint(checkpointId);
+    if (!context.mounted) return;
+    _showPatchSnack(
+      context,
+      result.status == PatchApplyStatus.restored
+          ? result.message ?? 'Checkpoint restored.'
+          : result.message ?? 'Checkpoint was not restored.',
+    );
+  }
+
+  void _requestRevision(WidgetRef ref) {
+    const prompt = 'Revise these proposed changes. Change: ';
+    ref
+        .read(patchProposalProvider.notifier)
+        .requestRevision(
+          PatchProposalRevisionRequest(patchSetId: patch.id, prompt: prompt),
+        );
+    ref.read(studioShellProvider.notifier)
+      ..setPromptMode(StudioPromptMode.code)
+      ..setComposerText(prompt);
+  }
+
+  void _requestRebase(WidgetRef ref) {
+    final conflict = patch.conflictMessage?.trim();
+    final prompt =
+        'Refresh these proposed changes against the current files and preserve the accepted plan intent.'
+        '${conflict == null || conflict.isEmpty ? '' : ' Resolve: $conflict'}';
+    ref
+        .read(patchProposalProvider.notifier)
+        .requestRevision(
+          PatchProposalRevisionRequest(patchSetId: patch.id, prompt: prompt),
+        );
+    ref.read(studioShellProvider.notifier)
+      ..setPromptMode(StudioPromptMode.code)
+      ..setComposerText(prompt);
+  }
+
+  void _requestRefresh(WidgetRef ref) {
+    final conflict = patch.conflictMessage?.trim();
+    final prompt =
+        'Refresh this patch against the current file contents without expanding scope.'
+        '${conflict == null || conflict.isEmpty ? '' : ' Resolve the current conflict: $conflict'}';
+    ref
+        .read(patchProposalProvider.notifier)
+        .requestRevision(
+          PatchProposalRevisionRequest(patchSetId: patch.id, prompt: prompt),
+        );
+    ref.read(studioShellProvider.notifier)
+      ..setPromptMode(StudioPromptMode.code)
+      ..setComposerText(prompt);
+  }
+
+  void _openConflictFile(WidgetRef ref) {
+    final path = _primaryConflictPath(patch);
+    if (path == null) return;
+    ref.read(studioRightDrawerProvider.notifier).openFile(path);
+  }
+}
+
+class _PatchReviewActionStrip extends ConsumerWidget {
+  final List<Widget> children;
+
+  const _PatchReviewActionStrip({required this.children});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      color: tokens.surfacePanel.withValues(alpha: 0.24),
+      padding: const EdgeInsets.fromLTRB(Spacing.sm, 7, Spacing.sm, 7),
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: Spacing.xs,
+        runSpacing: Spacing.xs,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _PatchDiffFileRow extends ConsumerWidget {
+  final ProposedFileEdit edit;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _PatchDiffFileRow({
+    required this.edit,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final stats = _editReviewStats(edit);
+    return Material(
+      color: selected
+          ? tokens.studioRailSelected.withValues(alpha: 0.45)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.md,
+            vertical: 7,
+          ),
+          child: Row(
+            children: [
+              Icon(
+                _patchEditIcon(edit.type),
+                size: 13,
+                color: selected ? tokens.textPrimary : tokens.textMuted,
+              ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: Text(
+                  edit.path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected ? tokens.textPrimary : tokens.textSecondary,
+                    fontSize: FontSizes.xs,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    height: 1.2,
+                  ),
+                ),
+              ),
+              if (stats.additions > 0 || stats.deletions > 0)
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '+${stats.additions}',
+                        style: TextStyle(color: tokens.success),
+                      ),
+                      const TextSpan(text: ' '),
+                      TextSpan(
+                        text: '-${stats.deletions}',
+                        style: TextStyle(color: tokens.error),
+                      ),
+                    ],
+                  ),
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PatchDiffSelectedFileHeader extends ConsumerWidget {
+  final ProposedFileEdit edit;
+
+  const _PatchDiffSelectedFileHeader({required this.edit});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Row(
+      children: [
+        Icon(_patchEditIcon(edit.type), size: 13, color: tokens.textMuted),
+        const SizedBox(width: Spacing.xs),
+        Expanded(
+          child: Text(
+            edit.path,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.xs,
+              height: 1.2,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.sm,
+            vertical: 3,
+          ),
+          decoration: BoxDecoration(
+            color: tokens.studioControl.withValues(alpha: 0.44),
+            borderRadius: BorderRadius.circular(Radii.sm),
+          ),
+          child: Text(
+            edit.type.name,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xs,
+              height: 1.1,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PatchReviewStats {
+  final int additions;
+  final int deletions;
+
+  const _PatchReviewStats({required this.additions, required this.deletions});
+}
+
+_PatchReviewStats _patchReviewStats(ProposedPatchSet patch) {
+  var additions = 0;
+  var deletions = 0;
+  for (final edit in patch.edits) {
+    final stats = _editReviewStats(edit);
+    additions += stats.additions;
+    deletions += stats.deletions;
+  }
+  return _PatchReviewStats(additions: additions, deletions: deletions);
+}
+
+_PatchReviewStats _editReviewStats(ProposedFileEdit edit) {
+  var additions = 0;
+  var deletions = 0;
+  final diff = edit.unifiedDiff;
+  if (diff != null && diff.trim().isNotEmpty) {
+    for (final line in diff.split('\n')) {
+      if (line.startsWith('+++') || line.startsWith('---')) continue;
+      if (line.startsWith('+')) additions++;
+      if (line.startsWith('-')) deletions++;
+    }
+    return _PatchReviewStats(additions: additions, deletions: deletions);
+  }
+  final before = edit.before;
+  final after = edit.after;
+  if (before != null && after != null) {
+    for (final row in _diffRows(
+      _splitDiffLines(before),
+      _splitDiffLines(after),
+    )) {
+      switch (row.type) {
+        case _DiffRowType.added:
+          additions++;
+          break;
+        case _DiffRowType.removed:
+          deletions++;
+          break;
+        case _DiffRowType.unchanged:
+          break;
+      }
+    }
+  } else if (after != null) {
+    additions = _splitDiffLines(after).length;
+  } else if (before != null) {
+    deletions = _splitDiffLines(before).length;
+  }
+  return _PatchReviewStats(additions: additions, deletions: deletions);
+}
+
+IconData _patchEditIcon(ProposedFileEditType type) {
+  return switch (type) {
+    ProposedFileEditType.create => Icons.note_add_outlined,
+    ProposedFileEditType.modify => Icons.description_outlined,
+    ProposedFileEditType.delete => Icons.delete_outline,
+  };
+}
+
+String _formatFileCount(int count) => '$count ${count == 1 ? 'file' : 'files'}';
+
+String? _primaryConflictPath(ProposedPatchSet patch) {
+  final message = patch.conflictMessage?.trim();
+  if (message != null && message.isNotEmpty) {
+    final match = RegExp(r':\s*([^\n]+)').firstMatch(message);
+    final parsed = match?.group(1)?.trim();
+    if (parsed != null && parsed.isNotEmpty) return parsed;
+  }
+  return patch.edits.firstOrNull?.path;
+}
+
+void _showPatchSnack(BuildContext context, String message) {
+  ScaffoldMessenger.maybeOf(
+    context,
+  )?.showSnackBar(SnackBar(content: Text(message)));
+}
+
+ButtonStyle _drawerPrimaryActionStyle(ThemeTokens tokens) {
+  return FilledButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+    visualDensity: VisualDensity.compact,
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
+}
+
+ButtonStyle _drawerSecondaryActionStyle(ThemeTokens tokens) {
+  return OutlinedButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+    visualDensity: VisualDensity.compact,
+    foregroundColor: tokens.textSecondary,
+    side: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.58)),
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
+}
+
+ButtonStyle _drawerTextActionStyle(ThemeTokens tokens) {
+  return TextButton.styleFrom(
+    minimumSize: const Size(0, 24),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 0),
+    visualDensity: VisualDensity.compact,
+    foregroundColor: tokens.textSecondary,
+    textStyle: const TextStyle(
+      fontSize: FontSizes.xs,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+  );
+}
+
 ProposedPatchSet? _patchForDrawer(
   PatchProposalState patchState,
-  String? requestedPatchId,
-) {
+  String? requestedPatchId, {
+  StudioThread? thread,
+  String? taskId,
+  String? selectedPath,
+}) {
   final requestedId = requestedPatchId?.trim();
   if (requestedId != null && requestedId.isNotEmpty) {
     if (patchState.active?.id == requestedId) return patchState.active;
@@ -1412,7 +2422,113 @@ ProposedPatchSet? _patchForDrawer(
       if (patch.id == requestedId) return patch;
     }
   }
-  return patchState.active;
+  final threadPatch = _latestPatchForThread(
+    patchState,
+    thread: thread,
+    taskId: taskId,
+    selectedPath: selectedPath,
+  );
+  return threadPatch ?? patchState.active;
+}
+
+ProposedPatchSet? _latestPatchForThread(
+  PatchProposalState patchState, {
+  required StudioThread? thread,
+  required String? taskId,
+  required String? selectedPath,
+}) {
+  if (thread == null && (taskId == null || taskId.trim().isEmpty)) {
+    return null;
+  }
+  final candidates = <ProposedPatchSet>[];
+  void addPatch(ProposedPatchSet? patch) {
+    if (patch == null) return;
+    if (!_patchBelongsToThread(patch, thread: thread, taskId: taskId)) return;
+    candidates.add(patch);
+  }
+
+  addPatch(patchState.active);
+  for (final patch in patchState.history) {
+    addPatch(patch);
+  }
+  if (candidates.isEmpty) return null;
+
+  candidates.sort((a, b) {
+    final priorityCompare =
+        _drawerPatchPriority(
+          b,
+          patchState: patchState,
+          selectedPath: selectedPath,
+        ).compareTo(
+          _drawerPatchPriority(
+            a,
+            patchState: patchState,
+            selectedPath: selectedPath,
+          ),
+        );
+    if (priorityCompare != 0) return priorityCompare;
+    return b.createdAt.compareTo(a.createdAt);
+  });
+  return candidates.first;
+}
+
+bool _patchBelongsToThread(
+  ProposedPatchSet patch, {
+  required StudioThread? thread,
+  required String? taskId,
+}) {
+  final normalizedTaskId = taskId?.trim();
+  if (normalizedTaskId != null &&
+      normalizedTaskId.isNotEmpty &&
+      patch.agentTaskId == normalizedTaskId) {
+    return true;
+  }
+  if (thread == null) return false;
+  if (thread.taskId != null &&
+      thread.taskId!.trim().isNotEmpty &&
+      patch.agentTaskId == thread.taskId) {
+    return true;
+  }
+  final runId = patch.runId?.trim();
+  if (runId != null && runId.isNotEmpty) {
+    final requestIds = thread.turns.map((turn) => turn.requestId).toSet();
+    if (requestIds.contains(runId)) return true;
+  }
+  final patchIds = <String>{
+    for (final turn in thread.turns)
+      if (turn.acceptedPlanContext?.patchSetId.trim().isNotEmpty == true)
+        turn.acceptedPlanContext!.patchSetId,
+    for (final turn in thread.turns)
+      for (final event in turn.events)
+        if (event.patchSetId?.trim().isNotEmpty == true) event.patchSetId!,
+  };
+  return patchIds.contains(patch.id);
+}
+
+int _drawerPatchPriority(
+  ProposedPatchSet patch, {
+  required PatchProposalState patchState,
+  required String? selectedPath,
+}) {
+  var priority = 0;
+  final requestedPath = selectedPath?.trim();
+  if (requestedPath != null &&
+      requestedPath.isNotEmpty &&
+      patch.edits.any((edit) => edit.path == requestedPath)) {
+    priority += 100;
+  }
+  if (patchState.active?.id == patch.id) priority += 80;
+  priority += switch (patch.applyStatus) {
+    PatchApplyStatus.conflict => 70,
+    PatchApplyStatus.revisionRequested => 65,
+    null => 60,
+    PatchApplyStatus.applied => 55,
+    PatchApplyStatus.failed => 45,
+    PatchApplyStatus.restored => 35,
+    PatchApplyStatus.rejected => 10,
+  };
+  if (!patch.isPlanOnly && patch.edits.isNotEmpty) priority += 8;
+  return priority;
 }
 
 class _GitReviewDrawer extends ConsumerWidget {
@@ -1815,6 +2931,385 @@ CommandRunStatus _commandRunStatusFromTitle(String title) {
   return CommandRunStatus.succeeded;
 }
 
+class _ArtifactsDrawer extends ConsumerWidget {
+  final AgentTask? task;
+
+  const _ArtifactsDrawer({this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final threadId = ref.watch(
+      studioThreadProvider.select(
+        (state) => state.threadForTaskView(task?.id)?.id,
+      ),
+    );
+    final artifactView = ref.watch(
+      studioSourceArtifactsForThreadProvider(threadId),
+    );
+    final artifacts = artifactView.artifacts
+        .where(
+          (artifact) =>
+              artifact.kind == StudioSourceArtifactKind.generatedArtifact,
+        )
+        .map(GeneratedArtifact.fromSourceArtifact)
+        .nonNulls
+        .toList(growable: false);
+    if (artifacts.isEmpty) {
+      return const _EmptyDrawerState(
+        icon: Icons.file_present_outlined,
+        title: 'No artifacts yet',
+        detail:
+            'Generated files, spreadsheets, reports, diagrams, and charts appear here.',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+      children: [
+        for (final artifact in artifacts)
+          _ArtifactDrawerCard(
+            artifact: artifact,
+            onTap: () {
+              final source = artifactView.artifacts.firstWhere(
+                (candidate) => candidate.id == 'generated-${artifact.id}',
+              );
+              ref.read(studioRightDrawerProvider.notifier).openArtifact(source);
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _ArtifactDrawerCard extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+  final VoidCallback onTap;
+
+  const _ArtifactDrawerCard({required this.artifact, required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Container(
+        decoration: BoxDecoration(
+          color: tokens.studioCard.withValues(alpha: 0.76),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: tokens.studioDivider.withValues(alpha: 0.3),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(11, 10, 9, 8),
+                child: Row(
+                  children: [
+                    Icon(
+                      _artifactDrawerIcon(artifact.kind),
+                      color: tokens.textMuted,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            artifact.fileName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: FontSizes.sm,
+                              height: 1.2,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _artifactMeta(artifact),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xxs,
+                              height: 1.2,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (artifact.summary.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(11, 0, 11, 9),
+                child: Text(
+                  artifact.summary,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xs,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            _ArtifactDrawerPreview(artifact: artifact),
+            _ArtifactDrawerActions(artifact: artifact, onReview: onTap),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _artifactDrawerIcon(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.csv => Icons.table_chart_outlined,
+      GeneratedArtifactKind.json => Icons.data_object_outlined,
+      GeneratedArtifactKind.diagram ||
+      GeneratedArtifactKind.chart => Icons.account_tree_outlined,
+      GeneratedArtifactKind.pdf => Icons.picture_as_pdf_outlined,
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.report => Icons.description_outlined,
+    };
+  }
+
+  String _artifactMeta(GeneratedArtifact artifact) {
+    final parts = <String>[artifact.typeLabel];
+    if (artifact.sheetCount > 1) parts.add('${artifact.sheetCount} sheets');
+    if (artifact.byteSize > 0) parts.add(_formatBytes(artifact.byteSize));
+    parts.add(artifact.statusLabel);
+    return parts.join(' • ');
+  }
+}
+
+class _ArtifactDrawerPreview extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+
+  const _ArtifactDrawerPreview({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    if ((artifact.kind == GeneratedArtifactKind.excel ||
+            artifact.kind == GeneratedArtifactKind.csv) &&
+        artifact.previewRows.isNotEmpty) {
+      return _ArtifactTablePreview(rows: artifact.previewRows);
+    }
+    if (artifact.filePath.isEmpty) return const SizedBox.shrink();
+    return FutureBuilder<String>(
+      future: _readArtifactPreview(artifact.filePath),
+      builder: (context, snapshot) {
+        final text = snapshot.data?.trim() ?? '';
+        if (text.isEmpty) return const SizedBox.shrink();
+        return Container(
+          margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          padding: const EdgeInsets.all(9),
+          decoration: BoxDecoration(
+            color: tokens.surfacePanel.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: tokens.studioDivider.withValues(alpha: 0.22),
+            ),
+          ),
+          child: Text(
+            text,
+            maxLines: 8,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textSecondary,
+              fontSize: FontSizes.xs,
+              height: 1.25,
+              fontFamily: artifact.kind == GeneratedArtifactKind.json
+                  ? EditorDefaults.studioMonospaceFontFamily
+                  : null,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  static Future<String> _readArtifactPreview(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) return '';
+    final bytes = await file
+        .openRead(0, 4096)
+        .fold<List<int>>(
+          <int>[],
+          (previous, element) => previous..addAll(element),
+        );
+    return String.fromCharCodes(
+      bytes,
+      0,
+      bytes.length,
+    ).replaceAll('\u0000', '').trim();
+  }
+}
+
+class _ArtifactTablePreview extends ConsumerWidget {
+  final List<List<String>> rows;
+
+  const _ArtifactTablePreview({required this.rows});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final visibleRows = rows.take(6).toList(growable: false);
+    final columnCount = visibleRows.fold<int>(
+      0,
+      (max, row) => row.length > max ? row.length : max,
+    );
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Table(
+          defaultColumnWidth: const IntrinsicColumnWidth(),
+          border: TableBorder(
+            horizontalInside: BorderSide(
+              color: tokens.studioDivider.withValues(alpha: 0.16),
+            ),
+          ),
+          children: [
+            for (var rowIndex = 0; rowIndex < visibleRows.length; rowIndex++)
+              TableRow(
+                decoration: BoxDecoration(
+                  color: rowIndex == 0
+                      ? tokens.studioControl.withValues(alpha: 0.36)
+                      : Colors.transparent,
+                ),
+                children: [
+                  for (
+                    var columnIndex = 0;
+                    columnIndex < columnCount;
+                    columnIndex++
+                  )
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        columnIndex < visibleRows[rowIndex].length
+                            ? visibleRows[rowIndex][columnIndex]
+                            : '',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: rowIndex == 0
+                              ? tokens.textPrimary
+                              : tokens.textSecondary,
+                          fontSize: FontSizes.xxs,
+                          height: 1.18,
+                          fontWeight: rowIndex == 0
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtifactDrawerActions extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+  final VoidCallback onReview;
+
+  const _ArtifactDrawerActions({
+    required this.artifact,
+    required this.onReview,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: tokens.studioDivider.withValues(alpha: 0.22)),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+      child: Row(
+        children: [
+          TextButton(
+            style: _compactDrawerActionStyle(tokens),
+            onPressed: artifact.filePath.isEmpty
+                ? null
+                : () => launchUrl(Uri.file(artifact.filePath)),
+            child: const Text('Open'),
+          ),
+          TextButton(
+            style: _compactDrawerActionStyle(tokens),
+            onPressed: artifact.filePath.isEmpty
+                ? null
+                : () => launchUrl(Uri.file(p.dirname(artifact.filePath))),
+            child: const Text('Reveal'),
+          ),
+          TextButton(
+            style: _compactDrawerActionStyle(tokens),
+            onPressed: onReview,
+            child: const Text('Review'),
+          ),
+          const Spacer(),
+          StudioChromeIconButton(
+            tooltip: 'Copy path',
+            onTap: artifact.filePath.isEmpty
+                ? null
+                : () =>
+                      Clipboard.setData(ClipboardData(text: artifact.filePath)),
+            icon: Icons.copy,
+            width: 26,
+            height: 22,
+            iconSize: 13,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+ButtonStyle _compactDrawerActionStyle(ThemeTokens tokens) {
+  return TextButton.styleFrom(
+    foregroundColor: tokens.textSecondary,
+    disabledForegroundColor: tokens.textMuted.withValues(alpha: 0.38),
+    textStyle: const TextStyle(fontSize: FontSizes.xxs, height: 1),
+    visualDensity: VisualDensity.compact,
+    minimumSize: const Size(0, 24),
+    padding: const EdgeInsets.symmetric(horizontal: 7),
+  );
+}
+
+String _formatBytes(int value) {
+  if (value < 1024) return '$value B';
+  final kb = value / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
+  final mb = kb / 1024;
+  return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+}
+
 class _SourcesDrawer extends ConsumerWidget {
   final AgentTask? task;
 
@@ -1822,11 +3317,15 @@ class _SourcesDrawer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
-    final artifacts = ref
-        .watch(studioSourceArtifactProvider)
-        .forThread(thread?.id);
-    if (artifacts.isEmpty) {
+    final threadId = ref.watch(
+      studioThreadProvider.select(
+        (state) => state.threadForTaskView(task?.id)?.id,
+      ),
+    );
+    final artifactView = ref.watch(
+      studioSourceArtifactsForThreadProvider(threadId),
+    );
+    if (artifactView.isEmpty) {
       return const _EmptyDrawerState(
         icon: Icons.travel_explore,
         title: 'No sources yet',
@@ -1837,7 +3336,7 @@ class _SourcesDrawer extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(Spacing.lg),
       children: [
-        for (final artifact in artifacts)
+        for (final artifact in artifactView.artifacts)
           _SourceListRow(
             icon: _sourceIcon(artifact.kind),
             title: artifact.title,
@@ -1856,6 +3355,7 @@ class _SourcesDrawer extends ConsumerWidget {
       StudioSourceArtifactKind.webSource ||
       StudioSourceArtifactKind.browserComment => Icons.language,
       StudioSourceArtifactKind.file => Icons.description_outlined,
+      StudioSourceArtifactKind.generatedArtifact => Icons.file_present_outlined,
       StudioSourceArtifactKind.diff ||
       StudioSourceArtifactKind.gitChange ||
       StudioSourceArtifactKind.gitHunk ||
@@ -2654,20 +4154,14 @@ class _TextDocumentView extends ConsumerWidget {
             height: 1,
           ),
           Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(
-                Spacing.md,
-                Spacing.md,
-                Spacing.md,
-                Spacing.lg,
-              ),
-              child: SelectableText(
-                text.isEmpty ? '(empty)' : text,
-                style: TextStyle(
-                  color: tokens.textSecondary,
-                  fontSize: FontSizes.xs,
-                  height: 1.42,
-                  fontFamily: EditorDefaults.studioMonospaceFontFamily,
+            child: RepaintBoundary(
+              child: _VirtualizedTextDocumentBody(
+                text: text,
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.md,
+                  Spacing.md,
+                  Spacing.md,
+                  Spacing.lg,
                 ),
               ),
             ),

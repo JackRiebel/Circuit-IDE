@@ -80,9 +80,22 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
       },
     );
     final tokens = ref.watch(themeProvider);
-    final studio = ref.watch(studioShellProvider);
-    final rootPath = ref.watch(fileTreeProvider).rootPath;
-    final branch = ref.watch(gitProvider).status.branch;
+    final studioControls = ref.watch(
+      studioShellProvider.select(
+        (state) => (
+          promptMode: state.promptMode,
+          planModeEnabled: state.planModeEnabled,
+          specialistAgentId: state.specialistAgentId,
+          executionMode: state.executionMode,
+        ),
+      ),
+    );
+    final rootPath = ref.watch(
+      fileTreeProvider.select((state) => state.rootPath),
+    );
+    final branch = ref.watch(
+      gitProvider.select((state) => state.status.branch),
+    );
     final settings = ref.watch(settingsProvider);
     final tokenUsage = ref.watch(
       studioTokenUsageForTaskViewProvider(widget.taskId),
@@ -95,12 +108,14 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
       decoration: BoxDecoration(
         color: tokens.studioComposer,
         borderRadius: BorderRadius.circular(widget.compact ? 16 : 19),
-        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.26)),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: widget.compact ? 0.05 : 0.09),
-            blurRadius: widget.compact ? 9 : 14,
-            offset: const Offset(0, 5),
+            color: Colors.black.withValues(
+              alpha: widget.compact ? 0.035 : 0.06,
+            ),
+            blurRadius: widget.compact ? 6 : 10,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -165,14 +180,18 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                             const SizedBox(width: 9),
                             const _PermissionsSelector(),
                             const SizedBox(width: 9),
-                            _ComposerModeSelector(value: studio.promptMode),
+                            _ComposerModeSelector(
+                              value: studioControls.promptMode,
+                            ),
                             const SizedBox(width: 9),
-                            _PlanModeToggle(enabled: studio.planModeEnabled),
+                            _PlanModeToggle(
+                              enabled: studioControls.planModeEnabled,
+                            ),
                             const SizedBox(width: 9),
                             if (widget.compact &&
                                 StudioFeatureFlags.enterpriseSpecialists) ...[
                               _SpecialistAgentSelector(
-                                value: studio.specialistAgentId,
+                                value: studioControls.specialistAgentId,
                               ),
                               const SizedBox(width: 9),
                             ],
@@ -198,13 +217,13 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: _controller.text.trim().isEmpty
-                                ? tokens.studioControl.withValues(alpha: 0.68)
-                                : tokens.textPrimary,
+                                ? tokens.studioControl.withValues(alpha: 0.52)
+                                : tokens.textPrimary.withValues(alpha: 0.94),
                             shape: BoxShape.circle,
                             border: _controller.text.trim().isEmpty
                                 ? Border.all(
                                     color: tokens.studioDivider.withValues(
-                                      alpha: 0.36,
+                                      alpha: 0.28,
                                     ),
                                   )
                                 : null,
@@ -243,7 +262,7 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                     label: projectLabel,
                   ),
                   const SizedBox(width: Spacing.xl),
-                  _ExecutionModeSelector(value: studio.executionMode),
+                  _ExecutionModeSelector(value: studioControls.executionMode),
                   const SizedBox(width: Spacing.xl),
                   _ComposerPill(
                     icon: Icons.account_tree_outlined,
@@ -251,7 +270,9 @@ class _StudioPromptComposerState extends ConsumerState<StudioPromptComposer> {
                   ),
                   const SizedBox(width: Spacing.xl),
                   if (StudioFeatureFlags.enterpriseSpecialists)
-                    _SpecialistAgentSelector(value: studio.specialistAgentId),
+                    _SpecialistAgentSelector(
+                      value: studioControls.specialistAgentId,
+                    ),
                 ],
               ),
             ),

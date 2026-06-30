@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/models/command_descriptor.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
@@ -188,7 +190,7 @@ void main() {
     expect(decoration, isA<BoxDecoration>());
     expect(
       (decoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(7),
+      BorderRadius.circular(6),
     );
 
     final ink = tester.widget<InkWell>(
@@ -199,48 +201,60 @@ void main() {
           )
           .first,
     );
-    expect(ink.borderRadius, BorderRadius.circular(7));
+    expect(ink.borderRadius, BorderRadius.circular(6));
 
     final icon = tester.widget<Icon>(find.byIcon(Icons.tune_outlined));
     expect(icon.size, 14);
   });
 
-  testWidgets('Studio prominent chrome button matches reference blue accent', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        child: MaterialApp(
-          home: Scaffold(
-            body: StudioChromeIconButton(
-              icon: Icons.arrow_downward,
-              tooltip: 'Open project folder',
-              prominent: true,
-              width: 28,
-              height: 28,
-              onTap: () {},
+  testWidgets(
+    'Studio prominent chrome button uses neutral native chrome tone',
+    (tester) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Scaffold(
+              body: StudioChromeIconButton(
+                icon: Icons.arrow_downward,
+                tooltip: 'Open project folder',
+                prominent: true,
+                width: 28,
+                height: 28,
+                onTap: () {},
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
 
-    final decorated = tester.widget<Container>(
-      find
-          .ancestor(
-            of: find.byIcon(Icons.arrow_downward),
-            matching: find.byType(Container),
-          )
-          .first,
-    );
-    final decoration = decorated.decoration;
-    expect(decoration, isA<BoxDecoration>());
-    final boxDecoration = decoration! as BoxDecoration;
-    expect(boxDecoration.color, const Color(0xFF4C8DFF));
-    expect(boxDecoration.borderRadius, BorderRadius.circular(Radii.pill));
+      final decorated = tester.widget<Container>(
+        find
+            .ancestor(
+              of: find.byIcon(Icons.arrow_downward),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      final decoration = decorated.decoration;
+      expect(decoration, isA<BoxDecoration>());
+      final boxDecoration = decoration! as BoxDecoration;
+      expect(boxDecoration.color, isNot(const Color(0xFF4C8DFF)));
+      expect(boxDecoration.borderRadius, BorderRadius.circular(Radii.pill));
 
-    final icon = tester.widget<Icon>(find.byIcon(Icons.arrow_downward));
-    expect(icon.size, 14);
+      final icon = tester.widget<Icon>(find.byIcon(Icons.arrow_downward));
+      expect(icon.size, 14);
+    },
+  );
+
+  test('Studio rail does not draw fake macOS traffic-light controls', () async {
+    final source = await File(
+      'lib/ui/studio/studio_left_rail.dart',
+    ).readAsString();
+
+    expect(source, isNot(contains('_WindowDot')));
+    expect(source, isNot(contains('0xFFFF5F57')));
+    expect(source, isNot(contains('0xFFFFBD2E')));
+    expect(source, isNot(contains('0xFF28C840')));
   });
 
   testWidgets('Studio create-project dialog uses compact Codex-like controls', (

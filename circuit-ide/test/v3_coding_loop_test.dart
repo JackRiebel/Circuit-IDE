@@ -236,6 +236,59 @@ void main() {
   });
 
   test(
+    'ContextPackController ranks symbol declaration files from index',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'context_symbol_rank_',
+      );
+      addTearDown(() => _delete(root));
+      await Directory(
+        p.join(root.path, 'lib', 'domain'),
+      ).create(recursive: true);
+      await Directory(p.join(root.path, 'docs')).create(recursive: true);
+      await File(p.join(root.path, 'pubspec.yaml')).writeAsString('''
+name: symbol_context
+dependencies:
+  flutter:
+    sdk: flutter
+''');
+      await File(
+        p.join(root.path, 'lib', 'domain', 'sizing_engine.dart'),
+      ).writeAsString('''
+class DatacenterSizingEngine {
+  int scoreWanThroughput(int mbps) => mbps;
+}
+''');
+      await File(p.join(root.path, 'docs', 'notes.md')).writeAsString('''
+# Notes
+
+DatacenterSizingEngine is mentioned here, but the implementation lives in code.
+''');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+
+      final pack = await container
+          .read(contextPackProvider.notifier)
+          .buildForCodingTaskWithFreshIndex(
+            prompt: 'Update DatacenterSizingEngine WAN scoring behavior',
+          );
+      final relevant = pack.visibleItems
+          .where((item) => item.id.startsWith('relevant-file:'))
+          .toList(growable: false);
+
+      expect(relevant, isNotEmpty);
+      expect(relevant.first.source, 'lib/domain/sizing_engine.dart');
+      final candidate = pack.retrievalResult!.rankedCandidates.firstWhere(
+        (item) => item.path == 'lib/domain/sizing_engine.dart',
+      );
+      expect(candidate.included, isTrue);
+      expect(candidate.reason, contains('symbol "datacentersizingengine"'));
+    },
+  );
+
+  test(
     'PatchProposalController applies and restores reviewed patches',
     () async {
       final root = await Directory.systemTemp.createTemp('patch_v3_');
@@ -2072,6 +2125,9 @@ void main() {
     expect(source, isNot(contains('project.explain')));
     expect(source, isNot(contains('project.summarizeChanges')));
     expect(source, isNot(contains('ai.reconnect')));
+    expect(source, contains("'context.toggleActiveFile'"));
+    expect(source, contains("'context.toggleTerminal'"));
+    expect(source, contains("'context.toggleGitDiff'"));
   });
 
   test(
@@ -2159,8 +2215,10 @@ void main() {
       expect(source, isNot(contains('agentServiceProvider')));
       expect(source, isNot(contains('studioLegacyAgentEventBridgeProvider')));
       expect(source, isNot(contains('connection_provider.dart')));
+      expect(source, isNot(contains('streamingContent')));
       expect(source, contains('attachRuntimeEvents'));
       expect(source, contains('_runtimeEventBindings'));
+      expect(source, contains('appendAssistantDelta'));
     },
   );
 

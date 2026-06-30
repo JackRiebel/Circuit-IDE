@@ -12,6 +12,7 @@ import 'package:circuit_ide/models/studio_turn.dart';
 import 'package:circuit_ide/models/tool_result_envelope.dart';
 import 'package:circuit_ide/models/turn_intent.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:circuit_ide/state/studio_command_log_store.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:circuit_ide/ui/studio/studio_plan_continuation.dart';
@@ -90,6 +91,30 @@ void main() {
     expect(toolEvent.transcriptVisible, isFalse);
     expect(toolEvent.toJson()['transcriptVisible'], isFalse);
     expect(restoredAssistant.transcriptVisible, isTrue);
+  });
+
+  test('Studio context summary preserves omitted candidate accountability', () {
+    const summary = StudioContextSummary(
+      rootPath: '/tmp/project',
+      projectLabel: 'project',
+      includedItemCount: 4,
+      omittedCandidateCount: 3,
+      estimatedTokens: 512,
+    );
+
+    expect(summary.detail, contains('4 items'));
+    expect(summary.detail, contains('3 omitted high-score'));
+
+    final restored = StudioContextSummary.fromJson(summary.toJson());
+    expect(restored.omittedCandidateCount, 3);
+    expect(restored.detail, contains('3 omitted high-score'));
+
+    final legacyRestored = StudioContextSummary.fromJson(const {
+      'projectLabel': 'legacy',
+      'includedItemCount': 1,
+    });
+    expect(legacyRestored.omittedCandidateCount, 0);
+    expect(legacyRestored.detail, isNot(contains('omitted high-score')));
   });
 
   test('StudioThreadStore persists isolated histories per project', () async {
@@ -179,6 +204,15 @@ void main() {
           .content,
       'hello back',
     );
+    final summariesA = await store.loadSummaries(projectA.path);
+    expect(summariesA, hasLength(1));
+    expect(summariesA.single.id, 'thread-a');
+    expect(summariesA.single.messages, isEmpty);
+    expect(summariesA.single.sourceArtifacts, isEmpty);
+    expect(summariesA.single.turns, hasLength(1));
+    expect(summariesA.single.turns.single.prompt, isEmpty);
+    expect(summariesA.single.turns.single.events, isEmpty);
+    expect(await File(store.summaryPath(projectA.path)).exists(), isTrue);
     final savedJson =
         jsonDecode(await File(store.historyPath(projectA.path)).readAsString())
             as List<dynamic>;
@@ -459,6 +493,62 @@ void main() {
     },
   );
 
+  test(
+    'StudioTurnController throttles rapid assistant deltas without hiding first token',
+    () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Streaming thread');
+      container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'request-stream-throttle',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'message-stream-throttle',
+            prompt: 'stream',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(projectLabel: 'project'),
+            intent: TurnIntent.chat,
+          );
+
+      final turnController = container.read(studioTurnProvider.notifier);
+      turnController.appendAssistantDelta('request-stream-throttle', 'A');
+      var updatedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .single
+          .turns
+          .single;
+      expect(updatedTurn.assistantDraft, 'A');
+
+      turnController.appendAssistantDelta('request-stream-throttle', 'B');
+      turnController.appendAssistantDelta('request-stream-throttle', 'C');
+      updatedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .single
+          .turns
+          .single;
+      expect(updatedTurn.assistantDraft, 'A');
+
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+      updatedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .single
+          .turns
+          .single;
+      expect(updatedTurn.assistantDraft, 'ABC');
+      expect(
+        updatedTurn.steps.where((step) => step.step == TurnStep.streaming),
+        hasLength(1),
+      );
+    },
+  );
+
   test('StudioTaskLifecycleState labels user-visible thread states', () {
     final now = DateTime(2026);
 
@@ -474,13 +564,16 @@ void main() {
       );
     }
 
-    expect(stateFor(StudioThreadStatus.streaming).label, 'Working');
+    expect(stateFor(StudioThreadStatus.streaming).label, 'Running');
     expect(stateFor(StudioThreadStatus.waitingForApproval).label, 'Waiting');
     expect(
       stateFor(StudioThreadStatus.waitingForApproval).needsAttention,
       isTrue,
     );
-    expect(stateFor(StudioThreadStatus.continuationReady).label, 'Continue');
+    expect(
+      stateFor(StudioThreadStatus.continuationReady).label,
+      'Needs review',
+    );
     expect(
       stateFor(StudioThreadStatus.continuationReady).needsAttention,
       isTrue,
@@ -558,7 +651,7 @@ void main() {
       final state = StudioTaskLifecycleState.fromThread(thread);
 
       expect(state.status, StudioThreadStatus.streaming);
-      expect(state.label, 'Working');
+      expect(state.label, 'Running');
       expect(state.isActive, isTrue);
     },
   );
@@ -1391,6 +1484,22 @@ void main() {
     expect(verificationStep.title, 'Verification ready');
     expect(verificationStep.detail, contains('Suggested checks'));
     expect(verificationStep.detail, contains('Verification was requested'));
+    final transaction = updatedTurn.events
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.completionSummary &&
+              event.title == 'Applied changes',
+        )
+        .single;
+    expect(transaction.detail, contains('Changed files: lib/main.dart'));
+    expect(
+      transaction.detail,
+      contains('Verification suggestions: flutter analyze · flutter test'),
+    );
+    expect(
+      transaction.detail,
+      contains('Next action: run verification for the applied changes.'),
+    );
   });
 
   test('failed verification command is journaled as a failed outcome', () {
@@ -1543,6 +1652,192 @@ void main() {
       contains('No issues found!'),
     );
   });
+
+  test('long command output is summarized with a file-backed log', () async {
+    final root = await Directory.systemTemp.createTemp('studio_command_logs_');
+    addTearDown(() => root.delete(recursive: true));
+    final container = ProviderContainer(
+      overrides: [
+        studioCommandLogStoreProvider.overrideWithValue(
+          StudioCommandLogStore(baseDir: '${root.path}/logs'),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'Long command log');
+    container
+        .read(studioTurnProvider.notifier)
+        .registerTurn(
+          requestId: 'request-long-command',
+          threadId: thread.id,
+          taskId: null,
+          userMessageId: 'message-long-command',
+          prompt: 'Run verification',
+          model: 'gpt-5-nano',
+          contextSummary: const StudioContextSummary(
+            rootPath: '/tmp/project',
+            projectLabel: 'project',
+          ),
+          intent: TurnIntent.verify,
+        );
+
+    final longOutput = [
+      'start-marker',
+      for (var i = 0; i < 260; i++) 'line-$i ${List.filled(24, 'x').join()}',
+      'end-marker',
+    ].join('\n');
+
+    container
+        .read(studioTurnProvider.notifier)
+        .recordCommandRunResult(
+          'request-long-command',
+          commandRunId: 'cmd-long',
+          command: 'flutter test --verbose',
+          status: 'succeeded',
+          output: longOutput,
+          exitCode: 0,
+        );
+
+    final turn = container
+        .read(studioThreadProvider)
+        .threads
+        .where((candidate) => candidate.id == thread.id)
+        .single
+        .turns
+        .single;
+    final event = turn.events
+        .where((candidate) => candidate.id == 'command-run-${turn.id}-cmd-long')
+        .single;
+    expect(event.detail, contains('Output tail'));
+    expect(event.detail, contains('end-marker'));
+    expect(event.detail, isNot(contains('start-marker')));
+    expect(event.detail, contains('Full log:'));
+
+    final logLine = event.detail
+        .split('\n')
+        .firstWhere((line) => line.trimLeft().startsWith('Full log:'));
+    final logPath = logLine.substring('Full log:'.length).trim();
+    final logFile = File(logPath);
+    expect(await logFile.exists(), isTrue);
+    final logContent = await logFile.readAsString();
+    expect(logContent, contains('Command: flutter test --verbose'));
+    expect(logContent, contains('start-marker'));
+    expect(logContent, contains('end-marker'));
+  });
+
+  test(
+    'StudioThreadStore persists long command output by log reference',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio_threads_');
+      addTearDown(() => root.delete(recursive: true));
+      final project = await Directory('${root.path}/project').create();
+      final store = StudioThreadStore(
+        baseDir: '${root.path}/history',
+        commandLogStore: StudioCommandLogStore(baseDir: '${root.path}/logs'),
+      );
+      final now = DateTime(2026);
+      final longOutput = [
+        'snapshot-start-marker',
+        for (var i = 0; i < 260; i++)
+          'journal-line-$i ${List.filled(24, 'y').join()}',
+        'snapshot-end-marker',
+      ].join('\n');
+      final turn = StudioTurn(
+        id: 'turn-long-journal',
+        threadId: 'thread-long-journal',
+        requestId: 'request-long-journal',
+        userMessageId: 'message-long-journal',
+        prompt: 'verify',
+        model: 'gpt-5-nano',
+        status: StudioTurnStatus.completed,
+        contextSummary: StudioContextSummary(
+          rootPath: project.path,
+          projectLabel: 'project',
+        ),
+        steps: [
+          TurnStepRecord(
+            step: TurnStep.commandRun,
+            status: TurnStepStatus.completed,
+            title: 'Ran command',
+            detail: 'Command: flutter test\nExit code: 0\n$longOutput',
+            startedAt: now,
+            completedAt: now,
+          ),
+        ],
+        events: [
+          StudioTurnEvent.completionSummary(
+            id: 'command-run-turn-long-journal-cmd-long-journal',
+            turnId: 'turn-long-journal',
+            requestId: 'request-long-journal',
+            threadId: 'thread-long-journal',
+            title: 'Ran command',
+            detail: 'Command: flutter test\nExit code: 0\n$longOutput',
+            timestamp: now,
+          ),
+        ],
+        toolResults: [
+          ToolResultEnvelope(
+            toolCallId: 'cmd-long-journal',
+            toolName: 'run_command',
+            status: ToolResultStatus.success,
+            summary: 'flutter test passed',
+            stdout: longOutput,
+            data: const {'command': 'flutter test', 'exitCode': 0},
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+      );
+      final thread = StudioThread(
+        id: 'thread-long-journal',
+        title: 'Long journal thread',
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        turns: [turn],
+        createdAt: now,
+        updatedAt: now,
+      );
+
+      await store.save(project.path, [thread]);
+
+      final historyText = await File(
+        store.historyPath(project.path),
+      ).readAsString();
+      final journalText = await File(
+        store.journalPath(project.path),
+      ).readAsString();
+      expect(historyText, isNot(contains('snapshot-start-marker')));
+      expect(journalText, isNot(contains('snapshot-start-marker')));
+      expect(historyText, contains('snapshot-end-marker'));
+      expect(journalText, contains('snapshot-end-marker'));
+      expect(historyText, contains('Full log:'));
+      expect(journalText, contains('Full log:'));
+
+      final records = journalText
+          .trim()
+          .split('\n')
+          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .toList(growable: false);
+      final toolResultRecord = records.firstWhere(
+        (record) => record['kind'] == 'tool_result',
+      );
+      final resultJson = toolResultRecord['result'] as Map<String, dynamic>;
+      expect(resultJson['stdout'], contains('Output tail'));
+      expect(resultJson['stdout'], isNot(contains('snapshot-start-marker')));
+      expect(
+        (resultJson['data'] as Map<String, dynamic>)['outputTruncated'],
+        isTrue,
+      );
+      final logPath =
+          (resultJson['data'] as Map<String, dynamic>)['logPath'] as String;
+      final logContent = await File(logPath).readAsString();
+      expect(logContent, contains('snapshot-start-marker'));
+      expect(logContent, contains('snapshot-end-marker'));
+    },
+  );
 
   test('active provider diagnostics are journaled before turn archive', () {
     final container = ProviderContainer();
@@ -1715,7 +2010,7 @@ void main() {
     expect(updatedThread.status, StudioThreadStatus.continuationReady);
     expect(
       StudioTaskLifecycleState.fromThread(updatedThread).label,
-      'Continue',
+      'Needs review',
     );
     final transaction = updatedTurn.events
         .where(
@@ -1724,8 +2019,25 @@ void main() {
               event.title == 'Applied changes',
         )
         .single;
-    expect(transaction.detail, contains('Next batch: 1 accepted-plan target'));
+    expect(transaction.detail, contains('Changed files: lib/main.dart'));
+    expect(
+      transaction.detail,
+      contains('Remaining plan targets: 1 accepted-plan target'),
+    );
     expect(transaction.detail, contains('README.md'));
+    expect(transaction.detail, contains('README.md (pending)'));
+    expect(
+      transaction.detail,
+      contains(
+        'Verification suggestions: review the changed files and run the relevant project checks.',
+      ),
+    );
+    expect(
+      transaction.detail,
+      contains(
+        'Next action: continue the next accepted-plan batch for the remaining targets.',
+      ),
+    );
   });
 
   test('final accepted-plan patch completes without continuation step', () {
@@ -1912,7 +2224,7 @@ void main() {
       );
       expect(
         StudioTaskLifecycleState.fromThread(loaded.single).label,
-        'Continue',
+        'Needs review',
       );
     },
   );
@@ -2003,7 +2315,7 @@ void main() {
       expect(loaded.single.lastError, isNull);
       expect(
         StudioTaskLifecycleState.fromThread(loaded.single).label,
-        'Review',
+        'Needs review',
       );
       expect(
         loaded.single.turns.single.events
@@ -3846,7 +4158,7 @@ void main() {
       );
       expect(
         StudioTaskLifecycleState.fromThread(recovered.single).label,
-        'Review',
+        'Needs review',
       );
     },
   );
@@ -4061,7 +4373,7 @@ void main() {
       );
       expect(
         StudioTaskLifecycleState.fromThread(loaded.single).label,
-        'Review',
+        'Needs review',
       );
     },
   );
@@ -4205,7 +4517,7 @@ void main() {
       );
       expect(
         StudioTaskLifecycleState.fromThread(loaded.single).label,
-        'Continue',
+        'Needs review',
       );
     },
   );

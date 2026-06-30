@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,6 +20,7 @@ import '../models/tool_result_envelope.dart';
 import '../models/token_usage.dart';
 import '../models/turn_intent.dart';
 import 'file_tree_provider.dart';
+import 'studio_command_log_store.dart';
 import 'work_item_provider.dart';
 
 const _uuid = Uuid();
@@ -70,9 +72,12 @@ class StudioThreadState {
 
 class StudioThreadStore {
   final String baseDir;
+  final StudioCommandLogStore commandLogStore;
+  final Map<String, Set<String>> _journalLineCacheByPath = {};
 
-  StudioThreadStore({String? baseDir})
-    : baseDir = baseDir ?? p.join(PlatformUtils.configDir, 'studio_threads');
+  StudioThreadStore({String? baseDir, StudioCommandLogStore? commandLogStore})
+    : baseDir = baseDir ?? p.join(PlatformUtils.configDir, 'studio_threads'),
+      commandLogStore = commandLogStore ?? StudioCommandLogStore();
 
   String historyPath(String? rootPath) {
     return p.join(baseDir, '${WorkItemStore.projectKey(rootPath)}.json');
@@ -82,6 +87,13 @@ class StudioThreadStore {
     return p.join(
       baseDir,
       '${WorkItemStore.projectKey(rootPath)}.journal.jsonl',
+    );
+  }
+
+  String summaryPath(String? rootPath) {
+    return p.join(
+      baseDir,
+      '${WorkItemStore.projectKey(rootPath)}.summary.json',
     );
   }
 
@@ -103,6 +115,200 @@ class StudioThreadStore {
       if (recovered.isNotEmpty) return recovered;
       rethrow;
     }
+  }
+
+  Future<List<StudioThread>> loadSummaries(String? rootPath) async {
+    final summaryFile = File(summaryPath(rootPath));
+    if (await summaryFile.exists()) {
+      try {
+        final json = jsonDecode(await summaryFile.readAsString());
+        if (json is List<dynamic>) {
+          return _summaryThreadsFromJson(json);
+        }
+      } catch (_) {
+        // Fall through to the full history as a one-time recovery path.
+      }
+    }
+
+    final historyFile = File(historyPath(rootPath));
+    if (await historyFile.exists()) {
+      try {
+        final json = jsonDecode(await historyFile.readAsString());
+        if (json is List<dynamic>) {
+          final summaries = _summaryThreadsFromJson(json);
+          unawaited(_writeSummaries(rootPath, summaries));
+          return summaries;
+        }
+      } catch (_) {
+        // Journal snapshots are the final recovery path.
+      }
+    }
+
+    final journalSummaries = await _loadJournalThreadSummaries(rootPath);
+    if (journalSummaries.isNotEmpty) {
+      unawaited(_writeSummaries(rootPath, journalSummaries));
+    }
+    return journalSummaries;
+  }
+
+  List<StudioThread> _summaryThreadsFromJson(List<dynamic> json) {
+    return json
+        .whereType<Map<String, dynamic>>()
+        .map(_threadSummaryFromJson)
+        .nonNulls
+        .toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  Future<List<StudioThread>> _loadJournalThreadSummaries(
+    String? rootPath,
+  ) async {
+    final file = File(journalPath(rootPath));
+    if (!await file.exists()) return const [];
+    final snapshots = <String, StudioThread>{};
+    final snapshotTimes = <String, DateTime>{};
+    final lines = await _readJournalLines(file);
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      final decoded = _decodeJournalLine(line);
+      if (decoded == null || decoded['kind'] != 'thread_snapshot') continue;
+      final threadJson = decoded['thread'];
+      if (threadJson is! Map<String, dynamic>) continue;
+      final summary = _threadSummaryFromJson(threadJson);
+      if (summary == null) continue;
+      final capturedAt =
+          DateTime.tryParse(decoded['capturedAt'] as String? ?? '') ??
+          summary.updatedAt;
+      final previous = snapshotTimes[summary.id];
+      if (previous != null && previous.isAfter(capturedAt)) continue;
+      snapshots[summary.id] = summary;
+      snapshotTimes[summary.id] = capturedAt;
+    }
+    return snapshots.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  StudioThread? _threadSummaryFromJson(Map<String, dynamic> json) {
+    try {
+      final usage = json['tokenUsage'] as Map<String, dynamic>?;
+      final contextSummary = StudioContextSummary.fromJson(
+        json['contextSummary'] as Map<String, dynamic>?,
+      );
+      final latestTurn = _latestTurnSummary(
+        (json['turns'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>(),
+      );
+      final rawStatus = StudioThreadStatus.values.firstWhere(
+        (value) => value.name == json['status'],
+        orElse: () => StudioThreadStatus.idle,
+      );
+      final lastError = json['lastError'] as String?;
+      final status = _summaryStatusFor(
+        rawStatus: rawStatus,
+        latestTurn: latestTurn,
+        lastError: lastError,
+      );
+      return StudioThread(
+        id: json['id'] as String,
+        taskId: json['taskId'] as String?,
+        title: json['title'] as String? ?? 'Circuit task',
+        status: status,
+        phase: _phaseForRecoveredStatus(status),
+        requestId: null,
+        model: json['model'] as String?,
+        contextSummary: contextSummary,
+        turns: latestTurn == null ? const [] : [latestTurn],
+        streamingContent: '',
+        tokenUsage: TokenUsage(
+          promptTokens: usage?['promptTokens'] as int? ?? 0,
+          completionTokens: usage?['completionTokens'] as int? ?? 0,
+          totalTokens: usage?['totalTokens'] as int? ?? 0,
+        ),
+        lastError: status == StudioThreadStatus.failed ? lastError : null,
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+        updatedAt:
+            DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  StudioTurn? _latestTurnSummary(Iterable<Map<String, dynamic>> turnJson) {
+    StudioTurn? latest;
+    for (final json in turnJson) {
+      final turn = _turnSummaryFromJson(json);
+      if (turn == null) continue;
+      if (latest == null || turn.createdAt.isAfter(latest.createdAt)) {
+        latest = turn;
+      }
+    }
+    return latest;
+  }
+
+  StudioTurn? _turnSummaryFromJson(Map<String, dynamic> json) {
+    try {
+      return StudioTurn(
+        id: json['id'] as String,
+        threadId: json['threadId'] as String,
+        requestId: json['requestId'] as String? ?? '',
+        taskId: json['taskId'] as String?,
+        userMessageId: json['userMessageId'] as String? ?? '',
+        prompt: '',
+        model: json['model'] as String? ?? '',
+        intent: TurnIntent.values.firstWhere(
+          (value) => value.name == json['intent'],
+          orElse: () => TurnIntent.code,
+        ),
+        contextSummary: StudioContextSummary.fromJson(
+          json['contextSummary'] as Map<String, dynamic>?,
+        ),
+        status: StudioTurnStatus.values.firstWhere(
+          (value) => value.name == json['status'],
+          orElse: () => StudioTurnStatus.queued,
+        ),
+        acceptedPlanState: AcceptedPlanState.values.firstWhere(
+          (value) => value.name == json['acceptedPlanState'],
+          orElse: () => AcceptedPlanState.none,
+        ),
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+        updatedAt:
+            DateTime.tryParse(json['updatedAt'] as String? ?? '') ??
+            DateTime.now(),
+        completedAt: DateTime.tryParse(json['completedAt'] as String? ?? ''),
+        lastError: json['lastError'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  StudioThreadStatus _summaryStatusFor({
+    required StudioThreadStatus rawStatus,
+    required StudioTurn? latestTurn,
+    required String? lastError,
+  }) {
+    if (!_isLoadedActiveThread(rawStatus)) return rawStatus;
+    final turnStatus = switch (latestTurn?.status) {
+      StudioTurnStatus.completed => StudioThreadStatus.done,
+      StudioTurnStatus.failed => StudioThreadStatus.failed,
+      StudioTurnStatus.cancelled => StudioThreadStatus.cancelled,
+      StudioTurnStatus.waitingForApproval =>
+        StudioThreadStatus.waitingForApproval,
+      StudioTurnStatus.toolRunning => StudioThreadStatus.runningCommand,
+      StudioTurnStatus.streaming => StudioThreadStatus.streaming,
+      StudioTurnStatus.buildingContext => StudioThreadStatus.buildingContext,
+      _ => null,
+    };
+    if (turnStatus != null) return turnStatus;
+    if (lastError?.trim().isNotEmpty ?? false) return StudioThreadStatus.failed;
+    return StudioThreadStatus.failed;
   }
 
   List<StudioThread> _mergeLoadedThreads(
@@ -886,14 +1092,146 @@ class StudioThreadStore {
         '  ',
       ).convert(persistedThreads.map((thread) => thread.toJson()).toList()),
     );
+    await _writeSummaries(rootPath, persistedThreads);
     await _writeJournal(rootPath, persistedThreads);
   }
 
-  StudioThread _threadForPersistence(StudioThread thread) {
-    if (thread.turns.isEmpty || thread.messages.isEmpty) return thread;
+  Future<void> _writeSummaries(
+    String? rootPath,
+    List<StudioThread> threads,
+  ) async {
+    final file = File(summaryPath(rootPath));
+    if (!await file.parent.exists()) await file.parent.create(recursive: true);
+    final summaries = threads.map(_threadSummaryForPersistence).toList();
+    await file.writeAsString(
+      jsonEncode(summaries.map((thread) => thread.toJson()).toList()),
+    );
+  }
+
+  StudioThread _threadSummaryForPersistence(StudioThread thread) {
+    final latestTurn = thread.turns.fold<StudioTurn?>(
+      null,
+      (latest, turn) =>
+          latest == null || turn.createdAt.isAfter(latest.createdAt)
+          ? turn
+          : latest,
+    );
     return thread.copyWith(
       messages: const <StudioThreadMessage>[],
+      sourceArtifacts: const <StudioSourceArtifact>[],
+      turns: latestTurn == null
+          ? const <StudioTurn>[]
+          : [_turnSummaryForPersistence(latestTurn)],
+      streamingContent: '',
       updatedAt: thread.updatedAt,
+    );
+  }
+
+  StudioTurn _turnSummaryForPersistence(StudioTurn turn) {
+    return StudioTurn(
+      id: turn.id,
+      threadId: turn.threadId,
+      requestId: turn.requestId,
+      taskId: turn.taskId,
+      userMessageId: turn.userMessageId,
+      prompt: '',
+      model: turn.model,
+      intent: turn.intent,
+      contextSummary: turn.contextSummary,
+      status: turn.status,
+      acceptedPlanState: turn.acceptedPlanState,
+      createdAt: turn.createdAt,
+      updatedAt: turn.updatedAt,
+      completedAt: turn.completedAt,
+      lastError: turn.lastError,
+    );
+  }
+
+  StudioThread _threadForPersistence(StudioThread thread) {
+    final persistedTurns = thread.turns
+        .map(_turnForPersistence)
+        .toList(growable: false);
+    if (thread.messages.isEmpty && persistedTurns == thread.turns) {
+      return thread;
+    }
+    return thread.copyWith(
+      messages: thread.turns.isEmpty
+          ? thread.messages
+          : const <StudioThreadMessage>[],
+      turns: persistedTurns,
+      updatedAt: thread.updatedAt,
+    );
+  }
+
+  StudioTurn _turnForPersistence(StudioTurn turn) {
+    final toolResults = turn.toolResults
+        .map(
+          (result) => compactCommandToolResult(
+            result: result,
+            store: commandLogStore,
+            requestId: turn.requestId,
+            turnId: turn.id,
+          ),
+        )
+        .toList(growable: false);
+    final events = turn.events
+        .map((event) => _turnEventForPersistence(turn, event))
+        .toList(growable: false);
+    final steps = turn.steps
+        .map((step) => _turnStepForPersistence(turn, step))
+        .toList(growable: false);
+    return turn.copyWith(
+      toolResults: toolResults,
+      events: events,
+      steps: steps,
+      updatedAt: turn.updatedAt,
+    );
+  }
+
+  StudioTurnEvent _turnEventForPersistence(
+    StudioTurn turn,
+    StudioTurnEvent event,
+  ) {
+    if (event.type != StudioTurnEventType.completionSummary ||
+        !event.id.startsWith('command-run-') ||
+        event.detail.length <= inlineCommandOutputLimit) {
+      return event;
+    }
+    final commandRunId = _commandRunIdFromEvent(event.id, turn.id);
+    final command = _commandFromCommandEventDetail(event.detail);
+    final exitCode = _exitCodeFromCommandEventDetail(event.detail);
+    final logPath = _commandLogPathFromDetail(event.detail);
+    return event.copyWith(
+      detail: _compactCommandEventDetail(
+        detail: event.detail,
+        command: command,
+        turn: turn,
+        commandRunId: commandRunId,
+        status: _commandStatusFromEventTitle(event.title),
+        exitCode: exitCode,
+        logPath: logPath,
+      ),
+    );
+  }
+
+  TurnStepRecord _turnStepForPersistence(StudioTurn turn, TurnStepRecord step) {
+    if (step.step != TurnStep.commandRun ||
+        step.detail.length <= inlineCommandOutputLimit) {
+      return step;
+    }
+    final command = _commandFromCommandEventDetail(step.detail);
+    final exitCode = _exitCodeFromCommandEventDetail(step.detail);
+    final logPath = _commandLogPathFromDetail(step.detail);
+    return step.copyWith(
+      detail: _compactCommandEventDetail(
+        detail: step.detail,
+        command: command,
+        turn: turn,
+        commandRunId: 'step-${step.step.name}',
+        status: step.status.name,
+        exitCode: exitCode,
+        logPath: logPath,
+      ),
     );
   }
 
@@ -1021,19 +1359,25 @@ class StudioThreadStore {
           }
         }
         for (final result in turn.toolResults) {
+          final resultForStorage = compactCommandToolResult(
+            result: result,
+            store: commandLogStore,
+            requestId: turn.requestId,
+            turnId: turn.id,
+          );
           lines.add(
             jsonEncode({
               'kind': 'tool_result',
               'threadId': thread.id,
               'turnId': turn.id,
               'requestId': turn.requestId,
-              'result': result.toJson(),
+              'result': resultForStorage.toJson(),
             }),
           );
           final commandRunRecord = _commandRunJournalRecord(
             thread: thread,
             turn: turn,
-            result: result,
+            result: resultForStorage,
           );
           if (commandRunRecord != null) {
             lines.add(jsonEncode(commandRunRecord));
@@ -1066,12 +1410,20 @@ class StudioThreadStore {
   }
 
   Future<Set<String>> _existingJournalLines(File file) async {
-    if (!await file.exists()) return <String>{};
+    final cached = _journalLineCacheByPath[file.path];
+    if (cached != null) return cached;
+    if (!await file.exists()) {
+      final empty = <String>{};
+      _journalLineCacheByPath[file.path] = empty;
+      return empty;
+    }
     final lines = await _readJournalLines(file);
-    return lines
+    final existing = lines
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toSet();
+    _journalLineCacheByPath[file.path] = existing;
+    return existing;
   }
 
   Future<List<String>> _readJournalLines(File file) async {
@@ -1377,6 +1729,7 @@ class StudioThreadStore {
       if (result.stdout != null) 'stdout': result.stdout,
       if (result.stderr != null) 'stderr': result.stderr,
       if (result.data['exitCode'] != null) 'exitCode': result.data['exitCode'],
+      if (result.data['logPath'] != null) 'logPath': result.data['logPath'],
       if (result.diagnostic != null) 'diagnostic': result.diagnostic,
       'retryable': result.retryable,
       'createdAt': turn.updatedAt.toIso8601String(),
@@ -1404,6 +1757,16 @@ class StudioThreadStore {
       return null;
     }
     final exitCode = _exitCodeFromCommandEventDetail(detail);
+    final logPath = _commandLogPathFromDetail(detail);
+    final compactDetail = _compactCommandEventDetail(
+      detail: detail,
+      command: command,
+      turn: turn,
+      commandRunId: commandRunId,
+      status: _commandStatusFromEventTitle(event.title),
+      exitCode: exitCode,
+      logPath: logPath,
+    );
     return {
       'kind': 'command_run',
       'threadId': thread.id,
@@ -1416,10 +1779,44 @@ class StudioThreadStore {
       'status': _commandStatusFromEventTitle(event.title),
       'summary': event.title,
       'exitCode': ?exitCode,
-      if (detail.trim().isNotEmpty) 'diagnostic': detail,
-      if (detail.trim().isNotEmpty) 'stdout': detail,
+      'logPath': ?logPath,
+      if (compactDetail.trim().isNotEmpty) 'diagnostic': compactDetail,
+      if (compactDetail.trim().isNotEmpty) 'stdout': compactDetail,
       'createdAt': event.timestamp.toIso8601String(),
     };
+  }
+
+  String _compactCommandEventDetail({
+    required String detail,
+    required String? command,
+    required StudioTurn turn,
+    required String? commandRunId,
+    required String status,
+    required int? exitCode,
+    required String? logPath,
+  }) {
+    final trimmed = detail.trim();
+    if (trimmed.length <= inlineCommandOutputLimit) return trimmed;
+    if (logPath != null) return summarizeCommandOutput(trimmed, logPath);
+    final writtenLogPath = commandLogStore.write(
+      requestId: turn.requestId,
+      turnId: turn.id,
+      commandRunId: commandRunId ?? _commandLogIdPart(status),
+      command: command ?? '',
+      status: status,
+      output: trimmed,
+      exitCode: exitCode,
+    );
+    return summarizeCommandOutput(trimmed, writtenLogPath);
+  }
+
+  String _commandLogIdPart(String value) {
+    final normalized = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9._-]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+    return normalized.isEmpty ? 'command' : normalized;
   }
 
   String? _commandRunIdFromEvent(String eventId, String turnId) {
@@ -1432,6 +1829,17 @@ class StudioThreadStore {
   String? _commandFromCommandEventDetail(String detail) {
     final match = RegExp(r'(?:^|\n)Command:\s*([^\n]+)').firstMatch(detail);
     return match?.group(1)?.trim();
+  }
+
+  String? _commandLogPathFromDetail(String detail) {
+    for (final line in detail.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.toLowerCase().startsWith('full log:')) {
+        final path = trimmed.substring('full log:'.length).trim();
+        return path.isEmpty ? null : path;
+      }
+    }
+    return null;
   }
 
   int? _exitCodeFromCommandEventDetail(String detail) {
@@ -1451,14 +1859,30 @@ class StudioThreadStore {
 }
 
 class StudioThreadController extends Notifier<StudioThreadState> {
+  static const _persistDebounce = Duration(milliseconds: 950);
+  static Duration? debugPersistDebounceOverride;
+
   final _store = StudioThreadStore();
   String? _loadedRootPath;
+  Timer? _persistTimer;
+  String? _pendingPersistRootPath;
+  List<StudioThread>? _pendingPersistThreads;
+  Future<void>? _persistInFlight;
+  bool _persistAgain = false;
 
   @override
   StudioThreadState build() {
     Future.microtask(_load);
     ref.listen(fileTreeProvider, (previous, next) {
-      if (previous?.rootPath != next.rootPath) _load();
+      if (previous?.rootPath != next.rootPath) {
+        unawaited(_flushPendingPersist());
+        _load();
+      }
+    });
+    ref.onDispose(() {
+      _persistTimer?.cancel();
+      _persistTimer = null;
+      unawaited(_flushPendingPersist());
     });
     return const StudioThreadState(isLoading: true);
   }
@@ -1549,6 +1973,33 @@ class StudioThreadController extends Notifier<StudioThreadState> {
 
   void selectTaskThread(String? taskId) {
     selectThread(state.threadForTask(taskId)?.id);
+  }
+
+  void archiveThread(String threadId) {
+    final thread = _find(threadId);
+    if (thread == null || thread.archived) return;
+    final updated = thread.copyWith(archived: true);
+    if (state.selectedThreadId == threadId) {
+      String? nextVisibleThreadId;
+      for (final candidate in state.threads) {
+        if (candidate.id == threadId) continue;
+        if (!candidate.archived) {
+          nextVisibleThreadId = candidate.id;
+          break;
+        }
+      }
+      state = state.copyWith(selectedThreadId: nextVisibleThreadId);
+    }
+    _upsert(updated);
+  }
+
+  String? firstVisibleThreadId() {
+    for (final candidate in state.threads) {
+      if (!candidate.archived) {
+        return candidate.id;
+      }
+    }
+    return null;
   }
 
   void markPhase(
@@ -1832,7 +2283,40 @@ class StudioThreadController extends Notifier<StudioThreadState> {
   }
 
   Future<void> _persist(List<StudioThread> threads) async {
-    await _store.save(ref.read(fileTreeProvider).rootPath, threads);
+    _pendingPersistRootPath = ref.read(fileTreeProvider).rootPath;
+    _pendingPersistThreads = List<StudioThread>.unmodifiable(threads);
+    _persistTimer?.cancel();
+    final delay = debugPersistDebounceOverride ?? _persistDebounce;
+    if (delay <= Duration.zero) {
+      unawaited(_flushPendingPersist());
+      return;
+    }
+    _persistTimer = Timer(delay, () {
+      unawaited(_flushPendingPersist());
+    });
+  }
+
+  Future<void> _flushPendingPersist() {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    final rootPath = _pendingPersistRootPath;
+    final threads = _pendingPersistThreads;
+    if (threads == null) return _persistInFlight ?? Future<void>.value();
+    if (_persistInFlight != null) {
+      _persistAgain = true;
+      return _persistInFlight!;
+    }
+    _pendingPersistRootPath = null;
+    _pendingPersistThreads = null;
+    final future = _store.save(rootPath, threads).whenComplete(() {
+      _persistInFlight = null;
+      if (_persistAgain) {
+        _persistAgain = false;
+        unawaited(_flushPendingPersist());
+      }
+    });
+    _persistInFlight = future;
+    return future;
   }
 
   List<StudioThread> _mergeLoadedThreads({
@@ -2260,16 +2744,21 @@ class _JournalTurnBuilder {
       'completed',
     }.contains(statusName.toLowerCase());
     final title = succeeded ? 'Ran command' : 'Command $statusName';
+    final stdout = (record['stdout'] as String?)?.trim();
+    final stderr = (record['stderr'] as String?)?.trim();
+    final diagnostic = (record['diagnostic'] as String?)?.trim();
+    final logPath = (record['logPath'] as String?)?.trim();
     final detail = [
       if ((record['command'] as String?)?.trim().isNotEmpty == true)
         'Command: ${(record['command'] as String).trim()}',
       if (record['exitCode'] != null) 'Exit code: ${record['exitCode']}',
-      if ((record['stdout'] as String?)?.trim().isNotEmpty == true)
-        (record['stdout'] as String).trim(),
-      if ((record['stderr'] as String?)?.trim().isNotEmpty == true)
-        (record['stderr'] as String).trim(),
-      if ((record['diagnostic'] as String?)?.trim().isNotEmpty == true)
-        (record['diagnostic'] as String).trim(),
+      if (stdout?.isNotEmpty == true) stdout!,
+      if (stderr?.isNotEmpty == true && stderr != stdout) stderr!,
+      if (diagnostic?.isNotEmpty == true &&
+          diagnostic != stdout &&
+          diagnostic != stderr)
+        diagnostic!,
+      if (logPath?.isNotEmpty == true) 'Full log: $logPath',
     ].join('\n');
     final eventId = commandRunId == null || commandRunId.trim().isEmpty
         ? 'command-run-$turnId-${_journalIdPart(statusName)}'
@@ -2338,6 +2827,7 @@ class _JournalTurnBuilder {
     final contextSummary = StudioContextSummary(
       projectLabel: 'Recovered journal',
       includedItemCount: contextRetrieval?.includedCandidates.length ?? 0,
+      omittedCandidateCount: contextRetrieval?.omittedCandidates.length ?? 0,
       estimatedTokens: contextRetrieval?.budget.usedTokens ?? 0,
       warnings: const [
         'Recovered from lifecycle journal because the thread snapshot was unavailable.',

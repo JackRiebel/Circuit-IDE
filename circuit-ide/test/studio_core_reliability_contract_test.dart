@@ -134,20 +134,168 @@ void main() {
       final taskViewSource = await File(
         'lib/ui/studio/studio_task_view.dart',
       ).readAsString();
+      final leftRailSource = await File(
+        'lib/ui/studio/studio_left_rail.dart',
+      ).readAsString();
+      final runtimeSource = await File(
+        'lib/state/agent_turn_runtime_provider.dart',
+      ).readAsString();
+      final senderSource = await File(
+        'lib/ui/studio/studio_message_sender.dart',
+      ).readAsString();
       final reviewPanelSource = await File(
         'lib/ui/studio/studio_review_panel.dart',
       ).readAsString();
+      final drawerSource = await File(
+        'lib/ui/studio/studio_right_drawer.dart',
+      ).readAsString();
+      final progressPanelSource = await File(
+        'lib/ui/studio/studio_progress_panel.dart',
+      ).readAsString();
       final composerSource = await File(
         'lib/ui/studio/studio_prompt_composer.dart',
+      ).readAsString();
+      final shellSource = await File(
+        'lib/ui/studio/studio_shell.dart',
+      ).readAsString();
+      final projectHistorySource = await File(
+        'lib/state/studio_project_history_provider.dart',
+      ).readAsString();
+      final sourceArtifactSource = await File(
+        'lib/state/studio_source_artifact_provider.dart',
       ).readAsString();
 
       expect(taskViewSource, contains('Implement this plan'));
       expect(taskViewSource, contains('Continue next batch'));
       expect(taskViewSource, contains('Patch conflict'));
       expect(taskViewSource, contains('Needs rebase before apply'));
+      expect(taskViewSource, contains('Refresh patch'));
+      expect(taskViewSource, contains('ListView.builder'));
+      expect(taskViewSource, contains('_TaskTranscriptIndex'));
+      expect(taskViewSource, contains('_TurnTranscriptItem'));
+      expect(taskViewSource, contains('_PlanProgressSnapshot'));
+      expect(taskViewSource, contains('_PatchVerificationSnapshot'));
+      expect(taskViewSource, contains('state.threadForTaskView(taskId)'));
+      expect(taskViewSource, contains('_DraftPlanActionFooter'));
+      expect(
+        taskViewSource,
+        contains('Actions unlock when Circuit finishes writing the plan.'),
+      );
+      expect(taskViewSource, contains('RepaintBoundary'));
+      expect(taskViewSource, contains('patchProposalProvider.select('));
+      expect(taskViewSource, contains('ValueKey(\'studio-turn-\${turn.id}\')'));
+      expect(taskViewSource, isNot(contains('...turnWidgets')));
+      expect(leftRailSource, contains('ListView.builder'));
+      expect(
+        leftRailSource,
+        contains("ValueKey('studio-rail-project-\$path')"),
+      );
+      expect(leftRailSource, contains('_maxCollapsedRailConversations'));
+      expect(leftRailSource, contains('_ShowMoreConversationsRow'));
+      expect(
+        leftRailSource,
+        contains('commandRunProvider.select(_runningCommandTaskKey)'),
+      );
+      expect(leftRailSource, contains('_runningCommandTaskKey'));
+      expect(
+        runtimeSource,
+        contains('required List<ChatMessage> modelHistory'),
+      );
+      expect(runtimeSource, isNot(contains('historyOverride')));
+      expect(senderSource, contains('modelHistory: priorThreadMessages'));
+      expect(senderSource, isNot(contains('historyOverride')));
       expect(reviewPanelSource, contains('Patch conflict'));
+      expect(reviewPanelSource, contains('Refresh patch'));
       expect(reviewPanelSource, contains('Ask Circuit to rebase'));
+      expect(drawerSource, contains('_PatchDiffReviewDrawer'));
+      expect(drawerSource, contains('_MissingPatchReviewDrawer'));
+      expect(drawerSource, contains('_PatchReviewActionBar'));
+      expect(drawerSource, contains('Apply changes'));
+      expect(drawerSource, contains('Ask for revision'));
+      expect(drawerSource, contains('Refresh patch'));
+      expect(drawerSource, contains('Restore checkpoint'));
+      expect(drawerSource, contains('Patch review unavailable'));
+      expect(drawerSource, contains('openRepositoryDiff'));
+      expect(
+        drawerSource,
+        contains(
+          'studioThreadProvider.select((state) => state.threadForTaskView',
+        ),
+      );
+      expect(
+        drawerSource,
+        contains('patchProposalProvider.select((state) => _patchForTurn'),
+      );
+      expect(drawerSource, contains('commandRunProvider.select('));
+      expect(
+        progressPanelSource,
+        contains(
+          'studioThreadProvider.select((state) => state.threadForTaskView',
+        ),
+      );
+      expect(
+        progressPanelSource,
+        contains('patchProposalProvider.select((state) => _patchForTurn'),
+      );
+      expect(progressPanelSource, contains('commandRunProvider.select('));
       expect(composerSource, isNot(contains('chatProvider')));
+      expect(composerSource, contains('studioControls = ref.watch'));
+      expect(
+        composerSource,
+        contains('fileTreeProvider.select((state) => state.rootPath)'),
+      );
+      expect(
+        composerSource,
+        contains('gitProvider.select((state) => state.status.branch)'),
+      );
+      expect(shellSource, contains('state) => state.mode'));
+      expect(
+        shellSource,
+        contains('studioThreadProvider.select((threadState) {'),
+      );
+      expect(
+        shellSource,
+        contains('threadState.threadForTaskView(studio.selectedTaskId);'),
+      );
+      expect(
+        shellSource,
+        isNot(contains('final studio = ref.watch(studioShellProvider);')),
+      );
+      expect(
+        projectHistorySource,
+        isNot(contains('ref.listen(studioThreadProvider')),
+      );
+      expect(
+        projectHistorySource,
+        isNot(contains('ref.listen(agentWorkspaceProvider')),
+      );
+      expect(
+        leftRailSource,
+        contains(
+          'settingsProvider.select((settings) => settings.recentProjects)',
+        ),
+      );
+      expect(leftRailSource, contains('state.byPath.keys.join'));
+      expect(
+        sourceArtifactSource,
+        contains('StudioFeatureFlags.advancedStudioSurfaces'),
+      );
+      expect(sourceArtifactSource, contains('_isQuarantinedArtifact'));
+      expect(
+        sourceArtifactSource,
+        contains('StudioSourceArtifactKind.browserComment'),
+      );
+      expect(sourceArtifactSource, contains('_threadSyncFingerprints'));
+      expect(sourceArtifactSource, contains('_patchSyncFingerprints'));
+      expect(
+        sourceArtifactSource,
+        contains('studioSourceArtifactsForThreadProvider'),
+      );
+      expect(drawerSource, contains('studioSourceArtifactByIdProvider'));
+      expect(
+        drawerSource,
+        isNot(contains('ref.watch(studioSourceArtifactProvider).artifacts')),
+      );
     },
   );
 }

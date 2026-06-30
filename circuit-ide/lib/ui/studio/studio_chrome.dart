@@ -31,7 +31,7 @@ class StudioChromeIconButton extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final enabled = onTap != null;
     final prominentColor = tokens.brightness == Brightness.dark
-        ? const Color(0xFF4C8DFF)
+        ? tokens.textPrimary
         : tokens.accent;
     return Tooltip(
       message: tooltip,
@@ -39,7 +39,7 @@ class StudioChromeIconButton extends ConsumerWidget {
         type: MaterialType.transparency,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(prominent ? Radii.pill : 7),
+          borderRadius: BorderRadius.circular(prominent ? Radii.pill : 6),
           child: Container(
             width: width,
             height: height,
@@ -48,12 +48,12 @@ class StudioChromeIconButton extends ConsumerWidget {
               color: prominent && enabled
                   ? prominentColor
                   : active
-                  ? tokens.studioControl.withValues(alpha: 0.54)
+                  ? tokens.studioControl.withValues(alpha: 0.44)
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(prominent ? Radii.pill : 7),
+              borderRadius: BorderRadius.circular(prominent ? Radii.pill : 6),
               border: active && !prominent
                   ? Border.all(
-                      color: tokens.studioDivider.withValues(alpha: 0.42),
+                      color: tokens.studioDivider.withValues(alpha: 0.34),
                     )
                   : null,
             ),
@@ -190,11 +190,11 @@ class StudioActivityRow extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
             color: elevated
-                ? tokens.studioActivityRow.withValues(alpha: 0.62)
-                : tokens.studioActivityRow.withValues(alpha: 0.28),
+                ? tokens.studioActivityRow.withValues(alpha: 0.58)
+                : tokens.studioActivityRow.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(Radii.md),
             border: Border.all(
-              color: tokens.studioDivider.withValues(alpha: 0.48),
+              color: tokens.studioDivider.withValues(alpha: 0.34),
             ),
           ),
           child: Row(
@@ -293,15 +293,15 @@ class _StudioRailRowState extends ConsumerState<StudioRailRow> {
           onTap: widget.onTap,
           borderRadius: BorderRadius.circular(7),
           child: Container(
-            height: widget.project ? 29 : 28,
+            height: widget.project ? 30 : 28,
             padding: EdgeInsets.symmetric(horizontal: widget.project ? 8 : 8),
             decoration: BoxDecoration(
               color: widget.selected
                   ? (widget.project
-                        ? tokens.studioRailSelected.withValues(alpha: 0.32)
-                        : tokens.studioTaskSelected.withValues(alpha: 0.3))
+                        ? tokens.studioRailSelected.withValues(alpha: 0.48)
+                        : tokens.studioTaskSelected.withValues(alpha: 0.44))
                   : highlighted
-                  ? tokens.studioHover.withValues(alpha: 0.16)
+                  ? tokens.studioHover.withValues(alpha: 0.22)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(7),
             ),

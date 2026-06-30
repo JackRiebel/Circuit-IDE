@@ -24,11 +24,21 @@ class StudioProgressPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final thread = ref.watch(studioThreadProvider).threadForTaskView(task?.id);
+    final thread = ref.watch(
+      studioThreadProvider.select((state) => state.threadForTaskView(task?.id)),
+    );
     final latestTurn = _latestTurn(thread);
-    final git = ref.watch(gitProvider).status;
-    final patch = _patchForTurn(ref.watch(patchProposalProvider), latestTurn);
-    final commands = ref.watch(commandRunProvider).values.toList();
+    final branch = ref.watch(
+      gitProvider.select((state) => state.status.branch),
+    );
+    final patch = ref.watch(
+      patchProposalProvider.select((state) => _patchForTurn(state, latestTurn)),
+    );
+    final runningCommand = ref.watch(
+      commandRunProvider.select(
+        (state) => _runningCommandForTurn(state.values, latestTurn),
+      ),
+    );
     final hasPendingApproval =
         thread?.turns.any(
           (turn) => turn.events.any(
@@ -38,7 +48,6 @@ class StudioProgressPanel extends ConsumerWidget {
           ),
         ) ??
         false;
-    final runningCommand = _runningCommandForTurn(commands, latestTurn);
     final displayState = TaskDisplayState.fromLifecycle(
       StudioTaskLifecycleState.fromThread(thread),
     );
@@ -74,7 +83,7 @@ class StudioProgressPanel extends ConsumerWidget {
       const StudioProgressRow(label: 'Local', value: 'Ready'),
       StudioProgressRow(
         label: 'Branch',
-        value: git.branch.isEmpty ? 'main' : git.branch,
+        value: branch.isEmpty ? 'main' : branch,
       ),
     ];
 

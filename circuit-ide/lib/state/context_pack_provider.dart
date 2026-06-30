@@ -21,6 +21,8 @@ import 'terminal_provider.dart';
 const _uuid = Uuid();
 const _maxRelevantFileContextItems = 5;
 const _maxOmittedRelevantFileCandidates = 50;
+const _maxContextCandidateFileReads = 180;
+const _maxRankedTraversalCandidates = 800;
 const _commonContextTerms = {
   'please',
   'review',
@@ -1195,7 +1197,7 @@ class ContextPackController extends Notifier<ContextPack?> {
           source: relativePath,
           sourceKind: ContextPackSourceKind.editor,
           estimatedTokens: _estimateTokens(content) + 20,
-          retrievalScore: 190,
+          retrievalScore: 1000,
           retrievalReason: _summarizeContextReasons([
             'explicit path mention',
             ...contentTerms.take(3),
@@ -1236,6 +1238,11 @@ class ContextPackController extends Notifier<ContextPack?> {
     final scoredPaths = <String>{};
     final indexedCandidates = <String>{};
     final indexer = ref.read(fileIndexerProvider.notifier);
+    final indexedFilesByPath = {
+      for (final indexedFile
+          in ref.read(fileIndexerProvider)?.files ?? const <IndexedFile>[])
+        indexedFile.relativePath: indexedFile,
+    };
     for (final term in terms) {
       for (final file in indexer.search(term, limit: 12)) {
         if (!file.isDirectory) indexedCandidates.add(file.relativePath);
@@ -1286,6 +1293,8 @@ class ContextPackController extends Notifier<ContextPack?> {
       for (final path in changedFiles) p.normalize(path),
     };
 
+    var candidateFileReads = 0;
+
     void scoreFile(
       String relativePath,
       File file, {
@@ -1298,10 +1307,13 @@ class ContextPackController extends Notifier<ContextPack?> {
       if (_isIgnoredContextPath(relativePath)) return;
       if (_isInstructionContextPath(relativePath)) return;
       if (!_isRelevantContextExtension(relativePath)) return;
+      if (candidateFileReads >= _maxContextCandidateFileReads) return;
       if (!file.existsSync() || file.lengthSync() > 80 * 1024) return;
+      candidateFileReads++;
       final lowerPath = relativePath.toLowerCase();
       final lowerName = p.basename(relativePath).toLowerCase();
       final lowerStem = p.basenameWithoutExtension(relativePath).toLowerCase();
+      final indexedFile = indexedFilesByPath[relativePath];
       final importantFileBoost = _importantContextFiles.contains(lowerName)
           ? 3
           : 0;
@@ -1318,12 +1330,12 @@ class ContextPackController extends Notifier<ContextPack?> {
       final workspaceBoost =
           _promptWantsWorkspaceContext(prompt ?? '') &&
               _isWorkspaceContextPath(relativePath)
-          ? 45
+          ? 120
           : 0;
       final deploymentBoost =
           _promptWantsDeploymentContext(prompt ?? '') &&
               _isDeploymentContextPath(relativePath)
-          ? 48
+          ? 120
           : 0;
       final domainBoost = _domainContextBoost(relativePath, activeDomains);
       final content = file.readAsStringSync();
@@ -1353,16 +1365,20 @@ class ContextPackController extends Notifier<ContextPack?> {
         reasons.add('changed file');
       }
       if (lowerPrompt.contains(lowerPath)) {
-        score += 30;
+        score += 220;
         reasons.add('explicit path mention');
       } else if (lowerPrompt.contains(lowerName)) {
-        score += 18;
+        score += 90;
         reasons.add('filename mention');
       } else if (lowerPrompt.contains(lowerStem)) {
-        score += 14;
+        score += 60;
         reasons.add('filename stem mention');
       }
       for (final term in terms) {
+        if (indexedFile?.symbols.contains(term) == true) {
+          score += _symbolTermScore(term);
+          reasons.add('symbol "$term"');
+        }
         if (lowerStem == term || lowerName == term) {
           score += 16;
           reasons.add('exact filename term "$term"');
@@ -1430,9 +1446,9 @@ class ContextPackController extends Notifier<ContextPack?> {
         rootPath: rootPath,
         promptTerms: terms,
       );
-      var visited = 0;
-      for (final relativePath in traversalPaths) {
-        if (visited++ > 5000) break;
+      for (final relativePath in traversalPaths.take(
+        _maxRankedTraversalCandidates,
+      )) {
         final before = scored.length;
         scoreFile(relativePath, File(p.join(rootPath, relativePath)));
         if (scored.length > before) scanned++;
@@ -1441,7 +1457,11 @@ class ContextPackController extends Notifier<ContextPack?> {
       return const _RelevantFileResult(items: [], omittedCandidates: []);
     }
 
-    scored.sort((a, b) => b.score.compareTo(a.score));
+    scored.sort((a, b) {
+      final scoreCompare = b.score.compareTo(a.score);
+      if (scoreCompare != 0) return scoreCompare;
+      return a.path.compareTo(b.path);
+    });
     final included = scored.take(_maxRelevantFileContextItems).toList();
     final omitted = scored
         .skip(_maxRelevantFileContextItems)
@@ -1529,6 +1549,9 @@ class ContextPackController extends Notifier<ContextPack?> {
           score += 55;
         }
         for (final term in promptTerms) {
+          if (file.symbols.contains(term)) {
+            score += 42;
+          }
           if (lowerName == term) {
             score += 40;
           } else if (lowerName.contains(term)) {
@@ -1596,6 +1619,13 @@ class ContextPackController extends Notifier<ContextPack?> {
     if (term.length >= 11) return 32;
     if (term.length >= 8) return 12;
     return 2;
+  }
+
+  int _symbolTermScore(String term) {
+    if (term.length >= 16) return 92;
+    if (term.length >= 11) return 64;
+    if (term.length >= 8) return 36;
+    return 18;
   }
 
   bool _promptWantsWorkflowContext(String prompt) {

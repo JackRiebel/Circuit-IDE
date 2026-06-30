@@ -4,6 +4,7 @@ enum StudioDrawerMode {
   code,
   diff,
   files,
+  artifacts,
   terminal,
   sources,
   context,

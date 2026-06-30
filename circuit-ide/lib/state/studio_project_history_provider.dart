@@ -31,6 +31,7 @@ class StudioProjectHistoryController
     extends Notifier<StudioProjectHistoryState> {
   final _taskStore = AgentWorkspaceStore();
   final _threadStore = StudioThreadStore();
+  int _loadGeneration = 0;
 
   @override
   StudioProjectHistoryState build() {
@@ -47,14 +48,13 @@ class StudioProjectHistoryController
     ) {
       _load();
     });
-    ref.listen(agentWorkspaceProvider, (previous, next) => _mergeLiveProject());
-    ref.listen(studioThreadProvider, (previous, next) => _mergeLiveProject());
     return const StudioProjectHistoryState(isLoading: true);
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final paths = await _projectPaths();
-    if (!ref.mounted) return;
+    if (!ref.mounted || generation != _loadGeneration) return;
     if (paths.isEmpty) {
       state = const StudioProjectHistoryState();
       return;
@@ -65,14 +65,14 @@ class StudioProjectHistoryController
       try {
         next[path] = StudioProjectHistory(
           tasks: await _taskStore.load(path),
-          threads: await _threadStore.load(path),
+          threads: await _threadStore.loadSummaries(path),
         );
       } catch (_) {
         next[path] = const StudioProjectHistory();
       }
-      if (!ref.mounted) return;
+      if (!ref.mounted || generation != _loadGeneration) return;
     }
-    if (!ref.mounted) return;
+    if (!ref.mounted || generation != _loadGeneration) return;
     state = StudioProjectHistoryState(byPath: next);
     _mergeLiveProject();
   }

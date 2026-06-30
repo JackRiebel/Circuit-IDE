@@ -88,7 +88,84 @@ class CommandSanitizer {
         return entry.value;
       }
     }
+    if (_looksLikeSensitiveCommandAccess(command)) {
+      return 'Secret or environment file access';
+    }
     return null;
+  }
+
+  /// Shared sensitive-path classifier used by both tool permission policy and
+  /// command execution guards. This intentionally focuses on credential-shaped
+  /// paths rather than every file whose name contains words like "token" so
+  /// normal source files such as design token modules remain readable.
+  static bool looksSensitivePath(String rawPath) {
+    final normalized = rawPath
+        .trim()
+        .replaceAll('\\', '/')
+        .replaceAll(RegExp(r'''^['"]|['"]$'''), '')
+        .toLowerCase();
+    if (normalized.isEmpty) return false;
+    final segments = normalized.split('/').where((s) => s.isNotEmpty).toList();
+    final basename = segments.isEmpty ? normalized : segments.last;
+    final segmentSet = segments.toSet();
+
+    if (basename == '.env' || basename.startsWith('.env.')) return true;
+    if (basename == '.npmrc' ||
+        basename == '.netrc' ||
+        basename == '.pypirc' ||
+        basename == '.dockercfg' ||
+        basename == 'id_rsa' ||
+        basename == 'id_ed25519' ||
+        basename == 'known_hosts.old' ||
+        basename == 'credentials' ||
+        basename == 'config.json' && segmentSet.contains('.docker') ||
+        basename == 'hosts.yml' &&
+            segmentSet.contains('.config') &&
+            segmentSet.contains('gh') ||
+        basename == 'config' && segmentSet.contains('.kube') ||
+        basename == 'credentials.json' ||
+        basename == 'client_secret.json' ||
+        basename == 'firebase-adminsdk.json' ||
+        basename == 'google-credentials.json' ||
+        basename == 'service-account.json' ||
+        basename == 'service_account.json') {
+      return true;
+    }
+
+    if (segmentSet.contains('.ssh') ||
+        segmentSet.contains('.aws') ||
+        segmentSet.contains('.azure') ||
+        (segmentSet.contains('.config') && segmentSet.contains('gcloud')) ||
+        segmentSet.contains('.gnupg') ||
+        segmentSet.contains('.kube') ||
+        segmentSet.contains('.1password') ||
+        segmentSet.contains('.op')) {
+      return true;
+    }
+
+    if (normalized.contains('/aws/credentials')) return true;
+    if (normalized.contains('/.gem/credentials')) return true;
+    if (normalized.contains('/.cargo/credentials')) return true;
+    if (normalized.contains('/.config/hub')) return true;
+
+    if (RegExp(
+      r'(^|[-_.])(private[-_]?key|client[-_]?secret|service[-_]?account|adminsdk|auth[-_]?key|signing[-_]?key)([-_.]|$)',
+    ).hasMatch(basename)) {
+      return true;
+    }
+    if (RegExp(r'\.(pem|p12|pfx|jks|keystore|keychain)$').hasMatch(basename) &&
+        RegExp(
+          r'(private|secret|credential|cert|key|identity|service|admin)',
+        ).hasMatch(basename)) {
+      return true;
+    }
+    if (normalized.contains('/secrets/') ||
+        normalized.contains('/credentials/') ||
+        normalized.contains('/private_keys/') ||
+        normalized.contains('/private-keys/')) {
+      return true;
+    }
+    return false;
   }
 
   /// Detect commands that can initiate network access.
@@ -152,6 +229,7 @@ class CommandSanitizer {
 
     final candidates = <String>{
       ..._absolutePathCandidates(command),
+      ..._windowsAbsolutePathCandidates(command),
       ..._homePathCandidates(command),
       ..._environmentPathCandidates(command),
       ..._parentTraversalPathCandidates(command),
@@ -371,12 +449,27 @@ class CommandSanitizer {
         ).hasMatch(lower);
   }
 
+  static bool _looksLikeSensitiveCommandAccess(String command) {
+    if (!_looksLikeCommandFileAccess(command)) return false;
+    final candidates = <String>{
+      ..._absolutePathCandidates(command),
+      ..._windowsAbsolutePathCandidates(command),
+      ..._homePathCandidates(command),
+      ..._environmentPathCandidates(command),
+      ..._parentTraversalPathCandidates(command),
+      ..._relativePathCandidates(command),
+    };
+    return candidates.any(looksSensitivePath);
+  }
+
   static Iterable<String> _absolutePathCandidates(String command) sync* {
     final pathPattern = RegExp(r'''/(?:[^\s'"`|;&<>),\]]+)''');
     for (final match in pathPattern.allMatches(command)) {
       if (match.start > 0 && command[match.start - 1] == ':') continue;
       if (match.start > 0 &&
-          !RegExp(r'''[\s'"`|;&<>()\[]''').hasMatch(command[match.start - 1])) {
+          !RegExp(
+            r'''[\s='"`|;&<>()\[]''',
+          ).hasMatch(command[match.start - 1])) {
         continue;
       }
       final candidate = _cleanCommandPathCandidate(match.group(0) ?? '');
@@ -389,6 +482,16 @@ class CommandSanitizer {
         continue;
       }
       yield candidate;
+    }
+  }
+
+  static Iterable<String> _windowsAbsolutePathCandidates(String command) sync* {
+    final pathPattern = RegExp(
+      r'''(?:^|[\s'"(=])((?:[A-Za-z]:[\\/]|\\\\)[^\s'"`|;&<>),\]]*)''',
+    );
+    for (final match in pathPattern.allMatches(command)) {
+      final candidate = _cleanCommandPathCandidate(match.group(1) ?? '');
+      if (candidate.isNotEmpty) yield candidate;
     }
   }
 
@@ -416,6 +519,17 @@ class CommandSanitizer {
   static Iterable<String> _parentTraversalPathCandidates(String command) sync* {
     final pathPattern = RegExp(
       r'''(?:^|[\s'"(=])((?:\.\./|\./\.\./)[^\s'"`|;&<>),\]]+)''',
+    );
+    for (final match in pathPattern.allMatches(command)) {
+      final candidate = _cleanCommandPathCandidate(match.group(1) ?? '');
+      if (candidate.isNotEmpty) yield candidate;
+    }
+  }
+
+  static Iterable<String> _relativePathCandidates(String command) sync* {
+    final pathPattern = RegExp(
+      r'''(?:^|[\s'"(=])((?:\.?[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.@-]+|(?:\.env(?:\.[A-Za-z0-9_.-]+)?|\.npmrc|\.netrc|\.pypirc|id_rsa|id_ed25519|client_secret\.json|service[-_]account\.json|firebase-adminsdk\.json|google-credentials\.json|credentials(?:\.json)?|[A-Za-z0-9_.-]*(?:private[-_]?key|client[-_]?secret|service[-_]?account|adminsdk|auth[-_]?key|signing[-_]?key)[A-Za-z0-9_.-]*))(?=$|[\s'"`|;&<>),\]])''',
+      caseSensitive: false,
     );
     for (final match in pathPattern.allMatches(command)) {
       final candidate = _cleanCommandPathCandidate(match.group(1) ?? '');

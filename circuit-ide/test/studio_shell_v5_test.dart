@@ -59,6 +59,14 @@ import 'package:visibility_detector/visibility_detector.dart';
 
 void main() {
   VisibilityDetectorController.instance.updateInterval = Duration.zero;
+  StudioThreadController.debugPersistDebounceOverride = Duration.zero;
+  tearDownAll(() {
+    StudioThreadController.debugPersistDebounceOverride = null;
+  });
+
+  Future<void> flushStudioThreadPersist(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 1000));
+  }
 
   test('StudioShellProvider transitions between core views', () {
     final container = ProviderContainer();
@@ -146,8 +154,8 @@ void main() {
 
     expect(find.byTooltip('Open in'), findsOneWidget);
     expect(find.byTooltip('Command palette'), findsOneWidget);
-    expect(find.byTooltip('Studio settings'), findsOneWidget);
-    expect(find.byTooltip('Open review'), findsOneWidget);
+    expect(find.byTooltip('Studio settings'), findsNothing);
+    expect(find.byTooltip('Open review'), findsNothing);
     expect(find.byTooltip('Hide Progress panel'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Command palette'));
@@ -155,14 +163,6 @@ void main() {
     expect(container.read(commandPaletteProvider).isOpen, isTrue);
     container.read(commandPaletteProvider.notifier).close();
     await tester.pump();
-
-    await tester.tap(find.byTooltip('Studio settings'));
-    await tester.pump();
-    expect(container.read(studioShellProvider).mode, StudioMode.settings);
-
-    await tester.tap(find.byTooltip('Open review'));
-    await tester.pump();
-    expect(container.read(studioShellProvider).mode, StudioMode.review);
 
     await tester.tap(find.byTooltip('Open in'));
     await tester.pumpAndSettle();
@@ -309,6 +309,7 @@ void main() {
         .read(studioThreadProvider.notifier)
         .createBlankThread(title: 'Create role-based mini Salesforce');
     container.read(studioShellProvider.notifier).openThread(thread.id);
+    await flushStudioThreadPersist(tester);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -330,7 +331,7 @@ void main() {
     expect(overflowLeft - titleRight, lessThanOrEqualTo(12));
 
     final openInText = tester.widget<Text>(find.text('Open in'));
-    expect(openInText.style?.fontSize, FontSizes.sm);
+    expect(openInText.style?.fontSize, FontSizes.xs);
     expect(openInText.style?.fontWeight, FontWeight.w600);
 
     final openInIcon = tester.widget<Icon>(
@@ -338,14 +339,9 @@ void main() {
     );
     expect(openInIcon.size, 14);
     expect(find.byTooltip('Command palette'), findsOneWidget);
-    expect(find.byTooltip('Studio settings'), findsOneWidget);
-    expect(find.byTooltip('Open review'), findsOneWidget);
+    expect(find.byTooltip('Studio settings'), findsNothing);
+    expect(find.byTooltip('Open review'), findsNothing);
     expect(tester.widget<Icon>(find.byIcon(Icons.tune_outlined)).size, 13);
-    expect(tester.widget<Icon>(find.byIcon(Icons.info_outline)).size, 13);
-    expect(
-      tester.widget<Icon>(find.byIcon(Icons.rate_review_outlined).first).size,
-      13,
-    );
 
     final railText = tester.widget<Text>(find.text('New chat'));
     expect(railText.style?.fontSize, FontSizes.sm);
@@ -364,13 +360,7 @@ void main() {
                 const Color(0xFF28C840),
               }.contains(decoration.color);
         });
-    expect(windowDots, hasLength(3));
-    for (final dot in windowDots) {
-      expect(dot.constraints?.minWidth, 12);
-      expect(dot.constraints?.maxWidth, 12);
-      expect(dot.constraints?.minHeight, 12);
-      expect(dot.constraints?.maxHeight, 12);
-    }
+    expect(windowDots, isEmpty);
   });
 
   testWidgets('Studio top bar thread menu routes to real actions', (
@@ -1139,6 +1129,7 @@ void main() {
           .detail,
       contains('Before code'),
     );
+    await flushStudioThreadPersist(tester);
   });
 
   testWidgets(
@@ -1682,6 +1673,111 @@ void main() {
           .firstOrNull;
       expect(storedPatch?.verificationRequestId, result.requestId);
       await tester.pump();
+      await flushStudioThreadPersist(tester);
+    },
+  );
+
+  testWidgets(
+    'Patch verification helper includes failure output in final summary',
+    (tester) async {
+      final root = Directory.systemTemp.createTempSync(
+        'studio_patch_verify_failure_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await tester.runAsync(
+        () =>
+            container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      await tester.runAsync(
+        () => container.read(studioThreadProvider.notifier).reload(),
+      );
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Patch verification failure');
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+      final patch = ProposedPatchSet(
+        id: 'patch-verify-failure-output',
+        title: 'Applied patch',
+        runId: 'request-applied-failure',
+        edits: const [
+          ProposedFileEdit(
+            path: 'lib/login.dart',
+            type: ProposedFileEditType.modify,
+            before: 'old',
+            after: 'new',
+          ),
+        ],
+        changedFiles: const ['lib/login.dart'],
+        applyStatus: PatchApplyStatus.applied,
+        verificationRequested: true,
+        verificationSuggestions: const [
+          'python3 -c "raise SystemExit(\'verify-bad-output\')"',
+          'python3 -c "print(\'should-not-run\')"',
+        ],
+        createdAt: DateTime(2026),
+      );
+      container.read(patchProposalProvider.notifier).preserveProposal(patch);
+      late WidgetRef capturedRef;
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final result = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, patch),
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 60; i++) {
+          final updated = container.read(studioThreadProvider).selectedThread;
+          final turn = updated?.turns.lastOrNull;
+          if (turn?.status == StudioTurnStatus.completed) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 25));
+        }
+      });
+
+      expect(result, isNotNull);
+      expect(result!.status, StudioSendStatus.sent, reason: result.error);
+      final updatedThread = container
+          .read(studioThreadProvider)
+          .selectedThread!;
+      final turn = updatedThread.turns.last;
+      expect(turn.intent, TurnIntent.verify);
+      expect(turn.status, StudioTurnStatus.completed);
+      final commandRuns = container.read(commandRunProvider).values.toList();
+      expect(commandRuns, hasLength(1));
+      expect(commandRuns.single.status, CommandRunStatus.failed);
+      final summary = turn.events
+          .where(
+            (event) =>
+                event.type == StudioTurnEventType.completionSummary &&
+                event.detail.contains('Verification failed.'),
+          )
+          .single
+          .detail;
+      expect(summary, contains('Failure output:'));
+      expect(summary, contains('verify-bad-output'));
+      expect(summary, contains('Skipped after first failure:'));
+      expect(summary, contains('should-not-run'));
+      expect(
+        summary,
+        contains('Next step: fix the failing command output above'),
+      );
     },
   );
 
@@ -1874,7 +1970,7 @@ void main() {
     expect(find.text('gpt-5-nano'), findsOneWidget);
     expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
     expect(find.byTooltip('Open project folder'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_downward), findsOneWidget);
+    expect(find.byIcon(Icons.folder_open_outlined), findsOneWidget);
     expect(find.byTooltip('Back'), findsOneWidget);
     expect(find.byTooltip('Forward'), findsOneWidget);
     expect(find.text('Work locally'), findsNothing);
@@ -1901,7 +1997,7 @@ void main() {
     final searchText = tester.widget<Text>(find.text('Search'));
     expect(searchText.style?.fontSize, FontSizes.sm);
     final openProjectIcon = tester.widget<Icon>(
-      find.byIcon(Icons.arrow_downward),
+      find.byIcon(Icons.folder_open_outlined),
     );
     expect(openProjectIcon.size, 14);
 
@@ -1926,7 +2022,7 @@ void main() {
     expect(closeSearchDecoration, isA<BoxDecoration>());
     expect(
       (closeSearchDecoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(7),
+      BorderRadius.circular(6),
     );
   });
 
@@ -2077,6 +2173,59 @@ void main() {
     expect(shell.mode, StudioMode.task);
     expect(shell.selectedTaskId, isNull);
     expect(container.read(studioThreadProvider).selectedThreadId, thread.id);
+  });
+
+  testWidgets('Studio rail collapses long project histories', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(360, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync(
+      'studio_rail_collapsed_history_',
+    );
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.runAsync(
+      () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    await tester.runAsync(
+      () => container.read(studioThreadProvider.notifier).reload(),
+    );
+    container.read(settingsProvider.notifier).addRecentProject(root.path);
+    container.read(studioShellProvider.notifier).openProject(root.path);
+
+    StudioThread? oldestThread;
+    for (var index = 1; index <= 12; index += 1) {
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Rail thread $index');
+      oldestThread ??= thread;
+    }
+    container
+        .read(studioThreadProvider.notifier)
+        .selectThread(oldestThread!.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioLeftRail())),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rail thread 12'), findsOneWidget);
+    expect(find.text('Rail thread 1'), findsOneWidget);
+    expect(find.text('Rail thread 4'), findsNothing);
+    expect(find.text('Show 3 more'), findsOneWidget);
+
+    await tester.tap(find.text('Show 3 more'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rail thread 4'), findsOneWidget);
+    expect(find.text('Show fewer'), findsOneWidget);
+    await flushStudioThreadPersist(tester);
   });
 
   test('Studio rail uses compact status indicators only when needed', () {
@@ -3197,6 +3346,7 @@ void main() {
 
     expect(find.text('partial response'), findsOneWidget);
     expect(find.text('Circuit AI is responding...'), findsNothing);
+    await flushStudioThreadPersist(tester);
   });
 
   testWidgets('Active turn suppresses stale thread-level streaming fallback', (
@@ -3326,18 +3476,18 @@ void main() {
     expect(find.text('Draft plan'), findsOneWidget);
     expect(find.text('Expand plan'), findsOneWidget);
     expect(
-      find.text(
-        'Plan is still being written. Review actions will appear when it is ready.',
-      ),
+      find.text('Actions unlock when Circuit finishes writing the plan.'),
       findsOneWidget,
     );
-    expect(find.text('Implement this plan?'), findsNothing);
-    expect(find.text('Yes, implement this plan'), findsNothing);
+    expect(find.text('Implement this plan?'), findsOneWidget);
+    expect(find.text('Yes, implement this plan'), findsOneWidget);
     expect(
       find.text('No, and tell Circuit what to do differently'),
-      findsNothing,
+      findsOneWidget,
     );
+    expect(find.text('Submit'), findsOneWidget);
     expect(find.text('Circuit AI is responding...'), findsNothing);
+    await flushStudioThreadPersist(tester);
   });
 
   testWidgets('Long streaming plan draft remains bounded in chat', (
@@ -3386,7 +3536,7 @@ void main() {
     final cardSize = tester.getSize(
       find.byKey(const Key('studio-plan-draft-card')),
     );
-    expect(cardSize.height, lessThan(480));
+    expect(cardSize.height, lessThan(620));
     expect(find.text('Expand plan'), findsOneWidget);
 
     await tester.tap(find.text('Expand plan'));
@@ -3398,6 +3548,7 @@ void main() {
     expect(expandedCardSize.height, greaterThan(cardSize.height));
     expect(expandedCardSize.height, lessThan(760));
     expect(find.text('Circuit AI is responding...'), findsNothing);
+    await flushStudioThreadPersist(tester);
   });
 
   testWidgets(
@@ -5732,6 +5883,7 @@ void main() {
     expect(find.text('Patch conflict'), findsWidgets);
     expect(find.textContaining('Needs rebase before apply'), findsWidgets);
     expect(find.text('View current file'), findsOneWidget);
+    expect(find.text('Refresh patch'), findsOneWidget);
     expect(find.text('Ask Circuit to rebase'), findsOneWidget);
     expect(find.text('Dismiss conflict'), findsOneWidget);
 
@@ -6171,6 +6323,7 @@ void main() {
       expect(continuationTurn.acceptedPlanContext?.plannedFiles, [
         'README.md — Document usage',
       ]);
+      await flushStudioThreadPersist(tester);
     },
   );
 
@@ -6722,6 +6875,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Apply changes'), findsNothing);
+      expect(find.text('Refresh patch'), findsOneWidget);
       expect(find.text('Ask Circuit to rebase'), findsOneWidget);
 
       await tester.tap(find.text('Ask Circuit to rebase'));

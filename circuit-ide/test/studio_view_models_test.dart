@@ -132,7 +132,7 @@ void main() {
       );
 
       expect(state.kind, TaskDisplayKind.continuationReady);
-      expect(state.label, 'Continue');
+      expect(state.label, 'Needs review');
       expect(state.isActive, isFalse);
       expect(state.needsAttention, isTrue);
     });

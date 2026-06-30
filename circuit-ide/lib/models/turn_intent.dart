@@ -113,6 +113,9 @@ class IntentClassifier {
     if (planModeEnabled) return TurnIntent.plan;
     if (_looksLikePlanRequest(normalized)) return TurnIntent.plan;
     if (_looksLikeSourceFileOutputRequest(normalized)) return TurnIntent.code;
+    if (_looksLikeGeneratedDataArtifactRequest(normalized)) {
+      return TurnIntent.code;
+    }
     if (_looksLikeDocumentArtifactFileOutputRequest(normalized)) {
       return TurnIntent.plan;
     }
@@ -743,6 +746,18 @@ class IntentClassifier {
         ).hasMatch(normalized);
   }
 
+  static bool looksLikeFileOutputRequest(String prompt) {
+    return _hasExplicitFileOutputRequest(_normalize(prompt));
+  }
+
+  static bool _looksLikeGeneratedDataArtifactRequest(String normalized) {
+    if (_requestsChatOnlyOutput(normalized)) return false;
+    if (!_hasDirectActionRequest(normalized)) return false;
+    return RegExp(
+      r'\b(excel|xlsx|spreadsheet|workbook|csv|json file|pdf|report file)\b',
+    ).hasMatch(normalized);
+  }
+
   static bool _looksLikeDesignOrVisualArtifact(String normalized) {
     return RegExp(
           r'\b(topology|topology diagram|network topology|wan topology|lan topology|network diagram|architecture diagram|logical diagram|physical diagram|solution architecture|network architecture|network design|branch network design|campus network design|solution design|sizing plan|sizing recommendation|sizing table|validation table|architecture validation|network visualization|topology visualization|mermaid diagram)\b',
@@ -845,19 +860,23 @@ class IntentClassifier {
           'jsx',
           'py',
           'json',
+          'csv',
+          'xlsx',
+          'xls',
+          'pdf',
           'yaml',
           'yml',
           'html',
           'css',
         }) ||
         RegExp(
-          r'\b(save|write|create|add|update|edit|generate|draft|make)\b.*\b([a-z0-9_/-]+\s+)+(md|txt|dart|js|ts|tsx|jsx|py|json|ya?ml|html|css)\b',
+          r'\b(save|write|create|add|update|edit|generate|draft|make)\b.*\b([a-z0-9_/-]+\s+)+(md|txt|dart|js|ts|tsx|jsx|py|json|csv|xlsx?|pdf|ya?ml|html|css)\b',
         ).hasMatch(normalized) ||
         RegExp(
-          r'\b(to|in|into)\s+([a-z0-9_./-]+\.(md|txt|dart|js|ts|tsx|jsx|py|json|yaml|yml|html|css))\b',
+          r'\b(to|in|into)\s+([a-z0-9_./-]+\.(md|txt|dart|js|ts|tsx|jsx|py|json|csv|xlsx?|pdf|yaml|yml|html|css))\b',
         ).hasMatch(normalized) ||
         RegExp(
-          r'\b(to|in|into)\s+([a-z0-9_/-]+\s+)+(md|txt|dart|js|ts|tsx|jsx|py|json|ya?ml|html|css)\b',
+          r'\b(to|in|into)\s+([a-z0-9_/-]+\s+)+(md|txt|dart|js|ts|tsx|jsx|py|json|csv|xlsx?|pdf|ya?ml|html|css)\b',
         ).hasMatch(normalized) ||
         RegExp(
           r'\b(to|in|into)\s+([a-z0-9_/-]+\s+)?(readme|changelog)\s+(md|txt|markdown)\b',

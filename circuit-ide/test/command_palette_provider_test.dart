@@ -1,8 +1,6 @@
 import 'package:circuit_ide/core/commands/core_command_registry.dart';
-import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/command_descriptor.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
-import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -120,6 +118,9 @@ void main() {
       expect(commandIds, isNot(contains('view.tools')));
       expect(commandIds, isNot(contains('view.toggleTerminal')));
       expect(commandIds, isNot(contains('ai.copyLatestRun')));
+      expect(commandIds, isNot(contains('context.toggleActiveFile')));
+      expect(commandIds, isNot(contains('context.toggleTerminal')));
+      expect(commandIds, isNot(contains('context.toggleGitDiff')));
       expect(commandIds, isNot(contains('project.startWorkItem')));
       expect(commandIds, isNot(contains('agentWorkspace.startParallelTask')));
       final registeredText = container
@@ -138,6 +139,9 @@ void main() {
         'agent workspace',
         'parallel task',
         'background agent',
+        'terminal context',
+        'git diff context',
+        'active file context',
       ]) {
         expect(
           registeredText,
@@ -147,16 +151,11 @@ void main() {
         );
       }
 
-      container
-          .read(commandPaletteProvider.notifier)
-          .execute(
-            container
-                .read(commandPaletteProvider)
-                .allCommands
-                .singleWhere((command) => command.id == 'settings.open'),
-          );
-
-      expect(container.read(studioShellProvider).mode, StudioMode.settings);
+      final settingsCommand = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .singleWhere((command) => command.id == 'settings.open');
+      expect(settingsCommand.enabled, isTrue);
     },
   );
 }

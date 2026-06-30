@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
@@ -10,9 +12,14 @@ import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
 import '../models/tool_result_envelope.dart';
 import '../models/turn_intent.dart';
+import 'studio_command_log_store.dart';
 import 'studio_thread_provider.dart';
 
 const _uuid = Uuid();
+
+final studioCommandLogStoreProvider = Provider<StudioCommandLogStore>(
+  (ref) => StudioCommandLogStore(),
+);
 
 class StudioTurnRef {
   final String requestId;
@@ -55,8 +62,24 @@ class StudioTurnState {
 }
 
 class StudioTurnController extends Notifier<StudioTurnState> {
+  static const _assistantDeltaFlushInterval = Duration(milliseconds: 120);
+
+  final _pendingAssistantDeltas = <String, StringBuffer>{};
+  final _assistantDeltaTimers = <String, Timer>{};
+  final _lastAssistantDeltaFlushAt = <String, DateTime>{};
+
   @override
-  StudioTurnState build() => const StudioTurnState();
+  StudioTurnState build() {
+    ref.onDispose(() {
+      for (final timer in _assistantDeltaTimers.values) {
+        timer.cancel();
+      }
+      _assistantDeltaTimers.clear();
+      _pendingAssistantDeltas.clear();
+      _lastAssistantDeltaFlushAt.clear();
+    });
+    return const StudioTurnState();
+  }
 
   StudioTurn registerTurn({
     required String requestId,
@@ -287,6 +310,27 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     if (delta.isEmpty) return;
     final turnRef = state.refForRequest(requestId);
     if (turnRef == null) return;
+    (_pendingAssistantDeltas[requestId] ??= StringBuffer()).write(delta);
+    final now = DateTime.now();
+    final lastFlush = _lastAssistantDeltaFlushAt[requestId];
+    if (lastFlush == null ||
+        now.difference(lastFlush) >= _assistantDeltaFlushInterval) {
+      _flushAssistantDelta(requestId);
+      return;
+    }
+    _assistantDeltaTimers[requestId] ??= Timer(
+      _assistantDeltaFlushInterval - now.difference(lastFlush),
+      () => _flushAssistantDelta(requestId),
+    );
+  }
+
+  void _flushAssistantDelta(String requestId) {
+    _assistantDeltaTimers.remove(requestId)?.cancel();
+    final buffer = _pendingAssistantDeltas.remove(requestId);
+    final delta = buffer?.toString() ?? '';
+    if (delta.isEmpty) return;
+    final turnRef = state.refForRequest(requestId);
+    if (turnRef == null) return;
     final thread = ref
         .read(studioThreadProvider)
         .threads
@@ -296,6 +340,10 @@ class StudioTurnController extends Notifier<StudioTurnState> {
         .where((candidate) => candidate.id == turnRef.turnId)
         .firstOrNull;
     if (turn == null) return;
+    final shouldRecordStreamingStep = !_hasRunningOrCompletedStep(
+      turn,
+      TurnStep.streaming,
+    );
     ref
         .read(studioThreadProvider.notifier)
         .updateTurn(
@@ -304,13 +352,31 @@ class StudioTurnController extends Notifier<StudioTurnState> {
           status: StudioTurnStatus.streaming,
           assistantDraft: '${turn.assistantDraft}$delta',
         );
-    recordStep(
-      requestId,
-      step: TurnStep.streaming,
-      status: TurnStepStatus.running,
-      title: 'Streaming response',
-      detail: 'Circuit AI is returning assistant text.',
+    if (shouldRecordStreamingStep) {
+      recordStep(
+        requestId,
+        step: TurnStep.streaming,
+        status: TurnStepStatus.running,
+        title: 'Streaming response',
+        detail: 'Circuit AI is returning assistant text.',
+      );
+    }
+    _lastAssistantDeltaFlushAt[requestId] = DateTime.now();
+  }
+
+  bool _hasRunningOrCompletedStep(StudioTurn turn, TurnStep step) {
+    return turn.steps.any(
+      (candidate) =>
+          candidate.step == step &&
+          (candidate.status == TurnStepStatus.running ||
+              candidate.status == TurnStepStatus.completed),
     );
+  }
+
+  void _clearPendingAssistantDelta(String requestId) {
+    _assistantDeltaTimers.remove(requestId)?.cancel();
+    _pendingAssistantDeltas.remove(requestId);
+    _lastAssistantDeltaFlushAt.remove(requestId);
   }
 
   void replaceAssistantDraft(
@@ -318,6 +384,7 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     String content, {
     bool allowArchived = false,
   }) {
+    _clearPendingAssistantDelta(requestId);
     final turnRef = allowArchived
         ? state.archivedRefForRequest(requestId)
         : state.refForRequest(requestId);
@@ -334,6 +401,10 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     final status = turn?.completedAt == null
         ? StudioTurnStatus.streaming
         : null;
+    final shouldRecordStreamingStep =
+        draft.isNotEmpty &&
+        turn != null &&
+        !_hasRunningOrCompletedStep(turn, TurnStep.streaming);
     ref
         .read(studioThreadProvider.notifier)
         .updateTurn(
@@ -342,7 +413,7 @@ class StudioTurnController extends Notifier<StudioTurnState> {
           status: status,
           assistantDraft: draft,
         );
-    if (draft.isNotEmpty) {
+    if (shouldRecordStreamingStep) {
       recordStep(
         requestId,
         step: TurnStep.streaming,
@@ -481,11 +552,17 @@ class StudioTurnController extends Notifier<StudioTurnState> {
         .where((candidate) => candidate.id == turnRef.turnId)
         .firstOrNull;
     if (turn == null) return;
+    final resultForStorage = compactCommandToolResult(
+      result: result,
+      store: ref.read(studioCommandLogStoreProvider),
+      requestId: requestId,
+      turnId: turnRef.turnId,
+    );
     final results = [
       ...turn.toolResults.where(
-        (candidate) => candidate.toolCallId != result.toolCallId,
+        (candidate) => candidate.toolCallId != resultForStorage.toolCallId,
       ),
-      result,
+      resultForStorage,
     ];
     ref
         .read(studioThreadProvider.notifier)
@@ -493,15 +570,15 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     recordStep(
       requestId,
       step: TurnStep.toolExecution,
-      status: switch (result.status) {
+      status: switch (resultForStorage.status) {
         ToolResultStatus.success => TurnStepStatus.completed,
         ToolResultStatus.waitingForApproval => TurnStepStatus.running,
         ToolResultStatus.cancelled => TurnStepStatus.skipped,
         ToolResultStatus.error ||
         ToolResultStatus.denied => TurnStepStatus.failed,
       },
-      title: '${result.toolName} ${result.status.name}',
-      detail: result.summary,
+      title: '${resultForStorage.toolName} ${resultForStorage.status.name}',
+      detail: resultForStorage.summary,
     );
   }
 
@@ -880,6 +957,7 @@ class StudioTurnController extends Notifier<StudioTurnState> {
       latestTurn ?? turn,
       actionableDetail,
       applyStatus,
+      touchedPaths: touchedPaths,
     );
     if (applyStatus == PatchApplyStatus.applied) {
       recordStep(
@@ -934,10 +1012,23 @@ class StudioTurnController extends Notifier<StudioTurnState> {
         normalizedStatus == 'success' ||
         normalizedStatus == 'completed';
     final title = succeeded ? 'Ran command' : 'Command $statusLabel';
+    final trimmedOutput = output.trim();
+    final commandLogPath = ref
+        .read(studioCommandLogStoreProvider)
+        .write(
+          requestId: requestId,
+          turnId: turnRef.turnId,
+          commandRunId: commandRunId,
+          command: command,
+          status: statusLabel,
+          output: output,
+          exitCode: exitCode,
+        );
     final detail = [
       command.trim().isEmpty ? 'Command completed.' : 'Command: $command',
       if (exitCode != null) 'Exit code: $exitCode',
-      if (output.trim().isNotEmpty) _truncateCommandOutput(output.trim()),
+      if (trimmedOutput.isNotEmpty)
+        summarizeCommandOutput(trimmedOutput, commandLogPath),
     ].join('\n');
     final stepStatus = succeeded
         ? TurnStepStatus.completed
@@ -972,11 +1063,6 @@ class StudioTurnController extends Notifier<StudioTurnState> {
             detail: detail,
           ),
         );
-  }
-
-  String _truncateCommandOutput(String output) {
-    if (output.length <= 1600) return output;
-    return '${output.substring(0, 1200)}\n... (${output.length - 1400} chars omitted) ...\n${output.substring(output.length - 200)}';
   }
 
   String _patchConflictRecoveryDetail(String detail) {
@@ -1014,39 +1100,138 @@ class StudioTurnController extends Notifier<StudioTurnState> {
   String _patchTransactionDetailWithPlanProgress(
     StudioTurn? turn,
     String detail,
-    PatchApplyStatus? applyStatus,
-  ) {
-    if (turn == null ||
-        applyStatus != PatchApplyStatus.applied ||
-        turn.acceptedPlanState == AcceptedPlanState.none ||
-        turn.planTargetProgress.isEmpty) {
+    PatchApplyStatus? applyStatus, {
+    Iterable<String> touchedPaths = const [],
+  }) {
+    if (applyStatus != PatchApplyStatus.applied) {
       return detail;
     }
-    final remaining = turn.planTargetProgress
-        .where(
-          (target) =>
-              target.state == PlanTargetProgressState.pending ||
-              target.state == PlanTargetProgressState.proposed ||
-              target.state == PlanTargetProgressState.conflict ||
-              target.state == PlanTargetProgressState.blocked,
-        )
+    final outcomeLines = _patchOutcomeContractLines(turn, detail, touchedPaths);
+    if (outcomeLines.isEmpty) return detail;
+    return [
+      detail,
+      '',
+      ...outcomeLines,
+    ].where((line) => line.trim().isNotEmpty).join('\n');
+  }
+
+  List<String> _patchOutcomeContractLines(
+    StudioTurn? turn,
+    String detail,
+    Iterable<String> touchedPaths,
+  ) {
+    final lines = <String>[];
+    final changedFiles = touchedPaths
+        .map(_normalizePlanPath)
+        .where((path) => path.isNotEmpty)
+        .toSet()
         .toList(growable: false);
-    if (remaining.isEmpty) {
-      return [
-        detail,
-        'Accepted plan progress: all planned targets are complete.',
-      ].where((line) => line.trim().isNotEmpty).join('\n');
+    if (changedFiles.isNotEmpty) {
+      lines.add('Changed files: ${changedFiles.join(', ')}');
     }
-    final preview = remaining.take(4).map((target) => target.path).join(', ');
+
+    final hasAcceptedPlan =
+        turn != null &&
+        turn.acceptedPlanState != AcceptedPlanState.none &&
+        turn.planTargetProgress.isNotEmpty;
+    final remaining = hasAcceptedPlan
+        ? turn.planTargetProgress
+              .where(
+                (target) =>
+                    target.state == PlanTargetProgressState.pending ||
+                    target.state == PlanTargetProgressState.proposed ||
+                    target.state == PlanTargetProgressState.conflict ||
+                    target.state == PlanTargetProgressState.blocked,
+              )
+              .toList(growable: false)
+        : const <PlanTargetProgress>[];
+
+    if (hasAcceptedPlan) {
+      if (remaining.isEmpty) {
+        lines.add('Accepted plan progress: all planned targets are complete.');
+        lines.add(
+          'Remaining plan targets: none. All planned targets are complete.',
+        );
+      } else {
+        lines.add(
+          'Next batch: ${_remainingPlanTargetsSummary(remaining)} Use Continue next batch to keep implementing the accepted plan.',
+        );
+        lines.add(
+          'Remaining plan targets: ${_remainingPlanTargetsSummary(remaining)}',
+        );
+      }
+    }
+
+    final verification = _suggestedChecksFromPatchDetail(detail);
+    if (verification.isNotEmpty) {
+      lines.add('Verification suggestions: ${verification.join(' · ')}');
+    } else if (changedFiles.isNotEmpty) {
+      lines.add(
+        'Verification suggestions: review the changed files and run the relevant project checks.',
+      );
+    }
+
+    if (remaining.isNotEmpty) {
+      lines.add(
+        'Next action: continue the next accepted-plan batch for the remaining targets.',
+      );
+    } else if (verification.isNotEmpty ||
+        detail.toLowerCase().contains('verification was requested')) {
+      lines.add('Next action: run verification for the applied changes.');
+    } else if (changedFiles.isNotEmpty) {
+      lines.add(
+        'Next action: review the changed files or ask for follow-up changes.',
+      );
+    }
+
+    return lines;
+  }
+
+  String _remainingPlanTargetsSummary(List<PlanTargetProgress> remaining) {
+    final preview = remaining
+        .take(4)
+        .map(
+          (target) => '${target.path} (${_planTargetStateLabel(target.state)})',
+        )
+        .join(', ');
     final hiddenCount = remaining.length > 4 ? remaining.length - 4 : 0;
     final previewText = [
       if (preview.isNotEmpty) preview,
       if (hiddenCount > 0) '+$hiddenCount more',
     ].join(hiddenCount > 0 && preview.isNotEmpty ? ', ' : '');
-    return [
-      detail,
-      'Next batch: ${_acceptedPlanTargetsNeedWorkLabel(remaining.length)}${previewText.isEmpty ? '' : ' ($previewText)'}. Use Continue next batch to keep implementing the accepted plan.',
-    ].where((line) => line.trim().isNotEmpty).join('\n');
+    return '${_acceptedPlanTargetsNeedWorkLabel(remaining.length)}${previewText.isEmpty ? '' : ' ($previewText)'}.';
+  }
+
+  String _planTargetStateLabel(PlanTargetProgressState state) {
+    return switch (state) {
+      PlanTargetProgressState.pending => 'pending',
+      PlanTargetProgressState.proposed => 'proposed',
+      PlanTargetProgressState.applied => 'applied',
+      PlanTargetProgressState.conflict => 'conflict',
+      PlanTargetProgressState.skipped => 'skipped',
+      PlanTargetProgressState.blocked => 'blocked',
+    };
+  }
+
+  List<String> _suggestedChecksFromPatchDetail(String detail) {
+    final line = detail
+        .split('\n')
+        .map((candidate) => candidate.trim())
+        .where(
+          (candidate) =>
+              candidate.toLowerCase().startsWith('suggested checks:') ||
+              candidate.toLowerCase().startsWith('suggested verification:'),
+        )
+        .lastOrNull;
+    if (line == null) return const [];
+    final payload = line.substring(line.indexOf(':') + 1).trim();
+    if (payload.isEmpty) return const [];
+    return payload
+        .split(RegExp(r'\s*(?:·|;)\s*'))
+        .map((candidate) => candidate.trim())
+        .where((candidate) => candidate.isNotEmpty)
+        .take(4)
+        .toList(growable: false);
   }
 
   String? _continuationStepDetail(StudioTurn? turn) {
@@ -1347,6 +1532,7 @@ class StudioTurnController extends Notifier<StudioTurnState> {
     String? summary,
     bool allowArchived = false,
   }) {
+    _flushAssistantDelta(requestId);
     final turnRef = allowArchived
         ? state.archivedRefForRequest(requestId)
         : state.refForRequest(requestId);
@@ -1394,11 +1580,13 @@ class StudioTurnController extends Notifier<StudioTurnState> {
       expirePendingApprovals: true,
     );
     if (state.activeByRequestId.containsKey(requestId)) {
+      _clearPendingAssistantDelta(requestId);
       _archive(requestId);
     }
   }
 
   void fail(String requestId, String message) {
+    _flushAssistantDelta(requestId);
     final turnRef = state.refForRequest(requestId);
     if (turnRef == null) return;
     final notifier = ref.read(studioThreadProvider.notifier);
@@ -1428,10 +1616,12 @@ class StudioTurnController extends Notifier<StudioTurnState> {
       complete: true,
       expirePendingApprovals: true,
     );
+    _clearPendingAssistantDelta(requestId);
     _archive(requestId);
   }
 
   void cancel(String requestId, String message) {
+    _flushAssistantDelta(requestId);
     final turnRef = state.refForRequest(requestId);
     if (turnRef == null) return;
     final notifier = ref.read(studioThreadProvider.notifier);
@@ -1459,6 +1649,7 @@ class StudioTurnController extends Notifier<StudioTurnState> {
       complete: true,
       expirePendingApprovals: true,
     );
+    _clearPendingAssistantDelta(requestId);
     _archive(requestId);
   }
 

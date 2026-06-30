@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config/studio_feature_flags.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/command_descriptor.dart';
 import '../../models/run_diagnostics_summary.dart';
@@ -454,11 +455,14 @@ class CoreCommandRegistry {
     ref
         .read(commandPaletteProvider.notifier)
         .registerCommands(
-          commands
-              .where(
-                (command) => !_studioQuarantinedCommandIds.contains(command.id),
-              )
-              .toList(),
+          StudioFeatureFlags.advancedStudioSurfaces
+              ? commands
+              : commands
+                    .where(
+                      (command) =>
+                          !_advancedStudioCommandIds.contains(command.id),
+                    )
+                    .toList(),
         );
   }
 
@@ -468,7 +472,7 @@ class CoreCommandRegistry {
   }
 }
 
-const _studioQuarantinedCommandIds = <String>{
+const _advancedStudioCommandIds = <String>{
   'project.openCockpit',
   'project.startWorkItem',
   'project.runRecommendedChecks',
@@ -494,5 +498,8 @@ const _studioQuarantinedCommandIds = <String>{
   'view.tools',
   'view.toggleTerminal',
   'view.toggleAI',
+  'context.toggleActiveFile',
+  'context.toggleTerminal',
+  'context.toggleGitDiff',
   'file.save',
 };

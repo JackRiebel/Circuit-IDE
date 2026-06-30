@@ -11,6 +11,7 @@ class IndexedFile {
   final String extension;
   final bool isDirectory;
   final Set<String> contentTerms;
+  final Set<String> symbols;
 
   const IndexedFile({
     required this.relativePath,
@@ -18,6 +19,7 @@ class IndexedFile {
     required this.extension,
     required this.isDirectory,
     this.contentTerms = const {},
+    this.symbols = const {},
   });
 }
 
@@ -26,6 +28,14 @@ class FileIndexer {
   final List<IndexedFile> _files = [];
   bool _isIndexing = false;
   DateTime? _lastIndexTime;
+  bool _indexTruncated = false;
+  int _contentIndexedFileCount = 0;
+  int _contentIndexedByteCount = 0;
+  int _yieldCounter = 0;
+
+  static const _maxIndexedEntries = 12000;
+  static const _maxContentIndexedBytes = 6 * 1024 * 1024;
+  static const _yieldEveryEntries = 96;
 
   static const _ignoreDirs = {
     '.git',
@@ -76,6 +86,9 @@ class FileIndexer {
 
   List<IndexedFile> get files => List.unmodifiable(_files);
   bool get isIndexing => _isIndexing;
+  bool get isTruncated => _indexTruncated;
+  int get contentIndexedFileCount => _contentIndexedFileCount;
+  int get contentIndexedByteCount => _contentIndexedByteCount;
 
   /// Search files matching a query (fuzzy path match).
   List<IndexedFile> search(String query, {int limit = 20}) {
@@ -111,6 +124,10 @@ class FileIndexer {
     // Path contains query
     if (path.contains(query)) return 40;
 
+    if (file.symbols.contains(query)) {
+      return query.length >= 8 ? 86 : 42;
+    }
+
     if (file.contentTerms.contains(query)) {
       return query.length >= 8 ? 70 : 18;
     }
@@ -138,6 +155,10 @@ class FileIndexer {
 
     try {
       _files.clear();
+      _indexTruncated = false;
+      _contentIndexedFileCount = 0;
+      _contentIndexedByteCount = 0;
+      _yieldCounter = 0;
       final dir = Directory(workingDir);
       if (!await dir.exists()) return;
 
@@ -157,7 +178,14 @@ class FileIndexer {
 
   Future<void> _indexDirectory(Directory dir, String prefix) async {
     try {
-      await for (final entity in dir.list()) {
+      await for (final entity in dir.list(followLinks: false)) {
+        if (_files.length >= _maxIndexedEntries) {
+          _indexTruncated = true;
+          break;
+        }
+        if (++_yieldCounter % _yieldEveryEntries == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
         final name = p.basename(entity.path);
 
         // Skip hidden files and ignored directories. `.github` is retained
@@ -183,13 +211,17 @@ class FileIndexer {
           );
           await _indexDirectory(entity, relativePath);
         } else if (!_ignoreExtensions.contains(ext)) {
+          final contentIndex = _contentIndexedExtensions.contains(ext)
+              ? await _extractContentIndexWithinBudget(File(entity.path), ext)
+              : const _ContentIndex();
           _files.add(
             IndexedFile(
               relativePath: relativePath,
               fileName: name,
               extension: ext,
               isDirectory: false,
-              contentTerms: await _extractContentTerms(File(entity.path), ext),
+              contentTerms: contentIndex.terms,
+              symbols: contentIndex.symbols,
             ),
           );
         }
@@ -207,10 +239,15 @@ class FileIndexer {
     }
   }
 
-  Future<Set<String>> _extractContentTerms(File file, String extension) async {
-    if (!_contentIndexedExtensions.contains(extension)) return const {};
+  Future<_ContentIndex> _extractContentIndex(
+    File file,
+    String extension,
+  ) async {
+    if (!_contentIndexedExtensions.contains(extension)) {
+      return const _ContentIndex();
+    }
     try {
-      if (await file.length() > 80 * 1024) return const {};
+      if (await file.length() > 80 * 1024) return const _ContentIndex();
       final content = await file.readAsString();
       final terms = <String>{};
       for (final match in RegExp(
@@ -235,9 +272,90 @@ class FileIndexer {
         }
         if (terms.length >= 160) break;
       }
-      return terms;
+      return _ContentIndex(
+        terms: terms,
+        symbols: _extractSymbols(content, extension),
+      );
     } catch (_) {
-      return const {};
+      return const _ContentIndex();
+    }
+  }
+
+  Future<_ContentIndex> _extractContentIndexWithinBudget(
+    File file,
+    String extension,
+  ) async {
+    final bytes = await file.length();
+    if (bytes > 80 * 1024) return const _ContentIndex();
+    if (_contentIndexedByteCount + bytes > _maxContentIndexedBytes) {
+      return const _ContentIndex();
+    }
+    _contentIndexedFileCount++;
+    _contentIndexedByteCount += bytes;
+    return _extractContentIndex(file, extension);
+  }
+
+  Set<String> _extractSymbols(String content, String extension) {
+    final symbols = <String>{};
+    final patterns = switch (extension) {
+      '.dart' => const [
+        r'\bclass\s+([A-Za-z_][A-Za-z0-9_]*)',
+        r'\benum\s+([A-Za-z_][A-Za-z0-9_]*)',
+        r'\bextension\s+([A-Za-z_][A-Za-z0-9_]*)',
+        r'\b(?:Future<[^>]+>|[A-Za-z_][A-Za-z0-9_<>,? ]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+      ],
+      '.js' || '.jsx' || '.ts' || '.tsx' => const [
+        r'\bclass\s+([A-Za-z_$][A-Za-z0-9_$]*)',
+        r'\bfunction\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(',
+        r'\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][A-Za-z0-9_$]*)\s*=>',
+        r'\bexport\s+(?:default\s+)?(?:class|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)',
+      ],
+      '.py' => const [
+        r'^\s*class\s+([A-Za-z_][A-Za-z0-9_]*)',
+        r'^\s*def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+        r'^\s*async\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+      ],
+      '.go' => const [
+        r'\bfunc\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+        r'\btype\s+([A-Za-z_][A-Za-z0-9_]*)\s+(?:struct|interface)\b',
+      ],
+      '.java' || '.kt' || '.swift' => const [
+        r'\b(?:class|interface|enum|struct|protocol)\s+([A-Za-z_][A-Za-z0-9_]*)',
+        r'\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+        r'\bfunc\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(',
+      ],
+      _ => const <String>[],
+    };
+    for (final pattern in patterns) {
+      for (final match in RegExp(
+        pattern,
+        multiLine: true,
+      ).allMatches(content)) {
+        final symbol = match.group(1);
+        if (symbol == null || symbol.length < 3) continue;
+        _addSymbolTerms(symbols, symbol);
+        if (symbols.length >= 96) return symbols;
+      }
+    }
+    return symbols;
+  }
+
+  void _addSymbolTerms(Set<String> symbols, String raw) {
+    void add(String value) {
+      final term = value.toLowerCase();
+      if (term.length < 3) return;
+      symbols.add(term);
+    }
+
+    add(raw);
+    for (final part
+        in raw
+            .replaceAllMapped(
+              RegExp(r'([a-z0-9])([A-Z])'),
+              (match) => '${match.group(1)} ${match.group(2)}',
+            )
+            .split(RegExp(r'[^A-Za-z0-9_]+'))) {
+      add(part);
     }
   }
 
@@ -267,4 +385,11 @@ class FileIndexer {
     '.sql',
     '.txt',
   };
+}
+
+class _ContentIndex {
+  final Set<String> terms;
+  final Set<String> symbols;
+
+  const _ContentIndex({this.terms = const {}, this.symbols = const {}});
 }
