@@ -11,9 +11,12 @@ class DocxArtifactRenderer {
       _DocxFile('[Content_Types].xml', _bytes(_contentTypes())),
       _DocxFile('_rels/.rels', _bytes(_rootRels())),
       _DocxFile('docProps/app.xml', _bytes(_appXml())),
-      _DocxFile('docProps/core.xml', _bytes(_coreXml())),
+      _DocxFile('docProps/core.xml', _bytes(_coreXml(document))),
       _DocxFile('word/document.xml', _bytes(_documentXml(document))),
       _DocxFile('word/styles.xml', _bytes(_stylesXml())),
+      _DocxFile('word/numbering.xml', _bytes(_numberingXml())),
+      _DocxFile('word/settings.xml', _bytes(_settingsXml())),
+      _DocxFile('word/footer1.xml', _bytes(_footerXml())),
       _DocxFile('word/_rels/document.xml.rels', _bytes(_documentRelsXml())),
     ];
     return _zip(files);
@@ -30,6 +33,9 @@ class DocxArtifactRenderer {
         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+        '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>'
+        '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'
+        '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
         '</Types>';
   }
 
@@ -44,7 +50,9 @@ class DocxArtifactRenderer {
 
   String _documentRelsXml() {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>';
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rIdFooter1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
+        '</Relationships>';
   }
 
   String _appXml() {
@@ -53,13 +61,13 @@ class DocxArtifactRenderer {
         '<Application>CircuitCode</Application></Properties>';
   }
 
-  String _coreXml() {
+  String _coreXml(ArtifactDocument document) {
     final now = DateTime.now().toUtc().toIso8601String();
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
         'xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" '
         'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
-        '<dc:title>${_xml('CircuitCode Report')}</dc:title>'
+        '<dc:title>${_xml(document.title)}</dc:title>'
         '<dc:creator>CircuitCode</dc:creator>'
         '<cp:lastModifiedBy>CircuitCode</cp:lastModifiedBy>'
         '<dcterms:created xsi:type="dcterms:W3CDTF">$now</dcterms:created>'
@@ -70,16 +78,20 @@ class DocxArtifactRenderer {
   String _stylesXml() {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:sz w:val="22"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="42"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="30"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:color w:val="334155"/><w:sz w:val="25"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:color w:val="1F2937"/><w:sz w:val="22"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="180"/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="44"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="360"/></w:pPr><w:rPr><w:color w:val="475569"/><w:sz w:val="24"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="420" w:after="180"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="30"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="260" w:after="140"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="334155"/><w:sz w:val="25"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="Footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="64748B"/><w:sz w:val="18"/></w:rPr></w:style>'
         '</w:styles>';
   }
 
   String _documentXml(ArtifactDocument document) {
     final body = StringBuffer()
       ..write(_paragraph(document.title, style: 'Title'))
+      ..write(_paragraph('CircuitCode generated report', style: 'Subtitle'))
+      ..write(_paragraph('Executive Summary', style: 'Heading1'))
       ..write(_paragraph(document.summary, style: 'Normal'));
     for (final section in document.sections) {
       body.write(_paragraph(section.title, style: 'Heading1'));
@@ -104,16 +116,42 @@ class DocxArtifactRenderer {
       }
     }
     if (document.citations.isNotEmpty) {
-      body.write(_paragraph('Sources', style: 'Heading1'));
+      body.write(_paragraph('Sources / Evidence', style: 'Heading1'));
       for (final citation in document.citations) {
         body.write(_bulletParagraph(citation));
       }
     }
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         '<w:body>$body'
-        '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
+        '<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter1"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
         '</w:body></w:document>';
+  }
+
+  String _numberingXml() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>'
+        '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="&#8226;"/><w:lvlJc w:val="left"/>'
+        '<w:pPr><w:tabs><w:tab w:val="num" w:pos="720"/></w:tabs><w:ind w:left="720" w:hanging="360"/></w:pPr>'
+        '<w:rPr><w:rFonts w:ascii="Symbol" w:hAnsi="Symbol" w:hint="default"/></w:rPr></w:lvl></w:abstractNum>'
+        '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>'
+        '</w:numbering>';
+  }
+
+  String _settingsXml() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:zoom w:percent="100"/><w:defaultTabStop w:val="720"/><w:doNotTrackMoves/><w:doNotTrackFormatting/>'
+        '</w:settings>';
+  }
+
+  String _footerXml() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr><w:r><w:t>CircuitCode - Generated artifact</w:t></w:r></w:p>'
+        '</w:ftr>';
   }
 
   Iterable<String> _paragraphs(String body) {
@@ -130,20 +168,57 @@ class DocxArtifactRenderer {
 
   String _bulletParagraph(String text) {
     if (text.trim().isEmpty) return '';
-    return '<w:p><w:pPr><w:ind w:left="360" w:hanging="180"/></w:pPr><w:r><w:t xml:space="preserve">• ${_xml(text.trim())}</w:t></w:r></w:p>';
+    return '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:spacing w:after="90"/></w:pPr><w:r><w:t xml:space="preserve">${_xml(text.trim())}</w:t></w:r></w:p>';
   }
 
   String _table(ArtifactTable table) {
-    final rows = table.rows.take(24).map(_tableRow).join();
-    return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="D9DEE7"/><w:left w:val="single" w:sz="4" w:color="D9DEE7"/><w:bottom w:val="single" w:sz="4" w:color="D9DEE7"/><w:right w:val="single" w:sz="4" w:color="D9DEE7"/><w:insideH w:val="single" w:sz="4" w:color="E5E7EB"/><w:insideV w:val="single" w:sz="4" w:color="E5E7EB"/></w:tblBorders></w:tblPr>$rows</w:tbl>';
+    final rows = table.rows.take(24).toList(growable: false);
+    if (rows.isEmpty) return '';
+    final widths = _columnWidths(rows);
+    final grid = widths.map((width) => '<w:gridCol w:w="$width"/>').join();
+    final renderedRows = [
+      for (var i = 0; i < rows.length; i++) _tableRow(rows[i], widths, i == 0),
+    ].join();
+    return '<w:tbl><w:tblPr><w:tblW w:w="9120" w:type="dxa"/><w:tblInd w:w="120" w:type="dxa"/><w:tblLook w:firstRow="1" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="CBD5E1"/><w:left w:val="single" w:sz="4" w:color="CBD5E1"/><w:bottom w:val="single" w:sz="4" w:color="CBD5E1"/><w:right w:val="single" w:sz="4" w:color="CBD5E1"/><w:insideH w:val="single" w:sz="4" w:color="E2E8F0"/><w:insideV w:val="single" w:sz="4" w:color="E2E8F0"/></w:tblBorders><w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>$grid</w:tblGrid>$renderedRows</w:tbl>';
   }
 
-  String _tableRow(List<String> row) {
-    return '<w:tr>${row.take(8).map(_tableCell).join()}</w:tr>';
+  List<int> _columnWidths(List<List<String>> rows) {
+    final columnCount = rows
+        .fold<int>(0, (max, row) => row.length > max ? row.length : max)
+        .clamp(1, 8);
+    final weights = List<int>.filled(columnCount, 4);
+    for (final row in rows.take(12)) {
+      for (var i = 0; i < columnCount; i++) {
+        final value = i < row.length ? row[i] : '';
+        weights[i] = weights[i] + value.trim().length.clamp(1, 36);
+      }
+    }
+    final total = weights.fold<int>(0, (sum, value) => sum + value);
+    var remaining = 9120;
+    final widths = <int>[];
+    for (var i = 0; i < columnCount; i++) {
+      final width = i == columnCount - 1
+          ? remaining
+          : ((9120 * weights[i]) / total).round().clamp(900, 3600);
+      widths.add(width);
+      remaining -= width;
+    }
+    if (widths.isNotEmpty && widths.last < 900) {
+      final deficit = 900 - widths.last;
+      widths[widths.length - 1] = 900;
+      widths[0] = (widths.first - deficit).clamp(900, 3600);
+    }
+    return widths;
   }
 
-  String _tableCell(String value) {
-    return '<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${_paragraph(value, style: 'Normal')}</w:tc>';
+  String _tableRow(List<String> row, List<int> widths, bool isHeader) {
+    return '<w:tr>${[for (var i = 0; i < widths.length; i++) _tableCell(i < row.length ? row[i] : '', widths[i], isHeader)].join()}</w:tr>';
+  }
+
+  String _tableCell(String value, int width, bool isHeader) {
+    final fill = isHeader ? '<w:shd w:fill="E2E8F0"/>' : '';
+    final run = isHeader ? '<w:b/>' : '';
+    return '<w:tc><w:tcPr><w:tcW w:w="$width" w:type="dxa"/><w:vAlign w:val="center"/>$fill</w:tcPr><w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr>$run<w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${_xml(value.trim())}</w:t></w:r></w:p></w:tc>';
   }
 
   String _xml(String value) {

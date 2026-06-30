@@ -312,15 +312,26 @@ Executive summary for a customer handoff.
       expect(artifact!.kind, GeneratedArtifactKind.docx);
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(artifact.fileName, endsWith('.docx'));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(3));
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
       final packageText = String.fromCharCodes(bytes);
       expect(packageText, contains('word/document.xml'));
       expect(packageText, contains('word/styles.xml'));
+      expect(packageText, contains('word/numbering.xml'));
+      expect(packageText, contains('word/settings.xml'));
+      expect(packageText, contains('word/footer1.xml'));
       expect(packageText, contains('Branch Network Architecture Report'));
+      expect(packageText, contains('CircuitCode generated report'));
       expect(packageText, contains('WAN redundancy is required'));
       expect(packageText, contains('PoE budget unknown'));
+      expect(packageText, contains('<w:numPr>'));
+      expect(packageText, contains('<w:tblGrid>'));
+      expect(packageText, contains('<w:tblW w:w="9120" w:type="dxa"/>'));
+      expect(packageText, contains('<w:shd w:fill="E2E8F0"/>'));
+      expect(packageText, contains('Sources / Evidence'));
+      expect(packageText, contains('CircuitCode - Generated artifact'));
     },
   );
 
@@ -375,6 +386,7 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.docx'));
     expect(artifact.summary, contains('business use case brief'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(7));
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -386,6 +398,8 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Value And Impact'));
     expect(packageText, contains('Sources / Evidence'));
     expect(packageText, contains('Acme annual report'));
+    expect(packageText, contains('word/footer1.xml'));
+    expect(packageText, contains('<w:numPr>'));
   });
 
   test('evidence pack prompt creates a shaped DOCX artifact', () async {
@@ -427,6 +441,7 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.docx'));
     expect(artifact.summary, contains('evidence pack'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(6));
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -440,6 +455,8 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Confidence And Risk'));
     expect(packageText, contains('Unsupported Claims / Follow-Up'));
     expect(packageText, contains('https://www.cisco.com/'));
+    expect(packageText, contains('word/numbering.xml'));
+    expect(packageText, contains('CircuitCode - Generated artifact'));
   });
 
   test(

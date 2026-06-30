@@ -3089,11 +3089,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
   String _artifactMeta(GeneratedArtifact artifact) {
     final parts = <String>[artifact.typeLabel];
     if (artifact.sheetCount > 1) {
-      parts.add(
-        artifact.kind == GeneratedArtifactKind.powerPoint
-            ? '${artifact.sheetCount} slides'
-            : '${artifact.sheetCount} sheets',
-      );
+      parts.add(switch (artifact.kind) {
+        GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
+        GeneratedArtifactKind.docx => '${artifact.sheetCount} sections',
+        _ => '${artifact.sheetCount} sheets',
+      });
     }
     if (artifact.byteSize > 0) parts.add(_formatBytes(artifact.byteSize));
     parts.add(artifact.statusLabel);

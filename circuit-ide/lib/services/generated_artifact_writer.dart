@@ -153,6 +153,7 @@ class GeneratedArtifactWriter {
             ? 'Created an evidence pack with claim register, source inventory, checked dates, assumptions, confidence, and unsupported-claim follow-up.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: documentForOutput.previewRows,
+        sheetCount: documentForOutput.sections.length,
       );
     }
 
