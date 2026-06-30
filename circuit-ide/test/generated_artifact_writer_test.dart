@@ -371,6 +371,98 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Acme annual report'));
   });
 
+  test('evidence pack prompt creates a shaped DOCX artifact', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create an evidence pack for Cisco lifecycle recommendations',
+          content: '''
+# Cisco Lifecycle Evidence Pack
+
+Evidence supporting the lifecycle and replacement recommendation.
+
+## Claims
+- AIR-AP2802I is at support risk and needs official date validation.
+- Replacement selection must validate Wi-Fi 7, multigig, and UPOE requirements.
+
+## Sources
+- Cisco EoX API — checked 2026-06-30 — https://www.cisco.com/c/en/us/products/eos-eol-listing.html
+- Cisco Catalyst datasheet — checked 2026-06-30 — https://www.cisco.com/
+
+## Assumptions
+- EoX replacement PID is a migration clue, not the final recommendation.
+
+## Confidence
+- Lifecycle timing confidence is medium until official Cisco EoX/API data is refreshed.
+
+## Unsupported Claims
+- Exact replacement model needs validation against current portfolio facts.
+''',
+          turnId: 'turn-evidence-pack',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.docx);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.docx'));
+    expect(artifact.summary, contains('evidence pack'));
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('word/document.xml'));
+    expect(packageText, contains('Cisco Lifecycle Evidence Pack'));
+    expect(packageText, contains('Evidence Summary'));
+    expect(packageText, contains('Claim Register'));
+    expect(packageText, contains('Source Inventory'));
+    expect(packageText, contains('Checked Dates'));
+    expect(packageText, contains('Confidence And Risk'));
+    expect(packageText, contains('Unsupported Claims / Follow-Up'));
+    expect(packageText, contains('https://www.cisco.com/'));
+  });
+
+  test(
+    'explicit JSON evidence pack creates structured JSON artifact',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a JSON evidence pack for this lifecycle claim',
+            content: '''
+# Lifecycle Evidence Pack
+
+## Claims
+- Claim needs official validation.
+
+## Sources
+- Cisco EoX — checked 2026-06-30 — https://www.cisco.com/
+
+## Assumptions
+- Customer inventory is current.
+''',
+            turnId: 'turn-evidence-json',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.json);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.json'));
+      expect(artifact.summary, contains('JSON evidence pack'));
+      final jsonText = File(artifact.filePath).readAsStringSync();
+      expect(jsonText, contains('"artifactTemplate": "evidence_pack"'));
+      expect(jsonText, contains('"Source Inventory"'));
+      expect(jsonText, contains('https://www.cisco.com/'));
+    },
+  );
+
   test('PDF prompt creates a real handoff report artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
@@ -571,8 +663,20 @@ graph LR
       'business_use_case_brief',
     );
     expect(
+      registry.descriptorForPrompt('create an evidence pack')?.id,
+      'evidence_pack',
+    );
+    expect(
       detectGeneratedArtifactKind('create a business case brief for Acme'),
       GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create an evidence pack for this claim'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create a JSON evidence pack'),
+      GeneratedArtifactKind.json,
     );
     expect(
       isGeneratedArtifactRequest(

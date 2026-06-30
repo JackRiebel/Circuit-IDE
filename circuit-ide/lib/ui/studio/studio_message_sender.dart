@@ -1229,6 +1229,7 @@ Artifact output contract:
 - For PowerPoint/deck outputs, use clear Markdown headings and concise bullets; Circuit will save that structure as a .pptx deck.
 - For Word/DOCX/report outputs, use clear Markdown headings, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .docx report.
 - For business use case brief outputs, include executive summary, company/industry context, pain points, priority use cases, recommended solutions, value/impact, next steps, assumptions, and cited sources; Circuit will save it as a .docx report unless another artifact format is explicitly requested.
+- For evidence pack outputs, include an evidence summary, claim register, source inventory, checked dates, assumptions/unknowns, confidence/risk, unsupported claims, and follow-up validation items; Circuit will save it as a .docx evidence pack unless JSON is explicitly requested.
 - For PDF/report outputs, use clear Markdown headings, concise paragraphs, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .pdf handoff report.
 - For topology/network diagram outputs, include one valid Mermaid diagram fenced as ```mermaid plus a short assumptions section; Circuit will save it as an .svg diagram artifact.
 - For chart/graph outputs, include at least one complete Markdown table where the first column is the label and one later column is numeric; Circuit will save it as an .svg chart artifact.

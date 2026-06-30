@@ -10,6 +10,7 @@ import 'business_use_case_brief_builder.dart';
 import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
+import 'evidence_pack_builder.dart';
 import 'lifecycle_eox_workbook_builder.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
@@ -27,6 +28,7 @@ class GeneratedArtifactWriter {
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
   final BusinessUseCaseBriefBuilder businessUseCaseBuilder;
+  final EvidencePackBuilder evidencePackBuilder;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -39,6 +41,7 @@ class GeneratedArtifactWriter {
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
     this.businessUseCaseBuilder = const BusinessUseCaseBriefBuilder(),
+    this.evidencePackBuilder = const EvidencePackBuilder(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -97,17 +100,28 @@ class GeneratedArtifactWriter {
     required String content,
     required ArtifactDocument document,
   }) {
-    final documentForOutput =
-        businessUseCaseBuilder.matches(prompt) &&
-            (requestedKind == GeneratedArtifactKind.docx ||
-                requestedKind == GeneratedArtifactKind.pdf ||
-                requestedKind == GeneratedArtifactKind.powerPoint)
-        ? businessUseCaseBuilder.build(
-            prompt: prompt,
-            content: content,
-            document: document,
-          )
-        : document;
+    var documentForOutput = document;
+    if (businessUseCaseBuilder.matches(prompt) &&
+        (requestedKind == GeneratedArtifactKind.docx ||
+            requestedKind == GeneratedArtifactKind.pdf ||
+            requestedKind == GeneratedArtifactKind.powerPoint)) {
+      documentForOutput = businessUseCaseBuilder.build(
+        prompt: prompt,
+        content: content,
+        document: documentForOutput,
+      );
+    }
+    if (evidencePackBuilder.matches(prompt) &&
+        (requestedKind == GeneratedArtifactKind.docx ||
+            requestedKind == GeneratedArtifactKind.pdf ||
+            requestedKind == GeneratedArtifactKind.powerPoint ||
+            requestedKind == GeneratedArtifactKind.json)) {
+      documentForOutput = evidencePackBuilder.build(
+        prompt: prompt,
+        content: content,
+        document: documentForOutput,
+      );
+    }
 
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
       final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
@@ -127,6 +141,7 @@ class GeneratedArtifactWriter {
     if (requestedKind == GeneratedArtifactKind.docx) {
       final bytes = docxRenderer.render(documentForOutput);
       final businessUseCase = businessUseCaseBuilder.matches(prompt);
+      final evidencePack = evidencePackBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.docx,
         status: GeneratedArtifactStatus.ready,
@@ -134,6 +149,8 @@ class GeneratedArtifactWriter {
         bytes: bytes,
         summary: businessUseCase
             ? 'Created a business use case brief with executive summary, use cases, value, next steps, assumptions, and sources.'
+            : evidencePack
+            ? 'Created an evidence pack with claim register, source inventory, checked dates, assumptions, confidence, and unsupported-claim follow-up.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: documentForOutput.previewRows,
       );
@@ -257,6 +274,17 @@ class GeneratedArtifactWriter {
     }
 
     if (requestedKind == GeneratedArtifactKind.json) {
+      if (evidencePackBuilder.matches(prompt)) {
+        final jsonText = evidencePackBuilder.toJsonString(documentForOutput);
+        return _ResolvedArtifact(
+          kind: GeneratedArtifactKind.json,
+          status: GeneratedArtifactStatus.ready,
+          extension: 'json',
+          bytes: utf8.encode(jsonText),
+          summary:
+              'Created a structured JSON evidence pack with sources, assumptions, claims, confidence, and follow-up sections.',
+        );
+      }
       final jsonText = _extractJson(content);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.json,

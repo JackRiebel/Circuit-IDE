@@ -189,6 +189,11 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
+  if (RegExp(
+    r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
+  }
   if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.diagram;
   }

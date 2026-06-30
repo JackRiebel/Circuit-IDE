@@ -137,6 +137,7 @@ class ArtifactTypeRegistry {
       id: 'evidence_pack',
       label: 'Evidence Pack',
       supportedKinds: [
+        GeneratedArtifactKind.docx,
         GeneratedArtifactKind.report,
         GeneratedArtifactKind.json,
       ],
