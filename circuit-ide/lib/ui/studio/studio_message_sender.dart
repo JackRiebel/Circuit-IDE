@@ -1209,6 +1209,8 @@ String _studioOutboundPromptWithArtifactContract({
     GeneratedArtifactKind.json => 'JSON',
     GeneratedArtifactKind.markdown => 'Markdown',
     GeneratedArtifactKind.pdf => 'Markdown fallback for PDF',
+    GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
+    GeneratedArtifactKind.docx => 'Markdown fallback for Word',
     GeneratedArtifactKind.diagram => 'diagram Markdown',
     GeneratedArtifactKind.chart => 'chart/report Markdown',
     GeneratedArtifactKind.report => 'report Markdown',
@@ -1221,6 +1223,7 @@ Artifact output contract:
 - The user asked for a generated $artifactLabel artifact.
 - Produce concise assistant text plus clean machine-readable content when needed.
 - For spreadsheet/Excel/CSV outputs, include one complete Markdown table with all required rows and columns; Circuit will save it as a workspace artifact instead of making chat the final output surface. Excel requests become real .xlsx files when table data is available.
+- For PowerPoint/deck outputs, use clear Markdown headings and concise bullets; Circuit will save that structure as a .pptx deck.
 - Do not say you cannot create files unless the requested data is missing. If data is missing, ask one specific missing-data question.
 - Keep the human-facing explanation short because Circuit will render a file artifact card after the turn.
 ''';

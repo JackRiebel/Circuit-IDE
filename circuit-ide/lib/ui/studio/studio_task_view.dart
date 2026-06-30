@@ -1049,6 +1049,8 @@ class _GeneratedArtifactCard extends ConsumerWidget {
       GeneratedArtifactKind.csv => Icons.table_chart_outlined,
       GeneratedArtifactKind.json => Icons.data_object_outlined,
       GeneratedArtifactKind.pdf => Icons.picture_as_pdf_outlined,
+      GeneratedArtifactKind.powerPoint => Icons.slideshow_outlined,
+      GeneratedArtifactKind.docx => Icons.article_outlined,
       GeneratedArtifactKind.diagram ||
       GeneratedArtifactKind.chart => Icons.account_tree_outlined,
       GeneratedArtifactKind.markdown ||

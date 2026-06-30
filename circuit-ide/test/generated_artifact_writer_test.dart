@@ -1,10 +1,54 @@
 import 'dart:io';
 
 import 'package:circuit_ide/models/generated_artifact.dart';
+import 'package:circuit_ide/services/artifact_type_registry.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'PowerPoint prompt creates a real pptx artifact from structured markdown',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a PowerPoint deck for this customer proposal',
+            content: '''
+# Customer Architecture Proposal
+
+Short executive summary for the customer.
+
+## Current State
+- Three branch sites
+- Dual WAN at each site
+- Centralized security policy
+
+## Recommended Architecture
+- Use resilient edge pairs
+- Standardize access switching
+- Validate PoE budgets
+''',
+            turnId: 'turn-pptx',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.powerPoint);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.pptx'));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(3));
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      final bytes = File(artifact.filePath).readAsBytesSync();
+      expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+      final packageText = String.fromCharCodes(bytes);
+      expect(packageText, contains('ppt/presentation.xml'));
+      expect(packageText, contains('ppt/slides/slide1.xml'));
+    },
+  );
+
   test(
     'Excel prompt creates a real xlsx artifact from markdown table',
     () async {
@@ -92,4 +136,22 @@ Here is the data.
       );
     },
   );
+
+  test('artifact registry exposes the 15 priority artifact descriptors', () {
+    const registry = ArtifactTypeRegistry();
+
+    expect(ArtifactTypeRegistry.descriptors, hasLength(15));
+    expect(
+      registry.descriptorForKind(GeneratedArtifactKind.powerPoint)?.id,
+      'powerpoint_deck',
+    );
+    expect(
+      registry.descriptorForPrompt('make a topology diagram')?.id,
+      'network_topology_diagram',
+    );
+    expect(
+      registry.descriptorForPrompt('create a business case for Acme')?.id,
+      'business_use_case_brief',
+    );
+  });
 }

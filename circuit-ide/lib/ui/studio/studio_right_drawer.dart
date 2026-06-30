@@ -3079,6 +3079,8 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       GeneratedArtifactKind.diagram ||
       GeneratedArtifactKind.chart => Icons.account_tree_outlined,
       GeneratedArtifactKind.pdf => Icons.picture_as_pdf_outlined,
+      GeneratedArtifactKind.powerPoint => Icons.slideshow_outlined,
+      GeneratedArtifactKind.docx => Icons.article_outlined,
       GeneratedArtifactKind.markdown ||
       GeneratedArtifactKind.report => Icons.description_outlined,
     };
@@ -3086,7 +3088,13 @@ class _ArtifactDrawerCard extends ConsumerWidget {
 
   String _artifactMeta(GeneratedArtifact artifact) {
     final parts = <String>[artifact.typeLabel];
-    if (artifact.sheetCount > 1) parts.add('${artifact.sheetCount} sheets');
+    if (artifact.sheetCount > 1) {
+      parts.add(
+        artifact.kind == GeneratedArtifactKind.powerPoint
+            ? '${artifact.sheetCount} slides'
+            : '${artifact.sheetCount} sheets',
+      );
+    }
     if (artifact.byteSize > 0) parts.add(_formatBytes(artifact.byteSize));
     parts.add(artifact.statusLabel);
     return parts.join(' • ');
@@ -3105,6 +3113,9 @@ class _ArtifactDrawerPreview extends ConsumerWidget {
             artifact.kind == GeneratedArtifactKind.csv) &&
         artifact.previewRows.isNotEmpty) {
       return _ArtifactTablePreview(rows: artifact.previewRows);
+    }
+    if (_isBinaryPreviewOnly(artifact.kind)) {
+      return _BinaryArtifactPreview(artifact: artifact);
     }
     if (artifact.filePath.isEmpty) return const SizedBox.shrink();
     return FutureBuilder<String>(
@@ -3140,6 +3151,16 @@ class _ArtifactDrawerPreview extends ConsumerWidget {
     );
   }
 
+  bool _isBinaryPreviewOnly(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.powerPoint ||
+      GeneratedArtifactKind.docx ||
+      GeneratedArtifactKind.pdf => true,
+      _ => false,
+    };
+  }
+
   static Future<String> _readArtifactPreview(String filePath) async {
     final file = File(filePath);
     if (!await file.exists()) return '';
@@ -3154,6 +3175,63 @@ class _ArtifactDrawerPreview extends ConsumerWidget {
       0,
       bytes.length,
     ).replaceAll('\u0000', '').trim();
+  }
+}
+
+class _BinaryArtifactPreview extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+
+  const _BinaryArtifactPreview({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final detail = switch (artifact.kind) {
+      GeneratedArtifactKind.powerPoint =>
+        artifact.sheetCount > 0
+            ? '${artifact.sheetCount} slide deck'
+            : 'PowerPoint deck',
+      GeneratedArtifactKind.excel =>
+        artifact.sheetCount > 0
+            ? '${artifact.sheetCount} sheet workbook'
+            : 'Excel workbook',
+      GeneratedArtifactKind.docx => 'Word document',
+      GeneratedArtifactKind.pdf => 'PDF document',
+      _ => artifact.typeLabel,
+    };
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            artifact.kind == GeneratedArtifactKind.powerPoint
+                ? Icons.slideshow_outlined
+                : Icons.insert_drive_file_outlined,
+            color: tokens.textMuted,
+            size: 15,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$detail ready. Open or reveal the file to preview it in the native app.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontSize: FontSizes.xs,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

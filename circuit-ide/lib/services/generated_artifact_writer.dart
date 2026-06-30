@@ -4,10 +4,18 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
+import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'powerpoint_artifact_renderer.dart';
 
 class GeneratedArtifactWriter {
-  const GeneratedArtifactWriter();
+  final ArtifactComposer composer;
+  final PowerPointArtifactRenderer powerPointRenderer;
+
+  const GeneratedArtifactWriter({
+    this.composer = const ArtifactComposer(),
+    this.powerPointRenderer = const PowerPointArtifactRenderer(),
+  });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
     required String rootPath,
@@ -32,6 +40,7 @@ class GeneratedArtifactWriter {
       requestedKind: requestedKind,
       prompt: prompt,
       content: content,
+      document: composer.fromAssistantOutput(prompt: prompt, content: content),
     );
     if (resolved == null) return null;
 
@@ -62,7 +71,22 @@ class GeneratedArtifactWriter {
     required GeneratedArtifactKind requestedKind,
     required String prompt,
     required String content,
+    required ArtifactDocument document,
   }) {
+    if (requestedKind == GeneratedArtifactKind.powerPoint) {
+      final bytes = powerPointRenderer.render(document);
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.powerPoint,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'pptx',
+        bytes: bytes,
+        summary:
+            'Created a PowerPoint deck with ${document.sections.length + 1} slides from the response structure.',
+        previewRows: document.previewRows,
+        sheetCount: document.sections.length + 1,
+      );
+    }
+
     if (requestedKind == GeneratedArtifactKind.excel ||
         requestedKind == GeneratedArtifactKind.csv) {
       final tables = _extractTables(content);
@@ -122,18 +146,32 @@ class GeneratedArtifactWriter {
     }
 
     return _ResolvedArtifact(
-      kind: requestedKind == GeneratedArtifactKind.pdf
+      kind:
+          requestedKind == GeneratedArtifactKind.pdf ||
+              requestedKind == GeneratedArtifactKind.docx
           ? GeneratedArtifactKind.markdown
           : requestedKind,
-      status: requestedKind == GeneratedArtifactKind.pdf
+      status:
+          requestedKind == GeneratedArtifactKind.pdf ||
+              requestedKind == GeneratedArtifactKind.docx
           ? GeneratedArtifactStatus.fallback
           : GeneratedArtifactStatus.ready,
       extension: 'md',
       bytes: utf8.encode(content.trim()),
-      summary: requestedKind == GeneratedArtifactKind.pdf
-          ? 'PDF export is not available in this build, so the content was saved as Markdown.'
+      summary:
+          requestedKind == GeneratedArtifactKind.pdf ||
+              requestedKind == GeneratedArtifactKind.docx
+          ? '${_kindLabel(requestedKind)} export is not available in this build, so the content was saved as Markdown.'
           : 'Created a Markdown artifact.',
     );
+  }
+
+  String _kindLabel(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.pdf => 'PDF',
+      GeneratedArtifactKind.docx => 'Word',
+      _ => kind.name,
+    };
   }
 
   List<_TableData> _extractTables(String content) {

@@ -8,6 +8,8 @@ enum GeneratedArtifactKind {
   markdown,
   json,
   pdf,
+  powerPoint,
+  docx,
   diagram,
   chart,
   report,
@@ -51,6 +53,8 @@ class GeneratedArtifact {
       GeneratedArtifactKind.markdown => 'Markdown',
       GeneratedArtifactKind.json => 'JSON',
       GeneratedArtifactKind.pdf => 'PDF',
+      GeneratedArtifactKind.powerPoint => 'PowerPoint',
+      GeneratedArtifactKind.docx => 'Word',
       GeneratedArtifactKind.diagram => 'Diagram',
       GeneratedArtifactKind.chart => 'Chart',
       GeneratedArtifactKind.report => 'Report',
@@ -174,6 +178,14 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   }
   if (RegExp(r'\b(pdf)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.pdf;
+  }
+  if (RegExp(
+    r'\b(powerpoint|pptx|presentation|slide deck|deck|slides?)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.powerPoint;
+  }
+  if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
   }
   if (RegExp(
     r'\b(markdown|md|readme|report|brief|document)\b',
