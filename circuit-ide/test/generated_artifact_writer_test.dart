@@ -197,6 +197,63 @@ Here is the data.
     },
   );
 
+  test('lifecycle prompt creates a multi-sheet EoX workbook', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter().writeFromAssistantOutput(
+      rootPath: root.path,
+      prompt:
+          'create a Lifecycle EoX report for C9300-48P and AIR-AP2802I with replacement PIDs for Wi-Fi 7 UPOE refresh',
+      content: '''
+# Lifecycle / EoX Review
+
+| Product | Lifecycle Status | End of Sale | LDOS | Risk | Replacement PID | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| C9300-48P | Active | TBD | TBD | Review | C9300X-48HX | Cisco EoX/API required |
+| AIR-AP2802I | End of Support | 31-Oct-2021 | 31-Oct-2026 | High | CW9176I | Cisco EoX/API required |
+
+## Risks
+- AIR-AP2802I replacement must validate Wi-Fi 7 power, multigig, and UPOE switch budgets.
+- EoX replacement PID is a migration clue only.
+
+## Assumptions
+- Lifecycle dates require official Cisco validation and checked dates.
+''',
+      turnId: 'turn-lifecycle',
+      threadId: 'thread-1',
+      requestId: 'request-1',
+    );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.excel);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.xlsx'));
+    expect(artifact.summary, contains('Lifecycle / EoX workbook'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(5));
+    expect(artifact.previewRows.first, [
+      'Product / PID',
+      'Lifecycle status',
+      'End of sale',
+      'Last date of support',
+      'Risk',
+      'Source / evidence',
+    ]);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('Lifecycle Status'));
+    expect(packageText, contains('Migration Hints'));
+    expect(packageText, contains('Replacement Evaluation'));
+    expect(packageText, contains('Risk Register'));
+    expect(packageText, contains('Assumptions'));
+    expect(packageText, contains('C9300-48P'));
+    expect(packageText, contains('AIR-AP2802I'));
+    expect(packageText, contains('CW9176I'));
+    expect(packageText, contains('migration clue only'));
+    expect(packageText, contains('Wi-Fi 7'));
+    expect(packageText, contains('UPOE'));
+  });
+
   test(
     'DOCX prompt creates a real Word artifact from structured markdown',
     () async {
@@ -452,6 +509,10 @@ graph LR
     expect(
       registry.descriptorForPrompt('create a product comparison matrix')?.id,
       'product_comparison_matrix',
+    );
+    expect(
+      registry.descriptorForPrompt('create an LDOS lifecycle report')?.id,
+      'lifecycle_eox_report',
     );
   });
 }

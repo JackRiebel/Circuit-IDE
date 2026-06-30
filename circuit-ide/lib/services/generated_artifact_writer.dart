@@ -9,6 +9,7 @@ import '../models/generated_artifact.dart';
 import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
+import 'lifecycle_eox_workbook_builder.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
 import 'product_comparison_workbook_builder.dart';
@@ -21,6 +22,7 @@ class GeneratedArtifactWriter {
   final PdfArtifactRenderer pdfRenderer;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
+  final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
 
@@ -31,6 +33,7 @@ class GeneratedArtifactWriter {
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
+    this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
   });
@@ -165,13 +168,21 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.excel ||
         requestedKind == GeneratedArtifactKind.csv) {
+      final lifecycleEox =
+          requestedKind == GeneratedArtifactKind.excel &&
+          lifecycleEoxBuilder.matches(prompt);
       final productComparison =
           requestedKind == GeneratedArtifactKind.excel &&
           productComparisonBuilder.matches(prompt);
       final sizingWorkbook =
           requestedKind == GeneratedArtifactKind.excel &&
           solutionSizingBuilder.matches(prompt);
-      final tables = productComparison
+      final tables = lifecycleEox
+          ? lifecycleEoxBuilder
+                .build(prompt: prompt, content: content, document: document)
+                .map((table) => _TableData(name: table.name, rows: table.rows))
+                .toList(growable: false)
+          : productComparison
           ? productComparisonBuilder
                 .build(prompt: prompt, content: content, document: document)
                 .map((table) => _TableData(name: table.name, rows: table.rows))
@@ -189,7 +200,9 @@ class GeneratedArtifactWriter {
           status: GeneratedArtifactStatus.ready,
           extension: 'xlsx',
           bytes: workbook,
-          summary: productComparison
+          summary: lifecycleEox
+              ? 'Created a Lifecycle / EoX workbook with lifecycle status, migration hints, replacement validation, risks, assumptions, and source sheets.'
+              : productComparison
               ? 'Created a product comparison matrix with fit scoring, requirements, alternatives, assumptions, and source sheets.'
               : sizingWorkbook
               ? 'Created a solution sizing workbook with requirements, inputs, recommendations, validation, and assumptions sheets.'
