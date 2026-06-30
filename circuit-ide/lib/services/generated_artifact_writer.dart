@@ -74,6 +74,7 @@ class GeneratedArtifactWriter {
     required ArtifactDocument document,
   }) {
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
+      final slideCount = powerPointRenderer.slideCountFor(document);
       final bytes = powerPointRenderer.render(document);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
@@ -81,9 +82,9 @@ class GeneratedArtifactWriter {
         extension: 'pptx',
         bytes: bytes,
         summary:
-            'Created a PowerPoint deck with ${document.sections.length + 1} slides from the response structure.',
+            'Created a PowerPoint deck with $slideCount slides from the response structure.',
         previewRows: document.previewRows,
-        sheetCount: document.sections.length + 1,
+        sheetCount: slideCount,
       );
     }
 

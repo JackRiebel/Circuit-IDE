@@ -39,13 +39,17 @@ Short executive summary for the customer.
       expect(artifact!.kind, GeneratedArtifactKind.powerPoint);
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(artifact.fileName, endsWith('.pptx'));
-      expect(artifact.sheetCount, greaterThanOrEqualTo(3));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(6));
+      expect(artifact.summary, contains('PowerPoint deck'));
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
       final packageText = String.fromCharCodes(bytes);
       expect(packageText, contains('ppt/presentation.xml'));
       expect(packageText, contains('ppt/slides/slide1.xml'));
+      expect(packageText, contains('Agenda'));
+      expect(packageText, contains('Current State'));
+      expect(packageText, contains('Recommended Architecture'));
     },
   );
 

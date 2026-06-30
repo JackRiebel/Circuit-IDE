@@ -6,6 +6,10 @@ import '../models/artifact_document.dart';
 class PowerPointArtifactRenderer {
   const PowerPointArtifactRenderer();
 
+  int slideCountFor(ArtifactDocument document) {
+    return _slidesFor(document).take(24).length;
+  }
+
   Uint8List render(ArtifactDocument document) {
     final slides = _slidesFor(document).take(24).toList(growable: false);
     final files = <_PptxFile>[
@@ -41,9 +45,12 @@ class PowerPointArtifactRenderer {
   }
 
   List<_DeckSlide> _slidesFor(ArtifactDocument document) {
+    final sections = document.sections.take(8).toList(growable: false);
     final slides = <_DeckSlide>[
       _DeckSlide(
         title: document.title,
+        eyebrow: 'CircuitCode artifact',
+        kind: _DeckSlideKind.title,
         bullets: [
           if (document.summary.isNotEmpty) document.summary,
           if (document.tables.isNotEmpty)
@@ -52,20 +59,50 @@ class PowerPointArtifactRenderer {
             '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
         ],
       ),
+      if (sections.length > 1)
+        _DeckSlide(
+          title: 'Agenda',
+          eyebrow: 'Deck structure',
+          kind: _DeckSlideKind.agenda,
+          bullets: [
+            for (final section in sections) section.title,
+            if (document.tables.isNotEmpty) 'Data tables and supporting detail',
+            if (document.assumptions.isNotEmpty) 'Assumptions',
+            if (document.citations.isNotEmpty) 'Sources',
+          ],
+        ),
     ];
-    for (final section in document.sections) {
+    for (final section in sections) {
       final bullets = [
         ...section.bullets,
         if (section.bullets.isEmpty && section.body.isNotEmpty)
           ..._sentences(section.body).take(5),
       ];
-      slides.add(_DeckSlide(title: section.title, bullets: bullets));
+      slides
+        ..add(
+          _DeckSlide(
+            title: section.title,
+            eyebrow: _sectionEyebrow(section.title),
+            kind: _DeckSlideKind.sectionDivider,
+            bullets: bullets.take(2).toList(growable: false),
+          ),
+        )
+        ..add(
+          _DeckSlide(
+            title: section.title,
+            eyebrow: 'Key points',
+            kind: _sectionKind(section.title),
+            bullets: bullets,
+          ),
+        );
     }
     if (document.tables.isNotEmpty) {
       for (final table in document.tables.take(4)) {
         slides.add(
           _DeckSlide(
             title: table.title,
+            eyebrow: 'Data summary',
+            kind: _DeckSlideKind.table,
             bullets: _tableBullets(table).take(7).toList(growable: false),
           ),
         );
@@ -73,13 +110,44 @@ class PowerPointArtifactRenderer {
     }
     if (document.assumptions.isNotEmpty) {
       slides.add(
-        _DeckSlide(title: 'Assumptions', bullets: document.assumptions),
+        _DeckSlide(
+          title: 'Assumptions',
+          eyebrow: 'Review before sharing',
+          kind: _DeckSlideKind.appendix,
+          bullets: document.assumptions,
+        ),
       );
     }
     if (document.citations.isNotEmpty) {
-      slides.add(_DeckSlide(title: 'Sources', bullets: document.citations));
+      slides.add(
+        _DeckSlide(
+          title: 'Sources',
+          eyebrow: 'Evidence',
+          kind: _DeckSlideKind.appendix,
+          bullets: document.citations,
+        ),
+      );
     }
     return slides;
+  }
+
+  String _sectionEyebrow(String title) {
+    final normalized = title.toLowerCase();
+    if (normalized.contains('recommend')) return 'Recommendation';
+    if (normalized.contains('risk')) return 'Risk review';
+    if (normalized.contains('next')) return 'Next steps';
+    if (normalized.contains('summary')) return 'Executive summary';
+    return 'Section';
+  }
+
+  _DeckSlideKind _sectionKind(String title) {
+    final normalized = title.toLowerCase();
+    if (normalized.contains('recommend') ||
+        normalized.contains('next') ||
+        normalized.contains('decision')) {
+      return _DeckSlideKind.recommendation;
+    }
+    return _DeckSlideKind.content;
   }
 
   Iterable<String> _sentences(String body) {
@@ -186,16 +254,56 @@ class PowerPointArtifactRenderer {
               '<a:p><a:r><a:rPr lang="en-US" sz="2200"/><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
         )
         .join();
+    final titleSize = slide.kind == _DeckSlideKind.title ? 4200 : 3200;
+    final bodyY = slide.kind == _DeckSlideKind.title ? 2050000 : 1720000;
+    final accent = _accentFor(slide.kind);
+    final background = _backgroundFor(slide.kind);
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
         'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
         '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
-        '${_textBox(id: 2, name: 'Title', x: 600000, y: 420000, w: 11000000, h: 720000, text: _xml(slide.title), size: 3200, bold: true)}'
-        '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
-        '<p:spPr><a:xfrm><a:off x="760000" y="1400000"/><a:ext cx="10680000" cy="4700000"/></a:xfrm></p:spPr>'
+        '${_shape(id: 2, name: 'Background', x: 0, y: 0, w: 12192000, h: 6858000, color: background)}'
+        '${_shape(id: 3, name: 'Accent', x: 0, y: 0, w: 145000, h: 6858000, color: accent)}'
+        '${_textBox(id: 4, name: 'Eyebrow', x: 600000, y: 320000, w: 6500000, h: 320000, text: _xml(slide.eyebrow), size: 1200, bold: true, color: accent)}'
+        '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
+        '<p:sp><p:nvSpPr><p:cNvPr id="6" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="760000" y="$bodyY"/><a:ext cx="10680000" cy="4300000"/></a:xfrm></p:spPr>'
         '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>$bullets</p:txBody></p:sp>'
         '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
+  }
+
+  String _accentFor(_DeckSlideKind kind) {
+    return switch (kind) {
+      _DeckSlideKind.title => '7FB7B2',
+      _DeckSlideKind.agenda => '7A9CC6',
+      _DeckSlideKind.sectionDivider => 'C7A77B',
+      _DeckSlideKind.recommendation => 'A7C080',
+      _DeckSlideKind.table => 'B48EAD',
+      _DeckSlideKind.appendix => '8A8F98',
+      _DeckSlideKind.content => '7FB7B2',
+    };
+  }
+
+  String _backgroundFor(_DeckSlideKind kind) {
+    return switch (kind) {
+      _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
+      _ => '161616',
+    };
+  }
+
+  String _shape({
+    required int id,
+    required String name,
+    required int x,
+    required int y,
+    required int w,
+    required int h,
+    required String color,
+  }) {
+    return '<p:sp><p:nvSpPr><p:cNvPr id="$id" name="$name"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="$color"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>';
   }
 
   String _textBox({
@@ -208,10 +316,11 @@ class PowerPointArtifactRenderer {
     required String text,
     required int size,
     required bool bold,
+    String color = 'FFFFFF',
   }) {
     return '<p:sp><p:nvSpPr><p:cNvPr id="$id" name="$name"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
         '<p:spPr><a:xfrm><a:off x="$x" y="$y"/><a:ext cx="$w" cy="$h"/></a:xfrm></p:spPr>'
-        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="$size"${bold ? ' b="1"' : ''}/><a:t>$text</a:t></a:r></a:p></p:txBody></p:sp>';
+        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="$size"${bold ? ' b="1"' : ''}><a:solidFill><a:srgbClr val="$color"/></a:solidFill></a:rPr><a:t>$text</a:t></a:r></a:p></p:txBody></p:sp>';
   }
 
   String _slideRels() {
@@ -270,9 +379,26 @@ class PowerPointArtifactRenderer {
 
 class _DeckSlide {
   final String title;
+  final String eyebrow;
+  final _DeckSlideKind kind;
   final List<String> bullets;
 
-  const _DeckSlide({required this.title, required this.bullets});
+  const _DeckSlide({
+    required this.title,
+    required this.eyebrow,
+    required this.kind,
+    required this.bullets,
+  });
+}
+
+enum _DeckSlideKind {
+  title,
+  agenda,
+  sectionDivider,
+  content,
+  recommendation,
+  table,
+  appendix,
 }
 
 class _PptxFile {
