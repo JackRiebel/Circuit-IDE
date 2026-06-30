@@ -11,6 +11,7 @@ import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
+import 'solution_sizing_workbook_builder.dart';
 
 class GeneratedArtifactWriter {
   final ArtifactComposer composer;
@@ -19,6 +20,7 @@ class GeneratedArtifactWriter {
   final PdfArtifactRenderer pdfRenderer;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
+  final SolutionSizingWorkbookBuilder solutionSizingBuilder;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -27,6 +29,7 @@ class GeneratedArtifactWriter {
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
+    this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -159,15 +162,25 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.excel ||
         requestedKind == GeneratedArtifactKind.csv) {
-      final tables = _extractTables(content);
+      final tables =
+          requestedKind == GeneratedArtifactKind.excel &&
+              solutionSizingBuilder.matches(prompt)
+          ? solutionSizingBuilder
+                .build(prompt: prompt, content: content, document: document)
+                .map((table) => _TableData(name: table.name, rows: table.rows))
+                .toList(growable: false)
+          : _extractTables(content);
       if (tables.isNotEmpty && requestedKind == GeneratedArtifactKind.excel) {
         final workbook = _xlsxBytes(tables);
+        final sizingWorkbook = solutionSizingBuilder.matches(prompt);
         return _ResolvedArtifact(
           kind: GeneratedArtifactKind.excel,
           status: GeneratedArtifactStatus.ready,
           extension: 'xlsx',
           bytes: workbook,
-          summary: tables.length == 1
+          summary: sizingWorkbook
+              ? 'Created a solution sizing workbook with requirements, inputs, recommendations, validation, and assumptions sheets.'
+              : tables.length == 1
               ? 'Created an Excel workbook with formatted headers and frozen first row.'
               : 'Created an Excel workbook with ${tables.length} sheets, formatted headers, and frozen first rows.',
           previewRows: tables.first.rows.take(6).toList(growable: false),

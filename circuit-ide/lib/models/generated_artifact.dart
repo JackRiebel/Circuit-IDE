@@ -167,7 +167,9 @@ class GeneratedArtifact {
 
 GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   final normalized = text.toLowerCase();
-  if (RegExp(r'\b(excel|xlsx|spreadsheet|workbook)\b').hasMatch(normalized)) {
+  if (RegExp(
+    r'\b(excel|xlsx|spreadsheet|workbook|sizing matrix|sizing model|solution sizing|product comparison matrix|comparison matrix)\b',
+  ).hasMatch(normalized)) {
     return GeneratedArtifactKind.excel;
   }
   if (RegExp(r'\b(csv|comma[- ]separated)\b').hasMatch(normalized)) {

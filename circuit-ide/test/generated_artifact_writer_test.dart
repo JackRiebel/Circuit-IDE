@@ -88,6 +88,54 @@ Here is the data.
     },
   );
 
+  test('solution sizing prompt creates a multi-sheet sizing workbook', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter().writeFromAssistantOutput(
+      rootPath: root.path,
+      prompt:
+          'create a solution sizing workbook for 500 users, 90 APs, 6 switches, and 2 Gbps WAN',
+      content: '''
+# Campus Solution Sizing
+
+## Recommendations
+- Validate Wi-Fi 7 AP UPOE requirements before selecting access switches.
+- Size WAN against inspection throughput, not just carrier link speed.
+
+| Site | Users | APs | WAN |
+| --- | ---: | ---: | --- |
+| HQ | 300 | 50 | 2 Gbps |
+| Branch | 200 | 40 | 1 Gbps |
+
+## Assumptions
+- Customer wants 25% growth headroom.
+- Lifecycle and LDOS dates still need validation.
+''',
+      turnId: 'turn-sizing',
+      threadId: 'thread-1',
+      requestId: 'request-1',
+    );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.excel);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.xlsx'));
+    expect(artifact.summary, contains('solution sizing workbook'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(5));
+    expect(artifact.previewRows.first, ['Metric', 'Value', 'Notes']);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('Requirements'));
+    expect(packageText, contains('Sizing Inputs'));
+    expect(packageText, contains('Recommendations'));
+    expect(packageText, contains('Validation'));
+    expect(packageText, contains('Assumptions'));
+    expect(packageText, contains('500'));
+    expect(packageText, contains('90'));
+    expect(packageText, contains('2 Gbps'));
+  });
+
   test(
     'DOCX prompt creates a real Word artifact from structured markdown',
     () async {
