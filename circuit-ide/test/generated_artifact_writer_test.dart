@@ -191,6 +191,46 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('Workshop notes'));
   });
 
+  test('topology prompt creates a real SVG diagram artifact', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a topology diagram for three branches',
+          content: '''
+# Branch WAN Topology
+
+```mermaid
+graph LR
+  HQ[Headquarters] -->|dual WAN| BR1[Branch 1]
+  HQ -->|dual WAN| BR2[Branch 2]
+  HQ -->|dual WAN| BR3[Branch 3]
+```
+
+## Assumptions
+- Branches use redundant WAN links.
+''',
+          turnId: 'turn-diagram',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.diagram);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.svg'));
+    expect(artifact.summary, contains('SVG topology diagram'));
+    expect(artifact.previewRows.first, ['From', 'To', 'Label']);
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final svg = File(artifact.filePath).readAsStringSync();
+    expect(svg, startsWith('<svg'));
+    expect(svg, contains('Branch WAN Topology'));
+    expect(svg, contains('Headquarters'));
+    expect(svg, contains('Branch 1'));
+    expect(svg, contains('dual WAN'));
+  });
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));

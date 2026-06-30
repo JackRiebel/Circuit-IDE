@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_renderer.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
@@ -15,12 +16,14 @@ class GeneratedArtifactWriter {
   final PowerPointArtifactRenderer powerPointRenderer;
   final DocxArtifactRenderer docxRenderer;
   final PdfArtifactRenderer pdfRenderer;
+  final DiagramArtifactRenderer diagramRenderer;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
     this.powerPointRenderer = const PowerPointArtifactRenderer(),
     this.docxRenderer = const DocxArtifactRenderer(),
     this.pdfRenderer = const PdfArtifactRenderer(),
+    this.diagramRenderer = const DiagramArtifactRenderer(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -117,6 +120,22 @@ class GeneratedArtifactWriter {
         summary:
             'Created a PDF report with ${document.sections.length} sections from the response structure.',
         previewRows: document.previewRows,
+      );
+    }
+
+    if (requestedKind == GeneratedArtifactKind.diagram) {
+      final diagram = diagramRenderer.render(
+        document: document,
+        content: content,
+      );
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.diagram,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'svg',
+        bytes: diagram.bytes,
+        summary:
+            'Created an SVG topology diagram with ${diagram.nodeCount} nodes and ${diagram.edgeCount} links.',
+        previewRows: diagram.previewRows,
       );
     }
 

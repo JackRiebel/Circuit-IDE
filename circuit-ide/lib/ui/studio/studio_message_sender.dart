@@ -1211,7 +1211,7 @@ String _studioOutboundPromptWithArtifactContract({
     GeneratedArtifactKind.pdf => 'PDF report',
     GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
     GeneratedArtifactKind.docx => 'Word report',
-    GeneratedArtifactKind.diagram => 'diagram Markdown',
+    GeneratedArtifactKind.diagram => 'SVG topology diagram',
     GeneratedArtifactKind.chart => 'chart/report Markdown',
     GeneratedArtifactKind.report => 'report Markdown',
     null => 'file',
@@ -1226,6 +1226,7 @@ Artifact output contract:
 - For PowerPoint/deck outputs, use clear Markdown headings and concise bullets; Circuit will save that structure as a .pptx deck.
 - For Word/DOCX/report outputs, use clear Markdown headings, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .docx report.
 - For PDF/report outputs, use clear Markdown headings, concise paragraphs, bullets, assumptions, sources, and any useful tables; Circuit will save that structure as a .pdf handoff report.
+- For topology/network diagram outputs, include one valid Mermaid diagram fenced as ```mermaid plus a short assumptions section; Circuit will save it as an .svg diagram artifact.
 - Do not say you cannot create files unless the requested data is missing. If data is missing, ask one specific missing-data question.
 - Keep the human-facing explanation short because Circuit will render a file artifact card after the turn.
 ''';
