@@ -1778,6 +1778,9 @@ void main() {
         'chartPackType': 'Enterprise readiness chart pack',
         'handoffStatus': 'Review required - high risk signals',
         'decisionPurpose': 'Capacity and lifecycle decision support',
+        'chartReadinessScore': 74,
+        'chartReadinessLevel': 'Needs owner review before handoff',
+        'riskPosture': 'High risk - owner review required',
         'chartCount': 4,
         'pointCount': 18,
         'highRiskCount': 2,
@@ -1800,6 +1803,20 @@ void main() {
         ],
         'validationGaps': <String>[],
         'validationGapCount': 0,
+        'decisionQuestions': [
+          'Does the access design have enough PoE/UPOE reserve for AP draw, growth, and switch power-supply redundancy?',
+          'Do WAN links support inspected throughput, failover behavior, and SLA expectations under peak load?',
+          'Which lifecycle risks require near-term refresh, and which replacement choices need current portfolio validation?',
+        ],
+        'handoffChecklist': [
+          'Confirm each chart uses current source data, units, date, and owner.',
+          'Review threshold meaning for every high, medium, review, or warning signal.',
+          'Attach source evidence or checked dates before external use.',
+        ],
+        'reviewerNextSteps': [
+          'Assign owners and due dates before customer handoff.',
+          'Validate capacity headroom against growth and failover assumptions.',
+        ],
         'hasCustomerReadyChartPack': false,
         'validationGateCount': 4,
         'recommendedActionCount': 3,
@@ -1842,6 +1859,12 @@ void main() {
     expect(find.text('Charts'), findsAtLeastNWidgets(1));
     expect(find.text('Pack'), findsOneWidget);
     expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Readiness level'), findsOneWidget);
+    expect(find.text('Needs owner review before handoff'), findsOneWidget);
+    expect(find.text('Readiness score'), findsOneWidget);
+    expect(find.text('74/100'), findsOneWidget);
+    expect(find.text('Risk posture'), findsOneWidget);
+    expect(find.text('High risk - owner review required'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
     expect(find.text('Enterprise readiness chart pack'), findsOneWidget);
     expect(
@@ -1857,6 +1880,12 @@ void main() {
     expect(find.textContaining('PoE Budget, WAN Capacity +3'), findsOneWidget);
     expect(find.text('Readiness'), findsOneWidget);
     expect(find.textContaining('Source data, Risk labels +3'), findsOneWidget);
+    expect(find.text('Decision questions'), findsOneWidget);
+    expect(find.textContaining('Does the access design'), findsOneWidget);
+    expect(find.text('Handoff checklist'), findsOneWidget);
+    expect(find.textContaining('Confirm each chart uses'), findsOneWidget);
+    expect(find.text('Reviewer next'), findsOneWidget);
+    expect(find.textContaining('Assign owners'), findsOneWidget);
     expect(find.text('Validation'), findsOneWidget);
     expect(find.text('Actions'), findsOneWidget);
     expect(find.text('18'), findsOneWidget);

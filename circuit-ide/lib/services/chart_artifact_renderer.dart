@@ -57,12 +57,41 @@ class ChartArtifactRenderer {
     final dataQualityItems = _dataQualityItems(document, profile);
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
     final decisionRows = _decisionActionRows(profile);
+    final decisionQuestions = _decisionQuestionsFor(profile, validationGaps);
+    final handoffChecklist = _handoffChecklistFor(
+      profile: profile,
+      document: document,
+      validationGaps: validationGaps,
+    );
+    final riskPosture = _riskPostureFor(profile, validationGaps);
+    final readinessScore = _readinessScoreFor(
+      profile: profile,
+      validationGaps: validationGaps,
+      document: document,
+    );
+    final reviewerNextSteps = _reviewerNextStepsFor(
+      profile: profile,
+      validationGaps: validationGaps,
+      decisionRows: decisionRows,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'chart_pack',
       'chartPackType': _chartPackType(profile),
       'handoffStatus': _handoffStatus(profile, validationGaps),
       'decisionPurpose': _decisionPurpose(profile),
+      'chartReadinessScore': readinessScore,
+      'chartReadinessLevel': _chartReadinessLevelFor(
+        readinessScore,
+        riskPosture,
+      ),
+      'riskPosture': riskPosture,
+      'decisionQuestions': decisionQuestions,
+      'decisionQuestionCount': decisionQuestions.length,
+      'handoffChecklist': handoffChecklist,
+      'handoffChecklistCount': handoffChecklist.length,
+      'reviewerNextSteps': reviewerNextSteps,
+      'reviewerNextStepCount': reviewerNextSteps.length,
       'chartCount': charts.length,
       'pointCount': profile.pointCount,
       'highRiskCount': profile.highRiskCount,
@@ -740,6 +769,155 @@ class ChartArtifactRenderer {
       );
     }
     return actions.take(4).toList(growable: false);
+  }
+
+  List<String> _decisionQuestionsFor(
+    _ChartPackProfile profile,
+    List<String> validationGaps,
+  ) {
+    final questions = <String>[];
+    if (profile.hasPoe) {
+      questions.add(
+        'Does the access design have enough PoE/UPOE reserve for AP draw, growth, and switch power-supply redundancy?',
+      );
+    }
+    if (profile.hasWan) {
+      questions.add(
+        'Do WAN links support inspected throughput, failover behavior, and SLA expectations under peak load?',
+      );
+    }
+    if (profile.hasLifecycle) {
+      questions.add(
+        'Which lifecycle risks require near-term refresh, and which replacement choices need current portfolio validation?',
+      );
+    }
+    if (profile.hasComparison || profile.hasCost) {
+      questions.add(
+        'Which option is preferred after validating fit score, licensing, cost, and rejected alternatives?',
+      );
+    }
+    if (profile.hasRoadmap) {
+      questions.add(
+        'Which roadmap phase needs an owner, date, dependency, or go/no-go gate before approval?',
+      );
+    }
+    if (validationGaps.isNotEmpty) {
+      questions.add(
+        'Who owns closing the validation gaps before this chart pack is used in a customer readout?',
+      );
+    }
+    if (questions.isEmpty) {
+      questions.add(
+        'What decision should this chart pack support, and what threshold defines success?',
+      );
+    }
+    return questions.take(5).toList(growable: false);
+  }
+
+  List<String> _handoffChecklistFor({
+    required _ChartPackProfile profile,
+    required ArtifactDocument document,
+    required List<String> validationGaps,
+  }) {
+    final checklist = <String>[
+      'Confirm each chart uses current source data, units, date, and owner.',
+      'Review threshold meaning for every high, medium, review, or warning signal.',
+    ];
+    if (document.assumptions.isEmpty) {
+      checklist.add('Add assumptions for scope, units, and interpretation.');
+    } else {
+      checklist.add('Review assumptions with the stakeholder before handoff.');
+    }
+    if (document.citations.isEmpty) {
+      checklist.add(
+        'Attach source evidence or checked dates before external use.',
+      );
+    } else {
+      checklist.add(
+        'Verify citations and checked dates are suitable for the audience.',
+      );
+    }
+    if (profile.hasLifecycle) {
+      checklist.add(
+        'Treat lifecycle dates as risk timing and validate replacement fit against current requirements.',
+      );
+    }
+    if (profile.hasComparison || profile.hasCost) {
+      checklist.add(
+        'Validate pricing, licensing, datasheet facts, and rejected alternatives.',
+      );
+    }
+    if (validationGaps.isNotEmpty) {
+      checklist.add(
+        'Resolve validation gaps or mark them as accepted risk with owner/date.',
+      );
+    }
+    return checklist.toSet().take(7).toList(growable: false);
+  }
+
+  String _riskPostureFor(_ChartPackProfile profile, List<String> gaps) {
+    if (profile.highRiskCount > 0) {
+      return 'High risk - owner review required';
+    }
+    if (gaps.isNotEmpty) {
+      return 'Validation gaps - not customer-ready';
+    }
+    if (profile.mediumRiskCount > 0) {
+      return 'Moderate risk - stakeholder review';
+    }
+    if (profile.lowRiskCount > 0) return 'Low risk - evidence review';
+    return 'Unscored - define thresholds';
+  }
+
+  int _readinessScoreFor({
+    required _ChartPackProfile profile,
+    required List<String> validationGaps,
+    required ArtifactDocument document,
+  }) {
+    var score = 52;
+    if (profile.pointCount > 0) score += 12;
+    if (profile.chartCount > 1) score += 8;
+    if (profile.signals.length >= 3) score += 8;
+    if (document.tables.isNotEmpty) score += 6;
+    if (document.assumptions.isNotEmpty) score += 6;
+    if (document.citations.isNotEmpty) score += 6;
+    if (profile.highRiskCount > 0) score -= 18;
+    score -= profile.mediumRiskCount.clamp(0, 4).toInt() * 3;
+    score -= validationGaps.length * 7;
+    return math.max(0, math.min(100, score));
+  }
+
+  String _chartReadinessLevelFor(int score, String riskPosture) {
+    if (riskPosture.startsWith('High risk')) {
+      return 'Needs owner review before handoff';
+    }
+    if (riskPosture.startsWith('Validation gaps')) {
+      return 'Needs validation before handoff';
+    }
+    if (score >= 88) return 'Customer handoff ready';
+    if (score >= 72) return 'Ready for stakeholder review';
+    if (score >= 50) return 'Needs validation before handoff';
+    return 'Discovery inputs required';
+  }
+
+  List<String> _reviewerNextStepsFor({
+    required _ChartPackProfile profile,
+    required List<String> validationGaps,
+    required List<_DecisionActionRow> decisionRows,
+  }) {
+    final steps = <String>[
+      for (final row in decisionRows.take(3)) row.nextAction,
+      if (validationGaps.isNotEmpty)
+        'Close validation gaps before using the chart pack externally.',
+      if (profile.hasLifecycle)
+        'Attach official lifecycle checked-date evidence and current-fit caveats.',
+      if (profile.hasPoe || profile.hasWan)
+        'Validate capacity headroom against growth and failover assumptions.',
+    ];
+    if (steps.isEmpty) {
+      steps.add('Add source evidence, assumptions, and decision thresholds.');
+    }
+    return steps.toSet().take(5).toList(growable: false);
   }
 
   List<_DecisionActionRow> _decisionActionRows(_ChartPackProfile profile) {

@@ -1657,6 +1657,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       artifact.metadata['decisionPurpose'],
       'Capacity and lifecycle decision support',
     );
+    expect(
+      artifact.metadata['chartReadinessLevel'],
+      'Needs owner review before handoff',
+    );
+    expect(
+      artifact.metadata['riskPosture'],
+      'High risk - owner review required',
+    );
+    expect(artifact.metadata['chartReadinessScore'], lessThan(100));
     expect(artifact.metadata['chartCount'], 6);
     expect(artifact.metadata['pointCount'], 17);
     expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(1));
@@ -1684,6 +1693,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.metadata['hasDecisionMatrix'], isTrue);
     expect(artifact.metadata['decisionActionCount'], greaterThanOrEqualTo(5));
     expect(artifact.metadata['criticalDecisionCount'], greaterThanOrEqualTo(3));
+    final decisionQuestions =
+        artifact.metadata['decisionQuestions'] as List<Object?>;
+    expect(decisionQuestions, anyElement(contains('PoE/UPOE reserve')));
+    expect(decisionQuestions, anyElement(contains('WAN links')));
+    expect(decisionQuestions, anyElement(contains('lifecycle risks')));
+    expect(artifact.metadata['decisionQuestionCount'], greaterThanOrEqualTo(4));
+    final handoffChecklist =
+        artifact.metadata['handoffChecklist'] as List<Object?>;
+    expect(handoffChecklist, anyElement(contains('current source data')));
+    expect(handoffChecklist, anyElement(contains('lifecycle dates')));
+    expect(handoffChecklist, anyElement(contains('pricing')));
+    expect(artifact.metadata['handoffChecklistCount'], greaterThanOrEqualTo(5));
+    final reviewerNextSteps =
+        artifact.metadata['reviewerNextSteps'] as List<Object?>;
+    expect(reviewerNextSteps, anyElement(contains('Assign owners')));
+    expect(artifact.metadata['reviewerNextStepCount'], greaterThanOrEqualTo(4));
     expect(
       artifact.metadata['decisionOwners'],
       containsAll([

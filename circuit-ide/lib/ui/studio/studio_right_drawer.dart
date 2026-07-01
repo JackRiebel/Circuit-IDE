@@ -3678,6 +3678,15 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Pack', _metadataString(artifact, 'chartPackType')),
         if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
           ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataString(artifact, 'chartReadinessLevel').isNotEmpty)
+          ('Readiness level', _metadataString(artifact, 'chartReadinessLevel')),
+        if (_metadataInt(artifact, 'chartReadinessScore') > 0)
+          (
+            'Readiness score',
+            '${_metadataInt(artifact, 'chartReadinessScore')}/100',
+          ),
+        if (_metadataString(artifact, 'riskPosture').isNotEmpty)
+          ('Risk posture', _metadataString(artifact, 'riskPosture')),
         if (_metadataString(artifact, 'decisionPurpose').isNotEmpty)
           ('Purpose', _metadataString(artifact, 'decisionPurpose')),
         if (_metadataInt(artifact, 'chartCount') > 0)
@@ -3711,6 +3720,27 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           (
             'Validation gaps',
             _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
+          ),
+        if (_metadataStringList(artifact, 'decisionQuestions').isNotEmpty)
+          (
+            'Decision questions',
+            _compactSignalList(
+              _metadataStringList(artifact, 'decisionQuestions'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'handoffChecklist').isNotEmpty)
+          (
+            'Handoff checklist',
+            _compactSignalList(
+              _metadataStringList(artifact, 'handoffChecklist'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'reviewerNextSteps').isNotEmpty)
+          (
+            'Reviewer next',
+            _compactSignalList(
+              _metadataStringList(artifact, 'reviewerNextSteps'),
+            ),
           ),
         if (_metadataInt(artifact, 'validationGateCount') > 0)
           (

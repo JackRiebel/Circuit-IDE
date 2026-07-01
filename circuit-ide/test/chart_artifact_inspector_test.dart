@@ -206,6 +206,12 @@ void main() {
       result.metadata['decisionPurpose'],
       'Capacity and lifecycle decision support',
     );
+    expect(
+      result.metadata['chartReadinessLevel'],
+      'Needs owner review before handoff',
+    );
+    expect(result.metadata['riskPosture'], 'High risk - owner review required');
+    expect(result.metadata['chartReadinessScore'], lessThan(100));
     expect(result.metadata['highRiskCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
     expect(result.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
@@ -225,6 +231,21 @@ void main() {
     expect(result.metadata['dataQualityItemCount'], 4);
     expect(result.metadata['decisionActionCount'], greaterThanOrEqualTo(5));
     expect(result.metadata['criticalDecisionCount'], greaterThanOrEqualTo(3));
+    expect(result.metadata['decisionQuestionCount'], greaterThanOrEqualTo(4));
+    expect(result.metadata['handoffChecklistCount'], greaterThanOrEqualTo(5));
+    expect(result.metadata['reviewerNextStepCount'], greaterThanOrEqualTo(4));
+    expect(
+      result.metadata['decisionQuestions'],
+      anyElement(contains('PoE/UPOE reserve')),
+    );
+    expect(
+      result.metadata['handoffChecklist'],
+      anyElement(contains('current source data')),
+    );
+    expect(
+      result.metadata['reviewerNextSteps'],
+      anyElement(contains('Assign owners')),
+    );
     expect(
       result.metadata['decisionOwners'],
       containsAll([
