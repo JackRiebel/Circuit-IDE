@@ -4032,6 +4032,43 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Decision posture',
             _metadataString(artifact, 'sizingDecisionPosture'),
           ),
+        if (_metadataBool(artifact, 'hasSizingQualityManifest'))
+          (
+            'Sizing manifest',
+            _metadataString(artifact, 'sizingQualityManifestVersion').isEmpty
+                ? 'Embedded'
+                : 'Manifest v${_metadataString(artifact, 'sizingQualityManifestVersion')}',
+          ),
+        if (_metadataStringList(artifact, 'sizingEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'sizingEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'sizingVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(
+                artifact,
+                'sizingVisualVerificationChecklist',
+              ),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'sizingPublishingMetadata',
+        ).isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'sizingPublishingMetadata'),
+            ),
+          ),
         if (_metadataString(artifact, 'users').isNotEmpty)
           ('Users', _metadataString(artifact, 'users')),
         if (_metadataString(artifact, 'accessPoints').isNotEmpty)

@@ -661,7 +661,7 @@ class GeneratedArtifactWriter {
   }
 
   Uint8List _xlsxBytes(List<_TableData> tables) {
-    final workbookTables = tables.take(20).toList(growable: false);
+    final workbookTables = tables.take(48).toList(growable: false);
     final files = <_ZipFileEntry>[
       _ZipFileEntry(
         '[Content_Types].xml',

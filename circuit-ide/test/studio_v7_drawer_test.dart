@@ -1186,11 +1186,11 @@ void main() {
           'Confirm',
         ],
       ],
-      sheetCount: 19,
+      sheetCount: 22,
       metadata: const {
         'artifact': 'solution_sizing_workbook',
         'workbookKind': 'solution_sizing',
-        'sheetCount': 19,
+        'sheetCount': 22,
         'sourceSheetCount': 1,
         'requirementCount': 5,
         'gateCount': 6,
@@ -1211,6 +1211,34 @@ void main() {
         'sizingHandoffStatus': 'Requirements review workbook',
         'sizingDecisionPosture':
             'Advisory only - close hard gates before BOM recommendation',
+        'sizingQualityManifestVersion': '1.0',
+        'sizingEvidencePolicy': [
+          'Sizing workbook is advisory until source evidence is attached.: Source sheets are attached: Confirm source freshness and authority before recommendation.',
+          'Do not treat lifecycle or EoX replacement PIDs as final model choice.: Lifecycle/current portfolio validation required: Use official lifecycle sources and current portfolio capability facts.',
+          'Power, mGig, WAN, and HA gates must be closed before BOM confidence.: Wi-Fi 7; UPOE/mGig hard gate: Validate PoE/UPOE budget, AP draw, uplinks, inspected throughput, and redundancy.',
+          'Assumptions must remain visible and owner-reviewable.: Assumptions captured: Review assumptions with the customer owner.',
+        ],
+        'sizingEvidencePolicyCount': 4,
+        'sizingVisualVerificationChecklist': [
+          'Open workbook and confirm all sizing sheets are visible.: Users need reviewable sheets for requirements, capacity, PoE, WAN, risks, and decisions.: Required',
+          'Verify header rows are frozen/readable and columns fit the data.: Customer review fails quickly when workbook columns clip key inputs.: Required',
+          'Review PoE Budget, Closet Power Plan, and WAN Throughput sheets.: Power and inspected-throughput assumptions drive model suitability.: High priority',
+          'Confirm Candidate Validation and Requirement Gates show open risks.: The workbook should not imply a final BOM before hard gates close.: Required',
+          'Check Evidence Policy and Publishing Readiness before sharing externally.: The file should state what evidence is missing and who owns follow-up.: Required',
+        ],
+        'sizingVisualVerificationChecklistCount': 5,
+        'sizingPublishingMetadata': [
+          'External handoff: Hard gates, validation roadmap, and customer follow-up questions are reviewed.: Owner approval required',
+          'Audience: Customer or internal architecture review audience is identified.: Review required',
+          'Decision posture: Medium - requirements review required: Needs requirements closure',
+          'Evidence: Source sheets, datasheets, lifecycle dates, and customer inventory are attached.: Attached',
+          'Assumptions: Sizing assumptions and unknowns are explicit.: Captured',
+        ],
+        'sizingPublishingMetadataCount': 5,
+        'hasSizingQualityManifest': true,
+        'hasSizingEvidencePolicy': true,
+        'hasSizingVisualVerificationChecklist': true,
+        'hasSizingPublishingMetadata': true,
         'hardGateFailures': [
           'Power budget: Needs datasheet validation',
           'WAN and security throughput: Needs platform validation',
@@ -1291,6 +1319,17 @@ void main() {
       find.text('Advisory only - close hard gates before BOM recommendation'),
       findsOneWidget,
     );
+    expect(find.text('Sizing manifest'), findsOneWidget);
+    expect(find.text('Manifest v1.0'), findsOneWidget);
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(find.textContaining('Sizing workbook is advisory'), findsOneWidget);
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.textContaining('Open workbook and confirm all sizing sheets'),
+      findsOneWidget,
+    );
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(find.textContaining('External handoff'), findsOneWidget);
     expect(find.text('APs'), findsOneWidget);
     expect(find.text('Switches'), findsOneWidget);
     expect(find.text('WAN'), findsOneWidget);

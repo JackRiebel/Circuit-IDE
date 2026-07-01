@@ -246,6 +246,35 @@ class SolutionSizingWorkbookBuilder {
           ..._decisionRows(profile),
         ],
       ),
+      WorkbookTable(
+        name: 'Evidence Policy',
+        rows: [
+          const ['Policy', 'Current Signal', 'Owner Action'],
+          ..._sizingEvidencePolicyRows(
+            hasSourceEvidence: sourceTables.isNotEmpty,
+            hasAssumptions: assumptions.isNotEmpty,
+            profile: profile,
+          ),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Visual QA',
+        rows: [
+          const ['Check', 'Why It Matters', 'Status'],
+          ..._sizingVisualVerificationRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Publishing Readiness',
+        rows: [
+          const ['Gate', 'Requirement', 'Status'],
+          ..._sizingPublishingRows(
+            profile: profile,
+            hasSourceEvidence: sourceTables.isNotEmpty,
+            hasAssumptions: assumptions.isNotEmpty,
+          ),
+        ],
+      ),
       if (sourceTables.isNotEmpty) ...sourceTables,
     ];
   }
@@ -266,6 +295,15 @@ class SolutionSizingWorkbookBuilder {
     final assumptionRows = _rowsFor(tables, 'Assumptions').skip(1).toList();
     final decisionRows = _rowsFor(tables, 'Decision Summary').skip(1).toList();
     final sizingAuditRows = _rowsFor(tables, 'Sizing Audit').skip(1).toList();
+    final evidencePolicyRows = _rowsFor(
+      tables,
+      'Evidence Policy',
+    ).skip(1).toList();
+    final visualQaRows = _rowsFor(tables, 'Visual QA').skip(1).toList();
+    final publishingRows = _rowsFor(
+      tables,
+      'Publishing Readiness',
+    ).skip(1).toList();
     final sourceSheetCount = tables
         .where((table) => table.name.toLowerCase().startsWith('source '))
         .length;
@@ -318,6 +356,13 @@ class SolutionSizingWorkbookBuilder {
       'sizingAuditReadyCount': sizingAuditReadyCount,
       'sizingReadinessLevel': sizingReadinessLevel,
       'sizingHandoffStatus': _sizingHandoffStatus(sizingReadinessLevel),
+      'sizingQualityManifestVersion': '1.0',
+      'sizingEvidencePolicy': _stringRows(evidencePolicyRows),
+      'sizingEvidencePolicyCount': evidencePolicyRows.length,
+      'sizingVisualVerificationChecklist': _stringRows(visualQaRows),
+      'sizingVisualVerificationChecklistCount': visualQaRows.length,
+      'sizingPublishingMetadata': _stringRows(publishingRows),
+      'sizingPublishingMetadataCount': publishingRows.length,
       'hardGateFailures': hardGateRows,
       'hardGateFailureCount': hardGateRows.length,
       'customerFollowUpQuestions': customerQuestions,
@@ -330,6 +375,10 @@ class SolutionSizingWorkbookBuilder {
         sourceSheetCount,
       ),
       'hasSizingAudit': _hasSheet(tables, 'Sizing Audit'),
+      'hasSizingQualityManifest': true,
+      'hasSizingEvidencePolicy': evidencePolicyRows.isNotEmpty,
+      'hasSizingVisualVerificationChecklist': visualQaRows.isNotEmpty,
+      'hasSizingPublishingMetadata': publishingRows.isNotEmpty,
       'hasSourceEvidence': sourceSheetCount > 0,
       'hasAssumptionCoverage': assumptionRows.isNotEmpty,
       'users': _requirementValue(requirementRows, 'Users'),
@@ -553,6 +602,13 @@ class SolutionSizingWorkbookBuilder {
       }
     }
     return false;
+  }
+
+  List<String> _stringRows(List<List<String>> rows) {
+    return rows
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .map((row) => row.where((cell) => cell.trim().isNotEmpty).join(': '))
+        .toList(growable: false);
   }
 
   List<List<String>> _executiveSummaryRows(_SizingProfile profile) {
@@ -1429,6 +1485,109 @@ class SolutionSizingWorkbookBuilder {
         'Use this workbook as a requirements and validation artifact, not final bill of materials.',
         'Current datasheets, lifecycle, licensing, site inventory, and customer constraints.',
         'High',
+      ],
+    ];
+  }
+
+  List<List<String>> _sizingEvidencePolicyRows({
+    required bool hasSourceEvidence,
+    required bool hasAssumptions,
+    required _SizingProfile profile,
+  }) {
+    return [
+      [
+        'Sizing workbook is advisory until source evidence is attached.',
+        hasSourceEvidence
+            ? 'Source sheets are attached'
+            : 'No source sheets attached',
+        hasSourceEvidence
+            ? 'Confirm source freshness and authority before recommendation.'
+            : 'Attach customer inventory, datasheets, lifecycle evidence, and checked dates.',
+      ],
+      [
+        'Do not treat lifecycle or EoX replacement PIDs as final model choice.',
+        'Lifecycle/current portfolio validation required',
+        'Use official lifecycle sources and current portfolio capability facts.',
+      ],
+      [
+        'Power, mGig, WAN, and HA gates must be closed before BOM confidence.',
+        profile.requiresHighPowerAp
+            ? '${profile.wifiGenerationText}; UPOE/mGig hard gate'
+            : profile.decisionReadiness,
+        'Validate PoE/UPOE budget, AP draw, uplinks, inspected throughput, and redundancy.',
+      ],
+      [
+        'Assumptions must remain visible and owner-reviewable.',
+        hasAssumptions ? 'Assumptions captured' : 'No assumptions captured',
+        hasAssumptions
+            ? 'Review assumptions with the customer owner.'
+            : 'Capture assumptions and unknowns before external handoff.',
+      ],
+    ];
+  }
+
+  List<List<String>> _sizingVisualVerificationRows(_SizingProfile profile) {
+    return [
+      [
+        'Open workbook and confirm all sizing sheets are visible.',
+        'Users need reviewable sheets for requirements, capacity, PoE, WAN, risks, and decisions.',
+        'Required',
+      ],
+      [
+        'Verify header rows are frozen/readable and columns fit the data.',
+        'Customer review fails quickly when workbook columns clip key inputs.',
+        'Required',
+      ],
+      [
+        'Review PoE Budget, Closet Power Plan, and WAN Throughput sheets.',
+        'Power and inspected-throughput assumptions drive model suitability.',
+        profile.requiresHighPowerAp ? 'High priority' : 'Required',
+      ],
+      [
+        'Confirm Candidate Validation and Requirement Gates show open risks.',
+        'The workbook should not imply a final BOM before hard gates close.',
+        'Required',
+      ],
+      [
+        'Check Evidence Policy and Publishing Readiness before sharing externally.',
+        'The file should state what evidence is missing and who owns follow-up.',
+        'Required',
+      ],
+    ];
+  }
+
+  List<List<String>> _sizingPublishingRows({
+    required _SizingProfile profile,
+    required bool hasSourceEvidence,
+    required bool hasAssumptions,
+  }) {
+    return [
+      [
+        'External handoff',
+        'Hard gates, validation roadmap, and customer follow-up questions are reviewed.',
+        'Owner approval required',
+      ],
+      [
+        'Audience',
+        'Customer or internal architecture review audience is identified.',
+        'Review required',
+      ],
+      [
+        'Decision posture',
+        profile.decisionReadiness,
+        profile.decisionReadiness.startsWith('High')
+            ? 'Review candidate'
+            : 'Needs requirements closure',
+      ],
+      [
+        'Evidence',
+        'Source sheets, datasheets, lifecycle dates, and customer inventory are attached.',
+        hasSourceEvidence ? 'Attached' : 'Missing',
+      ],
+      [
+        'Assumptions',
+        'Sizing assumptions and unknowns are explicit.',
+        hasAssumptions ? 'Captured' : 'Missing',
       ],
     ];
   }

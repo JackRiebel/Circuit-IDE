@@ -284,6 +284,30 @@ Here is the data.
       artifact.metadata['validationRoadmap'],
       anyElement(contains('Candidate validation')),
     );
+    expect(artifact.metadata['sizingQualityManifestVersion'], '1.0');
+    expect(artifact.metadata['sizingEvidencePolicyCount'], 4);
+    expect(
+      artifact.metadata['sizingEvidencePolicy'],
+      anyElement(contains('Sizing workbook is advisory')),
+    );
+    expect(
+      artifact.metadata['sizingEvidencePolicy'],
+      anyElement(contains('EoX replacement PIDs')),
+    );
+    expect(artifact.metadata['sizingVisualVerificationChecklistCount'], 5);
+    expect(
+      artifact.metadata['sizingVisualVerificationChecklist'],
+      anyElement(contains('Open workbook and confirm all sizing sheets')),
+    );
+    expect(artifact.metadata['sizingPublishingMetadataCount'], 5);
+    expect(
+      artifact.metadata['sizingPublishingMetadata'],
+      anyElement(contains('External handoff')),
+    );
+    expect(artifact.metadata['hasSizingQualityManifest'], isTrue);
+    expect(artifact.metadata['hasSizingEvidencePolicy'], isTrue);
+    expect(artifact.metadata['hasSizingVisualVerificationChecklist'], isTrue);
+    expect(artifact.metadata['hasSizingPublishingMetadata'], isTrue);
     expect(artifact.metadata['hasSourceEvidence'], isTrue);
     expect(artifact.metadata['hasAssumptionCoverage'], isTrue);
     expect(artifact.metadata['users'], '500');
@@ -339,6 +363,9 @@ Here is the data.
     expect(packageText, contains('Validation'));
     expect(packageText, contains('Assumptions'));
     expect(packageText, contains('Decision Summary'));
+    expect(packageText, contains('Evidence Policy'));
+    expect(packageText, contains('Visual QA'));
+    expect(packageText, contains('Publishing Readiness'));
     expect(packageText, contains('Source 1'));
     expect(packageText, contains('500'));
     expect(packageText, contains('90'));
@@ -351,6 +378,12 @@ Here is the data.
     expect(packageText, contains('Source evidence'));
     expect(packageText, contains('Decision readiness'));
     expect(packageText, contains('migration hint only'));
+    expect(packageText, contains('Sizing workbook is advisory'));
+    expect(packageText, contains('EoX replacement PIDs'));
+    expect(
+      packageText,
+      contains('Open workbook and confirm all sizing sheets'),
+    );
     expect(
       packageText,
       contains('False precision from incomplete customer data'),
