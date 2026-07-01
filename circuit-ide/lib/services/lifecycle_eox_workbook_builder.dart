@@ -21,6 +21,9 @@ class LifecycleEoxWorkbookBuilder {
       content: content,
       document: document,
     );
+    final lifecycleRecords = records
+        .map(_LifecycleRecord.fromRow)
+        .toList(growable: false);
     return [
       WorkbookTable(
         name: 'Lifecycle Status',
@@ -34,6 +37,19 @@ class LifecycleEoxWorkbookBuilder {
             'Source / evidence',
           ],
           ...records,
+        ],
+      ),
+      WorkbookTable(
+        name: 'Urgency Timeline',
+        rows: [
+          const [
+            'Product / PID',
+            'Support milestone',
+            'Risk tier',
+            'Urgency',
+            'Recommended action',
+          ],
+          ..._urgencyRows(lifecycleRecords),
         ],
       ),
       WorkbookTable(
@@ -57,6 +73,42 @@ class LifecycleEoxWorkbookBuilder {
             'Validation needed before recommendation',
           ],
           ..._replacementValidationRows('$prompt\n$content'),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Decision Gates',
+        rows: [
+          const [
+            'Gate',
+            'Pass criteria',
+            'Reject / caution trigger',
+            'Required evidence',
+          ],
+          ..._decisionGateRows('$prompt\n$content'),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Source Quality',
+        rows: [
+          const [
+            'Evidence item',
+            'Authority level',
+            'Required fields',
+            'Status',
+          ],
+          ..._sourceQualityRows(lifecycleRecords),
+        ],
+      ),
+      WorkbookTable(
+        name: 'WiFi7 UPOE Readiness',
+        rows: [
+          const [
+            'Requirement',
+            'Why it matters',
+            'Replacement validation',
+            'Status',
+          ],
+          ..._wifi7ReadinessRows('$prompt\n$content'),
         ],
       ),
       WorkbookTable(
@@ -232,6 +284,36 @@ class LifecycleEoxWorkbookBuilder {
         .toList(growable: false);
   }
 
+  List<List<String>> _urgencyRows(List<_LifecycleRecord> records) {
+    if (records.isEmpty) {
+      return const [
+        [
+          'TBD',
+          'Lifecycle dates missing',
+          'Unknown',
+          'Needs lookup',
+          'Fetch official EoX data before prioritizing migration.',
+        ],
+      ];
+    }
+    return records
+        .map((record) {
+          final milestone = record.ldos != 'TBD'
+              ? 'LDOS ${record.ldos}'
+              : record.endOfSale != 'TBD'
+              ? 'End of sale ${record.endOfSale}'
+              : 'Lifecycle date TBD';
+          return [
+            record.product,
+            milestone,
+            record.risk,
+            record.urgency,
+            record.action,
+          ];
+        })
+        .toList(growable: false);
+  }
+
   List<List<String>> _replacementValidationRows(String content) {
     final rows = <List<String>>[
       [
@@ -271,6 +353,114 @@ class LifecycleEoxWorkbookBuilder {
       ]);
     }
     return rows;
+  }
+
+  List<List<String>> _decisionGateRows(String content) {
+    final wifi7 = RegExp(
+      r'\b(wi[- ]?fi\s*7|wifi\s*7)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final upoe = RegExp(
+      r'\b(upoe\+?|802\.3bt|60w|90w)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    return [
+      [
+        'Lifecycle authority',
+        'Lifecycle dates come from Cisco EoX/API or official Cisco source with checked date',
+        'Unsupported dates, copied reseller pages, or missing checked date',
+        'Official Cisco lifecycle source',
+      ],
+      [
+        'Migration hint treatment',
+        'Replacement PID is stored as suggestedMigrationPid only',
+        'Treating EoX replacement PID as final recommendation',
+        'Current portfolio comparison and requirement-fit evidence',
+      ],
+      [
+        'Current portfolio fit',
+        'Candidate is compared against current model families and newer options',
+        'Newer model satisfies requirements better than migration hint',
+        'Datasheets/catalog facts for current candidates',
+      ],
+      [
+        'Power and access speed',
+        wifi7 || upoe
+            ? 'Wi-Fi 7/UPOE signal detected; validate UPOE/UPOE+ and mGig explicitly'
+            : 'Validate AP power draw, PoE budget, access speed, and uplinks',
+        'Candidate lacks required per-port power, aggregate power, or mGig access',
+        'AP power draw, switch power budget, port speed, and uplink evidence',
+      ],
+      [
+        'Operational fit',
+        'Licensing, management plane, support, and migration effort fit the customer',
+        'Hardware works but operational model does not match customer standards',
+        'Licensing/support plan and customer operations requirements',
+      ],
+    ];
+  }
+
+  List<List<String>> _sourceQualityRows(List<_LifecycleRecord> records) {
+    final products = records.isEmpty ? ['TBD'] : records.map((r) => r.product);
+    return [
+      for (final product in products)
+        [
+          '$product lifecycle dates',
+          'Authoritative',
+          'Status, End of Sale, LDOS, source URL/API record, checked date',
+          'Needs official Cisco validation',
+        ],
+      [
+        'Replacement suitability',
+        'Advisory',
+        'Current portfolio candidate, capability facts, rejected alternatives, fit rationale',
+        'Needs current portfolio validation',
+      ],
+      [
+        'Customer requirements',
+        'Customer supplied',
+        'Wi-Fi generation, AP power, port speed, WAN/security throughput, HA, licensing, growth',
+        'Needs customer confirmation',
+      ],
+    ];
+  }
+
+  List<List<String>> _wifi7ReadinessRows(String content) {
+    final wifi7Detected = RegExp(
+      r'\b(wi[- ]?fi\s*7|wifi\s*7)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    return [
+      [
+        'Wi-Fi 7 AP support',
+        'Wi-Fi 7 can change port speed and power assumptions',
+        'Confirm replacement switch supports required AP model and mGig access',
+        wifi7Detected ? 'Detected' : 'Needs input',
+      ],
+      [
+        'UPOE / UPOE+ budget',
+        'Modern APs can require higher per-port and aggregate power',
+        'Validate per-port power class, total power supplies, and reserve budget',
+        RegExp(
+              r'\b(upoe\+?|802\.3bt|60w|90w)\b',
+              caseSensitive: false,
+            ).hasMatch(content)
+            ? 'Detected'
+            : 'Needs input',
+      ],
+      [
+        'Uplink headroom',
+        'mGig AP access can oversubscribe legacy uplinks',
+        'Validate 10G/25G/40G/100G uplinks, stacking, and oversubscription',
+        'Needs validation',
+      ],
+      [
+        'Lifecycle runway',
+        'A technically compatible replacement still needs support runway',
+        'Compare current candidates by lifecycle, support, licensing, and availability',
+        'Needs validation',
+      ],
+    ];
   }
 
   List<List<String>> _riskRows(ArtifactDocument document, String content) {
@@ -433,5 +623,65 @@ class LifecycleEoxWorkbookBuilder {
     final singleLine = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (singleLine.length <= maxLength) return singleLine;
     return '${singleLine.substring(0, maxLength - 1).trim()}...';
+  }
+}
+
+class _LifecycleRecord {
+  final String product;
+  final String status;
+  final String endOfSale;
+  final String ldos;
+  final String risk;
+
+  const _LifecycleRecord({
+    required this.product,
+    required this.status,
+    required this.endOfSale,
+    required this.ldos,
+    required this.risk,
+  });
+
+  factory _LifecycleRecord.fromRow(List<String> row) {
+    String cell(int index, String fallback) {
+      if (index >= row.length) return fallback;
+      final value = row[index].trim();
+      return value.isEmpty ? fallback : value;
+    }
+
+    return _LifecycleRecord(
+      product: cell(0, 'TBD'),
+      status: cell(1, 'Needs lookup'),
+      endOfSale: cell(2, 'TBD'),
+      ldos: cell(3, 'TBD'),
+      risk: cell(4, 'Review'),
+    );
+  }
+
+  String get urgency {
+    final lower = '$status $risk $ldos'.toLowerCase();
+    if (lower.contains('high') ||
+        lower.contains('end of support') ||
+        lower.contains('unsupported')) {
+      return 'Immediate review';
+    }
+    if (lower.contains('review') ||
+        lower.contains('medium') ||
+        lower.contains('tbd')) {
+      return 'Validate dates';
+    }
+    return 'Monitor';
+  }
+
+  String get action {
+    final lower = '$status $risk'.toLowerCase();
+    if (lower.contains('high') ||
+        lower.contains('end of support') ||
+        lower.contains('unsupported')) {
+      return 'Build migration plan and compare current portfolio candidates.';
+    }
+    if (lower.contains('active')) {
+      return 'Confirm checked date and support runway; no final replacement without requirement fit.';
+    }
+    return 'Validate official lifecycle data and replacement suitability.';
   }
 }

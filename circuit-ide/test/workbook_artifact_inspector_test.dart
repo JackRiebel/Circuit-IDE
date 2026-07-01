@@ -213,8 +213,12 @@ void main() {
     expect(
       inspection.hasSheets(const [
         'Lifecycle Status',
+        'Urgency Timeline',
         'Migration Hints',
         'Replacement Evaluation',
+        'Decision Gates',
+        'Source Quality',
+        'WiFi7 UPOE Readiness',
         'Risk Register',
         'Assumptions',
       ]),
@@ -226,11 +230,24 @@ void main() {
       isTrue,
     );
     expect(
+      inspection.sheetContains('Urgency Timeline', 'Immediate review'),
+      isTrue,
+    );
+    expect(
       inspection.sheetContains('Replacement Evaluation', 'Wi-Fi 7'),
       isTrue,
     );
     expect(
       inspection.sheetContains('Replacement Evaluation', 'PoE/UPOE'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Decision Gates', 'suggestedMigrationPid'),
+      isTrue,
+    );
+    expect(inspection.sheetContains('Source Quality', 'checked date'), isTrue);
+    expect(
+      inspection.sheetContains('WiFi7 UPOE Readiness', 'UPOE / UPOE+ budget'),
       isTrue,
     );
     expect(
