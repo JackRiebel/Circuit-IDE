@@ -528,6 +528,8 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.docx'));
     expect(artifact.summary, contains('evidence pack'));
+    expect(artifact.summary, contains('claim-to-source matrix'));
+    expect(artifact.summary, contains('source freshness register'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(6));
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
@@ -542,6 +544,16 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Checked Dates'));
     expect(packageText, contains('Confidence And Risk'));
     expect(packageText, contains('Unsupported Claims / Follow-Up'));
+    expect(packageText, contains('Claim To Source Matrix'));
+    expect(packageText, contains('Source Freshness Register'));
+    expect(packageText, contains('Unsupported Claim Triage'));
+    expect(packageText, contains('Evidence Confidence Scorecard'));
+    expect(packageText, contains('Customer Follow-Up Checklist'));
+    expect(packageText, contains('Supporting source'));
+    expect(packageText, contains('Freshness risk'));
+    expect(packageText, contains('Required evidence'));
+    expect(packageText, contains('Validate current portfolio fit'));
+    expect(packageText, contains('Exact replacement model needs validation'));
     expect(packageText, contains('Validation Checklist'));
     expect(packageText, contains('https://www.cisco.com/'));
     expect(packageText, contains('word/numbering.xml'));
@@ -581,6 +593,10 @@ Evidence supporting the lifecycle and replacement recommendation.
       expect(artifact.summary, contains('JSON evidence pack'));
       final jsonText = File(artifact.filePath).readAsStringSync();
       expect(jsonText, contains('"artifactTemplate": "evidence_pack"'));
+      expect(jsonText, contains('"sourceCount"'));
+      expect(jsonText, contains('"Claim To Source Matrix"'));
+      expect(jsonText, contains('"Source Freshness Register"'));
+      expect(jsonText, contains('"Evidence Confidence Scorecard"'));
       expect(jsonText, contains('"Source Inventory"'));
       expect(jsonText, contains('https://www.cisco.com/'));
     },

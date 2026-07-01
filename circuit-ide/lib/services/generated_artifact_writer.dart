@@ -203,7 +203,7 @@ class GeneratedArtifactWriter {
         summary: businessUseCase
             ? 'Created a business use case brief with executive summary, prioritized use cases, solution mapping, stakeholder discovery, value metrics, next steps, assumptions, and sources.'
             : evidencePack
-            ? 'Created an evidence pack with claim register, source inventory, checked dates, assumptions, confidence, and unsupported-claim follow-up.'
+            ? 'Created an evidence pack with claim-to-source matrix, source freshness register, unsupported-claim triage, confidence scorecard, assumptions, and follow-up checklist.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: docxRenderer.previewRowsFor(documentForOutput),
         sheetCount: documentForOutput.sections.length,

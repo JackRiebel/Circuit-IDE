@@ -82,18 +82,30 @@ class EvidencePackBuilder {
         fallbackBullets: unsupportedBullets,
       ),
     ];
+    final tables = [
+      ..._evidencePackTables(
+        sourceBullets: sourceBullets,
+        unsupportedBullets: unsupportedBullets,
+        document: document,
+        sections: sections,
+      ),
+      ...document.tables,
+    ];
 
     return ArtifactDocument(
       title: _title(document.title, prompt),
       summary: document.summary,
       sections: sections,
-      tables: document.tables,
+      tables: tables,
       assumptions: document.assumptions,
       citations: sourceBullets,
       metadata: {
         ...document.metadata,
         'artifactTemplate': 'evidence_pack',
         'sourcePrompt': prompt,
+        'sourceCount': sourceBullets.length,
+        'unsupportedClaimCount': unsupportedBullets.length,
+        'evidencePackTables': tables.length,
       },
     );
   }
@@ -211,5 +223,332 @@ class EvidencePackBuilder {
         .allMatches(content)
         .map((match) => match.group(0) ?? '')
         .where((value) => value.isNotEmpty);
+  }
+
+  List<ArtifactTable> _evidencePackTables({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required ArtifactDocument document,
+    required List<ArtifactSection> sections,
+  }) {
+    return [
+      ArtifactTable(
+        title: 'Claim To Source Matrix',
+        rows: [
+          const [
+            'Claim',
+            'Supporting source',
+            'Checked date',
+            'Confidence',
+            'Caveat / validation need',
+          ],
+          ..._claimRows(sourceBullets, sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Source Freshness Register',
+        rows: [
+          const [
+            'Source',
+            'URL / reference',
+            'Checked date',
+            'Freshness risk',
+            'Owner action',
+          ],
+          ..._sourceRows(sourceBullets),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Unsupported Claim Triage',
+        rows: [
+          const ['Claim', 'Risk', 'Required evidence', 'Disposition'],
+          ..._unsupportedRows(unsupportedBullets),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Evidence Confidence Scorecard',
+        rows: [
+          const ['Area', 'Status', 'Confidence', 'Notes'],
+          ..._confidenceRows(
+            sourceBullets: sourceBullets,
+            unsupportedBullets: unsupportedBullets,
+            assumptions: document.assumptions,
+          ),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Customer Follow-Up Checklist',
+        rows: [
+          const ['Question', 'Owner', 'Needed before final?'],
+          ..._followUpRows(unsupportedBullets, document.assumptions),
+        ],
+      ),
+    ];
+  }
+
+  List<List<String>> _claimRows(
+    List<String> sourceBullets,
+    List<ArtifactSection> sections,
+  ) {
+    final claims = _bulletsFor(sections, const [
+      'claim register',
+      'claims',
+      'validated claims',
+    ]);
+    final rows = <List<String>>[];
+    final candidates = claims.isEmpty
+        ? const ['Material claim requires source mapping.']
+        : claims.take(12);
+    var index = 0;
+    for (final claim in candidates) {
+      final source = sourceBullets.isEmpty
+          ? 'Missing cited source'
+          : sourceBullets[index % sourceBullets.length];
+      rows.add([
+        claim,
+        _sourceLabel(source),
+        _checkedDate(source),
+        _confidenceFor(claim, source),
+        _caveatFor(claim, source),
+      ]);
+      index++;
+    }
+    return rows;
+  }
+
+  List<List<String>> _sourceRows(List<String> sourceBullets) {
+    if (sourceBullets.isEmpty) {
+      return const [
+        [
+          'No source supplied',
+          'Missing',
+          'Not checked',
+          'High',
+          'Add authoritative source and checked date.',
+        ],
+      ];
+    }
+    return sourceBullets
+        .take(20)
+        .map((source) {
+          return [
+            _sourceLabel(source),
+            _sourceUrl(source),
+            _checkedDate(source),
+            _freshnessRisk(source),
+            _ownerAction(source),
+          ];
+        })
+        .toList(growable: false);
+  }
+
+  List<List<String>> _unsupportedRows(List<String> unsupportedBullets) {
+    if (unsupportedBullets.isEmpty) {
+      return const [
+        [
+          'No unsupported claims identified',
+          'Low',
+          'Maintain citation hygiene.',
+          'Ready for review.',
+        ],
+      ];
+    }
+    return unsupportedBullets
+        .take(12)
+        .map((claim) {
+          return [
+            _cleanBullet(claim),
+            'Medium until supported or removed.',
+            'Official source, customer data, checked date, or SME confirmation.',
+            'Verify, qualify, or remove before customer handoff.',
+          ];
+        })
+        .toList(growable: false);
+  }
+
+  List<List<String>> _confidenceRows({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required List<String> assumptions,
+  }) {
+    return [
+      [
+        'Source coverage',
+        sourceBullets.isEmpty ? 'Missing sources' : 'Sources attached',
+        sourceBullets.isEmpty ? 'Low' : 'Medium',
+        sourceBullets.isEmpty
+            ? 'Add official or customer-provided evidence.'
+            : 'Verify freshness and source authority before final use.',
+      ],
+      [
+        'Unsupported claims',
+        unsupportedBullets.isEmpty ? 'None flagged' : 'Follow-up required',
+        unsupportedBullets.isEmpty ? 'Medium' : 'Low',
+        unsupportedBullets.isEmpty
+            ? 'Continue checking claims against source material.'
+            : 'Resolve each unsupported claim before customer handoff.',
+      ],
+      [
+        'Assumptions',
+        assumptions.isEmpty
+            ? 'No assumptions captured'
+            : 'Assumptions captured',
+        assumptions.isEmpty ? 'Medium' : 'Low until confirmed',
+        assumptions.isEmpty
+            ? 'Add assumptions if scope or source freshness is uncertain.'
+            : 'Confirm assumptions with customer or account team.',
+      ],
+    ];
+  }
+
+  List<List<String>> _followUpRows(
+    List<String> unsupportedBullets,
+    List<String> assumptions,
+  ) {
+    final rows = <List<String>>[
+      const [
+        'Which claims require official source validation before customer use?',
+        'Evidence reviewer',
+        'Yes',
+      ],
+      const [
+        'Are all checked dates current enough for the decision window?',
+        'Account team',
+        'Yes',
+      ],
+      const [
+        'Which assumptions need customer confirmation?',
+        'Customer sponsor',
+        'Yes',
+      ],
+    ];
+    for (final claim in unsupportedBullets.take(3)) {
+      rows.add([
+        'What evidence supports "${_shorten(_cleanBullet(claim), 80)}"?',
+        'Research owner',
+        'Yes',
+      ]);
+    }
+    for (final assumption in assumptions.take(3)) {
+      rows.add([
+        'Can the customer confirm "${_shorten(_cleanBullet(assumption), 80)}"?',
+        'Customer / account team',
+        'Yes',
+      ]);
+    }
+    return rows;
+  }
+
+  List<String> _bulletsFor(List<ArtifactSection> sections, List<String> terms) {
+    final normalizedTerms = terms.map((term) => term.toLowerCase()).toList();
+    final values = <String>[];
+    for (final section in sections) {
+      final title = section.title.toLowerCase();
+      if (!normalizedTerms.any(title.contains)) continue;
+      values.addAll(section.bullets);
+      if (section.body.trim().isNotEmpty) {
+        values.addAll(_sentences(section.body).take(4));
+      }
+    }
+    return values
+        .map(_cleanBullet)
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .take(20)
+        .toList(growable: false);
+  }
+
+  List<String> _sentences(String value) {
+    return RegExp(r'[^.!?]+[.!?]?')
+        .allMatches(value)
+        .map((match) => match.group(0)?.trim() ?? '')
+        .where((sentence) => sentence.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  String _sourceLabel(String source) {
+    final cleaned = _cleanBullet(source);
+    final withoutUrl = cleaned.replaceAll(RegExp(r'https?://\S+'), '').trim();
+    final beforeChecked = withoutUrl
+        .split(RegExp(r'\s+[-\u2013\u2014]\s+checked\s+', caseSensitive: false))
+        .first
+        .trim();
+    if (beforeChecked.isEmpty) return _shorten(cleaned, 90);
+    return _shorten(beforeChecked, 90);
+  }
+
+  String _sourceUrl(String source) {
+    return RegExp(
+          r'https?://[^\s\])>]+',
+        ).firstMatch(source)?.group(0)?.trim() ??
+        'No URL captured';
+  }
+
+  String _checkedDate(String source) {
+    final iso = RegExp(r'\b20\d{2}-\d{2}-\d{2}\b').firstMatch(source);
+    if (iso != null) return iso.group(0) ?? 'Not provided';
+    final checked = RegExp(
+      r'checked\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+20\d{2}|20\d{2})',
+      caseSensitive: false,
+    ).firstMatch(source);
+    return checked?.group(1)?.trim() ?? 'Not provided';
+  }
+
+  String _freshnessRisk(String source) {
+    final checkedDate = _checkedDate(source);
+    if (checkedDate == 'Not provided') return 'High - missing checked date';
+    final lower = source.toLowerCase();
+    if (lower.contains('api') || lower.contains('official')) {
+      return 'Low if rechecked before handoff';
+    }
+    return 'Medium - verify source freshness';
+  }
+
+  String _ownerAction(String source) {
+    final lower = source.toLowerCase();
+    if (lower.contains('cisco') || lower.contains('official')) {
+      return 'Refresh official source before final recommendation.';
+    }
+    if (lower.contains('customer') || lower.contains('workshop')) {
+      return 'Confirm customer-provided evidence with sponsor.';
+    }
+    return 'Validate authority, date, and relevance.';
+  }
+
+  String _confidenceFor(String claim, String source) {
+    final lower = '$claim $source'.toLowerCase();
+    if (source.contains('Missing cited source')) return 'Low';
+    if (lower.contains('official') || lower.contains('api')) return 'Medium';
+    if (lower.contains('unsupported') || lower.contains('unknown')) {
+      return 'Low';
+    }
+    return 'Medium';
+  }
+
+  String _caveatFor(String claim, String source) {
+    final lower = '$claim $source'.toLowerCase();
+    if (source.contains('Missing cited source')) {
+      return 'Add authoritative evidence before customer use.';
+    }
+    if (lower.contains('replacement') || lower.contains('recommendation')) {
+      return 'Validate current portfolio fit; do not rely on migration hint alone.';
+    }
+    if (_checkedDate(source) == 'Not provided') {
+      return 'Add checked date and freshness note.';
+    }
+    return 'Verify source freshness and claim wording before final handoff.';
+  }
+
+  String _cleanBullet(String value) {
+    return value
+        .replaceFirst(RegExp(r'^[-*]\s+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  String _shorten(String value, int maxLength) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+    return '${normalized.substring(0, maxLength - 1).trim()}...';
   }
 }
