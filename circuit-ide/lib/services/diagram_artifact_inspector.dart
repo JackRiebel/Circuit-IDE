@@ -9,6 +9,7 @@ class DiagramArtifactInspection {
   final bool hasCircuitMetadata;
   final bool hasLogicalTopologyGuidance;
   final bool hasTopologySummaryPanel;
+  final bool hasInventoryPanel;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
   final int nodeCount;
@@ -16,7 +17,11 @@ class DiagramArtifactInspection {
   final int tierCount;
   final int assumptionCount;
   final int siteCount;
+  final int mdfCount;
+  final int idfCount;
   final int firewallCount;
+  final int coreSwitchCount;
+  final int accessSwitchCount;
   final int switchCount;
   final int apCount;
   final bool hasDualWan;
@@ -37,6 +42,7 @@ class DiagramArtifactInspection {
     required this.hasCircuitMetadata,
     required this.hasLogicalTopologyGuidance,
     required this.hasTopologySummaryPanel,
+    required this.hasInventoryPanel,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
     required this.nodeCount,
@@ -44,7 +50,11 @@ class DiagramArtifactInspection {
     required this.tierCount,
     required this.assumptionCount,
     required this.siteCount,
+    required this.mdfCount,
+    required this.idfCount,
     required this.firewallCount,
+    required this.coreSwitchCount,
+    required this.accessSwitchCount,
     required this.switchCount,
     required this.apCount,
     required this.hasDualWan,
@@ -72,6 +82,7 @@ class DiagramArtifactInspection {
       tierCount >= 3 &&
       hasLogicalTopologyGuidance &&
       hasTopologySummaryPanel &&
+      hasInventoryPanel &&
       hasValidationChecklist &&
       hasAssumptionsPanel;
 
@@ -130,6 +141,7 @@ class DiagramArtifactInspector {
           metadata['artifact'] == 'network_topology_diagram',
       hasLogicalTopologyGuidance: svg.contains('Logical topology'),
       hasTopologySummaryPanel: svg.contains('id="topology-summary"'),
+      hasInventoryPanel: svg.contains('id="topology-inventory"'),
       hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
           svg.contains('id="topology-assumptions"') ||
@@ -139,7 +151,11 @@ class DiagramArtifactInspector {
       tierCount: tierCount,
       assumptionCount: assumptionCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
+      mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
+      idfCount: _metadataInt(metadata, 'idfCount') ?? 0,
       firewallCount: _metadataInt(metadata, 'firewallCount') ?? 0,
+      coreSwitchCount: _metadataInt(metadata, 'coreSwitchCount') ?? 0,
+      accessSwitchCount: _metadataInt(metadata, 'accessSwitchCount') ?? 0,
       switchCount: _metadataInt(metadata, 'switchCount') ?? 0,
       apCount: _metadataInt(metadata, 'apCount') ?? 0,
       hasDualWan: metadata['hasDualWan'] == true,

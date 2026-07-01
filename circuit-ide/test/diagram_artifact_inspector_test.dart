@@ -31,6 +31,7 @@ graph LR
     expect(inspection.assumptionCount, 1);
     expect(inspection.hasLogicalTopologyGuidance, isTrue);
     expect(inspection.hasTopologySummaryPanel, isTrue);
+    expect(inspection.hasInventoryPanel, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
   });
 
@@ -76,7 +77,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.containsDeviceToken('CW9176'), isTrue);
       expect(inspection.assumptionCount, 2);
       expect(inspection.siteCount, 4);
+      expect(inspection.mdfCount, 1);
+      expect(inspection.idfCount, 3);
       expect(inspection.firewallCount, 2);
+      expect(inspection.coreSwitchCount, 1);
+      expect(inspection.accessSwitchCount, 3);
       expect(inspection.switchCount, greaterThanOrEqualTo(4));
       expect(inspection.apCount, 90);
       expect(inspection.hasDualWan, isTrue);
@@ -86,4 +91,45 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasWifi7, isTrue);
     },
   );
+
+  test('diagram inspector verifies larger campus inventory counts', () {
+    const document = ArtifactDocument(
+      title: 'Large Campus Topology',
+      summary: 'Large campus topology with explicit MDF and IDF counts.',
+      assumptions: ['Validate uplink oversubscription and AP placement.'],
+    );
+    final result = const DiagramArtifactRenderer().render(
+      document: document,
+      content: '''
+Build a topology for 1 MDF with 6 C9500 core switches, 3 IDFs with 6 C9300-48P UPOE switches,
+warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90 CW9176 Wi-Fi 7 APs.
+''',
+    );
+
+    final inspection = const DiagramArtifactInspector().inspect(result.bytes);
+    final svg = String.fromCharCodes(result.bytes);
+
+    expect(inspection.hasEnterpriseTopologyStructure, isTrue);
+    expect(inspection.hasInventoryPanel, isTrue);
+    expect(inspection.siteCount, 1);
+    expect(inspection.mdfCount, 1);
+    expect(inspection.idfCount, 3);
+    expect(inspection.firewallCount, 2);
+    expect(inspection.coreSwitchCount, 6);
+    expect(inspection.accessSwitchCount, 6);
+    expect(inspection.switchCount, 12);
+    expect(inspection.apCount, 90);
+    expect(inspection.hasDualWan, isTrue);
+    expect(inspection.hasWarmSpare, isTrue);
+    expect(inspection.hasPoe, isTrue);
+    expect(inspection.hasMultigig, isTrue);
+    expect(inspection.hasWifi7, isTrue);
+    expect(svg, contains('Inventory'));
+    expect(svg, contains('MDF 1'));
+    expect(svg, contains('IDF 3'));
+    expect(svg, contains('Core 6'));
+    expect(svg, contains('Access 6'));
+    expect(svg, contains('Requirements: Dual WAN'));
+    expect(svg, contains('mGig/10G'));
+  });
 }
