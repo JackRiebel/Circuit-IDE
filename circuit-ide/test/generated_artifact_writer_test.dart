@@ -213,6 +213,19 @@ Here is the data.
     expect(artifact.metadata['hasLifecycleValidation'], isTrue);
     expect(artifact.metadata['hasHighPowerApSignal'], isTrue);
     expect(artifact.metadata['hasMultigigSignal'], isTrue);
+    expect(artifact.metadata['qualityStatus'], 'Customer ready');
+    expect(artifact.metadata['qualityScore'], greaterThanOrEqualTo(90));
+    expect(
+      artifact.metadata['qualityGates'],
+      containsAll([
+        'File generated',
+        'Native format ready',
+        'Workbook sheets packaged',
+        'Header and data rows detected',
+      ]),
+    );
+    expect(artifact.metadata['qualityGaps'], isEmpty);
+    expect(artifact.metadata['hasCustomerReadyArtifact'], isTrue);
     expect(artifact.previewRows.first, [
       'Executive Signal',
       'Current Value',

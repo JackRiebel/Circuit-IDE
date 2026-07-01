@@ -1174,6 +1174,17 @@ void main() {
         'hasHighPowerApSignal': true,
         'hasMultigigSignal': true,
         'hasLifecycleValidation': true,
+        'qualityStatus': 'Customer ready',
+        'qualityScore': 96,
+        'qualityGates': [
+          'File generated',
+          'Native format ready',
+          'Workbook sheets packaged',
+          'Header and data rows detected',
+        ],
+        'qualityGaps': [],
+        'qualityNextAction': 'Ready for customer handoff.',
+        'hasCustomerReadyArtifact': true,
       },
       createdAt: DateTime(2026, 7, 1, 12),
     );
@@ -1193,7 +1204,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('campus-sizing.xlsx'), findsOneWidget);
-    expect(find.textContaining('Excel • 500 users • 90 APs'), findsOneWidget);
+    expect(find.textContaining('Excel • Customer ready'), findsOneWidget);
+    expect(find.textContaining('500 users'), findsAtLeastNWidgets(1));
     expect(find.textContaining('2 Gbps'), findsOneWidget);
     expect(find.textContaining('6 gates'), findsOneWidget);
     expect(find.textContaining('5 risks'), findsOneWidget);
@@ -1204,11 +1216,24 @@ void main() {
     await tester.pump();
 
     expect(find.text('Users'), findsOneWidget);
+    expect(find.text('Quality'), findsOneWidget);
+    expect(find.text('Customer ready'), findsAtLeastNWidgets(1));
+    expect(find.text('Score'), findsOneWidget);
+    expect(find.text('96/100'), findsOneWidget);
+    expect(find.text('Gates'), findsAtLeastNWidgets(1));
+    expect(
+      find.textContaining('File generated, Native format ready +2'),
+      findsOneWidget,
+    );
+    expect(find.text('Next'), findsOneWidget);
+    expect(find.text('Ready for customer handoff.'), findsOneWidget);
+    expect(find.text('Ready'), findsAtLeastNWidgets(1));
+    expect(find.text('Customer handoff candidate'), findsOneWidget);
     expect(find.text('APs'), findsOneWidget);
     expect(find.text('Switches'), findsOneWidget);
     expect(find.text('WAN'), findsOneWidget);
     expect(find.text('Growth'), findsOneWidget);
-    expect(find.text('Gates'), findsOneWidget);
+    expect(find.text('Gates'), findsAtLeastNWidgets(1));
     expect(find.text('Risks'), findsOneWidget);
     expect(find.text('High risk'), findsOneWidget);
     expect(find.text('Candidate checks'), findsOneWidget);

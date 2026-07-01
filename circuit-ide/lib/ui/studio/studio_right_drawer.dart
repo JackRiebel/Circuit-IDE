@@ -3140,6 +3140,8 @@ class _ArtifactDrawerCard extends ConsumerWidget {
 
   String _artifactMeta(GeneratedArtifact artifact) {
     final parts = <String>[artifact.typeLabel];
+    final qualityStatus = _metadataString(artifact, 'qualityStatus');
+    if (qualityStatus.isNotEmpty) parts.add(qualityStatus);
     if (artifact.kind == GeneratedArtifactKind.diagram) {
       final nodeCount = _metadataInt(artifact, 'nodeCount');
       final edgeCount = _metadataInt(artifact, 'edgeCount');
@@ -3283,6 +3285,24 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
     final rows = <(String, String)>[
       ('Type', artifact.typeLabel),
       ('Status', artifact.statusLabel),
+      if (_metadataString(artifact, 'qualityStatus').isNotEmpty)
+        ('Quality', _metadataString(artifact, 'qualityStatus')),
+      if (_metadataInt(artifact, 'qualityScore') > 0)
+        ('Score', '${_metadataInt(artifact, 'qualityScore')}/100'),
+      if (_metadataStringList(artifact, 'qualityGates').isNotEmpty)
+        (
+          'Gates',
+          _compactSignalList(_metadataStringList(artifact, 'qualityGates')),
+        ),
+      if (_metadataStringList(artifact, 'qualityGaps').isNotEmpty)
+        (
+          'Gaps',
+          _compactSignalList(_metadataStringList(artifact, 'qualityGaps')),
+        ),
+      if (_metadataString(artifact, 'qualityNextAction').isNotEmpty)
+        ('Next', _metadataString(artifact, 'qualityNextAction')),
+      if (_metadataBool(artifact, 'hasCustomerReadyArtifact'))
+        ('Ready', 'Customer handoff candidate'),
       ('Created', _compactDate(artifact.createdAt)),
       if (extension.isNotEmpty) ('Format', extension.toUpperCase()),
       if (artifact.sheetCount > 0)

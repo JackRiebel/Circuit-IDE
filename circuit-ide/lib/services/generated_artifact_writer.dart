@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
 import 'architecture_review_pack_builder.dart';
+import 'artifact_readiness_evaluator.dart';
 import 'business_use_case_brief_builder.dart';
 import 'change_summary_diff_report_builder.dart';
 import 'chart_artifact_renderer.dart';
@@ -35,6 +36,7 @@ class GeneratedArtifactWriter {
   final EvidencePackBuilder evidencePackBuilder;
   final ImplementationPlanArtifactBuilder implementationPlanBuilder;
   final ChangeSummaryDiffReportBuilder changeSummaryBuilder;
+  final ArtifactReadinessEvaluator readinessEvaluator;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -51,6 +53,7 @@ class GeneratedArtifactWriter {
     this.evidencePackBuilder = const EvidencePackBuilder(),
     this.implementationPlanBuilder = const ImplementationPlanArtifactBuilder(),
     this.changeSummaryBuilder = const ChangeSummaryDiffReportBuilder(),
+    this.readinessEvaluator = const ArtifactReadinessEvaluator(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -72,11 +75,15 @@ class GeneratedArtifactWriter {
 
     final baseName = _safeBaseName(prompt);
     final now = DateTime.now();
+    final document = composer.fromAssistantOutput(
+      prompt: prompt,
+      content: content,
+    );
     final resolved = _resolveOutput(
       requestedKind: requestedKind,
       prompt: prompt,
       content: content,
-      document: composer.fromAssistantOutput(prompt: prompt, content: content),
+      document: document,
     );
     if (resolved == null) return null;
 
@@ -87,6 +94,11 @@ class GeneratedArtifactWriter {
     final file = File(normalizedFilePath);
     await file.writeAsBytes(resolved.bytes);
     final size = await file.length();
+    final metadata = _metadataWithReadiness(
+      resolved: resolved,
+      document: document,
+      byteSize: size,
+    );
     return GeneratedArtifact(
       id: turnId,
       kind: resolved.kind,
@@ -97,7 +109,7 @@ class GeneratedArtifactWriter {
       byteSize: size,
       previewRows: resolved.previewRows,
       sheetCount: resolved.sheetCount,
-      metadata: resolved.metadata,
+      metadata: metadata,
       threadId: threadId,
       requestId: requestId,
       createdAt: now,
@@ -141,6 +153,11 @@ class GeneratedArtifactWriter {
     final file = File(normalizedFilePath);
     await file.writeAsBytes(resolved.bytes);
     final size = await file.length();
+    final metadata = _metadataWithReadiness(
+      resolved: resolved,
+      document: document,
+      byteSize: size,
+    );
     return GeneratedArtifact(
       id: turnId,
       kind: resolved.kind,
@@ -151,11 +168,28 @@ class GeneratedArtifactWriter {
       byteSize: size,
       previewRows: resolved.previewRows,
       sheetCount: resolved.sheetCount,
-      metadata: resolved.metadata,
+      metadata: metadata,
       threadId: threadId,
       requestId: requestId,
       createdAt: DateTime.now(),
     );
+  }
+
+  Map<String, Object?> _metadataWithReadiness({
+    required _ResolvedArtifact resolved,
+    required ArtifactDocument document,
+    required int byteSize,
+  }) {
+    final quality = readinessEvaluator.metadataFor(
+      kind: resolved.kind,
+      status: resolved.status,
+      document: document,
+      previewRows: resolved.previewRows,
+      count: resolved.sheetCount,
+      byteSize: byteSize,
+      metadata: resolved.metadata,
+    );
+    return {...resolved.metadata, ...quality};
   }
 
   _ResolvedArtifact? _resolveOutput({
