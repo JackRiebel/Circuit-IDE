@@ -136,6 +136,7 @@ class GeneratedArtifactPackageWriter {
           turnId: turnId,
           threadId: threadId,
           requestId: requestId,
+          expectedTargets: targets,
           artifacts: artifacts,
         ),
       );
@@ -153,6 +154,7 @@ class GeneratedArtifactPackageWriter {
     required String turnId,
     required String? threadId,
     required String? requestId,
+    required List<GeneratedArtifactKind> expectedTargets,
     required List<GeneratedArtifact> artifacts,
   }) async {
     final root = p.normalize(rootPath);
@@ -168,6 +170,7 @@ class GeneratedArtifactPackageWriter {
     final readiness = _packageReadinessFor(
       artifacts,
       packageDescriptor: packageDescriptor,
+      expectedTargets: expectedTargets,
     );
     final content = _manifestMarkdown(
       label: label,
@@ -222,6 +225,16 @@ class GeneratedArtifactPackageWriter {
             .map((artifact) => artifact.typeLabel)
             .toSet()
             .toList(growable: false),
+        'expectedArtifactCount': expectedTargets.length,
+        'producedArtifactCount': artifacts.length,
+        'expectedArtifactKinds': expectedTargets.map(_kindLabel).toList(),
+        'producedArtifactKinds': artifacts
+            .map((artifact) => artifact.typeLabel)
+            .toSet()
+            .toList(growable: false),
+        'missingArtifactKinds': readiness.missingKinds,
+        'packageCompletenessStatus': readiness.completenessStatus,
+        'hasCompletePackage': readiness.missingKinds.isEmpty,
         'artifactIds': artifacts.map((artifact) => artifact.id).toList(),
         'artifactFiles': artifacts
             .map((artifact) => artifact.fileName)
@@ -254,6 +267,11 @@ class GeneratedArtifactPackageWriter {
       ..writeln('| Signal | Value |')
       ..writeln('| --- | --- |')
       ..writeln('| Status | ${_escapeTable(readiness.status)} |')
+      ..writeln(
+        '| Completeness | ${_escapeTable(readiness.completenessStatus)} |',
+      )
+      ..writeln('| Expected deliverables | ${readiness.expectedCount} |')
+      ..writeln('| Produced deliverables | ${artifacts.length} |')
       ..writeln('| Average quality score | ${readiness.averageQualityScore} |')
       ..writeln(
         '| Ready artifacts | ${readiness.readyCount}/${artifacts.length} |',
@@ -261,6 +279,14 @@ class GeneratedArtifactPackageWriter {
       ..writeln('| Fallback artifacts | ${readiness.fallbackCount} |')
       ..writeln('| Failed artifacts | ${readiness.failedCount} |')
       ..writeln('| Next action | ${_escapeTable(readiness.nextAction)} |')
+      ..writeln()
+      ..writeln('## Package Contract')
+      ..writeln()
+      ..writeln('| Expected | Produced | Missing |')
+      ..writeln('| --- | --- | --- |')
+      ..writeln(
+        '| ${_escapeTable(readiness.expectedKinds.join(', '))} | ${_escapeTable(artifacts.map((artifact) => artifact.typeLabel).toSet().join(', '))} | ${_escapeTable(readiness.missingKinds.isEmpty ? 'None' : readiness.missingKinds.join(', '))} |',
+      )
       ..writeln()
       ..writeln('## Package Contents')
       ..writeln()
@@ -316,6 +342,7 @@ class GeneratedArtifactPackageWriter {
   _PackageReadiness _packageReadinessFor(
     List<GeneratedArtifact> artifacts, {
     ArtifactTypeDescriptor? packageDescriptor,
+    List<GeneratedArtifactKind> expectedTargets = const [],
   }) {
     final readyCount = artifacts
         .where((artifact) => artifact.status == GeneratedArtifactStatus.ready)
@@ -328,6 +355,19 @@ class GeneratedArtifactPackageWriter {
     final failedCount = artifacts
         .where((artifact) => artifact.status == GeneratedArtifactStatus.failed)
         .length;
+    final expectedKinds = expectedTargets.map(_kindLabel).toList();
+    final producedKinds = artifacts
+        .map((artifact) => artifact.typeLabel)
+        .toSet()
+        .toList(growable: false);
+    final missingKinds = expectedKinds
+        .where((kind) => !producedKinds.contains(kind))
+        .toList(growable: false);
+    final completenessStatus = expectedTargets.isEmpty
+        ? 'No package contract'
+        : missingKinds.isEmpty
+        ? 'Complete'
+        : 'Incomplete - missing ${missingKinds.join(', ')}';
     final scores = artifacts
         .map((artifact) => _metadataInt(artifact, 'qualityScore'))
         .whereType<int>()
@@ -359,14 +399,18 @@ class GeneratedArtifactPackageWriter {
           'readinessSignals',
         ).map((signal) => '${artifact.typeLabel}: $signal'),
     }.take(10).toList(growable: false);
-    final status = failedCount > 0
+    final status = missingKinds.isNotEmpty
+        ? 'Package incomplete'
+        : failedCount > 0
         ? 'Package has failed artifacts'
         : fallbackCount > 0
         ? 'Package has fallback artifacts'
         : gaps.isNotEmpty
         ? 'Package needs review'
         : 'Package ready';
-    final nextAction = failedCount > 0
+    final nextAction = missingKinds.isNotEmpty
+        ? 'Regenerate or export missing deliverables: ${missingKinds.join(', ')}.'
+        : failedCount > 0
         ? 'Regenerate failed artifacts before handoff.'
         : fallbackCount > 0
         ? 'Review fallback artifacts before sharing.'
@@ -379,6 +423,10 @@ class GeneratedArtifactPackageWriter {
       readyCount: readyCount,
       fallbackCount: fallbackCount,
       failedCount: failedCount,
+      expectedCount: expectedTargets.length,
+      expectedKinds: expectedKinds,
+      missingKinds: missingKinds,
+      completenessStatus: completenessStatus,
       averageQualityScore: averageQualityScore,
       gaps: gaps,
       signals: signals,
@@ -454,6 +502,21 @@ class GeneratedArtifactPackageWriter {
     if (score == null) return status;
     if (status.isEmpty) return '$score/100';
     return '$status ($score/100)';
+  }
+
+  String _kindLabel(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel => 'Excel',
+      GeneratedArtifactKind.csv => 'CSV',
+      GeneratedArtifactKind.markdown => 'Markdown',
+      GeneratedArtifactKind.json => 'JSON',
+      GeneratedArtifactKind.pdf => 'PDF',
+      GeneratedArtifactKind.powerPoint => 'PowerPoint',
+      GeneratedArtifactKind.docx => 'Word',
+      GeneratedArtifactKind.diagram => 'Diagram',
+      GeneratedArtifactKind.chart => 'Chart',
+      GeneratedArtifactKind.report => 'Report',
+    };
   }
 
   String _metadataString(GeneratedArtifact artifact, String key) {
@@ -538,6 +601,10 @@ class _PackageReadiness {
   final int readyCount;
   final int fallbackCount;
   final int failedCount;
+  final int expectedCount;
+  final List<String> expectedKinds;
+  final List<String> missingKinds;
+  final String completenessStatus;
   final int averageQualityScore;
   final List<String> gaps;
   final List<String> signals;
@@ -549,6 +616,10 @@ class _PackageReadiness {
     required this.readyCount,
     required this.fallbackCount,
     required this.failedCount,
+    required this.expectedCount,
+    required this.expectedKinds,
+    required this.missingKinds,
+    required this.completenessStatus,
     required this.averageQualityScore,
     required this.gaps,
     required this.signals,

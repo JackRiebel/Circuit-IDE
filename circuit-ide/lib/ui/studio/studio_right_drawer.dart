@@ -3822,11 +3822,20 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Package', _metadataString(artifact, 'packageLabel')),
         if (_metadataString(artifact, 'packageQualityStatus').isNotEmpty)
           ('Package status', _metadataString(artifact, 'packageQualityStatus')),
+        if (_metadataString(artifact, 'packageCompletenessStatus').isNotEmpty)
+          (
+            'Completeness',
+            _metadataString(artifact, 'packageCompletenessStatus'),
+          ),
         if (_metadataInt(artifact, 'averageQualityScore') > 0)
           (
             'Package score',
             '${_metadataInt(artifact, 'averageQualityScore')}/100',
           ),
+        if (_metadataInt(artifact, 'expectedArtifactCount') > 0)
+          ('Expected', '${_metadataInt(artifact, 'expectedArtifactCount')}'),
+        if (_metadataInt(artifact, 'producedArtifactCount') > 0)
+          ('Produced', '${_metadataInt(artifact, 'producedArtifactCount')}'),
         if (_metadataInt(artifact, 'artifactCount') > 0)
           ('Artifacts', '${_metadataInt(artifact, 'artifactCount')}'),
         if (_metadataInt(artifact, 'readyArtifactCount') > 0)
@@ -3848,6 +3857,27 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'File types',
             _compactSignalList(
               _metadataStringList(artifact, 'packageFileTypes'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'expectedArtifactKinds').isNotEmpty)
+          (
+            'Expected types',
+            _compactSignalList(
+              _metadataStringList(artifact, 'expectedArtifactKinds'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'producedArtifactKinds').isNotEmpty)
+          (
+            'Produced types',
+            _compactSignalList(
+              _metadataStringList(artifact, 'producedArtifactKinds'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'missingArtifactKinds').isNotEmpty)
+          (
+            'Missing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'missingArtifactKinds'),
             ),
           ),
         if (_metadataStringList(artifact, 'packageReadinessSignals').isNotEmpty)

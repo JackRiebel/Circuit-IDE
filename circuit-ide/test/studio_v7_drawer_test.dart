@@ -2063,6 +2063,13 @@ void main() {
         'packageLabel': 'business use case package',
         'artifactCount': 3,
         'artifactFiles': ['brief.docx', 'deck.pptx', 'value-chart.svg'],
+        'expectedArtifactCount': 3,
+        'producedArtifactCount': 3,
+        'expectedArtifactKinds': ['Word', 'PowerPoint', 'Chart'],
+        'producedArtifactKinds': ['Word', 'PowerPoint', 'Chart'],
+        'missingArtifactKinds': <String>[],
+        'packageCompletenessStatus': 'Complete',
+        'hasCompletePackage': true,
         'qualityStatus': 'Package ready',
         'qualityScore': 100,
         'packageQualityStatus': 'Package ready',
@@ -2198,12 +2205,19 @@ void main() {
     expect(find.text('business use case package'), findsAtLeastNWidgets(1));
     expect(find.text('Package status'), findsOneWidget);
     expect(find.text('Package ready'), findsAtLeastNWidgets(1));
+    expect(find.text('Completeness'), findsOneWidget);
+    expect(find.text('Complete'), findsOneWidget);
     expect(find.text('Package score'), findsOneWidget);
     expect(find.text('92/100'), findsOneWidget);
+    expect(find.text('Expected'), findsOneWidget);
+    expect(find.text('Produced'), findsOneWidget);
     expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
     expect(find.text('3'), findsAtLeastNWidgets(1));
     expect(find.text('Ready artifacts'), findsOneWidget);
     expect(find.text('3/3'), findsOneWidget);
+    expect(find.text('Expected types'), findsOneWidget);
+    expect(find.text('Produced types'), findsOneWidget);
+    expect(find.textContaining('Word, PowerPoint +1'), findsAtLeastNWidgets(1));
     expect(find.text('Package next'), findsOneWidget);
     expect(
       find.text(
@@ -2214,7 +2228,7 @@ void main() {
     expect(find.text('Review workflow'), findsOneWidget);
     expect(find.textContaining('Review Word report narrative'), findsOneWidget);
     expect(find.text('File types'), findsOneWidget);
-    expect(find.textContaining('Word, PowerPoint +1'), findsOneWidget);
+    expect(find.textContaining('Word, PowerPoint +1'), findsAtLeastNWidgets(1));
     expect(find.text('Package signals'), findsOneWidget);
     expect(
       find.textContaining(

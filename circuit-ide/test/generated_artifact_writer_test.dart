@@ -593,7 +593,22 @@ Source checked 2026-06-30 from Cisco EoX/API.
     ]);
     expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
     expect(package.primary!.metadata['artifactCount'], 3);
+    expect(package.primary!.metadata['expectedArtifactCount'], 3);
+    expect(package.primary!.metadata['producedArtifactCount'], 3);
     expect(package.primary!.metadata['readyArtifactCount'], 3);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Excel',
+      'PDF',
+      'JSON',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Excel',
+      'PDF',
+      'JSON',
+    ]);
+    expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
     expect(
       package.primary!.metadata['packageFileTypes'],
       containsAll(['Excel', 'PDF', 'JSON']),
@@ -612,6 +627,11 @@ Source checked 2026-06-30 from Cisco EoX/API.
     );
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(manifestText, contains('Lifecycle Review Package'));
+    expect(manifestText, contains('Package Contract'));
+    expect(
+      manifestText,
+      contains('| Excel, PDF, JSON | Excel, PDF, JSON | None |'),
+    );
     expect(manifestText, contains('.xlsx'));
     expect(manifestText, contains('.pdf'));
     expect(manifestText, contains('.json'));
@@ -2483,8 +2503,23 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     expect(package.primary!.fileName, endsWith('-package.md'));
     expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
     expect(package.primary!.metadata['artifactCount'], 3);
+    expect(package.primary!.metadata['expectedArtifactCount'], 3);
+    expect(package.primary!.metadata['producedArtifactCount'], 3);
     expect(package.primary!.metadata['readyArtifactCount'], 3);
     expect(package.primary!.metadata['failedArtifactCount'], 0);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Word',
+      'PowerPoint',
+      'Chart',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Word',
+      'PowerPoint',
+      'Chart',
+    ]);
+    expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
     expect(package.primary!.metadata['packageQualityStatus'], isNotNull);
     expect(package.primary!.metadata['packageNextAction'], isNotNull);
     expect(
@@ -2519,6 +2554,14 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(manifestText, contains('Business Use Case Package'));
     expect(manifestText, contains('Package Readiness'));
+    expect(manifestText, contains('Package Contract'));
+    expect(manifestText, contains('| Completeness | Complete |'));
+    expect(manifestText, contains('| Expected deliverables | 3 |'));
+    expect(manifestText, contains('| Produced deliverables | 3 |'));
+    expect(
+      manifestText,
+      contains('| Word, PowerPoint, Chart | Word, PowerPoint, Chart | None |'),
+    );
     expect(manifestText, contains('Package Contents'));
     expect(manifestText, contains('Review Workflow'));
     expect(manifestText, contains('Readiness Signals'));
@@ -2581,7 +2624,20 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     }
     expect(package.primary!.fileName, endsWith('-package.md'));
     expect(package.primary!.metadata['artifactCount'], 2);
+    expect(package.primary!.metadata['expectedArtifactCount'], 2);
+    expect(package.primary!.metadata['producedArtifactCount'], 2);
     expect(package.primary!.metadata['readyArtifactCount'], 2);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Excel',
+      'Chart',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Excel',
+      'Chart',
+    ]);
+    expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
     expect(
       package.primary!.metadata['packageReviewWorkflow'],
       containsAll([
@@ -2608,6 +2664,8 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(manifestText, contains('Solution Sizing Package'));
     expect(manifestText, contains('Package Readiness'));
+    expect(manifestText, contains('Package Contract'));
+    expect(manifestText, contains('| Excel, Chart | Excel, Chart | None |'));
     expect(manifestText, contains('Review Workflow'));
     expect(manifestText, contains('Sizing sheets parse'));
     expect(manifestText, contains('Chart signal metadata persists'));
