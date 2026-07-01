@@ -485,15 +485,62 @@ class GeneratedArtifactWriter {
     }
 
     if (requestedKind == GeneratedArtifactKind.json) {
-      if (evidencePackBuilder.matches(prompt)) {
-        final jsonText = evidencePackBuilder.toJsonString(documentForOutput);
+      final lifecycleEvidence = lifecycleEoxBuilder.matches(prompt);
+      if (evidencePackBuilder.matches(prompt) || lifecycleEvidence) {
+        final evidenceDocument = evidencePackBuilder.build(
+          prompt: evidencePackBuilder.matches(prompt)
+              ? prompt
+              : 'create an evidence pack for lifecycle and EoX recommendations: $prompt',
+          content: content,
+          document: documentForOutput,
+        );
+        final jsonText = evidencePackBuilder.toJsonString(evidenceDocument);
         return _ResolvedArtifact(
           kind: GeneratedArtifactKind.json,
           status: GeneratedArtifactStatus.ready,
           extension: 'json',
           bytes: utf8.encode(jsonText),
-          summary:
-              'Created a structured JSON evidence pack with sources, assumptions, claims, confidence, and follow-up sections.',
+          summary: lifecycleEvidence
+              ? 'Created a structured JSON lifecycle evidence register with sources, assumptions, claims, confidence, and follow-up sections.'
+              : 'Created a structured JSON evidence pack with sources, assumptions, claims, confidence, and follow-up sections.',
+          previewRows: _jsonPreviewRows(evidenceDocument),
+          sheetCount: evidenceDocument.tables.length,
+          metadata: {
+            ...evidenceDocument.metadata,
+            'artifact': lifecycleEvidence
+                ? 'lifecycle_evidence_register'
+                : 'json_evidence_pack',
+            'evidenceRegisterKind': lifecycleEvidence
+                ? 'Lifecycle / EoX evidence'
+                : 'Evidence pack',
+            'sourceCount': evidenceDocument.citations.length,
+            'assumptionCount': evidenceDocument.assumptions.length,
+            'evidenceSectionCount': evidenceDocument.sections.length,
+            'evidenceTableCount': evidenceDocument.tables.length,
+            'hasCheckedDateRegister': evidenceDocument.sections.any(
+              (section) => section.title.toLowerCase().contains('checked'),
+            ),
+            'hasClaimDispositionRegister': true,
+            'qualityStatus': evidenceDocument.citations.isEmpty
+                ? 'Evidence needs sources'
+                : 'Evidence register ready',
+            'qualityScore': evidenceDocument.citations.isEmpty ? 72 : 92,
+            'qualityGates': [
+              'Source inventory captured',
+              'Claim disposition register included',
+              'Checked-date review included',
+            ],
+            if (evidenceDocument.citations.isEmpty)
+              'qualityGaps': [
+                'Attach official source URLs or checked-date evidence.',
+              ],
+            'readinessSignals': [
+              'Evidence JSON parseable',
+              'Claim/source matrix included',
+              if (lifecycleEvidence)
+                'Lifecycle recommendation caveats captured',
+            ],
+          },
         );
       }
       final jsonText = _extractJson(content);
@@ -543,6 +590,33 @@ class GeneratedArtifactWriter {
 
   String _tableToCsv(_TableData table) {
     return table.rows.map((row) => row.map(_csvCell).join(',')).join('\n');
+  }
+
+  List<List<String>> _jsonPreviewRows(ArtifactDocument document) {
+    final rows = <List<String>>[
+      ['Register', 'Count', 'Status'],
+      [
+        'Sections',
+        '${document.sections.length}',
+        document.sections.isEmpty ? 'Needs structure' : 'Ready',
+      ],
+      [
+        'Tables',
+        '${document.tables.length}',
+        document.tables.isEmpty ? 'Needs evidence matrix' : 'Ready',
+      ],
+      [
+        'Sources',
+        '${document.citations.length}',
+        document.citations.isEmpty ? 'Needs sources' : 'Ready',
+      ],
+      [
+        'Assumptions',
+        '${document.assumptions.length}',
+        document.assumptions.isEmpty ? 'None captured' : 'Ready',
+      ],
+    ];
+    return rows;
   }
 
   List<List<String>> _markdownTables(String content) {

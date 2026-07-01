@@ -545,6 +545,103 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('UPOE'));
   });
 
+  test('lifecycle package adds PDF and JSON evidence register', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-lifecycle-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt:
+              'create a Lifecycle EoX package for C9300-48P and AIR-AP2802I with replacement PIDs for Wi-Fi 7 UPOE refresh',
+          content: '''
+# Lifecycle / EoX Review
+
+| Product | Lifecycle Status | End of Sale | LDOS | Risk | Replacement PID | Source |
+| --- | --- | --- | --- | --- | --- | --- |
+| C9300-48P | Active | TBD | TBD | Review | C9300X-48HX | Cisco EoX/API required |
+| AIR-AP2802I | End of Support | 31-Oct-2021 | 31-Oct-2026 | High | CW9176I | Cisco EoX/API required |
+
+Source checked 2026-06-30 from Cisco EoX/API.
+
+## Claims
+- AIR-AP2802I has urgent support risk before wireless refresh planning.
+- EoX replacement PID is a migration clue only and not the final recommendation.
+- Wi-Fi 7 APs require UPOE, multigig, and current portfolio validation.
+
+## Sources
+- Cisco EoX/API — checked 2026-06-30 — official lifecycle source required.
+
+## Assumptions
+- Customer inventory is current.
+- Replacement suitability requires current datasheet validation.
+''',
+          turnId: 'turn-lifecycle-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'lifecycle review package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.pdf,
+      GeneratedArtifactKind.json,
+    ]);
+    expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
+    expect(package.primary!.metadata['artifactCount'], 3);
+    expect(package.primary!.metadata['readyArtifactCount'], 3);
+    expect(
+      package.primary!.metadata['packageFileTypes'],
+      containsAll(['Excel', 'PDF', 'JSON']),
+    );
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Lifecycle report', 'Workbook preview', 'PDF outline']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      containsAll([
+        'Lifecycle sheets parse',
+        'Evidence JSON register parses',
+        'PDF outline preview renders',
+      ]),
+    );
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(manifestText, contains('Lifecycle Review Package'));
+    expect(manifestText, contains('.xlsx'));
+    expect(manifestText, contains('.pdf'));
+    expect(manifestText, contains('.json'));
+
+    final workbook = package.artifacts[1];
+    final pdf = package.artifacts[2];
+    final evidence = package.artifacts[3];
+    expect(workbook.fileName, endsWith('.xlsx'));
+    expect(pdf.fileName, endsWith('.pdf'));
+    expect(evidence.fileName, endsWith('.json'));
+    expect(evidence.summary, contains('lifecycle evidence register'));
+    expect(evidence.previewRows.first, ['Register', 'Count', 'Status']);
+    expect(evidence.metadata['artifact'], 'lifecycle_evidence_register');
+    expect(
+      evidence.metadata['evidenceRegisterKind'],
+      'Lifecycle / EoX evidence',
+    );
+    expect(evidence.metadata['hasCheckedDateRegister'], isTrue);
+    expect(
+      evidence.metadata['readinessSignals'],
+      contains('Lifecycle recommendation caveats captured'),
+    );
+    final jsonText = File(evidence.filePath).readAsStringSync();
+    expect(jsonText, contains('"artifactTemplate": "evidence_pack"'));
+    expect(jsonText, contains('"Claim Register"'));
+    expect(jsonText, contains('"Checked Dates"'));
+    expect(jsonText, contains('migration clue only'));
+    expect(jsonText, contains('Cisco EoX/API'));
+  });
+
   test(
     'DOCX prompt creates a real Word artifact from structured markdown',
     () async {

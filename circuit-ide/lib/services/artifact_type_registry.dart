@@ -179,12 +179,17 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.excel,
       ],
       useCases: ['LDOS', 'EoL', 'support risk'],
-      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.pdf],
+      packageKinds: [
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.pdf,
+        GeneratedArtifactKind.json,
+      ],
       previewSurface: 'Lifecycle report',
       verificationChecks: [
         'Lifecycle sheets parse',
         'EoX caveat metadata persists',
         'Replacement evidence preview renders',
+        'Evidence JSON register parses',
       ],
     ),
     ArtifactTypeDescriptor(
