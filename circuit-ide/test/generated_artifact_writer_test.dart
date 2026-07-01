@@ -546,6 +546,9 @@ Executive summary for a customer handoff.
           'Evidence confidence matrix',
           'Approval gates',
           'Validation checklist',
+          'Customer handoff scorecard',
+          'Decision log',
+          'Decision sign-off',
           'Data tables',
           'Assumptions appendix',
           'Sources appendix',
@@ -568,6 +571,10 @@ Executive summary for a customer handoff.
       expect(artifact.metadata['paragraphCount'], greaterThan(10));
       expect(artifact.metadata['hasTableOfContents'], isTrue);
       expect(artifact.metadata['hasRiskRegister'], isTrue);
+      expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);
+      expect(artifact.metadata['hasDecisionLog'], isTrue);
+      expect(artifact.metadata['hasDecisionSignOffPage'], isTrue);
+      expect(artifact.metadata['decisionSignOffGateCount'], 4);
       expect(artifact.metadata['hasSourcesAppendix'], isTrue);
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
@@ -589,6 +596,11 @@ Executive summary for a customer handoff.
       expect(packageText, contains('Evidence Confidence Matrix'));
       expect(packageText, contains('Approval Gates'));
       expect(packageText, contains('Validation Checklist'));
+      expect(packageText, contains('Customer Handoff Scorecard'));
+      expect(packageText, contains('Decision Log'));
+      expect(packageText, contains('Decision Sign-Off'));
+      expect(packageText, contains('Signature / Date'));
+      expect(packageText, contains('Handoff approval'));
       expect(packageText, contains('<cp:keywords>'));
       expect(packageText, contains('WAN redundancy is required'));
       expect(packageText, contains('PoE budget unknown'));

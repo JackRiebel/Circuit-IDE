@@ -61,6 +61,7 @@ void main() {
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasAssumptionsAppendix, isTrue);
     expect(inspection.hasSourcesAppendix, isTrue);
     expect(inspection.hasCircuitHeader, isTrue);
@@ -106,6 +107,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off page',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -124,6 +126,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -134,6 +137,7 @@ void main() {
     expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
     expect(metadata['handoffScorecardItemCount'], 5);
     expect(metadata['decisionLogCount'], 4);
+    expect(metadata['decisionSignOffGateCount'], 4);
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -163,6 +167,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions',
         'Sources',
@@ -178,6 +183,7 @@ void main() {
     expect(metadata['hasValidationChecklist'], isTrue);
     expect(metadata['hasCustomerHandoffScorecard'], isTrue);
     expect(metadata['hasDecisionLog'], isTrue);
+    expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasRepeatingTableHeaders'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
@@ -219,6 +225,7 @@ void main() {
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasCircuitHeader, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
@@ -262,6 +269,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off page',
       ]),
     );
   });
@@ -305,6 +313,9 @@ void main() {
     expect(packageText, contains('Next-Step Action Plan'));
     expect(packageText, contains('Customer Handoff Scorecard'));
     expect(packageText, contains('Decision Log'));
+    expect(packageText, contains('Decision Sign-Off'));
+    expect(packageText, contains('Signature / Date'));
+    expect(packageText, contains('Handoff approval'));
     expect(packageText, contains('Needs sources'));
     expect(packageText, contains('No cited evidence included'));
     expect(packageText, contains('CircuitCode report package'));

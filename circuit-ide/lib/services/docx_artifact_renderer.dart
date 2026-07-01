@@ -48,15 +48,20 @@ class DocxArtifactRenderer {
         'Decision Log',
         '${_decisionLogRows(document).length}',
       ],
+      [
+        '${document.sections.length + 13}',
+        'Decision Sign-Off',
+        '${_decisionSignOffRows(document).length - 1} gates',
+      ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 13}',
+          '${document.sections.length + 14}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 14}',
+          '${document.sections.length + 15}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -99,6 +104,7 @@ class DocxArtifactRenderer {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off page',
         if (document.tables.isNotEmpty) 'Data tables',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
@@ -125,6 +131,7 @@ class DocxArtifactRenderer {
       'evidenceGapCount': _evidenceGapCount(document),
       'handoffScorecardItemCount': scorecardRows.length,
       'decisionLogCount': _decisionLogRows(document).length - 1,
+      'decisionSignOffGateCount': _decisionSignOffRows(document).length - 1,
       'approvalGateCount': 4,
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
@@ -140,6 +147,7 @@ class DocxArtifactRenderer {
       'hasValidationChecklist': true,
       'hasCustomerHandoffScorecard': true,
       'hasDecisionLog': true,
+      'hasDecisionSignOffPage': true,
       'hasExplicitTableGeometry': true,
       'hasRepeatingTableHeaders': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
@@ -320,7 +328,9 @@ class DocxArtifactRenderer {
       ..write(_paragraph('Customer Handoff Scorecard', style: 'Heading1'))
       ..write(_handoffScorecardTable(document))
       ..write(_paragraph('Decision Log', style: 'Heading1'))
-      ..write(_decisionLogTable(document));
+      ..write(_decisionLogTable(document))
+      ..write(_paragraph('Decision Sign-Off', style: 'Heading1'))
+      ..write(_decisionSignOffTable(document));
     if (document.assumptions.isNotEmpty) {
       body.write(_paragraph('Appendix A: Assumptions', style: 'Heading1'));
       for (final assumption in document.assumptions) {
@@ -377,6 +387,7 @@ class DocxArtifactRenderer {
       'Validation Checklist',
       'Customer Handoff Scorecard',
       'Decision Log',
+      'Decision Sign-Off',
       if (document.assumptions.isNotEmpty) 'Appendix A: Assumptions',
       if (document.citations.isNotEmpty) 'Appendix B: Sources / Evidence',
     ];
@@ -455,6 +466,10 @@ class DocxArtifactRenderer {
       [
         'Decision Log',
         'Decision, owner, evidence, and next-action record for review.',
+      ],
+      [
+        'Decision Sign-Off',
+        'Final approval fields, signature owners, status, and dates.',
       ],
       if (document.assumptions.isNotEmpty)
         [
@@ -898,6 +913,15 @@ class DocxArtifactRenderer {
     );
   }
 
+  String _decisionSignOffTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Decision Sign-Off',
+        rows: _decisionSignOffRows(document),
+      ),
+    );
+  }
+
   List<List<String>> _decisionLogRows(ArtifactDocument document) {
     final recommendation = _firstMatchingBullet(document, [
       'recommend',
@@ -955,6 +979,42 @@ class DocxArtifactRenderer {
         'Implementation owner',
         risk ?? 'No explicit blocking risk detected',
         next ?? 'Assign owner, date, and verification criteria.',
+      ],
+    ];
+  }
+
+  List<List<String>> _decisionSignOffRows(ArtifactDocument document) {
+    return [
+      ['Approval Field', 'Owner', 'Sign-Off Status', 'Signature / Date'],
+      [
+        'Decision owner approval',
+        _decisionOwner(document),
+        _handoffStatus(document),
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Evidence approval',
+        'Evidence reviewer',
+        document.citations.isEmpty
+            ? 'Needs source evidence'
+            : 'Ready for evidence sign-off',
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Risk / assumption approval',
+        'Project owner',
+        document.assumptions.isEmpty
+            ? 'Needs assumption review'
+            : 'Ready for risk sign-off',
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Handoff approval',
+        'Implementation owner',
+        _nextStepRows(document).length <= 1
+            ? 'Needs next-step owner'
+            : 'Ready for handoff approval',
+        'Signature: __________   Date: __________',
       ],
     ];
   }
@@ -1140,6 +1200,7 @@ class DocxArtifactRenderer {
       'Validation checklist',
       'Customer handoff scorecard',
       'Decision log',
+      'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
@@ -1159,6 +1220,7 @@ class DocxArtifactRenderer {
       'Validation checklist',
       'Customer handoff scorecard',
       'Decision log',
+      'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',

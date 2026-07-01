@@ -30,6 +30,7 @@ class DocxArtifactInspection {
   final bool hasValidationChecklist;
   final bool hasCustomerHandoffScorecard;
   final bool hasDecisionLog;
+  final bool hasDecisionSignOff;
   final bool hasAssumptionsAppendix;
   final bool hasSourcesAppendix;
   final bool hasCircuitHeader;
@@ -69,6 +70,7 @@ class DocxArtifactInspection {
     required this.hasValidationChecklist,
     required this.hasCustomerHandoffScorecard,
     required this.hasDecisionLog,
+    required this.hasDecisionSignOff,
     required this.hasAssumptionsAppendix,
     required this.hasSourcesAppendix,
     required this.hasCircuitHeader,
@@ -106,6 +108,7 @@ class DocxArtifactInspection {
       hasValidationChecklist &&
       hasCustomerHandoffScorecard &&
       hasDecisionLog &&
+      hasDecisionSignOff &&
       hasCircuitHeader &&
       hasCircuitFooter &&
       hasEnterpriseStyles &&
@@ -168,6 +171,10 @@ class DocxArtifactInspector {
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasCustomerHandoffScorecard: text.contains('Customer Handoff Scorecard'),
       hasDecisionLog: text.contains('Decision Log'),
+      hasDecisionSignOff:
+          text.contains('Decision Sign-Off') &&
+          text.contains('Signature / Date') &&
+          text.contains('Handoff approval'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),
       hasSourcesAppendix: text.contains('Appendix B: Sources / Evidence'),
       hasCircuitHeader: text.contains('CircuitCode report package'),
