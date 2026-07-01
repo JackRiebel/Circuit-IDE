@@ -128,9 +128,15 @@ void main() {
     expect(
       inspection.hasSheets(const [
         'Comparison Matrix',
+        'Decision Summary',
         'Fit Scoring',
         'Requirements',
+        'Requirement Gates',
+        'Scored Shortlist',
         'Alternatives',
+        'Replacement Cautions',
+        'Validation Checklist',
+        'Sources Needed',
         'Assumptions',
       ]),
       isTrue,
@@ -142,6 +148,27 @@ void main() {
     );
     expect(
       inspection.sheetContains('Fit Scoring', 'Lifecycle confidence'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Decision Summary', 'suggestedMigrationPid'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Requirement Gates', 'Reject stale migration'),
+      isTrue,
+    );
+    expect(inspection.sheetContains('Scored Shortlist', 'C9300-48P'), isTrue);
+    expect(
+      inspection.sheetContains('Replacement Cautions', 'suggestedMigrationPid'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Validation Checklist', 'Capability facts'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Sources Needed', 'Official datasheet'),
       isTrue,
     );
     expect(inspection.sheetContains('Requirements', 'Wi-Fi 7'), isTrue);

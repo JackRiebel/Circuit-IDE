@@ -225,14 +225,22 @@ Here is the data.
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
       final packageText = String.fromCharCodes(bytes);
       expect(packageText, contains('Comparison Matrix'));
+      expect(packageText, contains('Decision Summary'));
       expect(packageText, contains('Fit Scoring'));
       expect(packageText, contains('Requirements'));
+      expect(packageText, contains('Requirement Gates'));
+      expect(packageText, contains('Scored Shortlist'));
       expect(packageText, contains('Alternatives'));
+      expect(packageText, contains('Replacement Cautions'));
+      expect(packageText, contains('Validation Checklist'));
+      expect(packageText, contains('Sources Needed'));
       expect(packageText, contains('Assumptions'));
       expect(packageText, contains('C9300-48P'));
       expect(packageText, contains('Meraki MS355'));
       expect(packageText, contains('Wi-Fi 7'));
       expect(packageText, contains('UPOE'));
+      expect(packageText, contains('suggestedMigrationPid'));
+      expect(packageText, contains('Official datasheet'));
     },
   );
 
