@@ -44,6 +44,7 @@ class DiagramArtifactRenderer {
     final readinessItems = _readinessItems(profile, assumptions);
     final capacityItems = _capacityItems(profile);
     final linkSchedule = _linkSchedule(resolvedGraph, profile);
+    final advisories = _designAdvisories(profile, assumptions);
     final metadata = _metadataFor(
       graph: resolvedGraph,
       tiers: tiers,
@@ -52,6 +53,7 @@ class DiagramArtifactRenderer {
       readinessItems: readinessItems,
       capacityItems: capacityItems,
       linkSchedule: linkSchedule,
+      advisories: advisories,
     );
     final svg = _svgFor(
       resolvedGraph,
@@ -68,6 +70,7 @@ class DiagramArtifactRenderer {
         profile,
         readinessItems,
         capacityItems,
+        advisories,
       ),
       metadata: metadata,
     );
@@ -83,6 +86,7 @@ class DiagramArtifactRenderer {
     capacityItems,
     required List<({String from, String to, String link, String validation})>
     linkSchedule,
+    required List<({String topic, String guidance, bool critical})> advisories,
   }) {
     final readinessSignalLabels = _readinessSignalLabels(readinessItems);
     final validationGapLabels = _validationGapLabels(
@@ -133,12 +137,20 @@ class DiagramArtifactRenderer {
       'validationGapCount': validationGapLabels.length,
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
+      'advisoryCount': advisories.length,
       'designZoneCount': tiers.length,
       'hasCustomerReadyTopology': customerReady,
       'hasDeviceInventory': graph.nodes.isNotEmpty,
       'hasLinkSchedule': linkSchedule.isNotEmpty,
       'hasCapacityChecks': capacityItems.isNotEmpty,
       'hasReadinessScorecard': readinessItems.isNotEmpty,
+      'hasDesignAdvisoryPanel': advisories.isNotEmpty,
+      'hasLifecycleReplacementCaveat': advisories.any(
+        (item) => item.topic == 'Lifecycle',
+      ),
+      'hasWifi7PowerAdvisory': advisories.any(
+        (item) => item.topic == 'Wi-Fi 7 / PoE',
+      ),
     };
   }
 
@@ -148,6 +160,7 @@ class DiagramArtifactRenderer {
     List<({String check, String state, bool ready})> readinessItems,
     List<({String metric, String value, String guidance, bool ready})>
     capacityItems,
+    List<({String topic, String guidance, bool critical})> advisories,
   ) {
     return [
       const ['Signal', 'Value', 'Guidance'],
@@ -165,6 +178,12 @@ class DiagramArtifactRenderer {
       ],
       for (final item in capacityItems.take(4))
         [item.metric, item.value, item.guidance],
+      for (final item in advisories.take(2))
+        [
+          item.topic,
+          item.critical ? 'Critical review' : 'Review',
+          item.guidance,
+        ],
       for (final item in readinessItems.take(2))
         [item.check, item.state, item.ready ? 'Captured' : 'Needs input'],
     ];
@@ -438,11 +457,12 @@ class DiagramArtifactRenderer {
       1,
       (max, nodes) => nodes.length > max ? nodes.length : max,
     );
-    final height = math.max(960, 566 + (maxTierSize * 112));
+    final height = math.max(1040, 646 + (maxTierSize * 112));
     final positions = _tierPositions(tiers, width: width, height: height);
     final readinessItems = _readinessItems(profile, assumptions);
     final capacityItems = _capacityItems(profile);
     final linkSchedule = _linkSchedule(graph, profile);
+    final advisories = _designAdvisories(profile, assumptions);
     final metadata = _metadataFor(
       graph: graph,
       tiers: tiers,
@@ -451,6 +471,7 @@ class DiagramArtifactRenderer {
       readinessItems: readinessItems,
       capacityItems: capacityItems,
       linkSchedule: linkSchedule,
+      advisories: advisories,
     );
 
     final buffer = StringBuffer()
@@ -519,6 +540,7 @@ class DiagramArtifactRenderer {
     }
     buffer.writeln('</g>');
 
+    _drawDesignAdvisories(buffer, advisories, width: width, height: height);
     _drawLinkSchedule(buffer, linkSchedule, width: width, height: height);
     _drawReadinessScorecard(
       buffer,
@@ -570,7 +592,7 @@ class DiagramArtifactRenderer {
       final x = roles.length == 1
           ? width / 2
           : left + (usableWidth * tierIndex / (roles.length - 1));
-      final usableHeight = height - 585;
+      final usableHeight = height - 700;
       for (var i = 0; i < nodes.length; i++) {
         final y = nodes.length == 1
             ? 360.0
@@ -595,7 +617,7 @@ class DiagramArtifactRenderer {
       final x = left + (i * bandWidth);
       buffer
         ..writeln(
-          '<rect class="topology-tier-band" data-tier="${_xml(roles[i].name)}" data-tier-label="${_xml(_tierLabel(roles[i]))}" x="$x" y="206" width="${bandWidth - 12}" height="${height - 542}" rx="18" fill="${i.isEven ? '#151716' : '#181a19'}" stroke="#252928"/>',
+          '<rect class="topology-tier-band" data-tier="${_xml(roles[i].name)}" data-tier-label="${_xml(_tierLabel(roles[i]))}" x="$x" y="206" width="${bandWidth - 12}" height="${height - 640}" rx="18" fill="${i.isEven ? '#151716' : '#181a19'}" stroke="#252928"/>',
         )
         ..writeln(
           '<text x="${x + 18}" y="234" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700" letter-spacing="0">${_xml(_tierLabel(roles[i]))}</text>',
@@ -718,6 +740,106 @@ class DiagramArtifactRenderer {
       return 'Validate uplink speed, L3 boundary, and redundancy pairings.';
     }
     return 'Confirm cabling, ownership, and operational monitoring.';
+  }
+
+  List<({String topic, String guidance, bool critical})> _designAdvisories(
+    _TopologyProfile profile,
+    List<String> assumptions,
+  ) {
+    final advisories = <({String topic, String guidance, bool critical})>[];
+    if (profile.hasWifi7) {
+      advisories.add((
+        topic: 'Wi-Fi 7 / PoE',
+        guidance:
+            'Wi-Fi 7 APs require explicit UPOE, mGig, switch power-supply, and spare-port validation.',
+        critical: true,
+      ));
+    } else if (profile.apCount > 0) {
+      advisories.add((
+        topic: 'Wireless',
+        guidance:
+            'Confirm AP generation, PoE class, placement, and access-port headroom before final design.',
+        critical: false,
+      ));
+    }
+    advisories.add((
+      topic: 'Lifecycle',
+      guidance:
+          'Treat EoX replacement PIDs as migration hints only; validate against current portfolio and requirements.',
+      critical: true,
+    ));
+    if (profile.hasDualWan || profile.hasWarmSpare) {
+      advisories.add((
+        topic: 'Resiliency',
+        guidance:
+            'Document failover ownership, HA behavior, routing preference, and test plan for every redundant path.',
+        critical: true,
+      ));
+    } else {
+      advisories.add((
+        topic: 'Resiliency',
+        guidance:
+            'Capture WAN and device redundancy expectations before customer handoff.',
+        critical: false,
+      ));
+    }
+    final apPortLoadPercent = profile.apPortLoadPercent;
+    if (apPortLoadPercent != null && apPortLoadPercent >= 70) {
+      advisories.add((
+        topic: 'Port headroom',
+        guidance:
+            'AP port load is high; validate IDF-level spare ports and growth assumptions.',
+        critical: true,
+      ));
+    }
+    if (assumptions.isEmpty) {
+      advisories.add((
+        topic: 'Assumptions',
+        guidance:
+            'Add explicit source, sizing, lifecycle, power, and cabling assumptions before external use.',
+        critical: true,
+      ));
+    }
+    return advisories.take(5).toList(growable: false);
+  }
+
+  void _drawDesignAdvisories(
+    StringBuffer buffer,
+    List<({String topic, String guidance, bool critical})> advisories, {
+    required int width,
+    required int height,
+  }) {
+    if (advisories.isEmpty) return;
+    final y = height - 436;
+    final visible = advisories.take(3).toList(growable: false);
+    buffer.writeln(
+      '<g id="topology-advisories" data-advisory-count="${advisories.length}">',
+    );
+    buffer.writeln(
+      '<rect x="36" y="$y" width="${width - 72}" height="50" rx="12" fill="#141615" stroke="#28302e"/>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 18}" fill="#b9c0bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700">Architecture advisories</text>',
+    );
+    var x = 198.0;
+    final cardWidth =
+        (width - x - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var i = 0; i < visible.length; i++) {
+      final item = visible[i];
+      final cardX = x + (i * (cardWidth + 8));
+      buffer
+        ..writeln(
+          '<rect x="${cardX.toStringAsFixed(1)}" y="${y + 9}" width="${cardWidth.toStringAsFixed(1)}" height="32" rx="8" fill="${item.critical ? '#2a241b' : '#182621'}" stroke="${item.critical ? '#59482b' : '#2e5148'}"/>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 22}" fill="${item.critical ? '#e1bb6d' : '#8dd3bd'}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten(item.topic, 28))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 36}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(item.guidance, 48))}</text>',
+        );
+    }
+    buffer.writeln('</g>');
   }
 
   void _drawLinkSchedule(

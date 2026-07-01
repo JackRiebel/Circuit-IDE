@@ -13,6 +13,7 @@ class DiagramArtifactInspection {
   final bool hasDesignZones;
   final bool hasLinkSchedule;
   final bool hasReadinessScorecard;
+  final bool hasDesignAdvisoryPanel;
   final bool hasCapacityPanel;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
@@ -23,6 +24,7 @@ class DiagramArtifactInspection {
   final int designZoneCount;
   final int linkScheduleCount;
   final int readinessItemCount;
+  final int advisoryCount;
   final int capacityItemCount;
   final int siteCount;
   final int mdfCount;
@@ -41,6 +43,8 @@ class DiagramArtifactInspection {
   final bool hasUpoe;
   final bool hasMultigig;
   final bool hasWifi7;
+  final bool hasLifecycleReplacementCaveat;
+  final bool hasWifi7PowerAdvisory;
   final String? title;
   final List<String> tierLabels;
   final List<String> deviceTokens;
@@ -58,6 +62,7 @@ class DiagramArtifactInspection {
     required this.hasDesignZones,
     required this.hasLinkSchedule,
     required this.hasReadinessScorecard,
+    required this.hasDesignAdvisoryPanel,
     required this.hasCapacityPanel,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
@@ -68,6 +73,7 @@ class DiagramArtifactInspection {
     required this.designZoneCount,
     required this.linkScheduleCount,
     required this.readinessItemCount,
+    required this.advisoryCount,
     required this.capacityItemCount,
     required this.siteCount,
     required this.mdfCount,
@@ -86,6 +92,8 @@ class DiagramArtifactInspection {
     required this.hasUpoe,
     required this.hasMultigig,
     required this.hasWifi7,
+    required this.hasLifecycleReplacementCaveat,
+    required this.hasWifi7PowerAdvisory,
     required this.title,
     required this.tierLabels,
     required this.deviceTokens,
@@ -110,6 +118,7 @@ class DiagramArtifactInspection {
       hasDesignZones &&
       hasLinkSchedule &&
       hasReadinessScorecard &&
+      hasDesignAdvisoryPanel &&
       hasCapacityPanel &&
       hasValidationChecklist &&
       hasAssumptionsPanel;
@@ -173,6 +182,10 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'capacityItemCount') ??
         _dataInt(svg, 'data-capacity-item-count') ??
         0;
+    final advisoryCount =
+        _metadataInt(metadata, 'advisoryCount') ??
+        _dataInt(svg, 'data-advisory-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -189,6 +202,7 @@ class DiagramArtifactInspector {
       hasDesignZones: svg.contains('id="topology-design-zones"'),
       hasLinkSchedule: svg.contains('id="topology-link-schedule"'),
       hasReadinessScorecard: svg.contains('id="topology-readiness"'),
+      hasDesignAdvisoryPanel: svg.contains('id="topology-advisories"'),
       hasCapacityPanel: svg.contains('id="topology-capacity"'),
       hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
@@ -201,6 +215,7 @@ class DiagramArtifactInspector {
       designZoneCount: designZoneCount,
       linkScheduleCount: linkScheduleCount,
       readinessItemCount: readinessItemCount,
+      advisoryCount: advisoryCount,
       capacityItemCount: capacityItemCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
@@ -228,6 +243,12 @@ class DiagramArtifactInspector {
       hasUpoe: metadata['hasUpoe'] == true,
       hasMultigig: metadata['hasMultigig'] == true,
       hasWifi7: metadata['hasWifi7'] == true,
+      hasLifecycleReplacementCaveat:
+          metadata['hasLifecycleReplacementCaveat'] == true ||
+          svg.contains('EoX replacement PIDs'),
+      hasWifi7PowerAdvisory:
+          metadata['hasWifi7PowerAdvisory'] == true ||
+          svg.contains('Wi-Fi 7 APs require explicit UPOE'),
       title: title,
       tierLabels: tierLabels,
       deviceTokens: deviceTokens,

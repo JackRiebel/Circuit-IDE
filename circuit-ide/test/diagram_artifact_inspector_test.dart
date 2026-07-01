@@ -35,11 +35,14 @@ graph LR
     expect(inspection.hasDesignZones, isTrue);
     expect(inspection.hasLinkSchedule, isTrue);
     expect(inspection.hasReadinessScorecard, isTrue);
+    expect(inspection.hasDesignAdvisoryPanel, isTrue);
     expect(inspection.hasCapacityPanel, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
     expect(inspection.linkScheduleCount, 2);
     expect(inspection.readinessItemCount, 4);
+    expect(inspection.advisoryCount, greaterThanOrEqualTo(2));
+    expect(inspection.hasLifecycleReplacementCaveat, isTrue);
     expect(inspection.capacityItemCount, 4);
   });
 
@@ -63,12 +66,14 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       );
 
       final inspection = const DiagramArtifactInspector().inspect(result.bytes);
+      final svg = String.fromCharCodes(result.bytes);
 
       expect(inspection.isStructurallyValid, isTrue);
       expect(inspection.hasEnterpriseTopologyStructure, isTrue);
       expect(inspection.hasDesignZones, isTrue);
       expect(inspection.hasLinkSchedule, isTrue);
       expect(inspection.hasReadinessScorecard, isTrue);
+      expect(inspection.hasDesignAdvisoryPanel, isTrue);
       expect(inspection.hasCapacityPanel, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
@@ -108,6 +113,20 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasUpoe, isTrue);
       expect(inspection.hasMultigig, isFalse);
       expect(inspection.hasWifi7, isTrue);
+      expect(inspection.advisoryCount, greaterThanOrEqualTo(3));
+      expect(inspection.hasLifecycleReplacementCaveat, isTrue);
+      expect(inspection.hasWifi7PowerAdvisory, isTrue);
+      expect(result.metadata['hasDesignAdvisoryPanel'], isTrue);
+      expect(result.metadata['hasLifecycleReplacementCaveat'], isTrue);
+      expect(result.metadata['hasWifi7PowerAdvisory'], isTrue);
+      expect(result.metadata['advisoryCount'], greaterThanOrEqualTo(3));
+      expect(
+        result.previewRows.expand((row) => row),
+        contains('Wi-Fi 7 / PoE'),
+      );
+      expect(svg, contains('Architecture advisories'));
+      expect(svg, contains('EoX replacement PIDs'));
+      expect(svg, contains('Wi-Fi 7 APs require explicit UPOE'));
     },
   );
 
@@ -147,8 +166,13 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.hasUpoe, isTrue);
     expect(inspection.hasMultigig, isTrue);
     expect(inspection.hasWifi7, isTrue);
+    expect(inspection.hasDesignAdvisoryPanel, isTrue);
+    expect(inspection.hasLifecycleReplacementCaveat, isTrue);
+    expect(inspection.hasWifi7PowerAdvisory, isTrue);
+    expect(inspection.advisoryCount, greaterThanOrEqualTo(3));
     expect(svg, contains('Inventory'));
     expect(svg, contains('Design zones'));
+    expect(svg, contains('Architecture advisories'));
     expect(svg, contains('Link schedule'));
     expect(svg, contains('Readiness scorecard'));
     expect(svg, contains('Capacity checks'));
