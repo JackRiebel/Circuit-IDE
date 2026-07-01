@@ -479,6 +479,44 @@ Executive summary for a customer handoff.
         contains(contains('Sources / Evidence')),
       );
       expect(artifact.metadata['artifact'], 'word_report');
+      expect(artifact.metadata['reportType'], 'Architecture report');
+      expect(
+        artifact.metadata['handoffStatus'],
+        'Ready for stakeholder review',
+      );
+      expect(
+        artifact.metadata['decisionAsk'],
+        'Review findings, confirm assumptions, and approve the recommended architecture path.',
+      );
+      expect(
+        artifact.metadata['reviewPath'],
+        'Architecture review -> risk validation -> implementation decision',
+      );
+      expect(
+        artifact.metadata['documentParts'],
+        containsAll([
+          'Executive decision brief',
+          'Recommendation summary',
+          'Risk register',
+          'Next-step action plan',
+          'Document map',
+          'Evidence confidence matrix',
+          'Approval gates',
+          'Validation checklist',
+          'Data tables',
+          'Assumptions appendix',
+          'Sources appendix',
+        ]),
+      );
+      expect(artifact.metadata['documentPartCount'], greaterThanOrEqualTo(11));
+      expect(artifact.metadata['tableCoverage'], '1 table packaged');
+      expect(artifact.metadata['evidenceCoverage'], '1 source item captured');
+      expect(
+        artifact.metadata['appendixCoverage'],
+        '1 assumption, 1 source item in appendices',
+      );
+      expect(artifact.metadata['validationGapCount'], 0);
+      expect(artifact.metadata['hasCustomerReadyReport'], isTrue);
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
       expect(artifact.metadata['assumptionCount'], 1);

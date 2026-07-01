@@ -3502,12 +3502,32 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Handoff', _metadataString(artifact, 'handoffStatus')),
         if (_metadataString(artifact, 'decisionOwner').isNotEmpty)
           ('Owner', _metadataString(artifact, 'decisionOwner')),
+        if (_metadataString(artifact, 'decisionAsk').isNotEmpty)
+          ('Ask', _metadataString(artifact, 'decisionAsk')),
+        if (_metadataString(artifact, 'reviewPath').isNotEmpty)
+          ('Review path', _metadataString(artifact, 'reviewPath')),
+        if (_metadataStringList(artifact, 'documentParts').isNotEmpty)
+          (
+            'Parts',
+            _compactSignalList(_metadataStringList(artifact, 'documentParts')),
+          ),
         if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
           (
             'Readiness',
             _compactSignalList(
               _metadataStringList(artifact, 'readinessSignals'),
             ),
+          ),
+        if (_metadataString(artifact, 'tableCoverage').isNotEmpty)
+          ('Tables', _metadataString(artifact, 'tableCoverage')),
+        if (_metadataString(artifact, 'evidenceCoverage').isNotEmpty)
+          ('Evidence', _metadataString(artifact, 'evidenceCoverage')),
+        if (_metadataString(artifact, 'appendixCoverage').isNotEmpty)
+          ('Appendices', _metadataString(artifact, 'appendixCoverage')),
+        if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
+          (
+            'Validation gaps',
+            _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
           ),
         if (_metadataInt(artifact, 'wordCount') > 0)
           ('Words', '${_metadataInt(artifact, 'wordCount')}'),
@@ -3518,7 +3538,12 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
         if (_metadataInt(artifact, 'sectionCount') > 0)
           ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
         if (_metadataInt(artifact, 'tableCount') > 0)
-          ('Tables', '${_metadataInt(artifact, 'tableCount')}'),
+          (
+            _metadataString(artifact, 'tableCoverage').isEmpty
+                ? 'Tables'
+                : 'Table count',
+            '${_metadataInt(artifact, 'tableCount')}',
+          ),
         if (_metadataInt(artifact, 'assumptionCount') > 0)
           ('Assumptions', '${_metadataInt(artifact, 'assumptionCount')}'),
         if (_metadataInt(artifact, 'citationCount') > 0)
@@ -3529,6 +3554,8 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Approval gates', '${_metadataInt(artifact, 'approvalGateCount')}'),
         if (_metadataBool(artifact, 'hasCustomerReadyPackage'))
           ('Package', 'Customer-ready report flow'),
+        if (_metadataBool(artifact, 'hasCustomerReadyReport'))
+          ('Handoff package', 'Stakeholder-ready Word report'),
       ],
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),

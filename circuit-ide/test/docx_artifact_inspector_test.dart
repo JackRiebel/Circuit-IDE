@@ -73,6 +73,39 @@ void main() {
     );
     expect(metadata['handoffStatus'], 'Ready for stakeholder review');
     expect(metadata['decisionOwner'], 'Architecture owner / customer sponsor');
+    expect(
+      metadata['decisionAsk'],
+      'Review findings, confirm assumptions, and approve the recommended architecture path.',
+    );
+    expect(
+      metadata['reviewPath'],
+      'Architecture review -> risk validation -> implementation decision',
+    );
+    expect(
+      metadata['documentParts'],
+      containsAll([
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Document map',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
+    expect(metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(metadata['tableCoverage'], '1 table packaged');
+    expect(metadata['evidenceCoverage'], '1 source item captured');
+    expect(
+      metadata['appendixCoverage'],
+      '1 assumption, 1 source item in appendices',
+    );
+    expect(metadata['validationGaps'], isEmpty);
+    expect(metadata['validationGapCount'], 0);
     expect(metadata['sectionCount'], 2);
     expect(metadata['reportSectionCount'], greaterThanOrEqualTo(12));
     expect(metadata['tableCount'], 1);
@@ -107,6 +140,7 @@ void main() {
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
+    expect(metadata['hasCustomerReadyReport'], isTrue);
   });
 
   test('DOCX inspector verifies report package without appendices', () {
@@ -154,6 +188,13 @@ void main() {
     expect(metadata['evidenceGapCount'], 2);
     expect(metadata['readinessSignals'], contains('Evidence gaps'));
     expect(metadata['hasCustomerReadyPackage'], isFalse);
+    expect(metadata['hasCustomerReadyReport'], isFalse);
+    expect(
+      metadata['validationGaps'],
+      containsAll(['Assumptions need confirmation', 'Sources need validation']),
+    );
+    expect(metadata['validationGapCount'], 2);
+    expect(metadata['appendixCoverage'], 'No appendices attached');
   });
 
   test('DOCX report records evidence gaps and next-step actions', () {

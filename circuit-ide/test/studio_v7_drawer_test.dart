@@ -1261,6 +1261,23 @@ void main() {
             'reportPurpose': 'Review findings, risks, and recommendations',
             'handoffStatus': 'Ready for stakeholder review',
             'decisionOwner': 'Architecture owner / customer sponsor',
+            'decisionAsk':
+                'Review findings, confirm assumptions, and approve the recommended architecture path.',
+            'reviewPath':
+                'Architecture review -> risk validation -> implementation decision',
+            'documentParts': [
+              'Executive decision brief',
+              'Recommendation summary',
+              'Risk register',
+              'Next-step action plan',
+              'Document map',
+              'Evidence confidence matrix',
+              'Approval gates',
+              'Validation checklist',
+              'Data tables',
+              'Assumptions appendix',
+              'Sources appendix',
+            ],
             'readinessSignals': [
               'Decision brief',
               'Recommendation summary',
@@ -1279,7 +1296,13 @@ void main() {
             'citationCount': 6,
             'evidenceGapCount': 0,
             'approvalGateCount': 4,
+            'tableCoverage': '3 tables packaged',
+            'evidenceCoverage': '6 source items captured',
+            'appendixCoverage': '2 assumptions, 6 source items in appendices',
+            'validationGaps': <String>[],
+            'validationGapCount': 0,
             'hasCustomerReadyPackage': true,
+            'hasCustomerReadyReport': true,
           },
           createdAt: DateTime(2026, 6, 30, 9, 16),
         ).toSourceArtifact(),
@@ -1398,14 +1421,46 @@ void main() {
     expect(find.text('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
     expect(find.text('Architecture owner / customer sponsor'), findsOneWidget);
+    expect(find.text('Ask'), findsOneWidget);
+    expect(
+      find.text(
+        'Review findings, confirm assumptions, and approve the recommended architecture path.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Review path'), findsOneWidget);
+    expect(
+      find.text(
+        'Architecture review -> risk validation -> implementation decision',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Parts'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Executive decision brief, Recommendation summary +9',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Readiness'), findsAtLeastNWidgets(1));
     expect(
       find.text('Decision brief, Recommendation summary +6'),
       findsOneWidget,
     );
+    expect(find.text('Tables'), findsAtLeastNWidgets(1));
+    expect(find.text('3 tables packaged'), findsOneWidget);
+    expect(find.text('Evidence'), findsOneWidget);
+    expect(find.text('6 source items captured'), findsOneWidget);
+    expect(find.text('Appendices'), findsOneWidget);
+    expect(
+      find.text('2 assumptions, 6 source items in appendices'),
+      findsOneWidget,
+    );
     expect(find.text('Approval gates'), findsOneWidget);
     expect(find.text('Package'), findsOneWidget);
     expect(find.text('Customer-ready report flow'), findsOneWidget);
+    expect(find.text('Handoff package'), findsOneWidget);
+    expect(find.text('Stakeholder-ready Word report'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer shows topology readiness metadata', (
