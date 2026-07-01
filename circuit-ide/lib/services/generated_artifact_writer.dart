@@ -297,7 +297,7 @@ class GeneratedArtifactWriter {
           extension: 'xlsx',
           bytes: workbook,
           summary: lifecycleEox
-              ? 'Created a Lifecycle / EoX workbook with lifecycle status, migration hints, replacement validation, risks, assumptions, and source sheets.'
+              ? 'Created a Lifecycle / EoX workbook with lifecycle status, official date evidence, migration hints, replacement suitability, risks, assumptions, and source sheets.'
               : productComparison
               ? 'Created a product comparison matrix with fit scoring, requirements, alternatives, assumptions, and source sheets.'
               : sizingWorkbook

@@ -100,6 +100,37 @@ class LifecycleEoxWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Official Date Evidence',
+        rows: [
+          const [
+            'Product / PID',
+            'Lifecycle source status',
+            'Checked date',
+            'Missing evidence',
+            'Customer-ready action',
+          ],
+          ..._officialDateEvidenceRows(lifecycleRecords, '$prompt\n$content'),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Replacement Suitability',
+        rows: [
+          const [
+            'Current product',
+            'suggestedMigrationPid',
+            'Detected requirement signal',
+            'Suitability status',
+            'Recommendation caveat',
+            'Required next validation',
+          ],
+          ..._replacementSuitabilityRows(
+            document: document,
+            content: '$prompt\n$content',
+            records: lifecycleRecords,
+          ),
+        ],
+      ),
+      WorkbookTable(
         name: 'WiFi7 UPOE Readiness',
         rows: [
           const [
@@ -425,6 +456,80 @@ class LifecycleEoxWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _officialDateEvidenceRows(
+    List<_LifecycleRecord> records,
+    String content,
+  ) {
+    final checkedDate = _checkedDate(content) ?? 'Missing checked date';
+    final targetRecords = records.isEmpty
+        ? const [
+            _LifecycleRecord(
+              product: 'TBD',
+              status: 'Needs lookup',
+              endOfSale: 'TBD',
+              ldos: 'TBD',
+              risk: 'Unknown',
+              source: 'Use Cisco EoX/API or official Cisco source.',
+            ),
+          ]
+        : records.take(48);
+    return [
+      for (final record in targetRecords)
+        [
+          record.product,
+          record.sourceAuthority,
+          checkedDate,
+          record.missingEvidence(checkedDate),
+          record.customerReadyAction(checkedDate),
+        ],
+    ];
+  }
+
+  List<List<String>> _replacementSuitabilityRows({
+    required ArtifactDocument document,
+    required String content,
+    required List<_LifecycleRecord> records,
+  }) {
+    final migrationRows = _migrationHintRows(document, content);
+    final recordByProduct = {
+      for (final record in records) record.product.toLowerCase(): record,
+    };
+    final requirementSignal = _replacementRequirementSignal(content);
+    if (migrationRows.isEmpty) {
+      return const [
+        [
+          'TBD',
+          'TBD',
+          'Current requirements not structured yet',
+          'Needs candidate shortlist',
+          'Do not recommend a migration target until current portfolio facts prove fit.',
+          'Add current portfolio candidates, lifecycle dates, and requirement gates.',
+        ],
+      ];
+    }
+    return migrationRows
+        .take(48)
+        .map((row) {
+          final product = row.isNotEmpty ? row[0] : 'TBD';
+          final hint = row.length > 1 ? row[1] : 'TBD';
+          final record = recordByProduct[product.toLowerCase()];
+          final lifecycleRisk = record?.risk ?? 'Review';
+          return [
+            product,
+            hint,
+            requirementSignal,
+            hint == 'TBD'
+                ? 'Needs current candidate'
+                : 'Migration hint only; suitability unproven',
+            hint == 'TBD'
+                ? 'Do not recommend until a current model is sourced and compared.'
+                : 'Do not recommend $hint unless sourced facts prove current portfolio, Wi-Fi 7/UPOE, mGig, uplink, licensing, and lifecycle fit.',
+            'Compare against newest current model families; document rejected alternatives and lifecycle runway. Current risk: $lifecycleRisk.',
+          ];
+        })
+        .toList(growable: false);
+  }
+
   List<List<String>> _wifi7ReadinessRows(String content) {
     final wifi7Detected = RegExp(
       r'\b(wi[- ]?fi\s*7|wifi\s*7)\b',
@@ -624,6 +729,44 @@ class LifecycleEoxWorkbookBuilder {
     if (singleLine.length <= maxLength) return singleLine;
     return '${singleLine.substring(0, maxLength - 1).trim()}...';
   }
+
+  String? _checkedDate(String content) {
+    final labeled = RegExp(
+      r'\b(?:checked|checked date|as of|verified)\D{0,24}([0-9]{1,2}[-/ ][A-Za-z]{3,9}[-/ ][0-9]{2,4}|[A-Za-z]{3,9}\s+[0-9]{1,2},?\s+[0-9]{4}|[0-9]{4}-[0-9]{2}-[0-9]{2})',
+      caseSensitive: false,
+    ).firstMatch(content);
+    if (labeled != null) return labeled.group(1);
+    return null;
+  }
+
+  String _replacementRequirementSignal(String content) {
+    final signals = <String>[];
+    if (RegExp(
+      r'\b(wi[- ]?fi\s*7|wifi\s*7)\b',
+      caseSensitive: false,
+    ).hasMatch(content)) {
+      signals.add('Wi-Fi 7');
+    }
+    if (RegExp(
+      r'\b(upoe\+?|802\.3bt|60w|90w)\b',
+      caseSensitive: false,
+    ).hasMatch(content)) {
+      signals.add('UPOE / 802.3bt');
+    }
+    if (RegExp(
+      r'\b(multigig|mgig|2\.5g|5g|10g|10gig)\b',
+      caseSensitive: false,
+    ).hasMatch(content)) {
+      signals.add('mGig / high-speed access');
+    }
+    if (RegExp(
+      r'\b(current portfolio|newer model|replacement|migration)\b',
+      caseSensitive: false,
+    ).hasMatch(content)) {
+      signals.add('current portfolio comparison');
+    }
+    return signals.isEmpty ? 'Requirements need discovery' : signals.join(', ');
+  }
 }
 
 class _LifecycleRecord {
@@ -632,6 +775,7 @@ class _LifecycleRecord {
   final String endOfSale;
   final String ldos;
   final String risk;
+  final String source;
 
   const _LifecycleRecord({
     required this.product,
@@ -639,6 +783,7 @@ class _LifecycleRecord {
     required this.endOfSale,
     required this.ldos,
     required this.risk,
+    required this.source,
   });
 
   factory _LifecycleRecord.fromRow(List<String> row) {
@@ -654,6 +799,7 @@ class _LifecycleRecord {
       endOfSale: cell(2, 'TBD'),
       ldos: cell(3, 'TBD'),
       risk: cell(4, 'Review'),
+      source: cell(5, 'Use Cisco EoX/API or official Cisco source.'),
     );
   }
 
@@ -683,5 +829,38 @@ class _LifecycleRecord {
       return 'Confirm checked date and support runway; no final replacement without requirement fit.';
     }
     return 'Validate official lifecycle data and replacement suitability.';
+  }
+
+  String get sourceAuthority {
+    final lower = source.toLowerCase();
+    if (lower.contains('cisco') &&
+        (lower.contains('eox') ||
+            lower.contains('api') ||
+            lower.contains('official'))) {
+      return 'Cisco authoritative source named; verify URL/API record.';
+    }
+    if (lower.contains('cisco')) {
+      return 'Cisco source named; confirm it is official lifecycle evidence.';
+    }
+    return 'Authoritative Cisco EoX/API source required.';
+  }
+
+  String missingEvidence(String checkedDate) {
+    final missing = <String>[];
+    if (endOfSale == 'TBD') missing.add('End of Sale');
+    if (ldos == 'TBD') missing.add('LDOS');
+    if (!source.toLowerCase().contains('cisco')) {
+      missing.add('official Cisco source');
+    }
+    if (checkedDate == 'Missing checked date') missing.add('checked date');
+    return missing.isEmpty ? 'None detected' : missing.join(', ');
+  }
+
+  String customerReadyAction(String checkedDate) {
+    final hasCheckedDate = checkedDate != 'Missing checked date';
+    if (missingEvidence(checkedDate) == 'None detected' && hasCheckedDate) {
+      return 'Lifecycle dates are reviewable; still validate replacement suitability separately.';
+    }
+    return 'Add Cisco EoX/API record, checked date, and source URL before customer handoff.';
   }
 }

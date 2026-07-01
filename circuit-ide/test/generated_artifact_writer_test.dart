@@ -267,6 +267,8 @@ Here is the data.
 | C9300-48P | Active | TBD | TBD | Review | C9300X-48HX | Cisco EoX/API required |
 | AIR-AP2802I | End of Support | 31-Oct-2021 | 31-Oct-2026 | High | CW9176I | Cisco EoX/API required |
 
+Source checked 2026-06-30 from Cisco EoX/API.
+
 ## Risks
 - AIR-AP2802I replacement must validate Wi-Fi 7 power, multigig, and UPOE switch budgets.
 - EoX replacement PID is a migration clue only.
@@ -302,6 +304,8 @@ Here is the data.
     expect(packageText, contains('Replacement Evaluation'));
     expect(packageText, contains('Decision Gates'));
     expect(packageText, contains('Source Quality'));
+    expect(packageText, contains('Official Date Evidence'));
+    expect(packageText, contains('Replacement Suitability'));
     expect(packageText, contains('WiFi7 UPOE Readiness'));
     expect(packageText, contains('Risk Register'));
     expect(packageText, contains('Assumptions'));
@@ -311,6 +315,13 @@ Here is the data.
     expect(packageText, contains('migration clue only'));
     expect(packageText, contains('suggestedMigrationPid'));
     expect(packageText, contains('checked date'));
+    expect(packageText, contains('2026-06-30'));
+    expect(packageText, contains('Migration hint only'));
+    expect(
+      packageText,
+      contains('Do not recommend CW9176I unless sourced facts prove'),
+    );
+    expect(packageText, contains('current portfolio comparison'));
     expect(packageText, contains('Wi-Fi 7'));
     expect(packageText, contains('UPOE'));
   });
