@@ -145,6 +145,40 @@ void main() {
         'Check sources and dates before sharing externally.',
       ]),
     );
+    expect(metadata['deckVisualVerificationChecklistCount'], 6);
+    expect(
+      metadata['deckVisualVerificationChecklist'],
+      containsAll([
+        'Open the deck at 16:9 and verify title, agenda, decision, roadmap, assumptions, sources, and appendix slides are readable.',
+        'Confirm visible slide copy is audience-facing; implementation detail belongs in speaker notes or appendix slides.',
+        'Review table slides for readable row count, clipped values, and column alignment.',
+        'Verify the closing decision ask is visible without opening speaker notes.',
+      ]),
+    );
+    expect(metadata['deckEvidencePolicyCount'], 4);
+    expect(
+      metadata['deckEvidencePolicy'],
+      containsAll([
+        'Slides are presentation guidance, not source evidence by themselves.',
+        'Customer handoff requires source data, checked dates, assumptions, and owner approval.',
+        'Use the cited source list as the evidence register for external review.',
+      ]),
+    );
+    expect(metadata['deckPublishingMetadataCount'], 6);
+    expect(
+      metadata['deckPublishingMetadata'],
+      containsAll([
+        'Delivery readiness: Customer handoff ready',
+        'Delivery score: 100/100',
+        'Evidence confidence: High - sources and assumptions captured',
+        'Handoff status: Ready for stakeholder review',
+        'Publishing gate: ready for reviewer approval',
+        'External sharing: source list must travel with the deck',
+      ]),
+    );
+    expect(metadata['hasDeckVisualVerificationChecklist'], isTrue);
+    expect(metadata['hasDeckEvidencePolicy'], isTrue);
+    expect(metadata['hasDeckPublishingMetadata'], isTrue);
     expect(metadata['deckHandoffActionCount'], 4);
     expect(
       metadata['deckHandoffActions'],

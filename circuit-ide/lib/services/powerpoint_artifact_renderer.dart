@@ -68,6 +68,18 @@ class PowerPointArtifactRenderer {
       slideTypeCounts,
       validationGaps,
     );
+    final visualVerificationChecklist = _visualVerificationChecklistFor(
+      document,
+      slideTypeCounts,
+    );
+    final evidencePolicy = _deckEvidencePolicyFor(document);
+    final publishingMetadata = _deckPublishingMetadataFor(
+      document,
+      deliveryReadinessScore: deliveryReadinessScore,
+      deliveryReadinessLevel: deliveryReadinessLevel,
+      validationGaps: validationGaps,
+      evidenceConfidence: evidenceConfidence,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -127,6 +139,13 @@ class PowerPointArtifactRenderer {
       'evidenceConfidence': evidenceConfidence,
       'deckReviewChecklist': reviewChecklist,
       'deckReviewChecklistCount': reviewChecklist.length,
+      'deckVisualVerificationChecklist': visualVerificationChecklist,
+      'deckVisualVerificationChecklistCount':
+          visualVerificationChecklist.length,
+      'deckEvidencePolicy': evidencePolicy,
+      'deckEvidencePolicyCount': evidencePolicy.length,
+      'deckPublishingMetadata': publishingMetadata,
+      'deckPublishingMetadataCount': publishingMetadata.length,
       'deckHandoffActions': handoffActions,
       'deckHandoffActionCount': handoffActions.length,
       'presentationRiskFlags': _presentationRiskFlagsFor(
@@ -206,6 +225,11 @@ class PowerPointArtifactRenderer {
         _DeckSlideKind.appendix.label,
       ),
       'hasSpeakerNotes': true,
+      'hasDeckVisualVerificationChecklist':
+          visualVerificationChecklist.isNotEmpty,
+      'hasDeckEvidencePolicy': evidencePolicy.isNotEmpty,
+      'hasDeckPublishingMetadata': publishingMetadata.isNotEmpty,
+      'hasDeckPublishingGate': publishingMetadata.isNotEmpty,
       'speakerNoteCount': slides.length,
       'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
       'hasCustomerReadyDeck':
@@ -1185,6 +1209,70 @@ class PowerPointArtifactRenderer {
         'Keep cited sources with the handoff package.'
       else
         'Add cited evidence before external handoff.',
+    ];
+  }
+
+  List<String> _visualVerificationChecklistFor(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+  ) {
+    return [
+      'Open the deck at 16:9 and verify title, agenda, decision, roadmap, assumptions, sources, and appendix slides are readable.',
+      'Confirm visible slide copy is audience-facing; implementation detail belongs in speaker notes or appendix slides.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
+        'Review table slides for readable row count, clipped values, and column alignment.'
+      else
+        'Confirm no table slide is needed, or attach the supporting data artifact.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
+        'Check recommendation cards fit without wrapping into neighboring content.'
+      else
+        'Add a recommendation slide before customer handoff.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
+        'Verify the closing decision ask is visible without opening speaker notes.'
+      else
+        'Add a closing decision ask slide before external sharing.',
+      if (document.citations.isNotEmpty)
+        'Verify source and checked-date references are legible on the assumptions/sources slide.'
+      else
+        'Mark the deck as draft until source evidence is attached.',
+    ];
+  }
+
+  List<String> _deckEvidencePolicyFor(ArtifactDocument document) {
+    return [
+      'Slides are presentation guidance, not source evidence by themselves.',
+      'Customer handoff requires source data, checked dates, assumptions, and owner approval.',
+      if (document.citations.isNotEmpty)
+        'Use the cited source list as the evidence register for external review.'
+      else
+        'Do not represent unsupported recommendations as validated facts.',
+      if (document.assumptions.isNotEmpty)
+        'Review assumptions with the accountable owner before sharing externally.'
+      else
+        'Capture assumptions before treating this deck as decision-ready.',
+    ];
+  }
+
+  List<String> _deckPublishingMetadataFor(
+    ArtifactDocument document, {
+    required int deliveryReadinessScore,
+    required String deliveryReadinessLevel,
+    required List<String> validationGaps,
+    required String evidenceConfidence,
+  }) {
+    return [
+      'Delivery readiness: $deliveryReadinessLevel',
+      'Delivery score: $deliveryReadinessScore/100',
+      'Evidence confidence: $evidenceConfidence',
+      'Handoff status: ${_handoffStatusFor(validationGaps)}',
+      if (validationGaps.isEmpty)
+        'Publishing gate: ready for reviewer approval'
+      else
+        'Publishing gate: resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'}',
+      if (document.citations.isEmpty)
+        'External sharing: blocked until sources are attached'
+      else
+        'External sharing: source list must travel with the deck',
     ];
   }
 

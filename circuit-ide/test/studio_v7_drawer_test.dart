@@ -1392,6 +1392,26 @@ void main() {
               'Review readout framing for account-specific phrasing.',
               'Validate decision matrix signals, risk posture, and next actions.',
             ],
+            'deckVisualVerificationChecklist': [
+              'Open the deck at 16:9 and verify title, agenda, decision, roadmap, assumptions, sources, and appendix slides are readable.',
+              'Confirm visible slide copy is audience-facing; implementation detail belongs in speaker notes or appendix slides.',
+              'Review table slides for readable row count, clipped values, and column alignment.',
+            ],
+            'deckVisualVerificationChecklistCount': 3,
+            'deckEvidencePolicy': [
+              'Slides are presentation guidance, not source evidence by themselves.',
+              'Customer handoff requires source data, checked dates, assumptions, and owner approval.',
+              'Use the cited source list as the evidence register for external review.',
+            ],
+            'deckEvidencePolicyCount': 3,
+            'deckPublishingMetadata': [
+              'Delivery readiness: Customer handoff ready',
+              'Delivery score: 94/100',
+              'Evidence confidence: High - sources and assumptions captured',
+              'Handoff status: Ready for stakeholder review',
+              'Publishing gate: ready for reviewer approval',
+            ],
+            'deckPublishingMetadataCount': 5,
             'deckHandoffActions': [
               'Send deck to internal reviewer with the source artifact attached.',
               'Walk through the decision ask: Review the recommendation, confirm assumptions, and approve the next implementation step.',
@@ -1633,6 +1653,23 @@ void main() {
       find.textContaining(
         'Confirm deck title, audience, and decision ask match the customer conversation.',
       ),
+      findsOneWidget,
+    );
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.textContaining('Open the deck at 16:9 and verify title'),
+      findsOneWidget,
+    );
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Slides are presentation guidance, not source evidence by themselves.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(
+      find.textContaining('Delivery readiness: Customer handoff ready'),
       findsOneWidget,
     );
     expect(find.text('Handoff actions'), findsOneWidget);

@@ -4291,6 +4291,30 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
               _metadataStringList(artifact, 'deckReviewChecklist'),
             ),
           ),
+        if (_metadataStringList(
+          artifact,
+          'deckVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'deckVisualVerificationChecklist'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'deckEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'deckEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'deckPublishingMetadata').isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'deckPublishingMetadata'),
+            ),
+          ),
         if (_metadataStringList(artifact, 'deckHandoffActions').isNotEmpty)
           (
             'Handoff actions',
