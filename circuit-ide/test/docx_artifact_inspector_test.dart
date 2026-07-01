@@ -62,6 +62,21 @@ void main() {
     expect(inspection.hasSourcesAppendix, isTrue);
     expect(inspection.hasCircuitHeader, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
+
+    final metadata = const DocxArtifactRenderer().metadataFor(document);
+    expect(metadata['artifact'], 'word_report');
+    expect(metadata['sectionCount'], 2);
+    expect(metadata['tableCount'], 1);
+    expect(metadata['assumptionCount'], 1);
+    expect(metadata['citationCount'], 1);
+    expect(metadata['wordCount'], inspection.declaredWordCount);
+    expect(metadata['paragraphCount'], inspection.declaredParagraphCount);
+    expect(metadata['hasExecutiveDecisionBrief'], isTrue);
+    expect(metadata['hasTableOfContents'], isTrue);
+    expect(metadata['hasRiskRegister'], isTrue);
+    expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasAssumptionsAppendix'], isTrue);
+    expect(metadata['hasSourcesAppendix'], isTrue);
   });
 
   test('DOCX inspector verifies report package without appendices', () {

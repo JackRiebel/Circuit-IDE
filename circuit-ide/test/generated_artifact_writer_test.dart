@@ -436,6 +436,16 @@ Executive summary for a customer handoff.
         artifact.previewRows.map((row) => row.join(' / ')),
         contains(contains('Sources / Evidence')),
       );
+      expect(artifact.metadata['artifact'], 'word_report');
+      expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
+      expect(artifact.metadata['tableCount'], 1);
+      expect(artifact.metadata['assumptionCount'], 1);
+      expect(artifact.metadata['citationCount'], 1);
+      expect(artifact.metadata['wordCount'], greaterThan(20));
+      expect(artifact.metadata['paragraphCount'], greaterThan(10));
+      expect(artifact.metadata['hasTableOfContents'], isTrue);
+      expect(artifact.metadata['hasRiskRegister'], isTrue);
+      expect(artifact.metadata['hasSourcesAppendix'], isTrue);
       expect(File(artifact.filePath).existsSync(), isTrue);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -1007,6 +1017,16 @@ Executive-ready summary for a final customer handoff.
       artifact.previewRows.map((row) => row.join(' / ')),
       contains(contains('Recommendations')),
     );
+    expect(artifact.metadata['artifact'], 'pdf_report');
+    expect(artifact.metadata['pageCount'], artifact.sheetCount);
+    expect(artifact.metadata['bookmarkCount'], greaterThanOrEqualTo(3));
+    expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
+    expect(artifact.metadata['tableCount'], 1);
+    expect(artifact.metadata['assumptionCount'], 1);
+    expect(artifact.metadata['citationCount'], 1);
+    expect(artifact.metadata['hasOutline'], isTrue);
+    expect(artifact.metadata['hasValidationChecklist'], isTrue);
+    expect(artifact.metadata['hasSourcesAppendix'], isTrue);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));

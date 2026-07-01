@@ -82,6 +82,21 @@ void main() {
     expect(text, contains('Validation Checklist'));
     expect(text, contains('Sizing Inputs'));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
+
+    final metadata = const PdfArtifactRenderer().metadataFor(document);
+    expect(metadata['artifact'], 'pdf_report');
+    expect(metadata['pageCount'], inspection.pageCount);
+    expect(metadata['bookmarkCount'], greaterThanOrEqualTo(3));
+    expect(metadata['sectionCount'], 2);
+    expect(metadata['tableCount'], 1);
+    expect(metadata['assumptionCount'], 1);
+    expect(metadata['citationCount'], 1);
+    expect(metadata['hasOutline'], isTrue);
+    expect(metadata['hasExecutiveDecisionBrief'], isTrue);
+    expect(metadata['hasRiskRegister'], isTrue);
+    expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasAssumptionsAppendix'], isTrue);
+    expect(metadata['hasSourcesAppendix'], isTrue);
   });
 
   test('PDF inspector catches multi-page customer handoff reports', () {

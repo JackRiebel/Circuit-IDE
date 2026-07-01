@@ -957,6 +957,14 @@ void main() {
           ['2', 'Recommendations', '4'],
         ],
         sheetCount: 2,
+        metadata: const {
+          'pageCount': 2,
+          'bookmarkCount': 8,
+          'sectionCount': 4,
+          'tableCount': 1,
+          'assumptionCount': 2,
+          'citationCount': 3,
+        },
         threadId: null,
         requestId: 'request-pdf',
         createdAt: DateTime(2026, 6, 30, 9, 12),
@@ -977,7 +985,10 @@ void main() {
       await tester.pump();
 
       expect(find.text('campus-refresh.pdf'), findsOneWidget);
-      expect(find.textContaining('PDF • 2 pages'), findsOneWidget);
+      expect(
+        find.textContaining('PDF • 8 bookmarks • 2 pages'),
+        findsOneWidget,
+      );
       expect(find.text('PDF outline'), findsOneWidget);
       expect(find.text('2 pages'), findsOneWidget);
       expect(find.text('Section'), findsOneWidget);
@@ -999,6 +1010,12 @@ void main() {
       expect(find.text('Status'), findsOneWidget);
       expect(find.text('Format'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
+      expect(find.text('Bookmarks'), findsOneWidget);
+      expect(find.text('Sections'), findsOneWidget);
+      expect(find.text('Tables'), findsOneWidget);
+      expect(find.text('Assumptions'), findsOneWidget);
+      expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('8'), findsOneWidget);
       expect(find.text('Request'), findsOneWidget);
       expect(find.text('Folder'), findsOneWidget);
       expect(find.text('Path'), findsOneWidget);
@@ -1053,6 +1070,14 @@ void main() {
             ['2', 'Risk Register', '4'],
           ],
           sheetCount: 4,
+          metadata: const {
+            'wordCount': 860,
+            'reportSectionCount': 12,
+            'sectionCount': 4,
+            'tableCount': 3,
+            'assumptionCount': 2,
+            'citationCount': 6,
+          },
           createdAt: DateTime(2026, 6, 30, 9, 16),
         ).toSourceArtifact(),
       );
@@ -1076,6 +1101,10 @@ void main() {
     );
     expect(
       find.text('Document artifact for reports, briefs, and handoffs'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Word • 860 words • 4 sections'),
       findsOneWidget,
     );
     expect(find.text('Slide outline'), findsOneWidget);

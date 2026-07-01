@@ -60,6 +60,33 @@ class PdfArtifactRenderer {
     ];
   }
 
+  Map<String, Object?> metadataFor(ArtifactDocument document) {
+    final pages = _paginate(_itemsFor(document));
+    final outlineEntries = _outlineEntries(document);
+    return {
+      'generator': 'CircuitCode',
+      'artifact': 'pdf_report',
+      'pageCount': pages.length,
+      'bookmarkCount': outlineEntries.length,
+      'sectionCount': document.sections.length,
+      'tableCount': document.tables.length,
+      'assumptionCount': document.assumptions.length,
+      'citationCount': document.citations.length,
+      'riskItemCount': _riskRegisterRows(document).length,
+      'nextStepCount': _nextStepRows(document).length,
+      'evidenceItemCount': _evidenceConfidenceRows(document).length,
+      'approvalGateCount': _approvalGateRows(document).length,
+      'hasOutline': outlineEntries.isNotEmpty,
+      'hasExecutiveDecisionBrief': true,
+      'hasRecommendationSummary': true,
+      'hasRiskRegister': true,
+      'hasNextStepActionPlan': true,
+      'hasValidationChecklist': true,
+      'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
+      'hasSourcesAppendix': document.citations.isNotEmpty,
+    };
+  }
+
   Uint8List render(ArtifactDocument document) {
     final pages = _paginate(_itemsFor(document));
     final outlineEntries = _outlineEntries(document);

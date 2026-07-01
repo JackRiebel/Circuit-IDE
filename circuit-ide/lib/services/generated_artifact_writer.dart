@@ -268,6 +268,7 @@ class GeneratedArtifactWriter {
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: docxRenderer.previewRowsFor(documentForOutput),
         sheetCount: documentForOutput.sections.length,
+        metadata: docxRenderer.metadataFor(documentForOutput),
       );
     }
 
@@ -294,6 +295,7 @@ class GeneratedArtifactWriter {
           pageCount: pageCount,
         ),
         sheetCount: pageCount,
+        metadata: pdfRenderer.metadataFor(documentForOutput),
       );
     }
 

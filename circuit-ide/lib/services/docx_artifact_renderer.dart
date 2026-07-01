@@ -53,6 +53,33 @@ class DocxArtifactRenderer {
     ];
   }
 
+  Map<String, Object?> metadataFor(ArtifactDocument document) {
+    final previewRows = previewRowsFor(document);
+    return {
+      'generator': 'CircuitCode',
+      'artifact': 'word_report',
+      'sectionCount': document.sections.length,
+      'reportSectionCount': previewRows.isEmpty ? 0 : previewRows.length - 1,
+      'tableCount': document.tables.length,
+      'assumptionCount': document.assumptions.length,
+      'citationCount': document.citations.length,
+      'wordCount': _wordCount(document),
+      'paragraphCount': _paragraphCount(document),
+      'riskItemCount': _riskRegisterRows(document).length,
+      'nextStepCount': _nextStepRows(document).length,
+      'evidenceItemCount': _evidenceConfidenceRows(document).length,
+      'approvalGateCount': 4,
+      'hasExecutiveDecisionBrief': true,
+      'hasTableOfContents': true,
+      'hasRecommendationSummary': true,
+      'hasRiskRegister': true,
+      'hasNextStepActionPlan': true,
+      'hasValidationChecklist': true,
+      'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
+      'hasSourcesAppendix': document.citations.isNotEmpty,
+    };
+  }
+
   Uint8List render(ArtifactDocument document) {
     final files = <_DocxFile>[
       _DocxFile('[Content_Types].xml', _bytes(_contentTypes())),

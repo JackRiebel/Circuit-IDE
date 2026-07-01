@@ -3152,6 +3152,14 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       final theme = _metadataString(artifact, 'theme');
       if (theme.isNotEmpty) parts.add('$theme theme');
     }
+    if (artifact.kind == GeneratedArtifactKind.docx) {
+      final wordCount = _metadataInt(artifact, 'wordCount');
+      if (wordCount > 0) parts.add('$wordCount words');
+    }
+    if (artifact.kind == GeneratedArtifactKind.pdf) {
+      final bookmarkCount = _metadataInt(artifact, 'bookmarkCount');
+      if (bookmarkCount > 0) parts.add('$bookmarkCount bookmarks');
+    }
     if (artifact.sheetCount > 1) {
       parts.add(switch (artifact.kind) {
         GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
@@ -3241,6 +3249,25 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
         if (_metadataString(artifact, 'theme').isNotEmpty)
           ('Theme', _metadataString(artifact, 'theme')),
+        if (_metadataInt(artifact, 'sectionCount') > 0)
+          ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
+        if (_metadataInt(artifact, 'tableCount') > 0)
+          ('Tables', '${_metadataInt(artifact, 'tableCount')}'),
+        if (_metadataInt(artifact, 'assumptionCount') > 0)
+          ('Assumptions', '${_metadataInt(artifact, 'assumptionCount')}'),
+        if (_metadataInt(artifact, 'citationCount') > 0)
+          ('Sources', '${_metadataInt(artifact, 'citationCount')}'),
+      ],
+      if (artifact.kind == GeneratedArtifactKind.docx ||
+          artifact.kind == GeneratedArtifactKind.pdf) ...[
+        if (_metadataInt(artifact, 'pageCount') > 0 && artifact.sheetCount == 0)
+          ('Pages', '${_metadataInt(artifact, 'pageCount')}'),
+        if (_metadataInt(artifact, 'wordCount') > 0)
+          ('Words', '${_metadataInt(artifact, 'wordCount')}'),
+        if (_metadataInt(artifact, 'bookmarkCount') > 0)
+          ('Bookmarks', '${_metadataInt(artifact, 'bookmarkCount')}'),
+        if (_metadataInt(artifact, 'reportSectionCount') > 0)
+          ('Report parts', '${_metadataInt(artifact, 'reportSectionCount')}'),
         if (_metadataInt(artifact, 'sectionCount') > 0)
           ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
         if (_metadataInt(artifact, 'tableCount') > 0)
