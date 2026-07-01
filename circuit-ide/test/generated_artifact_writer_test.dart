@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/services/artifact_type_registry.dart';
 import 'package:circuit_ide/services/generated_artifact_exporter.dart';
+import 'package:circuit_ide/services/generated_artifact_package_writer.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -1877,5 +1878,116 @@ Checkpoint:
       0x04,
     ]);
     expect(exported.previewRows.first, ['Product', 'Count']);
+  });
+
+  test(
+    'business case package creates DOCX, deck, and chart artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-artifact-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a business case package for Acme manufacturing',
+            content: '''
+# Acme Manufacturing Business Case
+
+## Executive Summary
+Acme can reduce plant downtime and improve operational visibility by
+modernizing access switching, wireless telemetry, and lifecycle reporting.
+
+## Use Cases
+- Reduce troubleshooting time for plant-floor incidents.
+- Prioritize lifecycle refreshes before LDOS risk becomes urgent.
+- Give executives a simple scorecard for resiliency and support exposure.
+
+## Business Impact
+| Initiative | Annual Value | Confidence |
+| --- | ---: | ---: |
+| Downtime reduction | 240000 | 0.8 |
+| Support consolidation | 85000 | 0.7 |
+
+## Sources
+- Customer workshop notes checked 2026-07-01.
+''',
+            turnId: 'turn-business',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      expect(package!.label, 'business use case package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.chart,
+      ]);
+      expect(
+        package.artifacts.map((artifact) => artifact.id).toSet().length,
+        3,
+      );
+      for (final artifact in package.artifacts) {
+        expect(artifact.status, GeneratedArtifactStatus.ready);
+        expect(File(artifact.filePath).existsSync(), isTrue);
+        expect(artifact.threadId, 'thread-1');
+        expect(artifact.requestId, 'request-1');
+        expect(artifact.metadata['qualityStatus'], isNotNull);
+      }
+      expect(package.artifacts[0].fileName, endsWith('.docx'));
+      expect(package.artifacts[1].fileName, endsWith('.pptx'));
+      expect(package.artifacts[2].fileName, endsWith('.svg'));
+    },
+  );
+
+  test('solution sizing package creates workbook and chart artifacts', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-sizing-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt:
+              'create a solution sizing package for 500 users, 90 APs, PoE budget, and 2 Gbps WAN',
+          content: '''
+# Campus Sizing Package
+
+## Summary
+Size access, WAN, PoE, and growth headroom for a campus refresh.
+
+| Requirement | Value | Notes |
+| --- | ---: | --- |
+| Users | 500 | 25% growth target |
+| APs | 90 | Wi-Fi 7 UPOE validation required |
+| WAN Mbps | 2000 | Inspect security throughput |
+| Switches | 6 | Multigig uplinks required |
+
+## Recommendations
+- Validate UPOE budget before selecting access switches.
+- Size firewall throughput with services enabled.
+''',
+          turnId: 'turn-sizing-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'solution sizing package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.chart,
+    ]);
+    for (final artifact in package.artifacts) {
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      expect(artifact.metadata['qualityStatus'], isNotNull);
+    }
+    expect(package.artifacts.first.fileName, endsWith('.xlsx'));
+    expect(package.artifacts.first.sheetCount, greaterThanOrEqualTo(18));
+    expect(package.artifacts.last.fileName, endsWith('.svg'));
   });
 }

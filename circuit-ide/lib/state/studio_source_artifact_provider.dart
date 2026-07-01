@@ -10,7 +10,7 @@ import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
 import '../services/generated_artifact_exporter.dart';
-import '../services/generated_artifact_writer.dart';
+import '../services/generated_artifact_package_writer.dart';
 import 'command_run_provider.dart';
 import 'patch_proposal_provider.dart';
 import 'studio_thread_provider.dart';
@@ -64,8 +64,8 @@ class StudioSourceArtifactController
   final Map<String, String> _threadSyncFingerprints = {};
   final Map<String, String> _patchSyncFingerprints = {};
   final Set<String> _artifactMaterializationInFlight = {};
-  final GeneratedArtifactWriter _generatedArtifactWriter =
-      const GeneratedArtifactWriter();
+  final GeneratedArtifactPackageWriter _generatedArtifactPackageWriter =
+      const GeneratedArtifactPackageWriter();
   final GeneratedArtifactExporter _generatedArtifactExporter =
       const GeneratedArtifactExporter();
 
@@ -206,7 +206,12 @@ class StudioSourceArtifactController
     };
     for (final turn in thread.turns) {
       final artifactId = 'generated-${turn.id}';
-      if (existingIds.contains(artifactId)) continue;
+      final artifactPackageIdPrefix = '$artifactId-';
+      if (existingIds.any(
+        (id) => id == artifactId || id.startsWith(artifactPackageIdPrefix),
+      )) {
+        continue;
+      }
       if (_artifactMaterializationInFlight.contains(turn.id)) continue;
       if (turn.status != StudioTurnStatus.completed) continue;
       if (!isGeneratedArtifactRequest(turn.prompt)) continue;
@@ -231,17 +236,30 @@ class StudioSourceArtifactController
     required String content,
   }) async {
     try {
-      final artifact = await _generatedArtifactWriter.writeFromAssistantOutput(
-        rootPath: rootPath,
-        prompt: turn.prompt,
-        content: content,
-        turnId: turn.id,
-        threadId: thread.id,
-        requestId: turn.requestId,
-      );
-      if (artifact == null) return;
-      final sourceArtifact = artifact.toSourceArtifact();
-      _upsertArtifact(sourceArtifact);
+      final package = await _generatedArtifactPackageWriter
+          .writePackageFromAssistantOutput(
+            rootPath: rootPath,
+            prompt: turn.prompt,
+            content: content,
+            turnId: turn.id,
+            threadId: thread.id,
+            requestId: turn.requestId,
+          );
+      if (package == null || package.artifacts.isEmpty) return;
+      for (final artifact in package.artifacts) {
+        _upsertArtifact(artifact.toSourceArtifact());
+      }
+      final primary = package.primary!;
+      final title = package.artifacts.length == 1
+          ? 'Created ${primary.typeLabel} file'
+          : 'Created ${package.label}';
+      final detail = package.artifacts.length == 1
+          ? '${primary.summary}\nFile: ${primary.fileName}'
+          : package.artifacts
+                .map(
+                  (artifact) => '- ${artifact.fileName}: ${artifact.summary}',
+                )
+                .join('\n');
       ref
           .read(studioThreadProvider.notifier)
           .upsertTurnEvent(
@@ -252,8 +270,8 @@ class StudioSourceArtifactController
               turnId: turn.id,
               requestId: turn.requestId,
               threadId: thread.id,
-              title: 'Created ${artifact.typeLabel} file',
-              detail: '${artifact.summary}\nFile: ${artifact.fileName}',
+              title: title,
+              detail: detail,
             ),
           );
     } finally {
