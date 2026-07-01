@@ -239,6 +239,7 @@ class GeneratedArtifactWriter {
             : 'Created a PowerPoint deck with $slideCount slides from the response structure.',
         previewRows: powerPointRenderer.previewRowsFor(documentForOutput),
         sheetCount: slideCount,
+        metadata: powerPointRenderer.metadataFor(documentForOutput),
       );
     }
 

@@ -20,6 +20,44 @@ class PowerPointArtifactRenderer {
     ];
   }
 
+  Map<String, Object?> metadataFor(ArtifactDocument document) {
+    final slides = _slidesFor(document).take(24).toList(growable: false);
+    final theme = _DeckTheme.forDocument(document);
+    final slideTypeCounts = <String, int>{};
+    for (final slide in slides) {
+      slideTypeCounts.update(
+        slide.kind.label,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
+    }
+    return {
+      'generator': 'CircuitCode',
+      'artifact': 'powerpoint_deck',
+      'slideCount': slides.length,
+      'theme': theme.label,
+      'slideTypes': slideTypeCounts.keys.toList(growable: false),
+      'slideTypeCounts': slideTypeCounts,
+      'sectionCount': document.sections.length,
+      'tableCount': document.tables.length,
+      'assumptionCount': document.assumptions.length,
+      'citationCount': document.citations.length,
+      'hasAgenda': slideTypeCounts.containsKey(_DeckSlideKind.agenda.label),
+      'hasDecisionSnapshot': slideTypeCounts.containsKey(
+        _DeckSlideKind.snapshot.label,
+      ),
+      'hasRecommendation': slideTypeCounts.containsKey(
+        _DeckSlideKind.recommendation.label,
+      ),
+      'hasRoadmap': slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label),
+      'hasTableSlides': slideTypeCounts.containsKey(_DeckSlideKind.table.label),
+      'hasSourcesSlide': slideTypeCounts.containsKey(
+        _DeckSlideKind.sources.label,
+      ),
+      'hasSpeakerNotes': true,
+    };
+  }
+
   Uint8List render(ArtifactDocument document) {
     final slides = _slidesFor(document).take(24).toList(growable: false);
     final theme = _DeckTheme.forDocument(document);

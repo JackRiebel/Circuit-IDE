@@ -1028,6 +1028,13 @@ void main() {
             ['2', 'Agenda', 'Decision Flow'],
           ],
           sheetCount: 6,
+          metadata: const {
+            'theme': 'Light',
+            'sectionCount': 4,
+            'tableCount': 2,
+            'assumptionCount': 3,
+            'citationCount': 5,
+          },
           createdAt: DateTime(2026, 6, 30, 9, 15),
         ).toSourceArtifact(),
       )
@@ -1075,6 +1082,21 @@ void main() {
     expect(find.text('Report outline'), findsOneWidget);
     expect(find.text('Executive Brief'), findsOneWidget);
     expect(find.text('Risk Register'), findsOneWidget);
+    expect(
+      find.textContaining('PowerPoint • Light theme • 6 slides'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('executive-brief.pptx'));
+    await tester.pump();
+
+    expect(find.text('Theme'), findsOneWidget);
+    expect(find.text('Light'), findsOneWidget);
+    expect(find.text('Sections'), findsOneWidget);
+    expect(find.text('Tables'), findsOneWidget);
+    expect(find.text('Assumptions'), findsOneWidget);
+    expect(find.text('Sources'), findsAtLeastNWidgets(1));
+    expect(find.text('5'), findsAtLeastNWidgets(1));
     expect(find.textContaining('6 slide deck ready'), findsNothing);
     expect(find.textContaining('Word document ready'), findsNothing);
   });

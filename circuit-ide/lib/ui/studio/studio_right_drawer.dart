@@ -3148,6 +3148,10 @@ class _ArtifactDrawerCard extends ConsumerWidget {
         parts.add('$edgeCount links');
       }
     }
+    if (artifact.kind == GeneratedArtifactKind.powerPoint) {
+      final theme = _metadataString(artifact, 'theme');
+      if (theme.isNotEmpty) parts.add('$theme theme');
+    }
     if (artifact.sheetCount > 1) {
       parts.add(switch (artifact.kind) {
         GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
@@ -3233,6 +3237,18 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'AP power',
             '${_metadataInt(artifact, 'estimatedApPowerWatts')}W est.',
           ),
+      ],
+      if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
+        if (_metadataString(artifact, 'theme').isNotEmpty)
+          ('Theme', _metadataString(artifact, 'theme')),
+        if (_metadataInt(artifact, 'sectionCount') > 0)
+          ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
+        if (_metadataInt(artifact, 'tableCount') > 0)
+          ('Tables', '${_metadataInt(artifact, 'tableCount')}'),
+        if (_metadataInt(artifact, 'assumptionCount') > 0)
+          ('Assumptions', '${_metadataInt(artifact, 'assumptionCount')}'),
+        if (_metadataInt(artifact, 'citationCount') > 0)
+          ('Sources', '${_metadataInt(artifact, 'citationCount')}'),
       ],
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),
@@ -3497,6 +3513,11 @@ int _metadataInt(GeneratedArtifact artifact, String key) {
   if (value is int) return value;
   if (value is num) return value.round();
   return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+String _metadataString(GeneratedArtifact artifact, String key) {
+  final value = artifact.metadata[key]?.toString().trim() ?? '';
+  return value;
 }
 
 class _BinaryArtifactPreview extends ConsumerWidget {

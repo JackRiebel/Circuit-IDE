@@ -54,6 +54,17 @@ Short executive summary for the customer.
       expect(artifact.sheetCount, greaterThanOrEqualTo(8));
       expect(artifact.summary, contains('PowerPoint deck'));
       expect(artifact.previewRows.first, ['Slide', 'Type', 'Title']);
+      expect(artifact.metadata['theme'], 'Dark');
+      expect(artifact.metadata['slideCount'], artifact.sheetCount);
+      expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
+      expect(artifact.metadata['tableCount'], 1);
+      expect(artifact.metadata['assumptionCount'], 1);
+      expect(artifact.metadata['citationCount'], 1);
+      expect(artifact.metadata['hasAgenda'], isTrue);
+      expect(artifact.metadata['hasDecisionSnapshot'], isTrue);
+      expect(artifact.metadata['hasRoadmap'], isTrue);
+      expect(artifact.metadata['hasTableSlides'], isTrue);
+      expect(artifact.metadata['hasSourcesSlide'], isTrue);
       expect(
         artifact.previewRows.map((row) => row.join(' / ')),
         contains(contains('Decision Snapshot')),

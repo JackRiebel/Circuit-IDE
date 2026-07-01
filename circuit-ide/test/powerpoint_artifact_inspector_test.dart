@@ -71,6 +71,20 @@ void main() {
     expect(inspection.hasSpeakerNotes, isTrue);
     expect(inspection.notesSlideCount, inspection.slideCount);
     expect(inspection.usesDarkTheme, isTrue);
+
+    final metadata = const PowerPointArtifactRenderer().metadataFor(document);
+    expect(metadata['slideCount'], inspection.slideCount);
+    expect(metadata['theme'], 'Dark');
+    expect(metadata['tableCount'], 1);
+    expect(metadata['assumptionCount'], 1);
+    expect(metadata['citationCount'], 1);
+    expect(metadata['hasAgenda'], isTrue);
+    expect(metadata['hasDecisionSnapshot'], isTrue);
+    expect(metadata['hasRecommendation'], isTrue);
+    expect(metadata['hasRoadmap'], isTrue);
+    expect(metadata['hasTableSlides'], isTrue);
+    expect(metadata['hasSourcesSlide'], isTrue);
+    expect(metadata['hasSpeakerNotes'], isTrue);
   });
 
   test('PowerPoint inspector tracks declared slide count metadata', () {
