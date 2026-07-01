@@ -3082,6 +3082,17 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _artifactWorkbenchHint(artifact.kind),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textMuted.withValues(alpha: 0.82),
+                              fontSize: FontSizes.xxs,
+                              height: 1.15,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -3144,6 +3155,28 @@ class _ArtifactDrawerCard extends ConsumerWidget {
   }
 }
 
+String _artifactWorkbenchHint(GeneratedArtifactKind kind) {
+  return switch (kind) {
+    GeneratedArtifactKind.excel =>
+      'Workbook artifact for sizing, inventories, and matrices',
+    GeneratedArtifactKind.csv => 'Dataset artifact for clean tabular exchange',
+    GeneratedArtifactKind.powerPoint =>
+      'Presentation artifact for customer-ready decks',
+    GeneratedArtifactKind.docx =>
+      'Document artifact for reports, briefs, and handoffs',
+    GeneratedArtifactKind.pdf => 'Final handoff artifact for fixed review',
+    GeneratedArtifactKind.diagram =>
+      'Diagram artifact for topology and architecture visuals',
+    GeneratedArtifactKind.chart =>
+      'Visual artifact for comparison and trend analysis',
+    GeneratedArtifactKind.json => 'Structured data artifact for integrations',
+    GeneratedArtifactKind.markdown =>
+      'Markdown artifact for editable planning and notes',
+    GeneratedArtifactKind.report =>
+      'Report artifact for structured customer deliverables',
+  };
+}
+
 bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
   return switch (kind) {
     GeneratedArtifactKind.csv ||
@@ -3167,13 +3200,20 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
+    final extension = p.extension(artifact.fileName).replaceFirst('.', '');
+    final folder = artifact.filePath.trim().isEmpty
+        ? ''
+        : p.dirname(artifact.filePath);
     final rows = <(String, String)>[
+      ('Type', artifact.typeLabel),
       ('Status', artifact.statusLabel),
       ('Created', _compactDate(artifact.createdAt)),
+      if (extension.isNotEmpty) ('Format', extension.toUpperCase()),
       if (artifact.sheetCount > 0)
         (_countLabel(artifact.kind), '${artifact.sheetCount}'),
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),
+      if (folder.trim().isNotEmpty) ('Folder', folder),
       if (artifact.filePath.trim().isNotEmpty) ('Path', artifact.filePath),
     ];
     return Container(
@@ -3193,7 +3233,7 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                    width: 58,
+                    width: 62,
                     child: Text(
                       row.$1,
                       style: TextStyle(
@@ -3207,7 +3247,7 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       row.$2,
-                      maxLines: row.$1 == 'Path' ? 2 : 1,
+                      maxLines: row.$1 == 'Path' || row.$1 == 'Folder' ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: tokens.textSecondary,
@@ -3345,6 +3385,12 @@ class _BinaryArtifactPreview extends ConsumerWidget {
             : 'PDF document',
       _ => artifact.typeLabel,
     };
+    final extension = p.extension(artifact.fileName).replaceFirst('.', '');
+    final parts = <String>[
+      if (extension.isNotEmpty) extension.toUpperCase(),
+      if (artifact.byteSize > 0) _formatBytes(artifact.byteSize),
+      if (artifact.sheetCount > 0) _binaryCountLabel(artifact),
+    ];
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       padding: const EdgeInsets.all(9),
@@ -3354,6 +3400,7 @@ class _BinaryArtifactPreview extends ConsumerWidget {
         border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             artifact.kind == GeneratedArtifactKind.powerPoint
@@ -3364,20 +3411,81 @@ class _BinaryArtifactPreview extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              '$detail ready. Open or reveal the file to preview it in the native app.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: tokens.textSecondary,
-                fontSize: FontSizes.xs,
-                height: 1.25,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$detail ready',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textSecondary,
+                    fontSize: FontSizes.xs,
+                    height: 1.2,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Open to inspect the full document in its native app.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xxs,
+                    height: 1.2,
+                  ),
+                ),
+                if (parts.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 4,
+                    children: [
+                      for (final part in parts)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: tokens.studioControl.withValues(alpha: 0.32),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: tokens.studioDivider.withValues(
+                                alpha: 0.18,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            part,
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xxs,
+                              height: 1,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _binaryCountLabel(GeneratedArtifact artifact) {
+    return switch (artifact.kind) {
+      GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
+      GeneratedArtifactKind.excel => '${artifact.sheetCount} sheets',
+      GeneratedArtifactKind.pdf => '${artifact.sheetCount} pages',
+      GeneratedArtifactKind.docx => '${artifact.sheetCount} sections',
+      _ => '${artifact.sheetCount} items',
+    };
   }
 }
 

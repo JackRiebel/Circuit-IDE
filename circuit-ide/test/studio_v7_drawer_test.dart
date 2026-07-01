@@ -973,19 +973,93 @@ void main() {
 
       expect(find.text('campus-refresh.pdf'), findsOneWidget);
       expect(find.textContaining('PDF • 2 pages'), findsOneWidget);
-      expect(find.textContaining('2 page PDF document'), findsOneWidget);
+      expect(find.textContaining('2 page PDF document ready'), findsOneWidget);
+      expect(
+        find.textContaining('Open to inspect the full document'),
+        findsOneWidget,
+      );
+      expect(find.text('PDF'), findsOneWidget);
+      expect(find.text('2.0 KB'), findsOneWidget);
+      expect(find.text('2 pages'), findsOneWidget);
+      expect(
+        find.text('Final handoff artifact for fixed review'),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('campus-refresh.pdf'));
       await tester.pump();
 
+      expect(find.text('Type'), findsOneWidget);
       expect(find.text('Status'), findsOneWidget);
+      expect(find.text('Format'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Request'), findsOneWidget);
+      expect(find.text('Folder'), findsOneWidget);
       expect(find.text('Path'), findsOneWidget);
       expect(find.text('request-pdf'), findsOneWidget);
       expect(find.text('/tmp/campus-refresh.pdf'), findsOneWidget);
     },
   );
+
+  testWidgets('Artifacts drawer explains deck and document artifacts', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(studioSourceArtifactProvider.notifier)
+      ..add(
+        GeneratedArtifact(
+          id: 'deck-1',
+          kind: GeneratedArtifactKind.powerPoint,
+          status: GeneratedArtifactStatus.ready,
+          fileName: 'executive-brief.pptx',
+          filePath: '/tmp/executive-brief.pptx',
+          summary: 'Created a customer presentation deck.',
+          byteSize: 8192,
+          sheetCount: 6,
+          createdAt: DateTime(2026, 6, 30, 9, 15),
+        ).toSourceArtifact(),
+      )
+      ..add(
+        GeneratedArtifact(
+          id: 'docx-1',
+          kind: GeneratedArtifactKind.docx,
+          status: GeneratedArtifactStatus.ready,
+          fileName: 'architecture-review.docx',
+          filePath: '/tmp/architecture-review.docx',
+          summary: 'Created an architecture review report.',
+          byteSize: 4096,
+          sheetCount: 4,
+          createdAt: DateTime(2026, 6, 30, 9, 16),
+        ).toSourceArtifact(),
+      );
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('executive-brief.pptx'), findsOneWidget);
+    expect(find.text('architecture-review.docx'), findsOneWidget);
+    expect(
+      find.text('Presentation artifact for customer-ready decks'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Document artifact for reports, briefs, and handoffs'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('6 slide deck ready'), findsOneWidget);
+    expect(find.textContaining('Word document ready'), findsOneWidget);
+    expect(find.text('PPTX'), findsOneWidget);
+    expect(find.text('DOCX'), findsOneWidget);
+  });
 
   testWidgets('Artifacts drawer Review opens text artifacts in code mode', (
     tester,
