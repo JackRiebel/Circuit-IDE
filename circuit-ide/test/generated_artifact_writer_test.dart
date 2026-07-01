@@ -2073,6 +2073,86 @@ Checkpoint:
     expect(text, contains('Verification Result Matrix'));
   });
 
+  test(
+    'topology package creates diagram, deck, and PDF brief artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-topology-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a network topology package for this Cisco campus',
+            content: '''
+# Cisco Campus Topology
+
+Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 core switches,
+3 IDFs with C9300-48P UPOE access switches, 90 CW9176 Wi-Fi 7 APs, and client devices.
+
+## Assumptions
+- Validate PoE budget before final model selection.
+- Validate WAN handoff speeds at every branch.
+''',
+            turnId: 'turn-topology-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      expect(package!.label, 'topology package');
+      expect(package.artifacts, hasLength(4));
+      expect(package.primary!.kind, GeneratedArtifactKind.markdown);
+      expect(
+        package.artifacts.map((artifact) => artifact.kind),
+        containsAll([
+          GeneratedArtifactKind.diagram,
+          GeneratedArtifactKind.powerPoint,
+          GeneratedArtifactKind.pdf,
+        ]),
+      );
+
+      final diagram = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.diagram,
+      );
+      final deck = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
+      );
+      final pdf = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
+      );
+
+      expect(diagram.metadata['topologySpecVersion'], '1.0');
+      expect(deck.metadata['artifactTemplate'], 'network_topology_brief');
+      expect(deck.metadata['topologySpecVersion'], '1.0');
+      expect(deck.summary, contains('topology PowerPoint deck'));
+      expect(
+        deck.previewRows.expand((row) => row),
+        contains('Topology Inventory'),
+      );
+      expect(pdf.metadata['artifactTemplate'], 'network_topology_brief');
+      expect(
+        pdf.metadata['topologyValidationGapCount'],
+        greaterThanOrEqualTo(1),
+      );
+      expect(pdf.summary, contains('topology PDF report'));
+
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('.svg'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll(['Topology readiness', 'Slide outline', 'PDF outline']),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        contains('Topology brief deck/report renders'),
+      );
+    },
+  );
+
   test('artifact registry exposes the 15 priority artifact descriptors', () {
     const registry = ArtifactTypeRegistry();
 
@@ -2102,6 +2182,11 @@ Checkpoint:
       registry.descriptorForPrompt('make a topology diagram')?.id,
       'network_topology_diagram',
     );
+    expect(registry.descriptorForId('network_topology_diagram')?.packageKinds, [
+      GeneratedArtifactKind.diagram,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
     expect(
       registry.descriptorForPrompt('create a chart pack for PoE budget')?.id,
       'chart_pack',

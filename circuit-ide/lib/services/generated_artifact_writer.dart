@@ -16,6 +16,7 @@ import 'docx_artifact_renderer.dart';
 import 'evidence_pack_builder.dart';
 import 'implementation_plan_artifact_builder.dart';
 import 'lifecycle_eox_workbook_builder.dart';
+import 'network_topology_brief_builder.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
 import 'product_comparison_workbook_builder.dart';
@@ -29,6 +30,7 @@ class GeneratedArtifactWriter {
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
+  final NetworkTopologyBriefBuilder networkTopologyBuilder;
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
   final ArchitectureReviewPackBuilder architectureReviewBuilder;
@@ -46,6 +48,7 @@ class GeneratedArtifactWriter {
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
+    this.networkTopologyBuilder = const NetworkTopologyBriefBuilder(),
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
     this.architectureReviewBuilder = const ArchitectureReviewPackBuilder(),
@@ -252,6 +255,17 @@ class GeneratedArtifactWriter {
         document: documentForOutput,
       );
     }
+    if (networkTopologyBuilder.matches(prompt) &&
+        (requestedKind == GeneratedArtifactKind.docx ||
+            requestedKind == GeneratedArtifactKind.pdf ||
+            requestedKind == GeneratedArtifactKind.powerPoint ||
+            requestedKind == GeneratedArtifactKind.markdown)) {
+      documentForOutput = networkTopologyBuilder.build(
+        prompt: prompt,
+        content: content,
+        document: documentForOutput,
+      );
+    }
 
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
       final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
@@ -259,6 +273,7 @@ class GeneratedArtifactWriter {
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
+      final topologyBrief = networkTopologyBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
         status: GeneratedArtifactStatus.ready,
@@ -270,10 +285,15 @@ class GeneratedArtifactWriter {
             ? 'Created an implementation plan PowerPoint deck with $slideCount slides, phases, workstreams, dependencies, verification, rollback, approval gates, and sources.'
             : changeSummary
             ? 'Created a change summary PowerPoint deck with $slideCount slides, edited files, verification results, command log, checkpoints, risks, and next steps.'
+            : topologyBrief
+            ? 'Created a topology PowerPoint deck with $slideCount slides, inventory, validated links, capacity checks, failure domains, assumptions, and sources.'
             : 'Created a PowerPoint deck with $slideCount slides from the response structure.',
         previewRows: powerPointRenderer.previewRowsFor(documentForOutput),
         sheetCount: slideCount,
-        metadata: powerPointRenderer.metadataFor(documentForOutput),
+        metadata: {
+          ...documentForOutput.metadata,
+          ...powerPointRenderer.metadataFor(documentForOutput),
+        },
       );
     }
 
@@ -284,6 +304,7 @@ class GeneratedArtifactWriter {
       final evidencePack = evidencePackBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
+      final topologyBrief = networkTopologyBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.docx,
         status: GeneratedArtifactStatus.ready,
@@ -299,10 +320,15 @@ class GeneratedArtifactWriter {
             ? 'Created an implementation plan with scope, workstreams, phases, dependencies, verification, rollback, approval gates, assumptions, and sources.'
             : changeSummary
             ? 'Created a change summary / diff report with edited files, verification results, command log, checkpoints, risks, and next steps.'
+            : topologyBrief
+            ? 'Created a topology report with inventory, validated links, capacity checks, failure-domain review, assumptions, and sources.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: docxRenderer.previewRowsFor(documentForOutput),
         sheetCount: documentForOutput.sections.length,
-        metadata: docxRenderer.metadataFor(documentForOutput),
+        metadata: {
+          ...documentForOutput.metadata,
+          ...docxRenderer.metadataFor(documentForOutput),
+        },
       );
     }
 
@@ -312,6 +338,7 @@ class GeneratedArtifactWriter {
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
+      final topologyBrief = networkTopologyBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.pdf,
         status: GeneratedArtifactStatus.ready,
@@ -323,13 +350,18 @@ class GeneratedArtifactWriter {
             ? 'Created an implementation plan PDF with phases, dependencies, verification, rollback, approval gates, assumptions, and sources.'
             : changeSummary
             ? 'Created a change summary / diff report PDF with edited files, verification results, command log, checkpoints, risks, and next steps.'
+            : topologyBrief
+            ? 'Created a topology PDF report with inventory, validated links, capacity checks, failure-domain review, assumptions, and sources.'
             : 'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: pdfRenderer.previewRowsFor(
           documentForOutput,
           pageCount: pageCount,
         ),
         sheetCount: pageCount,
-        metadata: pdfRenderer.metadataFor(documentForOutput),
+        metadata: {
+          ...documentForOutput.metadata,
+          ...pdfRenderer.metadataFor(documentForOutput),
+        },
       );
     }
 

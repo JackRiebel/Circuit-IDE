@@ -118,14 +118,22 @@ class ArtifactTypeRegistry {
       label: 'Network Topology Diagram',
       supportedKinds: [
         GeneratedArtifactKind.diagram,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+        GeneratedArtifactKind.docx,
         GeneratedArtifactKind.markdown,
       ],
       useCases: ['topology', 'architecture visual'],
-      packageKinds: [GeneratedArtifactKind.diagram, GeneratedArtifactKind.pdf],
+      packageKinds: [
+        GeneratedArtifactKind.diagram,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Topology readiness',
       verificationChecks: [
         'SVG root parses',
         'Topology metadata persists',
+        'Topology brief deck/report renders',
         'Readiness and assumptions preview renders',
       ],
     ),
