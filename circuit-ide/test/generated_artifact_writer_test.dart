@@ -544,6 +544,171 @@ Architecture review for a campus refresh with WAN, access, wireless, and securit
     },
   );
 
+  test('implementation plan prompt creates a shaped DOCX artifact', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt:
+              'create an implementation plan for the artifact workspace upgrade',
+          content: '''
+# Artifact Workspace Implementation Plan
+
+Build the next artifact platform pass with reviewable batches and strong verification.
+
+## Scope
+- Add artifact composer templates for implementation plans.
+- Keep Studio outcome-focused and avoid transcript noise.
+
+## Workstreams
+- Create implementation plan DOCX/PDF/deck outputs.
+- Add drawer metadata and review previews.
+- Preserve existing plan, patch, approval, and context flows.
+
+## Phases
+- Inspect current artifact writer and registry.
+- Implement the template builder.
+- Add focused tests and run verification.
+
+## Dependencies
+- Current artifact writer and DOCX/PDF/PPTX renderers.
+- Workspace output directory.
+- Reviewer approval for generated customer-facing plans.
+
+## Verification
+- Confirm generated file exists and parses as an Office package.
+- Confirm preview metadata lists implementation sections.
+- Confirm artifact card summary names the implementation plan.
+
+## Rollback
+- Restore the prior commit or remove the generated artifact template.
+
+## Assumptions
+- Existing artifact renderers remain the output engine.
+
+## Sources
+- CircuitCode artifact platform plan
+''',
+          turnId: 'turn-implementation-plan',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.docx);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.docx'));
+    expect(artifact.summary, contains('implementation plan'));
+    expect(artifact.summary, contains('workstreams'));
+    expect(artifact.summary, contains('verification'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(10));
+    expect(
+      artifact.previewRows.map((row) => row.join(' / ')),
+      contains(contains('Implementation Overview')),
+    );
+    expect(
+      artifact.previewRows.map((row) => row.join(' / ')),
+      contains(contains('Verification Plan')),
+    );
+    expect(File(artifact.filePath).existsSync(), isTrue);
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('word/document.xml'));
+    expect(packageText, contains('Artifact Workspace Implementation Plan'));
+    expect(packageText, contains('Implementation Overview'));
+    expect(packageText, contains('Scope And Success Criteria'));
+    expect(packageText, contains('Workstreams And Deliverables'));
+    expect(packageText, contains('Implementation Phases'));
+    expect(packageText, contains('Dependencies And Inputs'));
+    expect(packageText, contains('Verification Plan'));
+    expect(packageText, contains('Rollback And Recovery'));
+    expect(packageText, contains('Approval And Handoff Gates'));
+    expect(packageText, contains('Implementation Decision Brief'));
+    expect(packageText, contains('Phase Execution Plan'));
+    expect(packageText, contains('Workstream And Artifact Matrix'));
+    expect(packageText, contains('Dependency Register'));
+    expect(packageText, contains('Rollback And Risk Register'));
+    expect(packageText, contains('Approval Gates'));
+    expect(packageText, contains('Plan approval'));
+    expect(packageText, contains('Confirm generated file exists'));
+    expect(packageText, contains('Patch or artifact review'));
+  });
+
+  test(
+    'implementation plan prompt shapes PowerPoint and PDF artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      const content = '''
+# Artifact Workspace Delivery Plan
+
+Implementation plan for a customer-ready artifact workspace.
+
+## Scope
+- Create polished deliverables from structured content.
+- Keep artifact application app-owned.
+
+## Phases
+- Build templates.
+- Validate generated artifacts.
+- Rebuild and hand off.
+
+## Verification
+- Inspect PowerPoint slide count.
+- Inspect PDF page count.
+
+## Sources
+- Internal artifact roadmap
+''';
+
+      final deck = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a PowerPoint implementation plan deck',
+            content: content,
+            turnId: 'turn-implementation-plan-deck',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+      final pdf = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a PDF implementation plan',
+            content: content,
+            turnId: 'turn-implementation-plan-pdf',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(deck, isNotNull);
+      expect(deck!.kind, GeneratedArtifactKind.powerPoint);
+      expect(deck.fileName, endsWith('.pptx'));
+      expect(deck.summary, contains('implementation plan PowerPoint deck'));
+      expect(deck.sheetCount, greaterThanOrEqualTo(10));
+      final deckText = String.fromCharCodes(
+        File(deck.filePath).readAsBytesSync(),
+      );
+      expect(deckText, contains('Implementation Phases'));
+      expect(deckText, contains('Scope And Success Criteria'));
+      expect(deckText, contains('Approval And Handoff Gates'));
+      expect(deckText, contains('Approval And Handoff Gates'));
+
+      expect(pdf, isNotNull);
+      expect(pdf!.kind, GeneratedArtifactKind.pdf);
+      expect(pdf.fileName, endsWith('.pdf'));
+      expect(pdf.summary, contains('implementation plan PDF'));
+      expect(pdf.sheetCount, greaterThanOrEqualTo(1));
+      final pdfText = String.fromCharCodes(
+        File(pdf.filePath).readAsBytesSync(),
+      );
+      expect(pdfText, startsWith('%PDF-1.'));
+      expect(pdfText, contains('Implementation Overview'));
+      expect(pdfText, contains('Verification Checklist'));
+    },
+  );
+
   test('business case brief prompt creates a shaped DOCX artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
