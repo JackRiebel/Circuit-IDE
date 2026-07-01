@@ -3143,9 +3143,19 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     if (artifact.kind == GeneratedArtifactKind.diagram) {
       final nodeCount = _metadataInt(artifact, 'nodeCount');
       final edgeCount = _metadataInt(artifact, 'edgeCount');
+      final topologyType = _metadataString(artifact, 'topologyType');
+      final resiliencyModel = _metadataString(artifact, 'resiliencyModel');
+      final validationGapCount = _metadataInt(artifact, 'validationGapCount');
+      if (topologyType.isNotEmpty) parts.add(topologyType);
       if (nodeCount > 0 && edgeCount > 0) {
         parts.add('$nodeCount nodes');
         parts.add('$edgeCount links');
+      }
+      if (resiliencyModel.isNotEmpty && resiliencyModel != 'Review') {
+        parts.add(resiliencyModel);
+      }
+      if (validationGapCount > 0) {
+        parts.add('$validationGapCount gaps');
       }
     }
     if (artifact.kind == GeneratedArtifactKind.excel &&
@@ -3270,10 +3280,25 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       if (artifact.sheetCount > 0)
         (_countLabel(artifact.kind), '${artifact.sheetCount}'),
       if (artifact.kind == GeneratedArtifactKind.diagram) ...[
+        if (_metadataString(artifact, 'topologyType').isNotEmpty)
+          ('Topology', _metadataString(artifact, 'topologyType')),
+        if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
+          ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataString(artifact, 'resiliencyModel').isNotEmpty)
+          ('Resiliency', _metadataString(artifact, 'resiliencyModel')),
+        if (_metadataStringList(artifact, 'designZones').isNotEmpty)
+          (
+            'Zones',
+            _compactSignalList(_metadataStringList(artifact, 'designZones')),
+          ),
         if (_metadataInt(artifact, 'nodeCount') > 0)
           ('Nodes', '${_metadataInt(artifact, 'nodeCount')}'),
         if (_metadataInt(artifact, 'edgeCount') > 0)
           ('Links', '${_metadataInt(artifact, 'edgeCount')}'),
+        if (_metadataInt(artifact, 'siteCount') > 0)
+          ('Sites', '${_metadataInt(artifact, 'siteCount')}'),
+        if (_metadataInt(artifact, 'idfCount') > 0)
+          ('IDFs', '${_metadataInt(artifact, 'idfCount')}'),
         if (_metadataInt(artifact, 'apCount') > 0)
           ('APs', '${_metadataInt(artifact, 'apCount')}'),
         if (_metadataInt(artifact, 'accessPortCount') > 0)
@@ -3283,6 +3308,20 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'AP power',
             '${_metadataInt(artifact, 'estimatedApPowerWatts')}W est.',
           ),
+        if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
+          (
+            'Readiness',
+            _compactSignalList(
+              _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
+          (
+            'Validation gaps',
+            _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
+          ),
+        if (_metadataBool(artifact, 'hasCustomerReadyTopology'))
+          ('Package', 'Architecture-review topology'),
       ],
       if (artifact.kind == GeneratedArtifactKind.excel &&
           _metadataString(artifact, 'workbookKind') == 'solution_sizing') ...[

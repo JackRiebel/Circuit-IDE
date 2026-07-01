@@ -1370,11 +1370,28 @@ void main() {
         ['Access ports', '90/144 AP ports', 'Validate spare ports per IDF.'],
       ],
       metadata: const {
+        'topologyType': 'Multi-site topology',
+        'handoffStatus': 'Draft - validate topology inputs',
+        'resiliencyModel': 'Dual WAN + HA',
+        'designZones': [
+          'Sites',
+          'WAN / Cloud',
+          'Security Edge',
+          'MDF / Core',
+          'IDF / Access',
+          'Wireless / Clients',
+        ],
         'nodeCount': 7,
         'edgeCount': 6,
+        'siteCount': 4,
+        'idfCount': 3,
         'apCount': 90,
         'accessPortCount': 144,
         'estimatedApPowerWatts': 2700,
+        'readinessSignals': ['Redundancy', 'Power', 'Evidence'],
+        'validationGaps': ['Uplinks'],
+        'validationGapCount': 1,
+        'hasCustomerReadyTopology': false,
       },
       createdAt: DateTime(2026, 7, 1, 10),
     );
@@ -1394,7 +1411,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('campus-topology.svg'), findsOneWidget);
-    expect(find.textContaining('Diagram • 7 nodes • 6 links'), findsOneWidget);
+    expect(
+      find.textContaining('Diagram • Multi-site topology • 7 nodes'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Dual WAN + HA'), findsOneWidget);
+    expect(find.textContaining('1 gaps'), findsOneWidget);
     expect(find.text('Topology readiness'), findsOneWidget);
     expect(find.text('7 nodes'), findsOneWidget);
     expect(find.text('AP power'), findsOneWidget);
@@ -1404,11 +1426,25 @@ void main() {
     await tester.tap(find.text('campus-topology.svg'));
     await tester.pump();
 
+    expect(find.text('Topology'), findsAtLeastNWidgets(1));
+    expect(find.text('Multi-site topology'), findsOneWidget);
+    expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Draft - validate topology inputs'), findsOneWidget);
+    expect(find.text('Resiliency'), findsOneWidget);
+    expect(find.text('Dual WAN + HA'), findsOneWidget);
+    expect(find.text('Zones'), findsOneWidget);
+    expect(find.text('Sites, WAN / Cloud +4'), findsOneWidget);
     expect(find.text('Nodes'), findsOneWidget);
     expect(find.text('Links'), findsOneWidget);
+    expect(find.text('Sites'), findsAtLeastNWidgets(1));
+    expect(find.text('IDFs'), findsOneWidget);
     expect(find.text('APs'), findsOneWidget);
     expect(find.text('Access ports'), findsAtLeastNWidgets(1));
     expect(find.text('AP power'), findsAtLeastNWidgets(1));
+    expect(find.text('Readiness'), findsOneWidget);
+    expect(find.text('Redundancy, Power +1'), findsOneWidget);
+    expect(find.text('Validation gaps'), findsOneWidget);
+    expect(find.text('Uplinks'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer shows chart pack metadata', (tester) async {

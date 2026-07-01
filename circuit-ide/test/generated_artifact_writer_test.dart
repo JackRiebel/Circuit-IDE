@@ -1180,9 +1180,37 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.previewRows.first, ['Signal', 'Value', 'Guidance']);
     expect(artifact.previewRows.expand((row) => row), contains('AP power'));
     expect(artifact.previewRows.expand((row) => row), contains('2700W est.'));
+    expect(artifact.metadata['topologyType'], 'Multi-site topology');
+    expect(
+      artifact.metadata['handoffStatus'],
+      'Draft - validate topology inputs',
+    );
+    expect(artifact.metadata['resiliencyModel'], 'Dual WAN + HA');
+    expect(
+      artifact.metadata['designZones'],
+      containsAll([
+        'Sites',
+        'WAN / Cloud',
+        'Security Edge',
+        'MDF / Core',
+        'IDF / Access',
+        'Wireless / Clients',
+      ]),
+    );
     expect(artifact.metadata['nodeCount'], greaterThanOrEqualTo(6));
     expect(artifact.metadata['accessPortCount'], 144);
     expect(artifact.metadata['estimatedApPowerWatts'], 2700);
+    expect(
+      artifact.metadata['readinessSignals'],
+      containsAll(['Redundancy', 'Power', 'Evidence']),
+    );
+    expect(artifact.metadata['validationGaps'], contains('Uplinks'));
+    expect(artifact.metadata['validationGapCount'], greaterThanOrEqualTo(1));
+    expect(artifact.metadata['hasDeviceInventory'], isTrue);
+    expect(artifact.metadata['hasLinkSchedule'], isTrue);
+    expect(artifact.metadata['hasCapacityChecks'], isTrue);
+    expect(artifact.metadata['hasReadinessScorecard'], isTrue);
+    expect(artifact.metadata['hasCustomerReadyTopology'], isFalse);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('Logical topology'));
@@ -1214,6 +1242,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('&quot;apCount&quot;:90'));
     expect(svg, contains('&quot;accessPortCount&quot;:144'));
     expect(svg, contains('&quot;estimatedApPowerWatts&quot;:2700'));
+    expect(
+      svg,
+      contains('&quot;topologyType&quot;:&quot;Multi-site topology&quot;'),
+    );
+    expect(
+      svg,
+      contains('&quot;resiliencyModel&quot;:&quot;Dual WAN + HA&quot;'),
+    );
+    expect(svg, contains('&quot;validationGapCount&quot;:'));
     expect(svg, contains('Assumptions'));
     expect(svg, contains('Validate PoE budget'));
   });
