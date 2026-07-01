@@ -1296,6 +1296,18 @@ void main() {
             ],
             'tableCoverage': '2 tables packaged',
             'sourceCoverage': '5 source items captured',
+            'evidenceConfidence': 'High - sources and assumptions captured',
+            'deckReviewChecklist': [
+              'Confirm deck title, audience, and decision ask match the customer conversation.',
+              'Review presenter talk track for account-specific phrasing.',
+              'Validate decision matrix signals, risk posture, and next actions.',
+            ],
+            'deckHandoffActions': [
+              'Send deck to internal reviewer with the source artifact attached.',
+              'Walk through the decision ask: Review the recommendation, confirm assumptions, and approve the next implementation step.',
+              'Keep cited sources with the handoff package.',
+            ],
+            'presentationRiskFlags': <String>[],
             'validationGaps': <String>[],
             'validationGapCount': 0,
             'readinessSignals': [
@@ -1470,6 +1482,25 @@ void main() {
     expect(find.text('Tables'), findsAtLeastNWidgets(1));
     expect(find.text('2 tables packaged'), findsOneWidget);
     expect(find.text('5 source items captured'), findsOneWidget);
+    expect(find.text('Evidence confidence'), findsOneWidget);
+    expect(
+      find.text('High - sources and assumptions captured'),
+      findsOneWidget,
+    );
+    expect(find.text('Deck review'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Confirm deck title, audience, and decision ask match the customer conversation.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff actions'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Send deck to internal reviewer with the source artifact attached.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Table slides'), findsOneWidget);
     expect(find.text('Recommendations'), findsOneWidget);
     expect(find.text('Assumptions'), findsOneWidget);

@@ -104,6 +104,32 @@ void main() {
     expect(metadata['tableCount'], 1);
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['sourceCoverage'], '1 source item captured');
+    expect(
+      metadata['evidenceConfidence'],
+      'High - sources and assumptions captured',
+    );
+    expect(metadata['deckReviewChecklistCount'], 6);
+    expect(
+      metadata['deckReviewChecklist'],
+      containsAll([
+        'Confirm deck title, audience, and decision ask match the customer conversation.',
+        'Review presenter talk track for account-specific phrasing.',
+        'Validate decision matrix signals, risk posture, and next actions.',
+        'Review table slides for sensitive data, stale values, and column readability.',
+        'Confirm assumptions with the accountable owner.',
+        'Check sources and dates before sharing externally.',
+      ]),
+    );
+    expect(metadata['deckHandoffActionCount'], 4);
+    expect(
+      metadata['deckHandoffActions'],
+      containsAll([
+        'Send deck to internal reviewer with the source artifact attached.',
+        'Capture stakeholder owner, due date, and approval status.',
+        'Keep cited sources with the handoff package.',
+      ]),
+    );
+    expect(metadata['presentationRiskFlags'], isEmpty);
     expect(metadata['agendaItems'], contains('Current State'));
     expect(
       metadata['slideFamilies'],
@@ -182,6 +208,47 @@ void main() {
     expect(metadata['hasSpeakerNotes'], isTrue);
     expect(metadata['hasCustomerReadyStructure'], isTrue);
     expect(metadata['hasCustomerReadyDeck'], isTrue);
+  });
+
+  test('PowerPoint metadata flags deck handoff gaps', () {
+    const document = ArtifactDocument(
+      title: 'Draft Customer Deck',
+      summary: 'Draft deck with no supporting evidence yet.',
+      sections: [
+        ArtifactSection(
+          title: 'Recommendation',
+          bullets: ['Proceed after stakeholders validate scope.'],
+        ),
+      ],
+    );
+
+    final metadata = const PowerPointArtifactRenderer().metadataFor(document);
+
+    expect(
+      metadata['evidenceConfidence'],
+      'Low - sources and assumptions need validation',
+    );
+    expect(
+      metadata['deckReviewChecklist'],
+      containsAll([
+        'Attach supporting data or explain why no data table is required.',
+        'Capture assumptions before treating the deck as final.',
+        'Attach sources or mark the deck as unsourced draft.',
+      ]),
+    );
+    expect(
+      metadata['deckHandoffActions'],
+      contains('Add cited evidence before external handoff.'),
+    );
+    expect(
+      metadata['presentationRiskFlags'],
+      containsAll([
+        'No cited sources attached',
+        'No assumptions captured',
+        'No supporting data tables',
+      ]),
+    );
+    expect(metadata['hasCustomerReadyDeck'], isFalse);
   });
 
   test('PowerPoint inspector tracks declared slide count metadata', () {

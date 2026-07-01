@@ -42,6 +42,13 @@ class PowerPointArtifactRenderer {
     final validationGaps = _validationGapsFor(document, slideTypeCounts);
     final agendaItems = _agendaItemsFor(document, sections);
     final slideFamilies = _slideFamiliesFor(slideTypeCounts);
+    final reviewChecklist = _reviewChecklistFor(
+      document,
+      slideTypeCounts,
+      validationGaps,
+    );
+    final handoffActions = _handoffActionsFor(document, sections);
+    final evidenceConfidence = _evidenceConfidenceFor(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -82,6 +89,15 @@ class PowerPointArtifactRenderer {
       'sourceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
+      'evidenceConfidence': evidenceConfidence,
+      'deckReviewChecklist': reviewChecklist,
+      'deckReviewChecklistCount': reviewChecklist.length,
+      'deckHandoffActions': handoffActions,
+      'deckHandoffActionCount': handoffActions.length,
+      'presentationRiskFlags': _presentationRiskFlagsFor(
+        document,
+        validationGaps,
+      ),
       'validationGaps': validationGaps,
       'validationGapCount': validationGaps.length,
       'slideTypes': slideTypeCounts.keys.toList(growable: false),
@@ -947,6 +963,79 @@ class PowerPointArtifactRenderer {
       return 'Review the recommendation, confirm assumptions, and approve the next implementation step.';
     }
     return 'Confirm scope, owners, and validation criteria before handoff.';
+  }
+
+  List<String> _reviewChecklistFor(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+    List<String> validationGaps,
+  ) {
+    return [
+      'Confirm deck title, audience, and decision ask match the customer conversation.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
+        'Review presenter talk track for account-specific phrasing.'
+      else
+        'Add presenter talk track before stakeholder readout.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
+        'Validate decision matrix signals, risk posture, and next actions.'
+      else
+        'Add a decision matrix before customer handoff.',
+      if (document.tables.isNotEmpty)
+        'Review table slides for sensitive data, stale values, and column readability.'
+      else
+        'Attach supporting data or explain why no data table is required.',
+      if (document.assumptions.isNotEmpty)
+        'Confirm assumptions with the accountable owner.'
+      else
+        'Capture assumptions before treating the deck as final.',
+      if (document.citations.isNotEmpty)
+        'Check sources and dates before sharing externally.'
+      else
+        'Attach sources or mark the deck as unsourced draft.',
+      if (validationGaps.isNotEmpty)
+        'Resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'} before customer handoff.',
+    ];
+  }
+
+  List<String> _handoffActionsFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final ask = _decisionAskFor(document, sections);
+    return [
+      'Send deck to internal reviewer with the source artifact attached.',
+      'Walk through the decision ask: $ask',
+      'Capture stakeholder owner, due date, and approval status.',
+      if (document.citations.isNotEmpty)
+        'Keep cited sources with the handoff package.'
+      else
+        'Add cited evidence before external handoff.',
+    ];
+  }
+
+  String _evidenceConfidenceFor(ArtifactDocument document) {
+    if (document.citations.isNotEmpty && document.assumptions.isNotEmpty) {
+      return 'High - sources and assumptions captured';
+    }
+    if (document.citations.isNotEmpty) {
+      return 'Medium - sources captured, assumptions need owner review';
+    }
+    if (document.assumptions.isNotEmpty) {
+      return 'Medium - assumptions captured, sources need validation';
+    }
+    return 'Low - sources and assumptions need validation';
+  }
+
+  List<String> _presentationRiskFlagsFor(
+    ArtifactDocument document,
+    List<String> validationGaps,
+  ) {
+    return [
+      if (document.citations.isEmpty) 'No cited sources attached',
+      if (document.assumptions.isEmpty) 'No assumptions captured',
+      if (document.tables.isEmpty) 'No supporting data tables',
+      for (final gap in validationGaps.take(3)) gap,
+    ];
   }
 
   bool _hasCustomerReadyStructure(Map<String, int> slideTypeCounts) {
