@@ -14,6 +14,7 @@ class DiagramArtifactInspection {
   final bool hasLinkSchedule;
   final bool hasReadinessScorecard;
   final bool hasDesignAdvisoryPanel;
+  final bool hasFailureDomainReview;
   final bool hasCapacityPanel;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
@@ -25,6 +26,8 @@ class DiagramArtifactInspection {
   final int linkScheduleCount;
   final int readinessItemCount;
   final int advisoryCount;
+  final int failureDomainCount;
+  final int criticalFailureDomainCount;
   final int capacityItemCount;
   final int siteCount;
   final int mdfCount;
@@ -63,6 +66,7 @@ class DiagramArtifactInspection {
     required this.hasLinkSchedule,
     required this.hasReadinessScorecard,
     required this.hasDesignAdvisoryPanel,
+    required this.hasFailureDomainReview,
     required this.hasCapacityPanel,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
@@ -74,6 +78,8 @@ class DiagramArtifactInspection {
     required this.linkScheduleCount,
     required this.readinessItemCount,
     required this.advisoryCount,
+    required this.failureDomainCount,
+    required this.criticalFailureDomainCount,
     required this.capacityItemCount,
     required this.siteCount,
     required this.mdfCount,
@@ -119,6 +125,7 @@ class DiagramArtifactInspection {
       hasLinkSchedule &&
       hasReadinessScorecard &&
       hasDesignAdvisoryPanel &&
+      hasFailureDomainReview &&
       hasCapacityPanel &&
       hasValidationChecklist &&
       hasAssumptionsPanel;
@@ -186,6 +193,14 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'advisoryCount') ??
         _dataInt(svg, 'data-advisory-count') ??
         0;
+    final failureDomainCount =
+        _metadataInt(metadata, 'failureDomainCount') ??
+        _dataInt(svg, 'data-failure-domain-count') ??
+        0;
+    final criticalFailureDomainCount =
+        _metadataInt(metadata, 'criticalFailureDomainCount') ??
+        _dataInt(svg, 'data-critical-failure-domain-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -203,6 +218,7 @@ class DiagramArtifactInspector {
       hasLinkSchedule: svg.contains('id="topology-link-schedule"'),
       hasReadinessScorecard: svg.contains('id="topology-readiness"'),
       hasDesignAdvisoryPanel: svg.contains('id="topology-advisories"'),
+      hasFailureDomainReview: svg.contains('id="topology-failure-domains"'),
       hasCapacityPanel: svg.contains('id="topology-capacity"'),
       hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
@@ -216,6 +232,8 @@ class DiagramArtifactInspector {
       linkScheduleCount: linkScheduleCount,
       readinessItemCount: readinessItemCount,
       advisoryCount: advisoryCount,
+      failureDomainCount: failureDomainCount,
+      criticalFailureDomainCount: criticalFailureDomainCount,
       capacityItemCount: capacityItemCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,

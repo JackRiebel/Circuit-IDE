@@ -1338,11 +1338,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.metadata['hasLinkSchedule'], isTrue);
     expect(artifact.metadata['hasCapacityChecks'], isTrue);
     expect(artifact.metadata['hasReadinessScorecard'], isTrue);
+    expect(artifact.metadata['hasFailureDomainReview'], isTrue);
+    expect(artifact.metadata['failureDomainCount'], 5);
+    expect(
+      artifact.metadata['criticalFailureDomainCount'],
+      greaterThanOrEqualTo(1),
+    );
+    expect(
+      artifact.metadata['validationGaps'],
+      contains('Failure domain: MDF / Core'),
+    );
     expect(artifact.metadata['hasCustomerReadyTopology'], isFalse);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('Logical topology'));
     expect(svg, contains('id="topology-summary"'));
+    expect(svg, contains('id="topology-failure-domains"'));
     expect(svg, contains('id="topology-design-zones"'));
     expect(svg, contains('id="topology-link-schedule"'));
     expect(svg, contains('id="topology-readiness"'));
@@ -1362,6 +1373,10 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('PoE/UPOE'));
     expect(svg, contains('Wi-Fi 7'));
     expect(svg, contains('Capacity checks'));
+    expect(svg, contains('Failure-domain review'));
+    expect(svg, contains('WAN edge'));
+    expect(svg, contains('Security edge'));
+    expect(svg, contains('MDF / Core'));
     expect(svg, contains('2700W est.'));
     expect(svg, contains('90/144 AP ports'));
     expect(svg, contains('&quot;siteCount&quot;:4'));
@@ -1370,6 +1385,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('&quot;apCount&quot;:90'));
     expect(svg, contains('&quot;accessPortCount&quot;:144'));
     expect(svg, contains('&quot;estimatedApPowerWatts&quot;:2700'));
+    expect(svg, contains('&quot;failureDomainCount&quot;:5'));
     expect(
       svg,
       contains('&quot;topologyType&quot;:&quot;Multi-site topology&quot;'),

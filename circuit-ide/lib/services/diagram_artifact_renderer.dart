@@ -4,6 +4,14 @@ import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
 
+typedef _FailureDomainRow = ({
+  String domain,
+  String redundancy,
+  String impact,
+  String validation,
+  bool ready,
+});
+
 class DiagramRenderResult {
   final Uint8List bytes;
   final int nodeCount;
@@ -45,6 +53,7 @@ class DiagramArtifactRenderer {
     final capacityItems = _capacityItems(profile);
     final linkSchedule = _linkSchedule(resolvedGraph, profile);
     final advisories = _designAdvisories(profile, assumptions);
+    final failureDomains = _failureDomainRows(profile);
     final metadata = _metadataFor(
       graph: resolvedGraph,
       tiers: tiers,
@@ -54,6 +63,7 @@ class DiagramArtifactRenderer {
       capacityItems: capacityItems,
       linkSchedule: linkSchedule,
       advisories: advisories,
+      failureDomains: failureDomains,
     );
     final svg = _svgFor(
       resolvedGraph,
@@ -71,6 +81,7 @@ class DiagramArtifactRenderer {
         readinessItems,
         capacityItems,
         advisories,
+        failureDomains,
       ),
       metadata: metadata,
     );
@@ -87,12 +98,14 @@ class DiagramArtifactRenderer {
     required List<({String from, String to, String link, String validation})>
     linkSchedule,
     required List<({String topic, String guidance, bool critical})> advisories,
+    required List<_FailureDomainRow> failureDomains,
   }) {
     final readinessSignalLabels = _readinessSignalLabels(readinessItems);
     final validationGapLabels = _validationGapLabels(
       readinessItems,
       capacityItems,
       assumptions,
+      failureDomains,
     );
     final designZoneLabels = _designZoneLabels(tiers);
     final customerReady =
@@ -138,6 +151,10 @@ class DiagramArtifactRenderer {
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
       'advisoryCount': advisories.length,
+      'failureDomainCount': failureDomains.length,
+      'criticalFailureDomainCount': failureDomains
+          .where((item) => !item.ready)
+          .length,
       'designZoneCount': tiers.length,
       'hasCustomerReadyTopology': customerReady,
       'hasDeviceInventory': graph.nodes.isNotEmpty,
@@ -145,6 +162,7 @@ class DiagramArtifactRenderer {
       'hasCapacityChecks': capacityItems.isNotEmpty,
       'hasReadinessScorecard': readinessItems.isNotEmpty,
       'hasDesignAdvisoryPanel': advisories.isNotEmpty,
+      'hasFailureDomainReview': failureDomains.isNotEmpty,
       'hasLifecycleReplacementCaveat': advisories.any(
         (item) => item.topic == 'Lifecycle',
       ),
@@ -161,6 +179,7 @@ class DiagramArtifactRenderer {
     List<({String metric, String value, String guidance, bool ready})>
     capacityItems,
     List<({String topic, String guidance, bool critical})> advisories,
+    List<_FailureDomainRow> failureDomains,
   ) {
     return [
       const ['Signal', 'Value', 'Guidance'],
@@ -184,6 +203,8 @@ class DiagramArtifactRenderer {
           item.critical ? 'Critical review' : 'Review',
           item.guidance,
         ],
+      for (final item in failureDomains.where((item) => !item.ready).take(2))
+        [item.domain, item.redundancy, item.validation],
       for (final item in readinessItems.take(2))
         [item.check, item.state, item.ready ? 'Captured' : 'Needs input'],
     ];
@@ -457,12 +478,13 @@ class DiagramArtifactRenderer {
       1,
       (max, nodes) => nodes.length > max ? nodes.length : max,
     );
-    final height = math.max(1040, 646 + (maxTierSize * 112));
+    final height = math.max(1096, 702 + (maxTierSize * 112));
     final positions = _tierPositions(tiers, width: width, height: height);
     final readinessItems = _readinessItems(profile, assumptions);
     final capacityItems = _capacityItems(profile);
     final linkSchedule = _linkSchedule(graph, profile);
     final advisories = _designAdvisories(profile, assumptions);
+    final failureDomains = _failureDomainRows(profile);
     final metadata = _metadataFor(
       graph: graph,
       tiers: tiers,
@@ -472,6 +494,7 @@ class DiagramArtifactRenderer {
       capacityItems: capacityItems,
       linkSchedule: linkSchedule,
       advisories: advisories,
+      failureDomains: failureDomains,
     );
 
     final buffer = StringBuffer()
@@ -540,6 +563,12 @@ class DiagramArtifactRenderer {
     }
     buffer.writeln('</g>');
 
+    _drawFailureDomainPanel(
+      buffer,
+      failureDomains,
+      width: width,
+      height: height,
+    );
     _drawDesignAdvisories(buffer, advisories, width: width, height: height);
     _drawLinkSchedule(buffer, linkSchedule, width: width, height: height);
     _drawReadinessScorecard(
@@ -592,7 +621,7 @@ class DiagramArtifactRenderer {
       final x = roles.length == 1
           ? width / 2
           : left + (usableWidth * tierIndex / (roles.length - 1));
-      final usableHeight = height - 700;
+      final usableHeight = height - 756;
       for (var i = 0; i < nodes.length; i++) {
         final y = nodes.length == 1
             ? 360.0
@@ -617,7 +646,7 @@ class DiagramArtifactRenderer {
       final x = left + (i * bandWidth);
       buffer
         ..writeln(
-          '<rect class="topology-tier-band" data-tier="${_xml(roles[i].name)}" data-tier-label="${_xml(_tierLabel(roles[i]))}" x="$x" y="206" width="${bandWidth - 12}" height="${height - 640}" rx="18" fill="${i.isEven ? '#151716' : '#181a19'}" stroke="#252928"/>',
+          '<rect class="topology-tier-band" data-tier="${_xml(roles[i].name)}" data-tier-label="${_xml(_tierLabel(roles[i]))}" x="$x" y="206" width="${bandWidth - 12}" height="${height - 696}" rx="18" fill="${i.isEven ? '#151716' : '#181a19'}" stroke="#252928"/>',
         )
         ..writeln(
           '<text x="${x + 18}" y="234" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700" letter-spacing="0">${_xml(_tierLabel(roles[i]))}</text>',
@@ -803,6 +832,49 @@ class DiagramArtifactRenderer {
     return advisories.take(5).toList(growable: false);
   }
 
+  void _drawFailureDomainPanel(
+    StringBuffer buffer,
+    List<_FailureDomainRow> domains, {
+    required int width,
+    required int height,
+  }) {
+    if (domains.isEmpty) return;
+    final y = height - 492;
+    final visible = domains.take(3).toList(growable: false);
+    final readyCount = domains.where((domain) => domain.ready).length;
+    buffer.writeln(
+      '<g id="topology-failure-domains" data-failure-domain-count="${domains.length}" data-critical-failure-domain-count="${domains.length - readyCount}">',
+    );
+    buffer.writeln(
+      '<rect x="36" y="$y" width="${width - 72}" height="50" rx="12" fill="#141615" stroke="#28302e"/>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 18}" fill="#b9c0bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700">Failure-domain review</text>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 37}" fill="#78aaa5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">$readyCount/${domains.length} domains have redundancy signals</text>',
+    );
+    var x = 286.0;
+    final cardWidth =
+        (width - x - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var i = 0; i < visible.length; i++) {
+      final domain = visible[i];
+      final cardX = x + (i * (cardWidth + 8));
+      buffer
+        ..writeln(
+          '<rect x="${cardX.toStringAsFixed(1)}" y="${y + 9}" width="${cardWidth.toStringAsFixed(1)}" height="32" rx="8" fill="${domain.ready ? '#182621' : '#2a241b'}" stroke="${domain.ready ? '#2e5148' : '#59482b'}"/>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 22}" fill="${domain.ready ? '#8dd3bd' : '#e1bb6d'}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten('${domain.domain}: ${domain.redundancy}', 38))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 36}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(domain.validation, 46))}</text>',
+        );
+    }
+    buffer.writeln('</g>');
+  }
+
   void _drawDesignAdvisories(
     StringBuffer buffer,
     List<({String topic, String guidance, bool critical})> advisories, {
@@ -957,6 +1029,86 @@ class DiagramArtifactRenderer {
     ];
   }
 
+  List<_FailureDomainRow> _failureDomainRows(_TopologyProfile profile) {
+    return [
+      (
+        domain: 'WAN edge',
+        redundancy: profile.hasDualWan ? 'Dual WAN captured' : 'Single/unknown',
+        impact: profile.hasDualWan
+            ? 'ISP failure should have an alternate path.'
+            : 'WAN or ISP loss can isolate sites.',
+        validation: profile.hasDualWan
+            ? 'Document failover test, routing preference, and SLA owner.'
+            : 'Confirm secondary WAN/MPLS/Internet path and routing failover.',
+        ready: profile.hasDualWan,
+      ),
+      (
+        domain: 'Security edge',
+        redundancy: profile.hasWarmSpare || profile.firewallCount > 1
+            ? 'HA / warm spare captured'
+            : profile.firewallCount > 0
+            ? 'Single edge device'
+            : 'No edge device identified',
+        impact: profile.hasWarmSpare || profile.firewallCount > 1
+            ? 'Firewall failure should preserve edge service.'
+            : 'Firewall failure can interrupt site edge services.',
+        validation: profile.hasWarmSpare || profile.firewallCount > 1
+            ? 'Validate HA cabling, state sync, licensing, and failover test.'
+            : 'Confirm HA pair, warm spare, or accepted single-device risk.',
+        ready: profile.hasWarmSpare || profile.firewallCount > 1,
+      ),
+      (
+        domain: 'MDF / Core',
+        redundancy: profile.coreSwitchCount > 1
+            ? 'Core pair / stack captured'
+            : profile.coreSwitchCount == 1
+            ? 'Single core switch'
+            : 'Core count unknown',
+        impact: profile.coreSwitchCount > 1
+            ? 'Core device failure should have an alternate control/data path.'
+            : 'Core failure can affect campus-wide connectivity.',
+        validation: profile.coreSwitchCount > 1
+            ? 'Validate stack/virtual pair design, uplinks, and software train.'
+            : 'Confirm core redundancy or document accepted outage domain.',
+        ready: profile.coreSwitchCount > 1,
+      ),
+      (
+        domain: 'IDF / Access',
+        redundancy: profile.accessSwitchCount > 1
+            ? '${profile.accessSwitchCount} access switches'
+            : profile.accessSwitchCount == 1
+            ? 'Single access switch'
+            : 'Access count unknown',
+        impact: profile.accessSwitchCount > 1
+            ? 'Access failure scope can be isolated by IDF/switch.'
+            : 'Access failure scope and spare capacity are unclear.',
+        validation: profile.accessSwitchCount > 0
+            ? 'Map switches to IDFs, uplink pairs, spare ports, and PoE budgets.'
+            : 'Capture IDF/access inventory and uplink topology.',
+        ready: profile.accessSwitchCount > 0 && profile.idfCount > 0,
+      ),
+      (
+        domain: 'Wireless / PoE',
+        redundancy: profile.hasWifi7
+            ? profile.hasPoe && profile.hasMultigig
+                  ? 'Wi-Fi 7 power/uplink noted'
+                  : 'Wi-Fi 7 needs validation'
+            : profile.apCount > 0
+            ? 'AP estate captured'
+            : 'Wireless unknown',
+        impact: profile.hasWifi7 && !(profile.hasPoe && profile.hasMultigig)
+            ? 'AP performance or power draw may exceed access design.'
+            : 'Wireless risk depends on placement, power, and spare ports.',
+        validation: profile.hasWifi7
+            ? 'Validate UPOE/UPOE+, mGig ports, power supplies, and AP density.'
+            : 'Confirm AP generation, PoE class, density, and spare-port plan.',
+        ready: profile.hasWifi7
+            ? profile.hasPoe && profile.hasMultigig
+            : profile.apCount > 0,
+      ),
+    ];
+  }
+
   String _topologyTypeFor(_TopologyProfile profile) {
     if (profile.siteCount > 1) return 'Multi-site topology';
     if (profile.idfCount > 0 || profile.coreSwitchCount > 0) {
@@ -982,12 +1134,15 @@ class DiagramArtifactRenderer {
     List<({String metric, String value, String guidance, bool ready})>
     capacityItems,
     List<String> assumptions,
+    List<_FailureDomainRow> failureDomains,
   ) {
     final gaps = <String>[
       for (final item in readinessItems)
         if (!item.ready) item.check,
       for (final item in capacityItems)
         if (!item.ready) item.metric,
+      for (final item in failureDomains)
+        if (!item.ready) 'Failure domain: ${item.domain}',
       if (assumptions.isEmpty) 'Assumptions',
     ];
     return gaps.toSet().toList(growable: false);
