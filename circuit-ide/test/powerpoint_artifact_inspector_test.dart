@@ -57,10 +57,12 @@ void main() {
         'Section',
         'Roadmap',
         'Table',
-        'Appendix',
         'Sources',
       ]),
     );
+    expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasAssumptionsSourcesSlide, isTrue);
+    expect(inspection.usesDarkTheme, isTrue);
   });
 
   test('PowerPoint inspector tracks declared slide count metadata', () {
@@ -94,7 +96,32 @@ void main() {
     expect(inspection.slideCount, inspection.declaredSlideCount);
     expect(inspection.hasEnterpriseStyling, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
+    expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasKeyTakeaways, isTrue);
     expect(inspection.hasImplementationRoadmap, isTrue);
+    expect(inspection.hasAssumptionsSourcesSlide, isTrue);
+  });
+
+  test('PowerPoint renderer supports customer-facing light theme metadata', () {
+    const document = ArtifactDocument(
+      title: 'Light Theme Customer Deck',
+      summary: 'Customer-facing deck with light theme styling.',
+      sections: [
+        ArtifactSection(
+          title: 'Recommendation',
+          bullets: ['Use the recommended design after source validation.'],
+        ),
+      ],
+      metadata: {'prompt': 'create a light theme PowerPoint deck'},
+    );
+
+    final bytes = const PowerPointArtifactRenderer().render(document);
+    final inspection = const PowerPointArtifactInspector().inspect(bytes);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(inspection.hasExpectedDeckStructure, isFalse);
+    expect(inspection.usesLightTheme, isTrue);
+    expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasAssumptionsSourcesSlide, isTrue);
   });
 }

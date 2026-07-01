@@ -22,6 +22,7 @@ class PowerPointArtifactRenderer {
 
   Uint8List render(ArtifactDocument document) {
     final slides = _slidesFor(document).take(24).toList(growable: false);
+    final theme = _DeckTheme.forDocument(document);
     final files = <_PptxFile>[
       _PptxFile('[Content_Types].xml', _bytes(_contentTypes(slides.length))),
       _PptxFile('_rels/.rels', _bytes(_rootRels())),
@@ -44,7 +45,10 @@ class PowerPointArtifactRenderer {
       ),
       _PptxFile('ppt/theme/theme1.xml', _bytes(_theme())),
       for (var i = 0; i < slides.length; i++)
-        _PptxFile('ppt/slides/slide${i + 1}.xml', _bytes(_slide(slides[i]))),
+        _PptxFile(
+          'ppt/slides/slide${i + 1}.xml',
+          _bytes(_slide(slides[i], theme: theme)),
+        ),
       for (var i = 0; i < slides.length; i++)
         _PptxFile(
           'ppt/slides/_rels/slide${i + 1}.xml.rels',
@@ -82,6 +86,7 @@ class PowerPointArtifactRenderer {
         ],
       ),
       _decisionSnapshot(document, sections),
+      _executiveRecommendation(document, sections),
       if (document.summary.isNotEmpty)
         _DeckSlide(
           title: 'Executive Summary',
@@ -123,31 +128,45 @@ class PowerPointArtifactRenderer {
       }
     }
     slides.add(_implementationRoadmap(document, sections));
-    if (document.assumptions.isNotEmpty) {
-      slides.add(
-        _DeckSlide(
-          title: 'Assumptions & Caveats',
-          eyebrow: 'Decision guardrails',
-          kind: _DeckSlideKind.appendix,
-          bullets: document.assumptions
-              .map((item) => 'Assumption: $item')
-              .toList(growable: false),
-        ),
-      );
-    }
-    if (document.citations.isNotEmpty) {
-      slides.add(
-        _DeckSlide(
-          title: 'Sources & Evidence',
-          eyebrow: 'Source-backed handoff',
-          kind: _DeckSlideKind.sources,
-          bullets: document.citations
-              .map((item) => 'Source: $item')
-              .toList(growable: false),
-        ),
-      );
-    }
+    slides.add(_assumptionsAndSources(document));
     return slides;
+  }
+
+  _DeckSlide _executiveRecommendation(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+      'proposal',
+    ]);
+    final validation = _firstMatchingBullet(sections, [
+      'validate',
+      'verify',
+      'evidence',
+      'source',
+    ]);
+    final next = _firstMatchingBullet(sections, ['next', 'phase', 'action']);
+    return _DeckSlide(
+      title: 'Executive Recommendation',
+      eyebrow: 'Decision-ready guidance',
+      kind: _DeckSlideKind.recommendation,
+      bullets: [
+        recommendation == null
+            ? 'Recommendation: Align on the preferred path, then turn this deck into a reviewed implementation artifact.'
+            : 'Recommendation: $recommendation',
+        if (document.summary.isNotEmpty)
+          'Business context: ${_truncate(document.summary, 150)}',
+        validation == null
+            ? 'Validation: Confirm source data, stakeholder assumptions, and approval criteria before execution.'
+            : 'Validation: $validation',
+        next == null
+            ? 'Next action: Assign owners, confirm timeline, and approve the first implementation batch.'
+            : 'Next action: $next',
+      ],
+    );
   }
 
   _DeckSlide _keyTakeaways(
@@ -256,6 +275,23 @@ class PowerPointArtifactRenderer {
       eyebrow: 'Action plan',
       kind: _DeckSlideKind.roadmap,
       bullets: roadmapBullets.take(6).toList(growable: false),
+    );
+  }
+
+  _DeckSlide _assumptionsAndSources(ArtifactDocument document) {
+    final bullets = <String>[
+      if (document.assumptions.isEmpty)
+        'Assumption: Customer requirements, constraints, and implementation timeline require final confirmation.',
+      for (final item in document.assumptions.take(5)) 'Assumption: $item',
+      if (document.citations.isEmpty)
+        'Source: No external citations were attached; treat this as a draft until evidence is added.',
+      for (final item in document.citations.take(5)) 'Source: $item',
+    ];
+    return _DeckSlide(
+      title: 'Assumptions & Sources',
+      eyebrow: 'Evidence handoff',
+      kind: _DeckSlideKind.sources,
+      bullets: bullets,
     );
   }
 
@@ -437,19 +473,19 @@ class PowerPointArtifactRenderer {
         '$slides</Relationships>';
   }
 
-  String _slide(_DeckSlide slide) {
+  String _slide(_DeckSlide slide, {required _DeckTheme theme}) {
     final titleSize = slide.kind == _DeckSlideKind.title ? 4200 : 3200;
     final bodyY = slide.kind == _DeckSlideKind.title ? 2050000 : 1720000;
-    final accent = _accentFor(slide.kind);
-    final background = _backgroundFor(slide.kind);
+    final accent = theme.accentFor(slide.kind);
+    final background = theme.backgroundFor(slide.kind);
     final body = slide.tableRows.isNotEmpty
-        ? _tableSlideBody(slide, bodyY: bodyY, accent: accent)
-        : _bulletSlideBody(slide, bodyY: bodyY);
+        ? _tableSlideBody(slide, bodyY: bodyY, accent: accent, theme: theme)
+        : _bulletSlideBody(slide, bodyY: bodyY, theme: theme);
     final panelColor =
         slide.kind == _DeckSlideKind.title ||
             slide.kind == _DeckSlideKind.sectionDivider
         ? background
-        : '202020';
+        : theme.panel;
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
@@ -460,26 +496,35 @@ class PowerPointArtifactRenderer {
         '${_shape(id: 8, name: 'Content panel', x: 540000, y: 1640000, w: 11100000, h: 4550000, color: panelColor)}'
         '${_shape(id: 9, name: 'Header rule', x: 600000, y: 1510000, w: 2600000, h: 28000, color: accent)}'
         '${_textBox(id: 4, name: 'Eyebrow', x: 600000, y: 320000, w: 6500000, h: 320000, text: _xml(slide.eyebrow), size: 1200, bold: true, color: accent)}'
-        '${_textBox(id: 7, name: 'Slide type', x: 9700000, y: 340000, w: 1700000, h: 280000, text: _xml(slide.kind.label), size: 1000, bold: true, color: '8A8F98')}'
+        '${_textBox(id: 7, name: 'Slide type', x: 9700000, y: 340000, w: 1700000, h: 280000, text: _xml(slide.kind.label), size: 1000, bold: true, color: theme.mutedText)}'
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
         '$body'
-        '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact', size: 1000, bold: false, color: '8A8F98')}'
+        '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact - ${theme.label} theme', size: 1000, bold: false, color: theme.mutedText)}'
         '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
   }
 
-  String _bulletSlideBody(_DeckSlide slide, {required int bodyY}) {
+  String _bulletSlideBody(
+    _DeckSlide slide, {
+    required int bodyY,
+    required _DeckTheme theme,
+  }) {
     final bullets = slide.bullets
         .where((bullet) => bullet.trim().isNotEmpty)
         .take(slide.kind == _DeckSlideKind.title ? 5 : 8)
         .toList(growable: false);
     if (slide.kind == _DeckSlideKind.snapshot ||
         slide.kind == _DeckSlideKind.dataSnapshot) {
-      return _tileSlideBody(slide, bullets: bullets, bodyY: bodyY);
+      return _tileSlideBody(
+        slide,
+        bullets: bullets,
+        bodyY: bodyY,
+        theme: theme,
+      );
     }
     final body = bullets
         .map(
           (bullet) =>
-              '<a:p><a:r><a:rPr lang="en-US" sz="${slide.kind == _DeckSlideKind.title ? 2300 : 2050}"><a:solidFill><a:srgbClr val="F4F4F5"/></a:solidFill></a:rPr><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
+              '<a:p><a:r><a:rPr lang="en-US" sz="${slide.kind == _DeckSlideKind.title ? 2300 : 2050}"><a:solidFill><a:srgbClr val="${theme.bodyText}"/></a:solidFill></a:rPr><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
         )
         .join();
     return '<p:sp><p:nvSpPr><p:cNvPr id="6" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
@@ -491,8 +536,9 @@ class PowerPointArtifactRenderer {
     _DeckSlide slide, {
     required List<String> bullets,
     required int bodyY,
+    required _DeckTheme theme,
   }) {
-    final accent = _accentFor(slide.kind);
+    final accent = theme.accentFor(slide.kind);
     final parts = <String>[];
     const x = 760000;
     const tileWidth = 5000000;
@@ -518,7 +564,7 @@ class PowerPointArtifactRenderer {
             y: tileY,
             w: tileWidth,
             h: tileHeight,
-            color: '242424',
+            color: theme.tile,
           ),
         )
         ..add(
@@ -546,7 +592,7 @@ class PowerPointArtifactRenderer {
             text: _xml(_truncate(bullet, 150)),
             size: 1350,
             bold: false,
-            color: 'F4F4F5',
+            color: theme.bodyText,
           ),
         );
     }
@@ -557,9 +603,12 @@ class PowerPointArtifactRenderer {
     _DeckSlide slide, {
     required int bodyY,
     required String accent,
+    required _DeckTheme theme,
   }) {
     final rows = slide.tableRows.take(7).toList(growable: false);
-    if (rows.isEmpty) return _bulletSlideBody(slide, bodyY: bodyY);
+    if (rows.isEmpty) {
+      return _bulletSlideBody(slide, bodyY: bodyY, theme: theme);
+    }
     final columnCount = rows
         .fold<int>(0, (max, row) => row.length > max ? row.length : max)
         .clamp(1, 5);
@@ -576,7 +625,7 @@ class PowerPointArtifactRenderer {
         final cellY = bodyY + (rowIndex * height);
         final fill = rowIndex == 0
             ? accent
-            : (rowIndex.isEven ? '242424' : '1D1D1D');
+            : (rowIndex.isEven ? theme.tile : theme.panel);
         parts
           ..add(
             _shape(
@@ -600,7 +649,7 @@ class PowerPointArtifactRenderer {
               text: _xml(_truncate(value, rowIndex == 0 ? 32 : 42)),
               size: rowIndex == 0 ? 1200 : 1100,
               bold: rowIndex == 0,
-              color: rowIndex == 0 ? '111111' : 'F4F4F5',
+              color: rowIndex == 0 ? theme.headerText : theme.bodyText,
             ),
           );
       }
@@ -617,7 +666,7 @@ class PowerPointArtifactRenderer {
           text: _xml(_truncate(slide.bullets.first, 140)),
           size: 1200,
           bold: false,
-          color: 'C4C7CC',
+          color: theme.secondaryText,
         ),
       );
     }
@@ -628,33 +677,6 @@ class PowerPointArtifactRenderer {
     final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= max) return normalized;
     return '${normalized.substring(0, max - 3)}...';
-  }
-
-  String _accentFor(_DeckSlideKind kind) {
-    return switch (kind) {
-      _DeckSlideKind.title => '7FB7B2',
-      _DeckSlideKind.agenda => '7A9CC6',
-      _DeckSlideKind.snapshot => '78AAA5',
-      _DeckSlideKind.dataSnapshot => 'B48EAD',
-      _DeckSlideKind.takeaways => '7FB7B2',
-      _DeckSlideKind.sectionDivider => 'C7A77B',
-      _DeckSlideKind.recommendation => 'A7C080',
-      _DeckSlideKind.roadmap => 'A7C080',
-      _DeckSlideKind.table => 'B48EAD',
-      _DeckSlideKind.appendix => '8A8F98',
-      _DeckSlideKind.sources => '7A9CC6',
-      _DeckSlideKind.content => '7FB7B2',
-    };
-  }
-
-  String _backgroundFor(_DeckSlideKind kind) {
-    return switch (kind) {
-      _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
-      _DeckSlideKind.snapshot ||
-      _DeckSlideKind.takeaways ||
-      _DeckSlideKind.roadmap => '121715',
-      _ => '161616',
-    };
   }
 
   String _shape({
@@ -786,6 +808,96 @@ enum _DeckSlideKind {
       _DeckSlideKind.table => 'Table',
       _DeckSlideKind.appendix => 'Appendix',
       _DeckSlideKind.sources => 'Sources',
+    };
+  }
+}
+
+class _DeckTheme {
+  final String label;
+  final String canvas;
+  final String panel;
+  final String tile;
+  final String bodyText;
+  final String secondaryText;
+  final String mutedText;
+  final String headerText;
+
+  const _DeckTheme._({
+    required this.label,
+    required this.canvas,
+    required this.panel,
+    required this.tile,
+    required this.bodyText,
+    required this.secondaryText,
+    required this.mutedText,
+    required this.headerText,
+  });
+
+  factory _DeckTheme.forDocument(ArtifactDocument document) {
+    final prompt = '${document.metadata['prompt'] ?? ''}'.toLowerCase();
+    final explicitTheme = '${document.metadata['theme'] ?? ''}'.toLowerCase();
+    final wantsLight =
+        explicitTheme.contains('light') ||
+        prompt.contains('light theme') ||
+        prompt.contains('white background') ||
+        prompt.contains('customer-facing light');
+    if (wantsLight) {
+      return const _DeckTheme._(
+        label: 'Light',
+        canvas: 'F8FAFC',
+        panel: 'FFFFFF',
+        tile: 'EEF2F7',
+        bodyText: '111827',
+        secondaryText: '475569',
+        mutedText: '64748B',
+        headerText: '111111',
+      );
+    }
+    return const _DeckTheme._(
+      label: 'Dark',
+      canvas: '161616',
+      panel: '202020',
+      tile: '242424',
+      bodyText: 'F4F4F5',
+      secondaryText: 'C4C7CC',
+      mutedText: '8A8F98',
+      headerText: '111111',
+    );
+  }
+
+  String accentFor(_DeckSlideKind kind) {
+    return switch (kind) {
+      _DeckSlideKind.title => '7FB7B2',
+      _DeckSlideKind.agenda => '7A9CC6',
+      _DeckSlideKind.snapshot => '78AAA5',
+      _DeckSlideKind.dataSnapshot => 'B48EAD',
+      _DeckSlideKind.takeaways => '7FB7B2',
+      _DeckSlideKind.sectionDivider => 'C7A77B',
+      _DeckSlideKind.recommendation => 'A7C080',
+      _DeckSlideKind.roadmap => 'A7C080',
+      _DeckSlideKind.table => 'B48EAD',
+      _DeckSlideKind.appendix => '8A8F98',
+      _DeckSlideKind.sources => '7A9CC6',
+      _DeckSlideKind.content => '7FB7B2',
+    };
+  }
+
+  String backgroundFor(_DeckSlideKind kind) {
+    if (label == 'Light') {
+      return switch (kind) {
+        _DeckSlideKind.title || _DeckSlideKind.sectionDivider => 'F8FAFC',
+        _DeckSlideKind.snapshot ||
+        _DeckSlideKind.takeaways ||
+        _DeckSlideKind.roadmap => 'F1F5F9',
+        _ => canvas,
+      };
+    }
+    return switch (kind) {
+      _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
+      _DeckSlideKind.snapshot ||
+      _DeckSlideKind.takeaways ||
+      _DeckSlideKind.roadmap => '121715',
+      _ => canvas,
     };
   }
 }

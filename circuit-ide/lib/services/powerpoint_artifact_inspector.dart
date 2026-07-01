@@ -15,13 +15,17 @@ class PowerPointArtifactInspection {
   final bool hasCircuitFooter;
   final bool hasAgenda;
   final bool hasDecisionSnapshot;
+  final bool hasExecutiveRecommendation;
   final bool hasKeyTakeaways;
   final bool hasSectionDivider;
   final bool hasImplementationRoadmap;
   final bool hasTableSlide;
   final bool hasAppendix;
   final bool hasSourcesSlide;
+  final bool hasAssumptionsSourcesSlide;
   final bool hasEnterpriseStyling;
+  final bool usesLightTheme;
+  final bool usesDarkTheme;
 
   const PowerPointArtifactInspection({
     required this.hasZipHeader,
@@ -38,13 +42,17 @@ class PowerPointArtifactInspection {
     required this.hasCircuitFooter,
     required this.hasAgenda,
     required this.hasDecisionSnapshot,
+    required this.hasExecutiveRecommendation,
     required this.hasKeyTakeaways,
     required this.hasSectionDivider,
     required this.hasImplementationRoadmap,
     required this.hasTableSlide,
     required this.hasAppendix,
     required this.hasSourcesSlide,
+    required this.hasAssumptionsSourcesSlide,
     required this.hasEnterpriseStyling,
+    required this.usesLightTheme,
+    required this.usesDarkTheme,
   });
 
   bool get isStructurallyValid =>
@@ -62,12 +70,13 @@ class PowerPointArtifactInspection {
       isStructurallyValid &&
       hasAgenda &&
       hasDecisionSnapshot &&
+      hasExecutiveRecommendation &&
       hasKeyTakeaways &&
       hasSectionDivider &&
       hasImplementationRoadmap &&
       hasTableSlide &&
-      hasAppendix &&
       hasSourcesSlide &&
+      hasAssumptionsSourcesSlide &&
       hasCircuitFooter &&
       hasEnterpriseStyling;
 }
@@ -118,6 +127,9 @@ class PowerPointArtifactInspector {
       hasAgenda: text.contains('Agenda'),
       hasDecisionSnapshot:
           text.contains('Decision Snapshot') || slideTypes.contains('Decision'),
+      hasExecutiveRecommendation:
+          text.contains('Executive Recommendation') ||
+          slideTypes.contains('Recommendation'),
       hasKeyTakeaways:
           text.contains('Key Takeaways') || slideTypes.contains('Takeaways'),
       hasSectionDivider: slideTypes.contains('Section'),
@@ -127,11 +139,14 @@ class PowerPointArtifactInspector {
       hasTableSlide: slideTypes.contains('Table'),
       hasAppendix: slideTypes.contains('Appendix'),
       hasSourcesSlide: slideTypes.contains('Sources'),
+      hasAssumptionsSourcesSlide: text.contains('Assumptions &amp; Sources'),
       hasEnterpriseStyling:
           text.contains('Content panel') &&
           text.contains('Header rule') &&
           text.contains('Accent') &&
           text.contains('PresentationFormat'),
+      usesLightTheme: text.contains('Generated artifact - Light theme'),
+      usesDarkTheme: text.contains('Generated artifact - Dark theme'),
     );
   }
 

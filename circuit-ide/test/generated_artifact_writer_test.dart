@@ -79,8 +79,8 @@ Short executive summary for the customer.
       expect(packageText, contains('Executive readout'));
       expect(packageText, contains('Data table'));
       expect(packageText, contains('Dual 2 Gbps'));
-      expect(packageText, contains('Assumptions &amp; Caveats'));
-      expect(packageText, contains('Sources &amp; Evidence'));
+      expect(packageText, contains('Executive Recommendation'));
+      expect(packageText, contains('Assumptions &amp; Sources'));
       expect(packageText, contains('Customer workshop notes'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
     },
