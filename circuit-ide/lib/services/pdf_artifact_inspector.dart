@@ -1,0 +1,87 @@
+import 'dart:convert';
+
+class PdfArtifactInspection {
+  final bool hasPdfHeader;
+  final bool hasCatalog;
+  final bool hasXref;
+  final bool hasTrailer;
+  final int pageCount;
+  final int objectCount;
+  final bool hasLetterMediaBox;
+  final bool hasCircuitHeader;
+  final bool hasCircuitFooter;
+  final bool hasPageNumberFooter;
+  final bool hasAccentBar;
+  final bool hasTableGrid;
+  final String? title;
+
+  const PdfArtifactInspection({
+    required this.hasPdfHeader,
+    required this.hasCatalog,
+    required this.hasXref,
+    required this.hasTrailer,
+    required this.pageCount,
+    required this.objectCount,
+    required this.hasLetterMediaBox,
+    required this.hasCircuitHeader,
+    required this.hasCircuitFooter,
+    required this.hasPageNumberFooter,
+    required this.hasAccentBar,
+    required this.hasTableGrid,
+    required this.title,
+  });
+
+  bool get isStructurallyValid =>
+      hasPdfHeader &&
+      hasCatalog &&
+      hasXref &&
+      hasTrailer &&
+      pageCount > 0 &&
+      objectCount >= pageCount + 6;
+
+  bool get hasExpectedReportChrome =>
+      hasLetterMediaBox &&
+      hasCircuitHeader &&
+      hasCircuitFooter &&
+      hasPageNumberFooter &&
+      hasAccentBar;
+
+  bool containsText(String text) =>
+      _normalizedTitle(title).contains(_normalizedTitle(text));
+
+  static String _normalizedTitle(String? value) =>
+      (value ?? '').replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+}
+
+class PdfArtifactInspector {
+  const PdfArtifactInspector();
+
+  PdfArtifactInspection inspect(List<int> bytes) {
+    final text = latin1.decode(bytes, allowInvalid: true);
+    return PdfArtifactInspection(
+      hasPdfHeader: text.startsWith('%PDF-'),
+      hasCatalog: text.contains('/Type /Catalog'),
+      hasXref: RegExp(r'\nxref\s*\n').hasMatch(text),
+      hasTrailer: text.contains('trailer') && text.contains('startxref'),
+      pageCount: RegExp(r'/Type /Page\b').allMatches(text).length,
+      objectCount: RegExp(r'\n\d+ 0 obj\n').allMatches(text).length,
+      hasLetterMediaBox: text.contains('/MediaBox [0 0 612 792]'),
+      hasCircuitHeader: text.contains('CircuitCode generated artifact'),
+      hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
+      hasPageNumberFooter: RegExp(r'Page \d+ of \d+').hasMatch(text),
+      hasAccentBar: text.contains('0 0 8 792 re f'),
+      hasTableGrid: text.contains(' re S'),
+      title: _titleFromInfo(text),
+    );
+  }
+
+  static String? _titleFromInfo(String text) {
+    final match = RegExp(r'/Title \(((?:\\.|[^\\)])*)\)').firstMatch(text);
+    final raw = match?.group(1);
+    if (raw == null) return null;
+    return raw
+        .replaceAll(r'\(', '(')
+        .replaceAll(r'\)', ')')
+        .replaceAll('\\\\', '\\');
+  }
+}
