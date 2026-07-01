@@ -566,7 +566,54 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(artifact.summary, contains('Lifecycle / EoX workbook'));
     expect(artifact.summary, contains('executive risk'));
     expect(artifact.summary, contains('replacement readiness'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(18));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(21));
+    expect(artifact.metadata['workbookKind'], 'lifecycle_eox');
+    expect(artifact.metadata['lifecycleQualityManifestVersion'], '1.0');
+    expect(artifact.metadata['lifecycleRecordCount'], 2);
+    expect(
+      artifact.metadata['highRiskLifecycleCount'],
+      greaterThanOrEqualTo(1),
+    );
+    expect(
+      artifact.metadata['unknownLifecycleDateCount'],
+      greaterThanOrEqualTo(1),
+    );
+    expect(artifact.metadata['migrationHintCount'], greaterThanOrEqualTo(1));
+    expect(artifact.metadata['lifecycleReadinessLevel'], isA<String>());
+    expect(artifact.metadata['lifecycleHandoffStatus'], isA<String>());
+    expect(
+      artifact.metadata['lifecycleDecisionPosture'],
+      contains('Lifecycle dates are authoritative'),
+    );
+    expect(artifact.metadata['highestLifecycleRisk'], isNotEmpty);
+    expect(artifact.metadata['migrationPosture'], contains('migration clue'));
+    expect(artifact.metadata['modernRequirementPressure'], contains('Wi-Fi 7'));
+    expect(artifact.metadata['lifecycleEvidencePolicyCount'], 4);
+    expect(
+      artifact.metadata['lifecycleEvidencePolicy'],
+      anyElement(contains('Lifecycle dates require Cisco EoX/API')),
+    );
+    expect(
+      artifact.metadata['lifecycleEvidencePolicy'],
+      anyElement(contains('Replacement PIDs are migration hints')),
+    );
+    expect(artifact.metadata['lifecycleVisualVerificationChecklistCount'], 5);
+    expect(
+      artifact.metadata['lifecycleVisualVerificationChecklist'],
+      anyElement(contains('Open workbook and confirm all lifecycle sheets')),
+    );
+    expect(artifact.metadata['lifecyclePublishingMetadataCount'], 5);
+    expect(
+      artifact.metadata['lifecyclePublishingMetadata'],
+      anyElement(contains('External handoff')),
+    );
+    expect(artifact.metadata['hasLifecycleQualityManifest'], isTrue);
+    expect(artifact.metadata['hasLifecycleEvidencePolicy'], isTrue);
+    expect(
+      artifact.metadata['hasLifecycleVisualVerificationChecklist'],
+      isTrue,
+    );
+    expect(artifact.metadata['hasLifecyclePublishingMetadata'], isTrue);
     expect(artifact.previewRows.first, [
       'Decision Signal',
       'Current Answer',
@@ -593,6 +640,9 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('WiFi7 UPOE Readiness'));
     expect(packageText, contains('Customer Actions'));
     expect(packageText, contains('Risk Register'));
+    expect(packageText, contains('Evidence Policy'));
+    expect(packageText, contains('Visual QA'));
+    expect(packageText, contains('Publishing Readiness'));
     expect(packageText, contains('Assumptions'));
     expect(packageText, contains('C9300-48P'));
     expect(packageText, contains('AIR-AP2802I'));
@@ -630,6 +680,13 @@ Source checked 2026-06-30 from Cisco EoX/API.
     );
     expect(packageText, contains('Wi-Fi 7'));
     expect(packageText, contains('UPOE'));
+    expect(packageText, contains('Lifecycle dates require Cisco EoX/API'));
+    expect(packageText, contains('Replacement PIDs are migration hints only'));
+    expect(
+      packageText,
+      contains('Open workbook and confirm all lifecycle sheets'),
+    );
+    expect(packageText, contains('Lifecycle dates inform support risk'));
   });
 
   test('lifecycle package adds PDF and JSON evidence register', () async {

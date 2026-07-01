@@ -415,8 +415,13 @@ class GeneratedArtifactWriter {
       final List<_TableData> tables;
       Map<String, Object?> workbookMetadata = const {};
       if (lifecycleEox) {
-        tables = lifecycleEoxBuilder
-            .build(prompt: prompt, content: content, document: document)
+        final workbookTables = lifecycleEoxBuilder.build(
+          prompt: prompt,
+          content: content,
+          document: document,
+        );
+        workbookMetadata = lifecycleEoxBuilder.metadataFor(workbookTables);
+        tables = workbookTables
             .map((table) => _TableData(name: table.name, rows: table.rows))
             .toList(growable: false);
       } else if (productComparison) {

@@ -1514,6 +1514,179 @@ void main() {
     );
   });
 
+  testWidgets('Artifacts drawer shows lifecycle EoX workbook metadata', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'lifecycle-1',
+      kind: GeneratedArtifactKind.excel,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'lifecycle-eox-review.xlsx',
+      filePath: '/tmp/lifecycle-eox-review.xlsx',
+      summary:
+          'Created a Lifecycle / EoX workbook with executive risk, date authority, replacement readiness, and evidence policy.',
+      byteSize: 28672,
+      previewRows: const [
+        ['Decision Signal', 'Current Answer', 'Why It Matters', 'Next Action'],
+        [
+          'Highest lifecycle risk',
+          'High',
+          'Lifecycle risk drives refresh urgency',
+          'Build migration plan',
+        ],
+      ],
+      sheetCount: 21,
+      metadata: const {
+        'artifact': 'lifecycle_eox_workbook',
+        'workbookKind': 'lifecycle_eox',
+        'sheetCount': 21,
+        'sourceSheetCount': 1,
+        'lifecycleRecordCount': 2,
+        'highRiskLifecycleCount': 1,
+        'unknownLifecycleDateCount': 1,
+        'urgencyItemCount': 2,
+        'migrationHintCount': 2,
+        'replacementSuitabilityCount': 2,
+        'currentPortfolioCandidateCount': 3,
+        'customerActionCount': 5,
+        'lifecycleRiskCount': 2,
+        'lifecycleReadinessLevel': 'High risk - source validation required',
+        'lifecycleHandoffStatus': 'Lifecycle risk review workbook',
+        'lifecycleDecisionPosture':
+            'Lifecycle dates are authoritative only when sourced; replacement PIDs remain migration hints until current-fit validation closes.',
+        'highestLifecycleRisk': 'High',
+        'dateAuthority': 'Cisco EoX/API or official Cisco evidence required',
+        'checkedDateStatus': 'Checked date 2026-06-30',
+        'migrationPosture': 'Migration clue only',
+        'modernRequirementPressure':
+            'Wi-Fi 7, UPOE / 802.3bt, mGig / high-speed access',
+        'hasOfficialLifecycleSource': true,
+        'hasCheckedDateEvidence': true,
+        'lifecycleQualityManifestVersion': '1.0',
+        'lifecycleEvidencePolicy': [
+          'Lifecycle dates require Cisco EoX/API or official Cisco evidence.: Cisco lifecycle source signal detected: Attach source URL/API record, checked date, and product-specific lifecycle fields before customer handoff.',
+          'Replacement PIDs are migration hints only.: Migration or replacement hint detected: Compare suggestedMigrationPid against current portfolio, Wi-Fi 7, UPOE, mGig, uplink, licensing, and lifecycle runway requirements.',
+          'Modern requirements can supersede EoX migration hints.: Wi-Fi 7, UPOE / 802.3bt, mGig / high-speed access: Reject or re-rank candidates that fail power, access speed, HA, licensing, or runway gates.',
+          'Customer-facing lifecycle claims need checked dates.: Checked date 2026-06-30: Record when evidence was checked and refresh stale or incomplete records before external use.',
+        ],
+        'lifecycleEvidencePolicyCount': 4,
+        'lifecycleVisualVerificationChecklist': [
+          'Open workbook and confirm all lifecycle sheets are visible.: Required',
+          'Verify lifecycle date columns and checked-date fields are readable.: Required',
+          'Review Replacement Suitability and Migration Decision before sharing.: High priority',
+          'Confirm Current Portfolio Shortlist includes supersede rules.: High priority',
+          'Check Evidence Policy and Publishing Readiness before external handoff.: Required',
+        ],
+        'lifecycleVisualVerificationChecklistCount': 5,
+        'lifecyclePublishingMetadata': [
+          'External handoff: Official lifecycle source, checked date, replacement caveats, and current-fit validation are reviewed.: Owner approval required',
+          'Decision posture: Lifecycle dates inform support risk; final model choice requires current portfolio and requirement matching.: Advisory',
+          'Date authority: Cisco EoX/API or official Cisco lifecycle source is attached for every customer-facing date.: Detected',
+          'Replacement caveat: EoX replacement PID is labeled suggestedMigrationPid and not final recommendation.: Required',
+          'Modern requirements: Wi-Fi 7, UPOE, mGig, uplink, licensing, and HA gates are validated before BOM or model recommendation.: Required',
+        ],
+        'lifecyclePublishingMetadataCount': 5,
+        'hasLifecycleQualityManifest': true,
+        'hasLifecycleEvidencePolicy': true,
+        'hasLifecycleVisualVerificationChecklist': true,
+        'hasLifecyclePublishingMetadata': true,
+        'qualityStatus': 'Needs evidence review',
+        'qualityScore': 84,
+        'qualityGates': [
+          'Native format ready',
+          'Lifecycle sheets packaged',
+          'Evidence policy embedded',
+          'Publishing readiness embedded',
+        ],
+        'qualityGaps': [
+          'Validate replacement suitability',
+          'Attach source URL/API record',
+        ],
+        'qualityNextAction':
+            'Validate official lifecycle evidence before customer handoff.',
+        'hasCustomerReadyArtifact': false,
+      },
+      createdAt: DateTime(2026, 7, 1, 12),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('lifecycle-eox-review.xlsx'), findsOneWidget);
+    expect(
+      find.textContaining('Excel • Needs evidence review'),
+      findsOneWidget,
+    );
+    expect(find.text('Workbook preview'), findsOneWidget);
+    expect(find.text('Highest lifecycle risk'), findsOneWidget);
+
+    await tester.tap(find.text('lifecycle-eox-review.xlsx'));
+    await tester.pump();
+
+    expect(find.text('Quality'), findsOneWidget);
+    expect(find.text('84/100'), findsOneWidget);
+    expect(find.text('Lifecycle readiness'), findsOneWidget);
+    expect(find.text('High risk - source validation required'), findsOneWidget);
+    expect(find.text('Lifecycle handoff'), findsOneWidget);
+    expect(find.text('Lifecycle risk review workbook'), findsOneWidget);
+    expect(find.text('Decision posture'), findsOneWidget);
+    expect(
+      find.textContaining('Lifecycle dates are authoritative'),
+      findsOneWidget,
+    );
+    expect(find.text('Lifecycle manifest'), findsOneWidget);
+    expect(find.text('Manifest v1.0'), findsOneWidget);
+    expect(find.text('Highest risk'), findsOneWidget);
+    expect(find.text('High'), findsAtLeastNWidgets(1));
+    expect(find.text('Date authority'), findsOneWidget);
+    expect(
+      find.text('Cisco EoX/API or official Cisco evidence required'),
+      findsOneWidget,
+    );
+    expect(find.text('Checked date'), findsOneWidget);
+    expect(find.text('Checked date 2026-06-30'), findsOneWidget);
+    expect(find.text('Migration posture'), findsOneWidget);
+    expect(find.text('Migration clue only'), findsOneWidget);
+    expect(find.text('Modern requirements'), findsOneWidget);
+    expect(find.textContaining('Wi-Fi 7'), findsAtLeastNWidgets(1));
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(
+      find.textContaining('Lifecycle dates require Cisco EoX/API'),
+      findsOneWidget,
+    );
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.textContaining('Open workbook and confirm all lifecycle sheets'),
+      findsOneWidget,
+    );
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(find.textContaining('External handoff'), findsOneWidget);
+    expect(find.text('Products'), findsOneWidget);
+    expect(find.text('High-risk items'), findsOneWidget);
+    expect(find.text('Unknown dates'), findsOneWidget);
+    expect(find.text('Migration hints'), findsOneWidget);
+    expect(find.text('Next'), findsOneWidget);
+    expect(
+      find.text(
+        'Validate official lifecycle evidence before customer handoff.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Artifacts drawer explains deck and document artifacts', (
     tester,
   ) async {

@@ -246,6 +246,27 @@ class LifecycleEoxWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Evidence Policy',
+        rows: [
+          const ['Policy', 'Current Signal', 'Owner Action'],
+          ..._lifecycleEvidencePolicyRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Visual QA',
+        rows: [
+          const ['Check', 'Why It Matters', 'Status'],
+          ..._lifecycleVisualVerificationRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Publishing Readiness',
+        rows: [
+          const ['Gate', 'Requirement', 'Status'],
+          ..._lifecyclePublishingRows(profile),
+        ],
+      ),
+      WorkbookTable(
         name: 'Assumptions',
         rows: [
           const ['Assumption', 'Impact'],
@@ -254,6 +275,145 @@ class LifecycleEoxWorkbookBuilder {
       ),
       ..._sourceTables(document),
     ];
+  }
+
+  Map<String, Object?> metadataFor(List<WorkbookTable> tables) {
+    final executiveRows = _rowsFor(
+      tables,
+      'Executive Risk',
+    ).skip(1).toList(growable: false);
+    final lifecycleRows = _rowsFor(
+      tables,
+      'Lifecycle Status',
+    ).skip(1).toList(growable: false);
+    final urgencyRows = _rowsFor(
+      tables,
+      'Urgency Timeline',
+    ).skip(1).toList(growable: false);
+    final migrationRows = _rowsFor(
+      tables,
+      'Migration Hints',
+    ).skip(1).toList(growable: false);
+    final dateAuthorityRows = _rowsFor(
+      tables,
+      'Date Authority',
+    ).skip(1).toList(growable: false);
+    final replacementRows = _rowsFor(
+      tables,
+      'Replacement Suitability',
+    ).skip(1).toList(growable: false);
+    final shortlistRows = _rowsFor(
+      tables,
+      'Current Portfolio Shortlist',
+    ).skip(1).toList(growable: false);
+    final customerActionRows = _rowsFor(
+      tables,
+      'Customer Actions',
+    ).skip(1).toList(growable: false);
+    final riskRows = _rowsFor(
+      tables,
+      'Risk Register',
+    ).skip(1).toList(growable: false);
+    final evidencePolicyRows = _rowsFor(
+      tables,
+      'Evidence Policy',
+    ).skip(1).toList(growable: false);
+    final visualQaRows = _rowsFor(
+      tables,
+      'Visual QA',
+    ).skip(1).toList(growable: false);
+    final publishingRows = _rowsFor(
+      tables,
+      'Publishing Readiness',
+    ).skip(1).toList(growable: false);
+    final sourceSheetCount = tables
+        .where((table) => table.name.toLowerCase().startsWith('source '))
+        .length;
+    final highRiskCount = lifecycleRows.where((row) {
+      final joined = row.join(' ').toLowerCase();
+      return joined.contains('high') ||
+          joined.contains('unsupported') ||
+          joined.contains('end of support');
+    }).length;
+    final unknownDateCount = lifecycleRows.where((row) {
+      return row.any((cell) => cell.trim().toUpperCase() == 'TBD');
+    }).length;
+    final migrationHintCount = migrationRows.where((row) {
+      return row.any((cell) {
+        final normalized = cell.toLowerCase();
+        return normalized.contains('replacement') ||
+            normalized.contains('migration') ||
+            normalized.contains('suggestedmigrationpid');
+      });
+    }).length;
+    final hasOfficialSource = dateAuthorityRows.any((row) {
+      final joined = row.join(' ').toLowerCase();
+      return joined.contains('cisco eox') ||
+          joined.contains('official cisco') ||
+          joined.contains('official lifecycle');
+    });
+    final hasCheckedDate = dateAuthorityRows.any((row) {
+      return row.join(' ').toLowerCase().contains('checked date');
+    });
+    final readinessLevel = _lifecycleReadinessLevel(
+      highRiskCount: highRiskCount,
+      unknownDateCount: unknownDateCount,
+      hasOfficialSource: hasOfficialSource,
+      hasCheckedDate: hasCheckedDate,
+    );
+    return {
+      'artifact': 'lifecycle_eox_workbook',
+      'workbookKind': 'lifecycle_eox',
+      'sheetCount': tables.length,
+      'sourceSheetCount': sourceSheetCount,
+      'lifecycleRecordCount': lifecycleRows.length,
+      'highRiskLifecycleCount': highRiskCount,
+      'unknownLifecycleDateCount': unknownDateCount,
+      'urgencyItemCount': urgencyRows.length,
+      'migrationHintCount': migrationHintCount,
+      'replacementSuitabilityCount': replacementRows.length,
+      'currentPortfolioCandidateCount': shortlistRows.length,
+      'customerActionCount': customerActionRows.length,
+      'lifecycleRiskCount': riskRows.length,
+      'lifecycleReadinessLevel': readinessLevel,
+      'lifecycleHandoffStatus': _lifecycleHandoffStatus(readinessLevel),
+      'lifecycleDecisionPosture':
+          'Lifecycle dates are authoritative only when sourced; replacement PIDs remain migration hints until current-fit validation closes.',
+      'highestLifecycleRisk': _executiveValue(
+        executiveRows,
+        'Highest lifecycle risk',
+      ),
+      'dateAuthority': _executiveValue(
+        executiveRows,
+        'Lifecycle date authority',
+      ),
+      'checkedDateStatus': _executiveValue(
+        executiveRows,
+        'Checked date requirement',
+      ),
+      'migrationPosture': _executiveValue(
+        executiveRows,
+        'Migration recommendation posture',
+        column: 2,
+      ),
+      'modernRequirementPressure': _executiveValue(
+        executiveRows,
+        'Current requirement pressure',
+      ),
+      'hasOfficialLifecycleSource': hasOfficialSource,
+      'hasCheckedDateEvidence': hasCheckedDate,
+      'lifecycleQualityManifestVersion': '1.0',
+      'lifecycleEvidencePolicy': _stringRows(evidencePolicyRows),
+      'lifecycleEvidencePolicyCount': evidencePolicyRows.length,
+      'lifecycleVisualVerificationChecklist': _stringRows(visualQaRows),
+      'lifecycleVisualVerificationChecklistCount': visualQaRows.length,
+      'lifecyclePublishingMetadata': _stringRows(publishingRows),
+      'lifecyclePublishingMetadataCount': publishingRows.length,
+      'hasLifecycleQualityManifest': true,
+      'hasLifecycleEvidencePolicy': evidencePolicyRows.isNotEmpty,
+      'hasLifecycleVisualVerificationChecklist': visualQaRows.isNotEmpty,
+      'hasLifecyclePublishingMetadata': publishingRows.isNotEmpty,
+    };
   }
 
   List<List<String>> _lifecycleRows({
@@ -1032,6 +1192,114 @@ class LifecycleEoxWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _lifecycleEvidencePolicyRows(_LifecycleProfile profile) {
+    return [
+      [
+        'Lifecycle dates require Cisco EoX/API or official Cisco evidence.',
+        profile.hasCiscoSource
+            ? 'Cisco lifecycle source signal detected'
+            : 'Official lifecycle source missing',
+        'Attach source URL/API record, checked date, and product-specific lifecycle fields before customer handoff.',
+      ],
+      [
+        'Replacement PIDs are migration hints only.',
+        profile.hasMigrationSignal
+            ? 'Migration or replacement hint detected'
+            : 'No migration hint detected',
+        'Compare suggestedMigrationPid against current portfolio, Wi-Fi 7, UPOE, mGig, uplink, licensing, and lifecycle runway requirements.',
+      ],
+      [
+        'Modern requirements can supersede EoX migration hints.',
+        profile.hasModernRequirementSignal
+            ? _replacementRequirementSignal(profile.content)
+            : 'Modern requirement signal still needs discovery',
+        'Reject or re-rank candidates that fail power, access speed, HA, licensing, or runway gates.',
+      ],
+      [
+        'Customer-facing lifecycle claims need checked dates.',
+        profile.checkedDate == null
+            ? 'Checked date missing'
+            : 'Checked date ${profile.checkedDate}',
+        'Record when evidence was checked and refresh stale or incomplete records before external use.',
+      ],
+    ];
+  }
+
+  List<List<String>> _lifecycleVisualVerificationRows(
+    _LifecycleProfile profile,
+  ) {
+    return [
+      [
+        'Open workbook and confirm all lifecycle sheets are visible.',
+        'Reviewers need executive risk, lifecycle status, dates, source quality, replacement suitability, actions, and assumptions.',
+        'Required',
+      ],
+      [
+        'Verify lifecycle date columns and checked-date fields are readable.',
+        'LDOS/EoS/EoL and checked-date evidence are the core authority of the artifact.',
+        profile.checkedDate == null ? 'High priority' : 'Required',
+      ],
+      [
+        'Review Replacement Suitability and Migration Decision before sharing.',
+        'EoX suggestedMigrationPid can be stale or incomplete for Wi-Fi 7/UPOE/mGig needs.',
+        profile.hasMigrationSignal ? 'High priority' : 'Required',
+      ],
+      [
+        'Confirm Current Portfolio Shortlist includes supersede rules.',
+        'The workbook should show why newer candidates may beat old migration hints.',
+        profile.hasModernRequirementSignal ? 'High priority' : 'Required',
+      ],
+      [
+        'Check Evidence Policy and Publishing Readiness before external handoff.',
+        'The artifact must distinguish lifecycle date authority from replacement recommendation suitability.',
+        'Required',
+      ],
+    ];
+  }
+
+  List<List<String>> _lifecyclePublishingRows(_LifecycleProfile profile) {
+    final readiness = _lifecycleReadinessLevel(
+      highRiskCount: profile.records.where((record) {
+        final joined = '${record.status} ${record.risk}'.toLowerCase();
+        return joined.contains('high') ||
+            joined.contains('unsupported') ||
+            joined.contains('end of support');
+      }).length,
+      unknownDateCount: profile.records.where((record) {
+        return record.endOfSale == 'TBD' || record.ldos == 'TBD';
+      }).length,
+      hasOfficialSource: profile.hasCiscoSource,
+      hasCheckedDate: profile.checkedDate != null,
+    );
+    return [
+      [
+        'External handoff',
+        'Official lifecycle source, checked date, replacement caveats, and current-fit validation are reviewed.',
+        readiness.contains('Ready') ? 'Review' : 'Owner approval required',
+      ],
+      [
+        'Decision posture',
+        'Lifecycle dates inform support risk; final model choice requires current portfolio and requirement matching.',
+        'Advisory',
+      ],
+      [
+        'Date authority',
+        'Cisco EoX/API or official Cisco lifecycle source is attached for every customer-facing date.',
+        profile.hasCiscoSource ? 'Detected' : 'Missing',
+      ],
+      [
+        'Replacement caveat',
+        'EoX replacement PID is labeled suggestedMigrationPid and not final recommendation.',
+        profile.hasMigrationSignal ? 'Required' : 'Monitor',
+      ],
+      [
+        'Modern requirements',
+        'Wi-Fi 7, UPOE, mGig, uplink, licensing, and HA gates are validated before BOM or model recommendation.',
+        profile.hasModernRequirementSignal ? 'Required' : 'Needs discovery',
+      ],
+    ];
+  }
+
   List<List<String>> _assumptionRows(ArtifactDocument document) {
     if (document.assumptions.isNotEmpty) {
       return document.assumptions
@@ -1064,6 +1332,61 @@ class LifecycleEoxWorkbookBuilder {
       tables.add(WorkbookTable(name: 'Source ${i + 1}', rows: table.rows));
     }
     return tables;
+  }
+
+  List<List<String>> _rowsFor(List<WorkbookTable> tables, String name) {
+    for (final table in tables) {
+      if (table.name == name) return table.rows;
+    }
+    return const [];
+  }
+
+  List<String> _stringRows(List<List<String>> rows) {
+    return rows
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .map((row) => row.map((cell) => cell.trim()).join(': '))
+        .toList(growable: false);
+  }
+
+  String _executiveValue(
+    List<List<String>> rows,
+    String signal, {
+    int column = 1,
+  }) {
+    final normalizedSignal = signal.toLowerCase();
+    for (final row in rows) {
+      if (row.isEmpty) continue;
+      if (row.first.toLowerCase() != normalizedSignal) continue;
+      if (row.length > column && row[column].trim().isNotEmpty) {
+        return row[column].trim();
+      }
+    }
+    return '';
+  }
+
+  String _lifecycleReadinessLevel({
+    required int highRiskCount,
+    required int unknownDateCount,
+    required bool hasOfficialSource,
+    required bool hasCheckedDate,
+  }) {
+    if (!hasOfficialSource || !hasCheckedDate || unknownDateCount > 0) {
+      return highRiskCount > 0
+          ? 'High risk - source validation required'
+          : 'Evidence review required';
+    }
+    if (highRiskCount > 0) return 'Ready for risk review';
+    return 'Ready for lifecycle review';
+  }
+
+  String _lifecycleHandoffStatus(String readinessLevel) {
+    if (readinessLevel.contains('High risk')) {
+      return 'Lifecycle risk review workbook';
+    }
+    if (readinessLevel.contains('Evidence')) {
+      return 'Evidence review workbook';
+    }
+    return 'Lifecycle review workbook';
   }
 
   int? _firstHeaderIndex(List<String> header, List<String> terms) {

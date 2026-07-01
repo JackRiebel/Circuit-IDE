@@ -4132,6 +4132,91 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ),
       ],
       if (artifact.kind == GeneratedArtifactKind.excel &&
+          _metadataString(artifact, 'workbookKind') == 'lifecycle_eox') ...[
+        if (_metadataString(artifact, 'lifecycleReadinessLevel').isNotEmpty)
+          (
+            'Lifecycle readiness',
+            _metadataString(artifact, 'lifecycleReadinessLevel'),
+          ),
+        if (_metadataString(artifact, 'lifecycleHandoffStatus').isNotEmpty)
+          (
+            'Lifecycle handoff',
+            _metadataString(artifact, 'lifecycleHandoffStatus'),
+          ),
+        if (_metadataString(artifact, 'lifecycleDecisionPosture').isNotEmpty)
+          (
+            'Decision posture',
+            _metadataString(artifact, 'lifecycleDecisionPosture'),
+          ),
+        if (_metadataBool(artifact, 'hasLifecycleQualityManifest'))
+          (
+            'Lifecycle manifest',
+            _metadataString(artifact, 'lifecycleQualityManifestVersion').isEmpty
+                ? 'Embedded'
+                : 'Manifest v${_metadataString(artifact, 'lifecycleQualityManifestVersion')}',
+          ),
+        if (_metadataString(artifact, 'highestLifecycleRisk').isNotEmpty)
+          ('Highest risk', _metadataString(artifact, 'highestLifecycleRisk')),
+        if (_metadataString(artifact, 'dateAuthority').isNotEmpty)
+          ('Date authority', _metadataString(artifact, 'dateAuthority')),
+        if (_metadataString(artifact, 'checkedDateStatus').isNotEmpty)
+          ('Checked date', _metadataString(artifact, 'checkedDateStatus')),
+        if (_metadataString(artifact, 'migrationPosture').isNotEmpty)
+          ('Migration posture', _metadataString(artifact, 'migrationPosture')),
+        if (_metadataString(artifact, 'modernRequirementPressure').isNotEmpty)
+          (
+            'Modern requirements',
+            _metadataString(artifact, 'modernRequirementPressure'),
+          ),
+        if (_metadataStringList(artifact, 'lifecycleEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'lifecycleEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'lifecycleVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(
+                artifact,
+                'lifecycleVisualVerificationChecklist',
+              ),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'lifecyclePublishingMetadata',
+        ).isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'lifecyclePublishingMetadata'),
+            ),
+          ),
+        if (_metadataInt(artifact, 'lifecycleRecordCount') > 0)
+          ('Products', '${_metadataInt(artifact, 'lifecycleRecordCount')}'),
+        if (_metadataInt(artifact, 'highRiskLifecycleCount') > 0)
+          (
+            'High-risk items',
+            '${_metadataInt(artifact, 'highRiskLifecycleCount')}',
+          ),
+        if (_metadataInt(artifact, 'unknownLifecycleDateCount') > 0)
+          (
+            'Unknown dates',
+            '${_metadataInt(artifact, 'unknownLifecycleDateCount')}',
+          ),
+        if (_metadataInt(artifact, 'migrationHintCount') > 0)
+          (
+            'Migration hints',
+            '${_metadataInt(artifact, 'migrationHintCount')}',
+          ),
+      ],
+      if (artifact.kind == GeneratedArtifactKind.excel &&
           _metadataString(artifact, 'workbookKind') ==
               'product_comparison') ...[
         if (_metadataString(artifact, 'comparisonReadinessLevel').isNotEmpty)
