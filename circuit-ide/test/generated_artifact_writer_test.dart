@@ -755,13 +755,13 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     },
   );
 
-  test('chart pack prompt creates enterprise PoE WAN lifecycle panels', () async {
+  test('chart pack prompt creates enterprise multi-signal panels', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
     final artifact = await const GeneratedArtifactWriter().writeFromAssistantOutput(
       rootPath: root.path,
       prompt:
-          'create a chart pack for PoE budgets, WAN capacity, lifecycle risk, and product comparison',
+          'create a chart pack for PoE budgets, WAN capacity, lifecycle risk, product comparison, cost, and roadmap',
       content: '''
 # Enterprise Sizing Chart Pack
 
@@ -796,6 +796,21 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
 | C9300X-48HX | 5 | 25G | Best UPOE access fit |
 | C9400 | 3 | 100G | Use for chassis sites |
 | MS355 | 4 | 40G | Cloud-managed fit |
+
+## Cost Plan
+
+| Option | TCO | License Cost | Risk |
+| --- | ---: | ---: | --- |
+| Campus refresh | 310000 | 62000 | Review |
+| Cloud-managed access | 240000 | 48000 | Low |
+
+## Deployment Roadmap
+
+| Phase | Priority Score | Duration Weeks |
+| --- | ---: | ---: |
+| Discovery | 5 | 2 |
+| Pilot | 4 | 4 |
+| Rollout | 3 | 8 |
 ''',
       turnId: 'turn-chart-pack',
       threadId: 'thread-1',
@@ -807,22 +822,51 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.svg'));
     expect(artifact.summary, contains('chart pack'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(4));
-    expect(artifact.previewRows.first, ['Metric', 'Watts Required']);
+    expect(artifact.summary, contains('PoE/UPOE'));
+    expect(artifact.summary, contains('Cost/TCO'));
+    expect(artifact.summary, contains('Roadmap'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(6));
+    expect(artifact.previewRows.first, ['Chart', 'Signal', 'Data points']);
+    expect(
+      artifact.previewRows.any(
+        (row) =>
+            row.length == 3 &&
+            row[0] == 'Cost Plan' &&
+            row[1] == 'Cost/TCO' &&
+            row[2] == '2',
+      ),
+      isTrue,
+    );
+    expect(
+      artifact.previewRows.any(
+        (row) =>
+            row.length == 3 &&
+            row[0] == 'Deployment Roadmap' &&
+            row[1] == 'Roadmap' &&
+            row[2] == '3',
+      ),
+      isTrue,
+    );
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('PoE Budget'));
     expect(svg, contains('WAN Capacity'));
     expect(svg, contains('Lifecycle'));
     expect(svg, contains('Comparison'));
+    expect(svg, contains('Cost/TCO'));
+    expect(svg, contains('Roadmap'));
     expect(svg, contains('id="chart-summary"'));
     expect(svg, contains('id="chart-risk-legend"'));
     expect(svg, contains('&quot;highRiskCount&quot;'));
     expect(svg, contains('&quot;hasPoe&quot;'));
     expect(svg, contains('&quot;hasWan&quot;'));
     expect(svg, contains('&quot;hasLifecycle&quot;'));
+    expect(svg, contains('&quot;hasCost&quot;'));
+    expect(svg, contains('&quot;hasRoadmap&quot;'));
     expect(svg, contains('Compare required load'));
     expect(svg, contains('Compare demand'));
     expect(svg, contains('High=3'));
+    expect(svg, contains('validated with current pricing'));
+    expect(svg, contains('sequencing signals'));
     expect(svg, contains('C9300X-48HX'));
   });
 

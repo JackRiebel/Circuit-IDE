@@ -172,21 +172,37 @@ class ArtifactComposer {
   List<ArtifactTable> _extractTables(String content) {
     final tables = <ArtifactTable>[];
     var current = <String>[];
+    String? currentTitle;
+    String? pendingTitle;
     for (final raw in content.split('\n')) {
       final line = raw.trim();
+      final heading = RegExp(r'^\s{0,3}#{1,4}\s+(.+)$').firstMatch(raw);
+      if (heading != null) {
+        _flushTable(current, tables, currentTitle);
+        current = <String>[];
+        currentTitle = null;
+        pendingTitle = heading.group(1)?.trim();
+        continue;
+      }
       final looksLikeRow = line.contains('|') && _tableCells(line).length >= 2;
       if (looksLikeRow) {
+        currentTitle ??= pendingTitle;
         current.add(line);
         continue;
       }
-      _flushTable(current, tables);
+      _flushTable(current, tables, currentTitle);
       current = <String>[];
+      currentTitle = null;
     }
-    _flushTable(current, tables);
+    _flushTable(current, tables, currentTitle);
     return tables;
   }
 
-  void _flushTable(List<String> current, List<ArtifactTable> tables) {
+  void _flushTable(
+    List<String> current,
+    List<ArtifactTable> tables,
+    String? title,
+  ) {
     if (current.length < 2) return;
     final rows = <List<String>>[];
     for (final line in current) {
@@ -198,7 +214,12 @@ class ArtifactComposer {
     }
     if (rows.length >= 2) {
       tables.add(
-        ArtifactTable(title: 'Table ${tables.length + 1}', rows: rows),
+        ArtifactTable(
+          title: title?.trim().isNotEmpty == true
+              ? title!.trim()
+              : 'Table ${tables.length + 1}',
+          rows: rows,
+        ),
       );
     }
   }

@@ -39,7 +39,7 @@ void main() {
     const document = ArtifactDocument(
       title: 'Enterprise Sizing Chart Pack',
       summary:
-          'Enterprise charts covering PoE, WAN, lifecycle, and product fit.',
+          'Enterprise charts covering PoE, WAN, lifecycle, product fit, cost, and roadmap.',
       tables: [
         ArtifactTable(
           title: 'PoE Budget',
@@ -73,6 +73,23 @@ void main() {
             ['C9400', '3', '100G', 'Use for chassis sites'],
           ],
         ),
+        ArtifactTable(
+          title: 'Cost Plan',
+          rows: [
+            ['Option', 'TCO', 'License Cost', 'Risk'],
+            ['Cloud-managed access', '240000', '48000', 'Low'],
+            ['Campus refresh', '310000', '62000', 'Review'],
+          ],
+        ),
+        ArtifactTable(
+          title: 'Deployment Roadmap',
+          rows: [
+            ['Phase', 'Priority Score', 'Duration Weeks'],
+            ['Discovery', '5', '2'],
+            ['Pilot', '4', '4'],
+            ['Rollout', '3', '8'],
+          ],
+        ),
       ],
     );
 
@@ -81,8 +98,8 @@ void main() {
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasEnterpriseChartPackStructure, isTrue);
-    expect(inspection.chartCount, 4);
-    expect(inspection.pointCount, 8);
+    expect(inspection.chartCount, 6);
+    expect(inspection.pointCount, 13);
     expect(inspection.hasChartSummaryPanel, isTrue);
     expect(inspection.hasRiskLegend, isTrue);
     expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
@@ -92,9 +109,11 @@ void main() {
     expect(inspection.hasWanSignal, isTrue);
     expect(inspection.hasLifecycleSignal, isTrue);
     expect(inspection.hasComparisonSignal, isTrue);
+    expect(inspection.hasCostSignal, isTrue);
+    expect(inspection.hasRoadmapSignal, isTrue);
     expect(
       inspection.chartKinds,
-      containsAll(['poe', 'wan', 'lifecycle', 'comparison']),
+      containsAll(['poe', 'wan', 'lifecycle', 'comparison', 'cost', 'roadmap']),
     );
     expect(
       inspection.chartTitles,
@@ -103,6 +122,8 @@ void main() {
         'WAN Capacity',
         'Lifecycle Risk',
         'Product Comparison',
+        'Cost Plan',
+        'Deployment Roadmap',
       ]),
     );
   });

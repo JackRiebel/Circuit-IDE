@@ -246,6 +246,9 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.chart) {
       final chart = chartRenderer.render(document);
+      final signalSummary = chart.signals.isEmpty
+          ? ''
+          : ' covering ${chart.signals.join(', ')}';
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.chart,
         status: GeneratedArtifactStatus.ready,
@@ -253,7 +256,7 @@ class GeneratedArtifactWriter {
         bytes: chart.bytes,
         summary: chart.chartCount == 1
             ? 'Created an SVG chart artifact from the response data.'
-            : 'Created an SVG chart pack with ${chart.chartCount} charts from the response data.',
+            : 'Created an SVG chart pack with ${chart.chartCount} charts$signalSummary.',
         previewRows: chart.previewRows,
         sheetCount: chart.chartCount,
       );

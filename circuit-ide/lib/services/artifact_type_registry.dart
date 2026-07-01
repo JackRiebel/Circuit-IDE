@@ -135,7 +135,15 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.chart,
         GeneratedArtifactKind.powerPoint,
       ],
-      useCases: ['timeline', 'PoE budget', 'risk scoring'],
+      useCases: [
+        'PoE budget',
+        'WAN sizing',
+        'lifecycle timeline',
+        'product comparison',
+        'cost/TCO',
+        'risk scoring',
+        'roadmap',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'evidence_pack',

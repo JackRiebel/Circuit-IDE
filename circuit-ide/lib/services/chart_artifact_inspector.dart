@@ -20,6 +20,8 @@ class ChartArtifactInspection {
   final bool hasWanSignal;
   final bool hasLifecycleSignal;
   final bool hasComparisonSignal;
+  final bool hasCostSignal;
+  final bool hasRoadmapSignal;
   final String? title;
   final List<String> chartKinds;
   final List<String> chartTitles;
@@ -44,6 +46,8 @@ class ChartArtifactInspection {
     required this.hasWanSignal,
     required this.hasLifecycleSignal,
     required this.hasComparisonSignal,
+    required this.hasCostSignal,
+    required this.hasRoadmapSignal,
     required this.title,
     required this.chartKinds,
     required this.chartTitles,
@@ -117,6 +121,8 @@ class ChartArtifactInspector {
       hasWanSignal: metadata['hasWan'] == true,
       hasLifecycleSignal: metadata['hasLifecycle'] == true,
       hasComparisonSignal: metadata['hasComparison'] == true,
+      hasCostSignal: metadata['hasCost'] == true,
+      hasRoadmapSignal: metadata['hasRoadmap'] == true,
       title: _firstElementText(svg, 'title'),
       chartKinds: chartKinds,
       chartTitles: chartTitles,
