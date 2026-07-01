@@ -55,9 +55,15 @@ class DocxArtifactRenderer {
 
   Map<String, Object?> metadataFor(ArtifactDocument document) {
     final previewRows = previewRowsFor(document);
+    final readinessSignals = _readinessSignals(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'word_report',
+      'reportType': _reportTypeFor(document),
+      'audience': _audienceFor(document),
+      'reportPurpose': _reportPurposeFor(document),
+      'handoffStatus': _handoffStatus(document),
+      'decisionOwner': _decisionOwner(document),
       'sectionCount': document.sections.length,
       'reportSectionCount': previewRows.isEmpty ? 0 : previewRows.length - 1,
       'tableCount': document.tables.length,
@@ -68,15 +74,22 @@ class DocxArtifactRenderer {
       'riskItemCount': _riskRegisterRows(document).length,
       'nextStepCount': _nextStepRows(document).length,
       'evidenceItemCount': _evidenceConfidenceRows(document).length,
+      'evidenceGapCount': _evidenceGapCount(document),
       'approvalGateCount': 4,
+      'readinessSignals': readinessSignals,
+      'readinessSignalCount': readinessSignals.length,
       'hasExecutiveDecisionBrief': true,
       'hasTableOfContents': true,
       'hasRecommendationSummary': true,
       'hasRiskRegister': true,
       'hasNextStepActionPlan': true,
+      'hasDocumentMap': true,
+      'hasEvidenceConfidenceMatrix': true,
+      'hasApprovalGates': true,
       'hasValidationChecklist': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
+      'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
     };
   }
 
@@ -818,6 +831,98 @@ class DocxArtifactRenderer {
     if (combined.contains('evidence')) return 'Evidence reviewer';
     if (combined.contains('implementation')) return 'Implementation owner';
     return 'Customer stakeholder';
+  }
+
+  String _reportTypeFor(ArtifactDocument document) {
+    final combined = [
+      document.title,
+      document.summary,
+      for (final section in document.sections) section.title,
+      '${document.metadata['prompt'] ?? ''}',
+    ].join(' ').toLowerCase();
+    if (combined.contains('business') || combined.contains('use case')) {
+      return 'Business use case brief';
+    }
+    if (combined.contains('evidence') || combined.contains('claim')) {
+      return 'Evidence pack';
+    }
+    if (combined.contains('implementation') || combined.contains('plan')) {
+      return 'Implementation plan';
+    }
+    if (combined.contains('architecture') || combined.contains('review')) {
+      return 'Architecture report';
+    }
+    if (combined.contains('change') || combined.contains('diff')) {
+      return 'Change summary report';
+    }
+    return 'Enterprise report';
+  }
+
+  String _audienceFor(ArtifactDocument document) {
+    final combined = [
+      document.title,
+      document.summary,
+      for (final section in document.sections) section.title,
+      '${document.metadata['prompt'] ?? ''}',
+    ].join(' ').toLowerCase();
+    if (combined.contains('customer') ||
+        combined.contains('proposal') ||
+        combined.contains('client')) {
+      return 'Customer stakeholders';
+    }
+    if (combined.contains('executive') || combined.contains('leadership')) {
+      return 'Executive stakeholders';
+    }
+    if (combined.contains('architecture') || combined.contains('technical')) {
+      return 'Architecture reviewers';
+    }
+    if (combined.contains('business') || combined.contains('use case')) {
+      return 'Business stakeholders';
+    }
+    if (combined.contains('evidence')) return 'Evidence reviewers';
+    return 'Project stakeholders';
+  }
+
+  String _reportPurposeFor(ArtifactDocument document) {
+    final type = _reportTypeFor(document);
+    return switch (type) {
+      'Business use case brief' => 'Align business value and next actions',
+      'Evidence pack' => 'Validate claims and source confidence',
+      'Implementation plan' => 'Guide execution and verification',
+      'Architecture report' => 'Review findings, risks, and recommendations',
+      'Change summary report' => 'Document completed changes and evidence',
+      _ => 'Inform stakeholder review',
+    };
+  }
+
+  List<String> _readinessSignals(ArtifactDocument document) {
+    return [
+      'Decision brief',
+      'Recommendation summary',
+      'Risk register',
+      'Next steps',
+      'Validation checklist',
+      if (document.tables.isNotEmpty) 'Data tables',
+      if (document.assumptions.isNotEmpty) 'Assumptions',
+      if (document.citations.isNotEmpty) 'Sources',
+      if (document.citations.isEmpty) 'Evidence gaps',
+    ];
+  }
+
+  int _evidenceGapCount(ArtifactDocument document) {
+    var gaps = 0;
+    if (document.summary.trim().isEmpty) gaps++;
+    if (document.sections.isEmpty) gaps++;
+    if (document.assumptions.isEmpty) gaps++;
+    if (document.citations.isEmpty) gaps++;
+    return gaps;
+  }
+
+  bool _hasCustomerReadyPackage(ArtifactDocument document) {
+    return document.summary.trim().isNotEmpty &&
+        document.sections.isNotEmpty &&
+        document.assumptions.isNotEmpty &&
+        document.citations.isNotEmpty;
   }
 
   String _truncate(String value, int maxLength) {

@@ -3184,7 +3184,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     }
     if (artifact.kind == GeneratedArtifactKind.docx) {
       final wordCount = _metadataInt(artifact, 'wordCount');
+      final reportType = _metadataString(artifact, 'reportType');
+      final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      if (reportType.isNotEmpty) parts.add(reportType);
       if (wordCount > 0) parts.add('$wordCount words');
+      if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.kind == GeneratedArtifactKind.pdf) {
       final bookmarkCount = _metadataInt(artifact, 'bookmarkCount');
@@ -3385,6 +3389,23 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           artifact.kind == GeneratedArtifactKind.pdf) ...[
         if (_metadataInt(artifact, 'pageCount') > 0 && artifact.sheetCount == 0)
           ('Pages', '${_metadataInt(artifact, 'pageCount')}'),
+        if (_metadataString(artifact, 'reportType').isNotEmpty)
+          ('Type', _metadataString(artifact, 'reportType')),
+        if (_metadataString(artifact, 'audience').isNotEmpty)
+          ('Audience', _metadataString(artifact, 'audience')),
+        if (_metadataString(artifact, 'reportPurpose').isNotEmpty)
+          ('Purpose', _metadataString(artifact, 'reportPurpose')),
+        if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
+          ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataString(artifact, 'decisionOwner').isNotEmpty)
+          ('Owner', _metadataString(artifact, 'decisionOwner')),
+        if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
+          (
+            'Readiness',
+            _compactSignalList(
+              _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
         if (_metadataInt(artifact, 'wordCount') > 0)
           ('Words', '${_metadataInt(artifact, 'wordCount')}'),
         if (_metadataInt(artifact, 'bookmarkCount') > 0)
@@ -3399,6 +3420,12 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Assumptions', '${_metadataInt(artifact, 'assumptionCount')}'),
         if (_metadataInt(artifact, 'citationCount') > 0)
           ('Sources', '${_metadataInt(artifact, 'citationCount')}'),
+        if (_metadataInt(artifact, 'evidenceGapCount') > 0)
+          ('Evidence gaps', '${_metadataInt(artifact, 'evidenceGapCount')}'),
+        if (_metadataInt(artifact, 'approvalGateCount') > 0)
+          ('Approval gates', '${_metadataInt(artifact, 'approvalGateCount')}'),
+        if (_metadataBool(artifact, 'hasCustomerReadyPackage'))
+          ('Package', 'Customer-ready report flow'),
       ],
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),

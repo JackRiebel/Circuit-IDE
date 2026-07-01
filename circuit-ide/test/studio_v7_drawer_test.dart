@@ -1183,12 +1183,30 @@ void main() {
           ],
           sheetCount: 4,
           metadata: const {
+            'reportType': 'Architecture report',
+            'audience': 'Architecture reviewers',
+            'reportPurpose': 'Review findings, risks, and recommendations',
+            'handoffStatus': 'Ready for stakeholder review',
+            'decisionOwner': 'Architecture owner / customer sponsor',
+            'readinessSignals': [
+              'Decision brief',
+              'Recommendation summary',
+              'Risk register',
+              'Next steps',
+              'Validation checklist',
+              'Data tables',
+              'Assumptions',
+              'Sources',
+            ],
             'wordCount': 860,
             'reportSectionCount': 12,
             'sectionCount': 4,
             'tableCount': 3,
             'assumptionCount': 2,
             'citationCount': 6,
+            'evidenceGapCount': 0,
+            'approvalGateCount': 4,
+            'hasCustomerReadyPackage': true,
           },
           createdAt: DateTime(2026, 6, 30, 9, 16),
         ).toSourceArtifact(),
@@ -1216,9 +1234,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.textContaining('Word • 860 words • 4 sections'),
+      find.textContaining('Word • Architecture report • 860 words'),
       findsOneWidget,
     );
+    expect(find.textContaining('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('Slide outline'), findsOneWidget);
     expect(find.text('Report outline'), findsOneWidget);
     expect(find.text('Executive Brief'), findsOneWidget);
@@ -1257,6 +1276,31 @@ void main() {
     expect(find.text('5'), findsAtLeastNWidgets(1));
     expect(find.textContaining('6 slide deck ready'), findsNothing);
     expect(find.textContaining('Word document ready'), findsNothing);
+
+    await tester.tap(find.text('architecture-review.docx'));
+    await tester.pump();
+
+    expect(find.text('Type'), findsAtLeastNWidgets(1));
+    expect(find.text('Architecture report'), findsOneWidget);
+    expect(find.text('Audience'), findsAtLeastNWidgets(1));
+    expect(find.text('Architecture reviewers'), findsOneWidget);
+    expect(find.text('Purpose'), findsAtLeastNWidgets(1));
+    expect(
+      find.text('Review findings, risks, and recommendations'),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Ready for stakeholder review'), findsOneWidget);
+    expect(find.text('Owner'), findsOneWidget);
+    expect(find.text('Architecture owner / customer sponsor'), findsOneWidget);
+    expect(find.text('Readiness'), findsAtLeastNWidgets(1));
+    expect(
+      find.text('Decision brief, Recommendation summary +6'),
+      findsOneWidget,
+    );
+    expect(find.text('Approval gates'), findsOneWidget);
+    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('Customer-ready report flow'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer shows topology readiness metadata', (

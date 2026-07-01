@@ -65,18 +65,48 @@ void main() {
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
     expect(metadata['artifact'], 'word_report');
+    expect(metadata['reportType'], 'Architecture report');
+    expect(metadata['audience'], 'Architecture reviewers');
+    expect(
+      metadata['reportPurpose'],
+      'Review findings, risks, and recommendations',
+    );
+    expect(metadata['handoffStatus'], 'Ready for stakeholder review');
+    expect(metadata['decisionOwner'], 'Architecture owner / customer sponsor');
     expect(metadata['sectionCount'], 2);
+    expect(metadata['reportSectionCount'], greaterThanOrEqualTo(12));
     expect(metadata['tableCount'], 1);
     expect(metadata['assumptionCount'], 1);
     expect(metadata['citationCount'], 1);
     expect(metadata['wordCount'], inspection.declaredWordCount);
     expect(metadata['paragraphCount'], inspection.declaredParagraphCount);
+    expect(metadata['riskItemCount'], greaterThanOrEqualTo(2));
+    expect(metadata['nextStepCount'], greaterThanOrEqualTo(2));
+    expect(metadata['evidenceItemCount'], greaterThanOrEqualTo(5));
+    expect(metadata['evidenceGapCount'], 0);
+    expect(
+      metadata['readinessSignals'],
+      containsAll([
+        'Decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next steps',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions',
+        'Sources',
+      ]),
+    );
     expect(metadata['hasExecutiveDecisionBrief'], isTrue);
     expect(metadata['hasTableOfContents'], isTrue);
     expect(metadata['hasRiskRegister'], isTrue);
+    expect(metadata['hasDocumentMap'], isTrue);
+    expect(metadata['hasEvidenceConfidenceMatrix'], isTrue);
+    expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
+    expect(metadata['hasCustomerReadyPackage'], isTrue);
   });
 
   test('DOCX inspector verifies report package without appendices', () {
@@ -114,6 +144,16 @@ void main() {
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
+
+    final metadata = const DocxArtifactRenderer().metadataFor(document);
+    expect(metadata['reportType'], 'Implementation plan');
+    expect(
+      metadata['handoffStatus'],
+      'Draft - validate assumptions and evidence',
+    );
+    expect(metadata['evidenceGapCount'], 2);
+    expect(metadata['readinessSignals'], contains('Evidence gaps'));
+    expect(metadata['hasCustomerReadyPackage'], isFalse);
   });
 
   test('DOCX report records evidence gaps and next-step actions', () {
