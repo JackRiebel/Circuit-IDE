@@ -16,15 +16,25 @@ class SolutionSizingWorkbookBuilder {
     required String content,
     required ArtifactDocument document,
   }) {
-    final requirements = _requirementRows('$prompt\n$content');
-    final profile = _SizingProfile.fromRequirements(
-      requirements,
-      '$prompt\n$content',
-    );
+    final fullContent = '$prompt\n$content';
+    final requirements = _requirementRows(fullContent);
+    final profile = _SizingProfile.fromRequirements(requirements, fullContent);
     final recommendations = _recommendationRows(document);
     final assumptions = _assumptionRows(document, content);
     final sourceTables = _sourceTables(document);
     return [
+      WorkbookTable(
+        name: 'Executive Summary',
+        rows: [
+          const [
+            'Executive Signal',
+            'Current Value',
+            'Sizing Interpretation',
+            'Next Action',
+          ],
+          ..._executiveSummaryRows(profile),
+        ],
+      ),
       WorkbookTable(
         name: 'Requirements',
         rows: [
@@ -37,6 +47,20 @@ class SolutionSizingWorkbookBuilder {
         rows: [
           const ['Category', 'Input', 'Value', 'Notes'],
           ..._inputRows(requirements),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Site Distribution',
+        rows: [
+          const [
+            'Site / Scope',
+            'Users',
+            'APs',
+            'WAN',
+            'Estimated AP PoE W',
+            'Notes',
+          ],
+          ..._siteDistributionRows(profile, document),
         ],
       ),
       WorkbookTable(
@@ -67,6 +91,19 @@ class SolutionSizingWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Closet Power Plan',
+        rows: [
+          const [
+            'Closet / Switch Group',
+            'Planning Load',
+            'Reserve',
+            'Minimum Capability',
+            'Validation Needed',
+          ],
+          ..._closetPowerRows(profile),
+        ],
+      ),
+      WorkbookTable(
         name: 'WAN Throughput',
         rows: [
           const [
@@ -84,6 +121,19 @@ class SolutionSizingWorkbookBuilder {
         rows: [
           const ['Constraint', 'Design Treatment', 'Status', 'Notes'],
           ..._haGrowthRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Licensing Support',
+        rows: [
+          const [
+            'Area',
+            'Sizing Dependency',
+            'Licensing / Support Check',
+            'Risk If Missed',
+            'Status',
+          ],
+          ..._licensingSupportRows(profile),
         ],
       ),
       WorkbookTable(
@@ -117,6 +167,20 @@ class SolutionSizingWorkbookBuilder {
         rows: [
           const ['Area', 'Recommendation', 'Rationale', 'Status'],
           ...recommendations,
+        ],
+      ),
+      WorkbookTable(
+        name: 'Implementation Sequence',
+        rows: [
+          const ['Phase', 'Workstream', 'Entry Criteria', 'Exit Criteria'],
+          ..._implementationSequenceRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Risk Register',
+        rows: [
+          const ['Risk', 'Trigger', 'Mitigation', 'Severity', 'Owner'],
+          ..._riskRows(profile),
         ],
       ),
       const WorkbookTable(
@@ -165,6 +229,49 @@ class SolutionSizingWorkbookBuilder {
         ],
       ),
       if (sourceTables.isNotEmpty) ...sourceTables,
+    ];
+  }
+
+  List<List<String>> _executiveSummaryRows(_SizingProfile profile) {
+    return [
+      [
+        'Demand baseline',
+        '${profile.usersText} users, ${profile.accessPointsText} APs, ${profile.switchesText} switches',
+        'Use as directional planning input until inventory is validated.',
+        'Confirm current and growth-state counts by site and closet.',
+      ],
+      [
+        'PoE / wireless power',
+        profile.requiresHighPowerAp
+            ? '${profile.wifiGenerationText}; high-power AP signal'
+            : profile.wifiGenerationText,
+        profile.requiresHighPowerAp
+            ? 'UPOE/UPOE+ and per-switch power budgets are hard gates.'
+            : 'AP power class is still a final-design dependency.',
+        'Collect AP model datasheets and per-IDF AP counts.',
+      ],
+      [
+        'Access speed',
+        profile.requiresMultiGig ? 'mGig required signal' : 'TBD',
+        profile.requiresMultiGig
+            ? 'Access switch candidates must satisfy both PoE and mGig.'
+            : 'Do not finalize access models until AP/client port speeds are known.',
+        'Validate 2.5G/5G/10G access needs against shortlisted switches.',
+      ],
+      [
+        'WAN / security throughput',
+        profile.wanText,
+        profile.wanMbps == null
+            ? 'WAN sizing is incomplete without bandwidth and service mix.'
+            : 'Validate usable inspected throughput, not raw carrier rate.',
+        'Capture security services, HA mode, critical apps, and secondary links.',
+      ],
+      [
+        'Decision readiness',
+        profile.decisionReadiness,
+        'Workbook is ready for requirements review, not final BOM approval.',
+        'Close all requirement gates and source-backed candidate checks.',
+      ],
     ];
   }
 
@@ -278,6 +385,92 @@ class SolutionSizingWorkbookBuilder {
         .toList(growable: false);
   }
 
+  List<List<String>> _siteDistributionRows(
+    _SizingProfile profile,
+    ArtifactDocument document,
+  ) {
+    final rows = <List<String>>[];
+    for (final table in document.tables) {
+      if (table.rows.length < 2) continue;
+      final header = table.rows.first
+          .map((cell) => cell.toLowerCase())
+          .toList();
+      final siteIndex = _columnIndex(header, const [
+        'site',
+        'location',
+        'campus',
+        'branch',
+      ]);
+      final usersIndex = _columnIndex(header, const ['users', 'clients']);
+      final apIndex = _columnIndex(header, const [
+        'aps',
+        'access points',
+        'ap',
+      ]);
+      final wanIndex = _columnIndex(header, const [
+        'wan',
+        'internet',
+        'circuit',
+      ]);
+      if (siteIndex == null && usersIndex == null && apIndex == null) {
+        continue;
+      }
+      for (final row in table.rows.skip(1).take(24)) {
+        String valueAt(int? index, String fallback) {
+          if (index == null || index >= row.length) return fallback;
+          final value = row[index].trim();
+          return value.isEmpty ? fallback : value;
+        }
+
+        final site = valueAt(siteIndex, 'Site ${rows.length + 1}');
+        final users = valueAt(usersIndex, 'TBD');
+        final aps = valueAt(apIndex, 'TBD');
+        final apCount = _SizingProfile._firstInt(aps);
+        final watts = apCount == null
+            ? 'TBD'
+            : (apCount * profile.apWatts).toString();
+        rows.add([
+          site,
+          users,
+          aps,
+          valueAt(wanIndex, 'TBD'),
+          watts,
+          'Validate closet placement, uplinks, power budget, and growth per site.',
+        ]);
+      }
+    }
+    if (rows.isNotEmpty) return rows;
+    final totalWatts = profile.accessPoints == null
+        ? 'TBD'
+        : (profile.accessPoints! * profile.apWatts).toString();
+    return [
+      [
+        'Portfolio-level estimate',
+        profile.usersText,
+        profile.accessPointsText,
+        profile.wanText,
+        totalWatts,
+        'No site table detected; split by MDF/IDF before customer handoff.',
+      ],
+      [
+        'MDF / core',
+        'TBD',
+        'TBD',
+        profile.wanText,
+        'TBD',
+        'Capture aggregation, firewall, WAN, and redundancy requirements.',
+      ],
+      [
+        'IDF / access closets',
+        'TBD',
+        'TBD',
+        'N/A',
+        'TBD',
+        'Capture AP/user distribution and available power per closet.',
+      ],
+    ];
+  }
+
   List<List<String>> _capacityRows(_SizingProfile profile) {
     final growth = profile.growthMultiplier;
     return [
@@ -327,9 +520,8 @@ class SolutionSizingWorkbookBuilder {
   }
 
   List<List<String>> _poeRows(_SizingProfile profile) {
-    final apWatts = profile.requiresHighPowerAp ? 60 : 30;
     final apCount = profile.accessPoints;
-    final apLoad = apCount == null ? null : apCount * apWatts;
+    final apLoad = apCount == null ? null : apCount * profile.apWatts;
     final minimumBudget = apLoad == null
         ? 'TBD'
         : (apLoad * profile.growthMultiplier * 1.2).ceil().toString();
@@ -337,7 +529,7 @@ class SolutionSizingWorkbookBuilder {
       [
         'Wireless APs',
         profile.accessPointsText,
-        apWatts.toString(),
+        profile.apWatts.toString(),
         apLoad?.toString() ?? 'TBD',
         minimumBudget,
         profile.requiresHighPowerAp
@@ -359,6 +551,52 @@ class SolutionSizingWorkbookBuilder {
         'N/A',
         minimumBudget,
         'Minimum budget includes growth and reserve; confirm per-IDF distribution.',
+      ],
+    ];
+  }
+
+  List<List<String>> _closetPowerRows(_SizingProfile profile) {
+    final perSwitchAps =
+        profile.accessPoints == null || profile.switches == null
+        ? null
+        : (profile.accessPoints! / profile.switches!).ceil();
+    final perSwitchWatts = perSwitchAps == null
+        ? null
+        : (perSwitchAps * profile.apWatts * 1.2).ceil();
+    final totalWatts = profile.accessPoints == null
+        ? null
+        : (profile.accessPoints! * profile.apWatts * profile.growthMultiplier)
+              .ceil();
+    return [
+      [
+        'Per access switch',
+        perSwitchAps == null
+            ? 'TBD AP distribution'
+            : '$perSwitchAps APs at ${profile.apWatts}W each',
+        '20% reserve',
+        perSwitchWatts == null ? 'TBD' : '$perSwitchWatts W available PoE',
+        'Check per-switch PoE budget, mGig ports, uplinks, and stack power sharing.',
+      ],
+      [
+        'Per IDF closet',
+        'TBD non-AP loads plus AP load',
+        '20-30% reserve',
+        'UPOE/UPOE+ where Wi-Fi 7/high-power APs are present',
+        'Add phones, cameras, IoT, badge readers, and future APs.',
+      ],
+      [
+        'Campus total',
+        totalWatts == null ? 'TBD' : '$totalWatts W AP planning load',
+        profile.growthText,
+        'Power budget must exceed planned load with reserve',
+        'Validate distribution across closets, not only aggregate total.',
+      ],
+      [
+        'Power redundancy',
+        profile.requiresHighAvailability ? 'Required' : 'Customer decision',
+        'N+1 / redundant PSU where needed',
+        'Match business outage tolerance',
+        'Confirm generator/UPS/power shelf constraints before final BOM.',
       ],
     ];
   }
@@ -393,6 +631,46 @@ class SolutionSizingWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _licensingSupportRows(_SizingProfile profile) {
+    return [
+      [
+        'Switching',
+        'Access/core feature set, stacking, telemetry, automation',
+        'Confirm DNA / Network Advantage needs and support coverage.',
+        'Correct hardware but wrong license/support tier.',
+        'Needs validation',
+      ],
+      [
+        'Wireless',
+        'AP count, controller/cloud management, assurance',
+        'Map AP generation and management plane to license requirements.',
+        'APs cannot be onboarded or monitored as expected.',
+        profile.accessPoints == null ? 'Needs AP count' : 'Review',
+      ],
+      [
+        'WAN / security',
+        'Throughput, SD-WAN, firewall inspection, advanced security services',
+        'Validate security subscriptions and throughput tiers.',
+        'Platform sized to line rate but not licensed for services.',
+        profile.wanMbps == null ? 'Needs WAN input' : 'Review',
+      ],
+      [
+        'Lifecycle support',
+        'LDOS/EoX/current portfolio fit',
+        'Check official lifecycle/support dates and replacement suitability.',
+        'Recommendation lands on stale or unsupported model.',
+        'Needs official source',
+      ],
+      [
+        'Operations',
+        'Monitoring, support workflows, admin ownership',
+        'Confirm TAC/support ownership, dashboard access, and escalation model.',
+        'Customer cannot operate the recommended architecture.',
+        'Customer decision',
+      ],
+    ];
+  }
+
   List<List<String>> _haGrowthRows(_SizingProfile profile) {
     return [
       [
@@ -418,6 +696,87 @@ class SolutionSizingWorkbookBuilder {
         'Map selected architecture to licensing tiers and support coverage',
         'Needs validation',
         'Include DNA/Meraki/security licensing where applicable.',
+      ],
+    ];
+  }
+
+  List<List<String>> _implementationSequenceRows(_SizingProfile profile) {
+    return [
+      [
+        '1. Requirements lock',
+        'Confirm users, APs, sites, WAN, growth, HA, and business constraints.',
+        'Customer data and site inventory available.',
+        'All TBD requirements either captured or explicitly assumed.',
+      ],
+      [
+        '2. Candidate shortlist',
+        'Filter products against PoE, mGig, uplinks, lifecycle, licensing, and HA gates.',
+        'Requirement Gates sheet reviewed.',
+        'Every candidate has pass/fail notes and source gaps.',
+      ],
+      [
+        '3. Site/closet validation',
+        'Map AP and user loads to MDF/IDF closets and power domains.',
+        profile.accessPoints == null
+            ? 'AP count and site distribution collected.'
+            : '${profile.accessPointsText} APs validated by location.',
+        'Per-closet power, port, uplink, and redundancy needs are known.',
+      ],
+      [
+        '4. Commercial package',
+        'Prepare BOM, licensing, support, and implementation sequence.',
+        'Candidate shortlist and assumptions approved.',
+        'Customer-ready recommendation package with caveats.',
+      ],
+      [
+        '5. Verification',
+        'Validate commands/checks, diagrams, lifecycle evidence, and handoff docs.',
+        'Artifacts generated and reviewed.',
+        'Final workbook is backed by current evidence and known unknowns.',
+      ],
+    ];
+  }
+
+  List<List<String>> _riskRows(_SizingProfile profile) {
+    return [
+      [
+        'Wi-Fi 7 APs exceed switch power budget',
+        profile.requiresHighPowerAp
+            ? 'High-power AP signal detected'
+            : 'AP power unknown',
+        'Require UPOE/UPOE+ validation and per-switch power budget check.',
+        profile.requiresHighPowerAp ? 'High' : 'Medium',
+        'Network architect',
+      ],
+      [
+        'Access ports lack required mGig speed',
+        profile.requiresMultiGig
+            ? 'mGig signal detected'
+            : 'AP generation unknown',
+        'Reject candidates without sourced mGig capability where required.',
+        profile.requiresMultiGig ? 'High' : 'Medium',
+        'Network architect',
+      ],
+      [
+        'WAN platform undersized with services enabled',
+        profile.wanMbps == null ? 'WAN input missing' : profile.wanText,
+        'Validate inspected throughput with security/SD-WAN services enabled.',
+        'High',
+        'Security / WAN owner',
+      ],
+      [
+        'Lifecycle or support mismatch',
+        'LDOS/EoX not yet sourced',
+        'Validate official lifecycle dates and current portfolio alternatives.',
+        'Medium',
+        'Account team',
+      ],
+      [
+        'False precision from incomplete customer data',
+        'TBD rows remain in workbook',
+        'Keep assumptions visible and block final BOM until open gates close.',
+        'Medium',
+        'SE / customer stakeholder',
       ],
     ];
   }
@@ -650,6 +1009,14 @@ class SolutionSizingWorkbookBuilder {
     return tables;
   }
 
+  int? _columnIndex(List<String> header, List<String> candidates) {
+    for (var i = 0; i < header.length; i++) {
+      final cell = header[i];
+      if (candidates.any((candidate) => cell.contains(candidate))) return i;
+    }
+    return null;
+  }
+
   List<String> _bulletsAfter(String content, String headingName) {
     final heading = RegExp(
       '^\\s{0,3}#{1,4}\\s+$headingName\\b.*\$',
@@ -721,6 +1088,23 @@ class _SizingProfile {
   });
 
   double get growthMultiplier => 1 + ((growthPercent ?? 25) / 100);
+
+  int get apWatts => requiresHighPowerAp ? 60 : 30;
+
+  String get decisionReadiness {
+    final captured = [
+      users != null,
+      accessPoints != null,
+      switches != null,
+      wanMbps != null,
+      growthPercent != null,
+      requiresHighPowerAp || wifiGenerationText != 'TBD',
+      requiresHighAvailability,
+    ].where((value) => value).length;
+    if (captured >= 6) return 'High - most sizing signals captured';
+    if (captured >= 4) return 'Medium - enough for shortlist validation';
+    return 'Low - discovery inputs still required';
+  }
 
   factory _SizingProfile.fromRequirements(
     List<List<String>> requirements,

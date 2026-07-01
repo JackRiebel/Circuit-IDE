@@ -48,34 +48,66 @@ void main() {
       expect(inspection.hasEnterpriseWorkbookStructure, isTrue);
       expect(
         inspection.hasSheets(const [
+          'Executive Summary',
           'Requirements',
           'Sizing Inputs',
+          'Site Distribution',
           'Capacity Model',
           'PoE Budget',
+          'Closet Power Plan',
           'WAN Throughput',
           'HA Growth',
+          'Licensing Support',
           'Requirement Gates',
           'Candidate Validation',
           'Recommendations',
+          'Implementation Sequence',
+          'Risk Register',
           'Validation',
           'Assumptions',
           'Decision Summary',
+          'Source 1',
         ]),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Executive Summary', 'Decision readiness'),
         isTrue,
       );
       expect(inspection.sheetContains('Requirements', '500'), isTrue);
       expect(inspection.sheetContains('Requirements', '90'), isTrue);
+      expect(
+        inspection.sheetContains('Site Distribution', 'Estimated AP PoE W'),
+        isTrue,
+      );
+      expect(inspection.sheetContains('Site Distribution', 'HQ'), isTrue);
+      expect(inspection.sheetContains('Site Distribution', 'Branch'), isTrue);
       expect(
         inspection.sheetContains('Capacity Model', 'Planning Value'),
         isTrue,
       );
       expect(inspection.sheetContains('PoE Budget', 'Wi-Fi 7/UPOE'), isTrue);
       expect(
+        inspection.sheetContains('Closet Power Plan', 'Per access switch'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Closet Power Plan', 'Power redundancy'),
+        isTrue,
+      );
+      expect(
         inspection.sheetContains('WAN Throughput', 'inspected throughput'),
         isTrue,
       );
       expect(
         inspection.sheetContains('HA Growth', 'EoX replacement PID'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains(
+          'Licensing Support',
+          'Licensing / Support Check',
+        ),
         isTrue,
       );
       expect(
@@ -113,6 +145,17 @@ void main() {
       );
       expect(
         inspection.sheetContains('Decision Summary', 'Access switching'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains(
+          'Implementation Sequence',
+          'Requirements lock',
+        ),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Risk Register', 'False precision'),
         isTrue,
       );
       expect(inspection.sheetContains('Validation', 'PoE/UPOE budget'), isTrue);

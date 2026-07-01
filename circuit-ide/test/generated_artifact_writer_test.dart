@@ -156,29 +156,47 @@ Here is the data.
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.xlsx'));
     expect(artifact.summary, contains('solution sizing workbook'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(5));
-    expect(artifact.previewRows.first, ['Metric', 'Value', 'Notes']);
+    expect(artifact.sheetCount, greaterThanOrEqualTo(18));
+    expect(artifact.previewRows.first, [
+      'Executive Signal',
+      'Current Value',
+      'Sizing Interpretation',
+      'Next Action',
+    ]);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
     final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('Executive Summary'));
     expect(packageText, contains('Requirements'));
     expect(packageText, contains('Sizing Inputs'));
+    expect(packageText, contains('Site Distribution'));
     expect(packageText, contains('Capacity Model'));
     expect(packageText, contains('PoE Budget'));
+    expect(packageText, contains('Closet Power Plan'));
     expect(packageText, contains('WAN Throughput'));
     expect(packageText, contains('HA Growth'));
+    expect(packageText, contains('Licensing Support'));
     expect(packageText, contains('Requirement Gates'));
     expect(packageText, contains('Candidate Validation'));
     expect(packageText, contains('Recommendations'));
+    expect(packageText, contains('Implementation Sequence'));
+    expect(packageText, contains('Risk Register'));
     expect(packageText, contains('Validation'));
     expect(packageText, contains('Assumptions'));
     expect(packageText, contains('Decision Summary'));
+    expect(packageText, contains('Source 1'));
     expect(packageText, contains('500'));
     expect(packageText, contains('90'));
     expect(packageText, contains('2 Gbps'));
     expect(packageText, contains('inspected throughput'));
     expect(packageText, contains('mGig validation required'));
     expect(packageText, contains('Access switch shortlist'));
+    expect(packageText, contains('Per access switch'));
+    expect(packageText, contains('Licensing / Support Check'));
+    expect(
+      packageText,
+      contains('False precision from incomplete customer data'),
+    );
   });
 
   test(

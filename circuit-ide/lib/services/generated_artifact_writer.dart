@@ -321,7 +321,7 @@ class GeneratedArtifactWriter {
               : productComparison
               ? 'Created a product comparison matrix with fit scoring, requirements, alternatives, assumptions, and source sheets.'
               : sizingWorkbook
-              ? 'Created a solution sizing workbook with requirements, inputs, recommendations, validation, and assumptions sheets.'
+              ? 'Created a solution sizing workbook with executive summary, site distribution, PoE/closet power, WAN, licensing, risks, recommendations, validation, and source sheets.'
               : tables.length == 1
               ? 'Created an Excel workbook with formatted headers and frozen first row.'
               : 'Created an Excel workbook with ${tables.length} sheets, formatted headers, and frozen first rows.',
@@ -458,7 +458,7 @@ class GeneratedArtifactWriter {
   }
 
   Uint8List _xlsxBytes(List<_TableData> tables) {
-    final workbookTables = tables.take(12).toList(growable: false);
+    final workbookTables = tables.take(20).toList(growable: false);
     final files = <_ZipFileEntry>[
       _ZipFileEntry(
         '[Content_Types].xml',
