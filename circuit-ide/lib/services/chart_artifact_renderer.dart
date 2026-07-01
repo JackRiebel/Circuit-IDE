@@ -74,6 +74,29 @@ class ChartArtifactRenderer {
       validationGaps: validationGaps,
       decisionRows: decisionRows,
     );
+    final chartQualityChecklist = _chartQualityChecklistFor(
+      charts: charts,
+      profile: profile,
+      document: document,
+      insights: insights,
+      gates: gates,
+      dataQualityItems: dataQualityItems,
+      thresholdItems: thresholdItems,
+      decisionRows: decisionRows,
+    );
+    final chartVisualVerificationChecklist =
+        _chartVisualVerificationChecklistFor(profile);
+    final chartEvidencePolicy = _chartEvidencePolicyFor(profile);
+    final chartPublishingMetadata = _chartPublishingMetadataFor(
+      readinessScore,
+      riskPosture,
+      validationGaps,
+    );
+    final chartQualityStatus = _chartQualityStatusFor(
+      readinessScore,
+      riskPosture,
+      validationGaps,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'chart_pack',
@@ -85,6 +108,17 @@ class ChartArtifactRenderer {
         readinessScore,
         riskPosture,
       ),
+      'chartQualityManifestVersion': '1.0',
+      'chartQualityStatus': chartQualityStatus,
+      'chartQualityChecklist': chartQualityChecklist,
+      'chartQualityChecklistCount': chartQualityChecklist.length,
+      'chartVisualVerificationChecklist': chartVisualVerificationChecklist,
+      'chartVisualVerificationChecklistCount':
+          chartVisualVerificationChecklist.length,
+      'chartEvidencePolicy': chartEvidencePolicy,
+      'chartEvidencePolicyCount': chartEvidencePolicy.length,
+      'chartPublishingMetadata': chartPublishingMetadata,
+      'chartPublishingMetadataCount': chartPublishingMetadata.length,
       'riskPosture': riskPosture,
       'decisionQuestions': decisionQuestions,
       'decisionQuestionCount': decisionQuestions.length,
@@ -117,6 +151,13 @@ class ChartArtifactRenderer {
       'hasSourceProvenancePanel': true,
       'hasThresholdGuidance': thresholdItems.isNotEmpty,
       'hasDecisionMatrix': decisionRows.isNotEmpty,
+      'hasChartQualityManifest': true,
+      'hasChartQualityGate': true,
+      'hasChartEvidencePolicy': chartEvidencePolicy.isNotEmpty,
+      'hasChartVisualVerificationChecklist':
+          chartVisualVerificationChecklist.isNotEmpty,
+      'hasChartPublishingMetadata': chartPublishingMetadata.isNotEmpty,
+      'hasChartDecisionReadinessGate': chartQualityChecklist.isNotEmpty,
       'hasCustomerReadyChartPack':
           validationGaps.isEmpty && profile.highRiskCount == 0,
       'kinds': charts.map((chart) => chart.kind.name).toList(growable: false),
@@ -517,6 +558,17 @@ class ChartArtifactRenderer {
         '<text x="42" y="76" fill="#929a96" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="12">Generated chart pack • ${charts.length} chart${charts.length == 1 ? '' : 's'}</text>',
       );
 
+    _writeQualityGate(
+      buffer,
+      status: metadata['chartQualityStatus']?.toString() ?? 'Draft',
+      score: metadata['chartReadinessScore'] is int
+          ? metadata['chartReadinessScore'] as int
+          : 0,
+      checklistCount: metadata['chartQualityChecklistCount'] is int
+          ? metadata['chartQualityChecklistCount'] as int
+          : 0,
+      width: width,
+    );
     _writeSummary(buffer, profile, width: width);
     _writeExecutiveInsights(buffer, insights, width: width);
     buffer.writeln('<g id="chart-pack" data-chart-count="${charts.length}">');
@@ -612,6 +664,32 @@ class ChartArtifactRenderer {
         '<text class="chart-note" x="${width - 300}" y="145" fill="#89928e" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">High/Critical/EoL = high risk • Review/Warning = medium.</text>',
       )
       ..writeln('</g>')
+      ..writeln('</g>');
+  }
+
+  void _writeQualityGate(
+    StringBuffer buffer, {
+    required String status,
+    required int score,
+    required int checklistCount,
+    required int width,
+  }) {
+    const cardWidth = 300.0;
+    final x = width - cardWidth - 42;
+    const y = 34.0;
+    buffer
+      ..writeln(
+        '<g id="chart-quality-gate" data-quality-status="${_xml(status)}" data-readiness-score="$score" data-quality-check-count="$checklistCount">',
+      )
+      ..writeln(
+        '<rect x="${x.toStringAsFixed(1)}" y="$y" width="$cardWidth" height="44" rx="12" fill="#141817" stroke="#2f3a37"/>',
+      )
+      ..writeln(
+        '<text x="${(x + 14).toStringAsFixed(1)}" y="${y + 18}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">Decision readiness</text>',
+      )
+      ..writeln(
+        '<text x="${(x + 14).toStringAsFixed(1)}" y="${y + 35}" fill="#8dd3bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">${_xml(_shorten('$status • $score/100 • $checklistCount checks', 50))}</text>',
+      )
       ..writeln('</g>');
   }
 
@@ -898,6 +976,88 @@ class ChartArtifactRenderer {
     if (score >= 72) return 'Ready for stakeholder review';
     if (score >= 50) return 'Needs validation before handoff';
     return 'Discovery inputs required';
+  }
+
+  String _chartQualityStatusFor(
+    int readinessScore,
+    String riskPosture,
+    List<String> validationGaps,
+  ) {
+    if (readinessScore >= 88 &&
+        validationGaps.isEmpty &&
+        !riskPosture.startsWith('High risk')) {
+      return 'Customer-review ready';
+    }
+    if (readinessScore >= 72 && !riskPosture.startsWith('High risk')) {
+      return 'Stakeholder-review ready';
+    }
+    if (readinessScore >= 50) return 'Needs validation';
+    return 'Discovery required';
+  }
+
+  List<String> _chartQualityChecklistFor({
+    required List<_ChartData> charts,
+    required _ChartPackProfile profile,
+    required ArtifactDocument document,
+    required List<String> insights,
+    required List<({String gate, String status, bool ready})> gates,
+    required List<({String label, String value, String guidance, bool ready})>
+    dataQualityItems,
+    required List<({String topic, String guidance, bool critical})>
+    thresholdItems,
+    required List<_DecisionActionRow> decisionRows,
+  }) {
+    return <String>[
+      if (charts.isNotEmpty) 'Chart SVG panels embedded',
+      if (profile.pointCount > 0) 'Source data points embedded',
+      if (profile.signals.isNotEmpty) 'Enterprise signal families classified',
+      if (insights.isNotEmpty) 'Executive insights embedded',
+      if (gates.isNotEmpty) 'Validation gates embedded',
+      if (dataQualityItems.isNotEmpty) 'Data quality checks embedded',
+      if (thresholdItems.isNotEmpty) 'Threshold guidance embedded',
+      if (decisionRows.isNotEmpty) 'Decision matrix embedded',
+      if (document.assumptions.isNotEmpty) 'Assumptions embedded',
+      if (document.citations.isNotEmpty) 'Source citations embedded',
+    ];
+  }
+
+  List<String> _chartVisualVerificationChecklistFor(_ChartPackProfile profile) {
+    return <String>[
+      'SVG has title, description, viewBox, and embedded metadata',
+      'Summary, risk legend, chart panels, and point labels are visible',
+      'Executive insights, validation gates, actions, and decision matrix are visible',
+      if (profile.hasPoe || profile.hasWan)
+        'Capacity and threshold guidance is visible',
+      if (profile.hasLifecycle || profile.hasComparison)
+        'Lifecycle/comparison caveats are visible',
+    ];
+  }
+
+  List<String> _chartEvidencePolicyFor(_ChartPackProfile profile) {
+    return <String>[
+      'Charts are decision support, not source evidence by themselves',
+      'Customer handoff requires source table, checked date, units, and owner',
+      if (profile.hasLifecycle)
+        'Lifecycle dates require official-source validation and current replacement-fit review',
+      if (profile.hasPoe || profile.hasWan)
+        'Capacity charts require validated headroom, growth, and failover assumptions',
+      if (profile.hasComparison || profile.hasCost)
+        'Comparison and cost charts require datasheet, pricing, licensing, and rejected-alternative evidence',
+    ];
+  }
+
+  List<String> _chartPublishingMetadataFor(
+    int readinessScore,
+    String riskPosture,
+    List<String> validationGaps,
+  ) {
+    return <String>[
+      'Readiness score: $readinessScore/100',
+      'Risk posture: $riskPosture',
+      validationGaps.isEmpty
+          ? 'No validation gaps detected by parser'
+          : 'Validation gaps: ${validationGaps.take(3).join(', ')}',
+    ];
   }
 
   List<String> _reviewerNextStepsFor({

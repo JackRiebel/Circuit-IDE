@@ -38,6 +38,10 @@ void main() {
     expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasDataQualityPanel, isTrue);
     expect(inspection.hasThresholdGuidance, isTrue);
+    expect(inspection.hasChartQualityManifest, isTrue);
+    expect(inspection.hasChartQualityGate, isTrue);
+    expect(inspection.hasChartEvidencePolicy, isTrue);
+    expect(inspection.hasChartVisualVerificationChecklist, isTrue);
     expect(inspection.hasPoeSignal, isTrue);
     expect(inspection.noteCount, greaterThanOrEqualTo(1));
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
@@ -47,6 +51,13 @@ void main() {
     expect(inspection.criticalDecisionCount, 0);
     expect(inspection.dataQualityItemCount, 4);
     expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(2));
+    expect(inspection.chartQualityChecklistCount, greaterThanOrEqualTo(8));
+    expect(inspection.chartEvidencePolicyCount, greaterThanOrEqualTo(3));
+    expect(
+      inspection.chartVisualVerificationChecklistCount,
+      greaterThanOrEqualTo(3),
+    );
+    expect(inspection.chartQualityStatus, isNotEmpty);
     expect(inspection.sourceTableCount, 1);
     expect(inspection.citationCount, 0);
     expect(inspection.assumptionCount, 1);
@@ -212,6 +223,24 @@ void main() {
     );
     expect(result.metadata['riskPosture'], 'High risk - owner review required');
     expect(result.metadata['chartReadinessScore'], lessThan(100));
+    expect(result.metadata['chartQualityManifestVersion'], '1.0');
+    expect(result.metadata['hasChartQualityManifest'], isTrue);
+    expect(result.metadata['hasChartQualityGate'], isTrue);
+    expect(result.metadata['hasChartEvidencePolicy'], isTrue);
+    expect(result.metadata['hasChartVisualVerificationChecklist'], isTrue);
+    expect(result.metadata['hasChartDecisionReadinessGate'], isTrue);
+    expect(result.metadata['chartQualityChecklistCount'], greaterThan(7));
+    expect(result.metadata['chartEvidencePolicyCount'], greaterThan(2));
+    expect(
+      result.metadata['chartVisualVerificationChecklistCount'],
+      greaterThan(2),
+    );
+    expect(
+      result.metadata['chartEvidencePolicy'],
+      contains(
+        'Charts are decision support, not source evidence by themselves',
+      ),
+    );
     expect(result.metadata['highRiskCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
     expect(result.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
@@ -271,5 +300,7 @@ void main() {
     );
     expect(result.metadata['validationGapCount'], 0);
     expect(result.metadata['hasCustomerReadyChartPack'], isFalse);
+    final svg = String.fromCharCodes(result.bytes);
+    expect(svg, contains('Decision readiness'));
   });
 }

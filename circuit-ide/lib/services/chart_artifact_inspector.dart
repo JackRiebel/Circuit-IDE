@@ -16,6 +16,10 @@ class ChartArtifactInspection {
   final bool hasDecisionMatrix;
   final bool hasDataQualityPanel;
   final bool hasThresholdGuidance;
+  final bool hasChartQualityManifest;
+  final bool hasChartQualityGate;
+  final bool hasChartEvidencePolicy;
+  final bool hasChartVisualVerificationChecklist;
   final int chartCount;
   final int pointCount;
   final int noteCount;
@@ -26,6 +30,9 @@ class ChartArtifactInspection {
   final int criticalDecisionCount;
   final int dataQualityItemCount;
   final int thresholdGuidanceCount;
+  final int chartQualityChecklistCount;
+  final int chartEvidencePolicyCount;
+  final int chartVisualVerificationChecklistCount;
   final int highRiskCount;
   final int mediumRiskCount;
   final int lowRiskCount;
@@ -40,6 +47,7 @@ class ChartArtifactInspection {
   final bool hasRoadmapSignal;
   final bool hasSourceEvidence;
   final bool hasAssumptions;
+  final String chartQualityStatus;
   final String? title;
   final List<String> chartKinds;
   final List<String> chartTitles;
@@ -60,6 +68,10 @@ class ChartArtifactInspection {
     required this.hasDecisionMatrix,
     required this.hasDataQualityPanel,
     required this.hasThresholdGuidance,
+    required this.hasChartQualityManifest,
+    required this.hasChartQualityGate,
+    required this.hasChartEvidencePolicy,
+    required this.hasChartVisualVerificationChecklist,
     required this.chartCount,
     required this.pointCount,
     required this.noteCount,
@@ -70,6 +82,9 @@ class ChartArtifactInspection {
     required this.criticalDecisionCount,
     required this.dataQualityItemCount,
     required this.thresholdGuidanceCount,
+    required this.chartQualityChecklistCount,
+    required this.chartEvidencePolicyCount,
+    required this.chartVisualVerificationChecklistCount,
     required this.highRiskCount,
     required this.mediumRiskCount,
     required this.lowRiskCount,
@@ -84,6 +99,7 @@ class ChartArtifactInspection {
     required this.hasRoadmapSignal,
     required this.hasSourceEvidence,
     required this.hasAssumptions,
+    required this.chartQualityStatus,
     required this.title,
     required this.chartKinds,
     required this.chartTitles,
@@ -104,6 +120,10 @@ class ChartArtifactInspection {
       hasDecisionMatrix &&
       hasDataQualityPanel &&
       hasThresholdGuidance &&
+      hasChartQualityManifest &&
+      hasChartQualityGate &&
+      hasChartEvidencePolicy &&
+      hasChartVisualVerificationChecklist &&
       chartCount > 0 &&
       pointCount > 0;
 
@@ -173,6 +193,10 @@ class ChartArtifactInspector {
         _metadataInt(metadata, 'thresholdGuidanceCount') ??
         _dataInt(svg, 'data-threshold-guidance-count') ??
         0;
+    final chartQualityChecklistCount =
+        _metadataInt(metadata, 'chartQualityChecklistCount') ??
+        _dataInt(svg, 'data-quality-check-count') ??
+        0;
 
     return ChartArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -192,6 +216,19 @@ class ChartArtifactInspector {
       hasDecisionMatrix: svg.contains('id="chart-decision-matrix"'),
       hasDataQualityPanel: svg.contains('id="chart-data-quality"'),
       hasThresholdGuidance: svg.contains('id="chart-threshold-guidance"'),
+      hasChartQualityManifest:
+          metadata['hasChartQualityManifest'] == true &&
+          metadata['chartQualityManifestVersion']?.toString().isNotEmpty ==
+              true,
+      hasChartQualityGate: svg.contains('id="chart-quality-gate"'),
+      hasChartEvidencePolicy:
+          metadata['hasChartEvidencePolicy'] == true &&
+          (_metadataInt(metadata, 'chartEvidencePolicyCount') ?? 0) > 0,
+      hasChartVisualVerificationChecklist:
+          metadata['hasChartVisualVerificationChecklist'] == true &&
+          (_metadataInt(metadata, 'chartVisualVerificationChecklistCount') ??
+                  0) >
+              0,
       chartCount: chartCount,
       pointCount: pointCount,
       noteCount: RegExp(r'class="chart-note"').allMatches(svg).length,
@@ -202,6 +239,11 @@ class ChartArtifactInspector {
       criticalDecisionCount: criticalDecisionCount,
       dataQualityItemCount: dataQualityItemCount,
       thresholdGuidanceCount: thresholdGuidanceCount,
+      chartQualityChecklistCount: chartQualityChecklistCount,
+      chartEvidencePolicyCount:
+          _metadataInt(metadata, 'chartEvidencePolicyCount') ?? 0,
+      chartVisualVerificationChecklistCount:
+          _metadataInt(metadata, 'chartVisualVerificationChecklistCount') ?? 0,
       highRiskCount: highRiskCount,
       mediumRiskCount: mediumRiskCount,
       lowRiskCount: lowRiskCount,
@@ -216,6 +258,7 @@ class ChartArtifactInspector {
       hasRoadmapSignal: metadata['hasRoadmap'] == true,
       hasSourceEvidence: metadata['hasSourceEvidence'] == true,
       hasAssumptions: metadata['hasAssumptions'] == true,
+      chartQualityStatus: metadata['chartQualityStatus']?.toString() ?? '',
       title: _firstElementText(svg, 'title'),
       chartKinds: chartKinds,
       chartTitles: chartTitles,

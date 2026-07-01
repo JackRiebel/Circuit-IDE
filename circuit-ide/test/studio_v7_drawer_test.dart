@@ -1890,7 +1890,22 @@ void main() {
         'decisionPurpose': 'Capacity and lifecycle decision support',
         'chartReadinessScore': 74,
         'chartReadinessLevel': 'Needs owner review before handoff',
+        'chartQualityManifestVersion': '1.0',
+        'chartQualityStatus': 'Needs validation',
         'riskPosture': 'High risk - owner review required',
+        'hasChartQualityManifest': true,
+        'chartVisualVerificationChecklist': [
+          'SVG has title, description, viewBox, and embedded metadata',
+          'Summary, risk legend, chart panels, and point labels are visible',
+        ],
+        'chartEvidencePolicy': [
+          'Charts are decision support, not source evidence by themselves',
+          'Customer handoff requires source table, checked date, units, and owner',
+        ],
+        'chartPublishingMetadata': [
+          'Readiness score: 74/100',
+          'Risk posture: High risk - owner review required',
+        ],
         'chartCount': 4,
         'pointCount': 18,
         'highRiskCount': 2,
@@ -1973,6 +1988,10 @@ void main() {
     expect(find.text('Needs owner review before handoff'), findsOneWidget);
     expect(find.text('Readiness score'), findsOneWidget);
     expect(find.text('74/100'), findsOneWidget);
+    expect(find.text('Quality'), findsOneWidget);
+    expect(find.text('Needs validation'), findsOneWidget);
+    expect(find.text('Quality manifest'), findsOneWidget);
+    expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Risk posture'), findsOneWidget);
     expect(find.text('High risk - owner review required'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
@@ -1990,6 +2009,12 @@ void main() {
     expect(find.textContaining('PoE Budget, WAN Capacity +3'), findsOneWidget);
     expect(find.text('Readiness'), findsOneWidget);
     expect(find.textContaining('Source data, Risk labels +3'), findsOneWidget);
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(find.textContaining('SVG has title'), findsOneWidget);
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(find.textContaining('Charts are decision support'), findsOneWidget);
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(find.textContaining('Readiness score: 74/100'), findsOneWidget);
     expect(find.text('Decision questions'), findsOneWidget);
     expect(find.textContaining('Does the access design'), findsOneWidget);
     expect(find.text('Handoff checklist'), findsOneWidget);

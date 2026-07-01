@@ -4076,6 +4076,15 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Readiness score',
             '${_metadataInt(artifact, 'chartReadinessScore')}/100',
           ),
+        if (_metadataString(artifact, 'chartQualityStatus').isNotEmpty)
+          ('Quality', _metadataString(artifact, 'chartQualityStatus')),
+        if (_metadataBool(artifact, 'hasChartQualityManifest'))
+          (
+            'Quality manifest',
+            _metadataString(artifact, 'chartQualityManifestVersion').isEmpty
+                ? 'Embedded'
+                : 'Manifest v${_metadataString(artifact, 'chartQualityManifestVersion')}',
+          ),
         if (_metadataString(artifact, 'riskPosture').isNotEmpty)
           ('Risk posture', _metadataString(artifact, 'riskPosture')),
         if (_metadataString(artifact, 'decisionPurpose').isNotEmpty)
@@ -4105,6 +4114,30 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Readiness',
             _compactSignalList(
               _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'chartVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'chartVisualVerificationChecklist'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'chartEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'chartEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'chartPublishingMetadata').isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'chartPublishingMetadata'),
             ),
           ),
         if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
