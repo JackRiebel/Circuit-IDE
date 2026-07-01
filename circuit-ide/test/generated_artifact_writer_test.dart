@@ -1181,6 +1181,7 @@ Executive-ready summary for a final customer handoff.
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -1194,6 +1195,7 @@ Executive-ready summary for a final customer handoff.
     );
     expect(artifact.metadata['handoffScorecardItemCount'], 5);
     expect(artifact.metadata['decisionLogCount'], 4);
+    expect(artifact.metadata['decisionSignOffGateCount'], 4);
     expect(artifact.metadata['tableCoverage'], '1 table packaged');
     expect(artifact.metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -1219,6 +1221,7 @@ Executive-ready summary for a final customer handoff.
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions',
         'Sources',
@@ -1231,6 +1234,7 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['hasValidationChecklist'], isTrue);
     expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);
     expect(artifact.metadata['hasDecisionLog'], isTrue);
+    expect(artifact.metadata['hasDecisionSignOffPage'], isTrue);
     expect(artifact.metadata['hasSourcesAppendix'], isTrue);
     expect(artifact.metadata['hasCustomerReadyPackage'], isTrue);
     expect(artifact.metadata['hasCustomerReadyPdf'], isTrue);
@@ -1258,6 +1262,9 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('Validation Checklist'));
     expect(pdfText, contains('Customer Handoff Scorecard'));
     expect(pdfText, contains('Decision Log'));
+    expect(pdfText, contains('Decision Sign-Off'));
+    expect(pdfText, contains('Signature / Date'));
+    expect(pdfText, contains('Handoff approval'));
     expect(pdfText, contains('/Keywords'));
     expect(pdfText, contains('Access layer needs multigig validation'));
     expect(pdfText, contains('Sources / Evidence'));

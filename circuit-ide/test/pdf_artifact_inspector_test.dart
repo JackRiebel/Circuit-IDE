@@ -65,6 +65,7 @@ void main() {
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
@@ -77,6 +78,7 @@ void main() {
     expect(text, contains('/Title (Lead Decision Callout)'));
     expect(text, contains('/Title (Executive Decision Brief)'));
     expect(text, contains('/Title (Validation Checklist)'));
+    expect(text, contains('/Title (Decision Sign-Off)'));
     expect(text, contains('Lead Decision Callout'));
     expect(text, contains('Decision ask'));
     expect(text, contains('Handoff status'));
@@ -92,6 +94,9 @@ void main() {
     expect(text, contains('Validation Checklist'));
     expect(text, contains('Customer Handoff Scorecard'));
     expect(text, contains('Decision Log'));
+    expect(text, contains('Decision Sign-Off'));
+    expect(text, contains('Signature / Date'));
+    expect(text, contains('Handoff approval'));
     expect(text, contains('Sizing Inputs'));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
 
@@ -133,6 +138,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off page',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -152,6 +158,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -162,6 +169,7 @@ void main() {
     expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
     expect(metadata['handoffScorecardItemCount'], 5);
     expect(metadata['decisionLogCount'], 4);
+    expect(metadata['decisionSignOffGateCount'], 4);
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -191,6 +199,7 @@ void main() {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off',
         'Data tables',
         'Assumptions',
         'Sources',
@@ -206,6 +215,7 @@ void main() {
     expect(metadata['hasValidationChecklist'], isTrue);
     expect(metadata['hasCustomerHandoffScorecard'], isTrue);
     expect(metadata['hasDecisionLog'], isTrue);
+    expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasFooterPageNumbers'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
@@ -269,6 +279,7 @@ void main() {
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
@@ -277,5 +288,6 @@ void main() {
       contains('Page ${inspection.pageCount} of ${inspection.pageCount}'),
     );
     expect(text, contains('Large Customer Handoff Report'));
+    expect(text, contains('Decision Sign-Off'));
   });
 }

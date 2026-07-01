@@ -56,15 +56,20 @@ class PdfArtifactRenderer {
         'Decision Log',
         '${_decisionLogRows(document).length}',
       ],
+      [
+        '${document.sections.length + 14}',
+        'Decision Sign-Off',
+        '${_decisionSignOffRows(document).length - 1} gates',
+      ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 14}',
+          '${document.sections.length + 15}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 15}',
+          '${document.sections.length + 16}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -110,6 +115,7 @@ class PdfArtifactRenderer {
         'Validation checklist',
         'Customer handoff scorecard',
         'Decision log',
+        'Decision sign-off page',
         if (document.tables.isNotEmpty) 'Data tables',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
@@ -136,6 +142,7 @@ class PdfArtifactRenderer {
       'evidenceGapCount': _evidenceGapCount(document),
       'handoffScorecardItemCount': scorecardRows.length,
       'decisionLogCount': _decisionLogRows(document).length - 1,
+      'decisionSignOffGateCount': _decisionSignOffRows(document).length - 1,
       'approvalGateCount': _approvalGateRows(document).length,
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
@@ -151,6 +158,7 @@ class PdfArtifactRenderer {
       'hasValidationChecklist': true,
       'hasCustomerHandoffScorecard': true,
       'hasDecisionLog': true,
+      'hasDecisionSignOffPage': true,
       'hasFooterPageNumbers': true,
       'hasExplicitTableGeometry': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
@@ -428,7 +436,17 @@ class PdfArtifactRenderer {
           gapAfter: 6,
         ),
       )
-      ..add(_PdfTable(_decisionLogRows(document)));
+      ..add(_PdfTable(_decisionLogRows(document)))
+      ..add(
+        const _PdfText(
+          'Decision Sign-Off',
+          size: 13.5,
+          bold: true,
+          gapBefore: 12,
+          gapAfter: 6,
+        ),
+      )
+      ..add(_PdfTable(_decisionSignOffRows(document)));
     if (document.assumptions.isNotEmpty) {
       items.add(
         const _PdfText(
@@ -478,6 +496,7 @@ class PdfArtifactRenderer {
       const _PdfOutlineEntry('Validation Checklist'),
       const _PdfOutlineEntry('Customer Handoff Scorecard'),
       const _PdfOutlineEntry('Decision Log'),
+      const _PdfOutlineEntry('Decision Sign-Off'),
       if (document.assumptions.isNotEmpty)
         const _PdfOutlineEntry('Assumptions'),
       if (document.citations.isNotEmpty)
@@ -523,6 +542,7 @@ class PdfArtifactRenderer {
       'Validation Checklist - quality and handoff readiness checks',
       'Customer Handoff Scorecard - readiness score, status signals, and owner follow-up',
       'Decision Log - decision, owner, evidence, and next-action record',
+      'Decision Sign-Off - final approval fields, signature owners, and dates',
       if (document.assumptions.isNotEmpty)
         'Assumptions - ${document.assumptions.length} captured caveat${document.assumptions.length == 1 ? '' : 's'}',
       if (document.citations.isNotEmpty)
@@ -960,6 +980,42 @@ class PdfArtifactRenderer {
     ];
   }
 
+  List<List<String>> _decisionSignOffRows(ArtifactDocument document) {
+    return [
+      ['Approval Field', 'Owner', 'Sign-Off Status', 'Signature / Date'],
+      [
+        'Decision owner approval',
+        _decisionOwner(document),
+        _handoffStatus(document),
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Evidence approval',
+        'Evidence reviewer',
+        document.citations.isEmpty
+            ? 'Needs source evidence'
+            : 'Ready for evidence sign-off',
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Risk / assumption approval',
+        'Project owner',
+        document.assumptions.isEmpty
+            ? 'Needs assumption review'
+            : 'Ready for risk sign-off',
+        'Signature: __________   Date: __________',
+      ],
+      [
+        'Handoff approval',
+        'Implementation owner',
+        _nextStepRows(document).length <= 1
+            ? 'Needs next-step owner'
+            : 'Ready for handoff approval',
+        'Signature: __________   Date: __________',
+      ],
+    ];
+  }
+
   int _handoffScoreFor(List<List<String>> rows) {
     var total = 0;
     for (final row in rows) {
@@ -1161,6 +1217,7 @@ class PdfArtifactRenderer {
       'Validation checklist',
       'Customer handoff scorecard',
       'Decision log',
+      'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
@@ -1181,6 +1238,7 @@ class PdfArtifactRenderer {
       'Validation checklist',
       'Customer handoff scorecard',
       'Decision log',
+      'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',

@@ -30,6 +30,7 @@ class PdfArtifactInspection {
   final bool hasValidationChecklist;
   final bool hasCustomerHandoffScorecard;
   final bool hasDecisionLog;
+  final bool hasDecisionSignOff;
   final bool hasExplicitTableGeometry;
   final bool hasInfoKeywords;
   final String? title;
@@ -64,6 +65,7 @@ class PdfArtifactInspection {
     required this.hasValidationChecklist,
     required this.hasCustomerHandoffScorecard,
     required this.hasDecisionLog,
+    required this.hasDecisionSignOff,
     required this.hasExplicitTableGeometry,
     required this.hasInfoKeywords,
     required this.title,
@@ -100,6 +102,7 @@ class PdfArtifactInspection {
       hasValidationChecklist &&
       hasCustomerHandoffScorecard &&
       hasDecisionLog &&
+      hasDecisionSignOff &&
       hasExplicitTableGeometry &&
       hasInfoKeywords;
 
@@ -156,6 +159,10 @@ class PdfArtifactInspector {
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasCustomerHandoffScorecard: text.contains('Customer Handoff Scorecard'),
       hasDecisionLog: text.contains('Decision Log'),
+      hasDecisionSignOff:
+          text.contains('Decision Sign-Off') &&
+          text.contains('Signature / Date') &&
+          text.contains('Handoff approval'),
       hasExplicitTableGeometry:
           text.contains(' re f') &&
           text.contains(' re S') &&
