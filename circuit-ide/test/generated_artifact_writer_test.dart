@@ -171,6 +171,30 @@ Here is the data.
     expect(artifact.fileName, endsWith('.xlsx'));
     expect(artifact.summary, contains('solution sizing workbook'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(18));
+    expect(artifact.metadata['artifact'], 'solution_sizing_workbook');
+    expect(artifact.metadata['workbookKind'], 'solution_sizing');
+    expect(artifact.metadata['sheetCount'], artifact.sheetCount);
+    expect(artifact.metadata['sourceSheetCount'], 1);
+    expect(artifact.metadata['requirementCount'], greaterThanOrEqualTo(4));
+    expect(artifact.metadata['gateCount'], 6);
+    expect(artifact.metadata['candidateCheckCount'], greaterThanOrEqualTo(3));
+    expect(artifact.metadata['recommendationCount'], greaterThanOrEqualTo(2));
+    expect(artifact.metadata['riskCount'], 5);
+    expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(2));
+    expect(artifact.metadata['validationCheckCount'], 5);
+    expect(artifact.metadata['assumptionCount'], 2);
+    expect(artifact.metadata['users'], '500');
+    expect(artifact.metadata['accessPoints'], '90');
+    expect(artifact.metadata['switches'], '6');
+    expect(artifact.metadata['wan'], '2 Gbps');
+    expect(artifact.metadata['growth'], '25%');
+    expect(artifact.metadata['hasPoeBudget'], isTrue);
+    expect(artifact.metadata['hasWanThroughput'], isTrue);
+    expect(artifact.metadata['hasClosetPower'], isTrue);
+    expect(artifact.metadata['hasCandidateValidation'], isTrue);
+    expect(artifact.metadata['hasLifecycleValidation'], isTrue);
+    expect(artifact.metadata['hasHighPowerApSignal'], isTrue);
+    expect(artifact.metadata['hasMultigigSignal'], isTrue);
     expect(artifact.previewRows.first, [
       'Executive Signal',
       'Current Value',

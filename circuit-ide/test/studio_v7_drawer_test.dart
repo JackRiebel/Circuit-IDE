@@ -1024,6 +1024,106 @@ void main() {
     },
   );
 
+  testWidgets('Artifacts drawer shows solution sizing workbook metadata', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'sizing-1',
+      kind: GeneratedArtifactKind.excel,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'campus-sizing.xlsx',
+      filePath: '/tmp/campus-sizing.xlsx',
+      summary:
+          'Created a solution sizing workbook with executive summary, PoE, WAN, validation, and source sheets.',
+      byteSize: 16384,
+      previewRows: const [
+        [
+          'Executive Signal',
+          'Current Value',
+          'Sizing Interpretation',
+          'Next Action',
+        ],
+        [
+          'Demand baseline',
+          '500 users, 90 APs, 6 switches',
+          'Review',
+          'Confirm',
+        ],
+      ],
+      sheetCount: 19,
+      metadata: const {
+        'artifact': 'solution_sizing_workbook',
+        'workbookKind': 'solution_sizing',
+        'sheetCount': 19,
+        'sourceSheetCount': 1,
+        'requirementCount': 5,
+        'gateCount': 6,
+        'candidateCheckCount': 3,
+        'riskCount': 5,
+        'highRiskCount': 3,
+        'validationCheckCount': 5,
+        'recommendationCount': 2,
+        'users': '500',
+        'accessPoints': '90',
+        'switches': '6',
+        'wan': '2 Gbps',
+        'growth': '25%',
+        'hasHighPowerApSignal': true,
+        'hasMultigigSignal': true,
+        'hasLifecycleValidation': true,
+      },
+      createdAt: DateTime(2026, 7, 1, 12),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('campus-sizing.xlsx'), findsOneWidget);
+    expect(
+      find.textContaining('Excel • 500 users • 90 APs'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('2 Gbps'), findsOneWidget);
+    expect(find.textContaining('6 gates'), findsOneWidget);
+    expect(find.textContaining('5 risks'), findsOneWidget);
+    expect(find.text('Workbook preview'), findsOneWidget);
+    expect(find.text('Demand baseline'), findsOneWidget);
+
+    await tester.tap(find.text('campus-sizing.xlsx'));
+    await tester.pump();
+
+    expect(find.text('Users'), findsOneWidget);
+    expect(find.text('APs'), findsOneWidget);
+    expect(find.text('Switches'), findsOneWidget);
+    expect(find.text('WAN'), findsOneWidget);
+    expect(find.text('Growth'), findsOneWidget);
+    expect(find.text('Gates'), findsOneWidget);
+    expect(find.text('Risks'), findsOneWidget);
+    expect(find.text('High risk'), findsOneWidget);
+    expect(find.text('Candidate checks'), findsOneWidget);
+    expect(find.text('Validation'), findsOneWidget);
+    expect(find.text('Recommendations'), findsOneWidget);
+    expect(find.text('Power'), findsOneWidget);
+    expect(find.text('Access speed'), findsOneWidget);
+    expect(find.text('Lifecycle'), findsOneWidget);
+    expect(find.text('High-power AP/UPOE signal'), findsOneWidget);
+    expect(find.text('mGig validation signal'), findsOneWidget);
+    expect(find.text('Validation included'), findsOneWidget);
+  });
+
   testWidgets('Artifacts drawer explains deck and document artifacts', (
     tester,
   ) async {

@@ -3148,6 +3148,19 @@ class _ArtifactDrawerCard extends ConsumerWidget {
         parts.add('$edgeCount links');
       }
     }
+    if (artifact.kind == GeneratedArtifactKind.excel &&
+        _metadataString(artifact, 'workbookKind') == 'solution_sizing') {
+      final users = _metadataString(artifact, 'users');
+      final aps = _metadataString(artifact, 'accessPoints');
+      final wan = _metadataString(artifact, 'wan');
+      final gateCount = _metadataInt(artifact, 'gateCount');
+      final riskCount = _metadataInt(artifact, 'riskCount');
+      if (users.isNotEmpty) parts.add('$users users');
+      if (aps.isNotEmpty) parts.add('$aps APs');
+      if (wan.isNotEmpty) parts.add(wan);
+      if (gateCount > 0) parts.add('$gateCount gates');
+      if (riskCount > 0) parts.add('$riskCount risks');
+    }
     if (artifact.kind == GeneratedArtifactKind.chart) {
       final pointCount = _metadataInt(artifact, 'pointCount');
       final highRiskCount = _metadataInt(artifact, 'highRiskCount');
@@ -3255,6 +3268,46 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'AP power',
             '${_metadataInt(artifact, 'estimatedApPowerWatts')}W est.',
           ),
+      ],
+      if (artifact.kind == GeneratedArtifactKind.excel &&
+          _metadataString(artifact, 'workbookKind') == 'solution_sizing') ...[
+        if (_metadataString(artifact, 'users').isNotEmpty)
+          ('Users', _metadataString(artifact, 'users')),
+        if (_metadataString(artifact, 'accessPoints').isNotEmpty)
+          ('APs', _metadataString(artifact, 'accessPoints')),
+        if (_metadataString(artifact, 'switches').isNotEmpty)
+          ('Switches', _metadataString(artifact, 'switches')),
+        if (_metadataString(artifact, 'wan').isNotEmpty)
+          ('WAN', _metadataString(artifact, 'wan')),
+        if (_metadataString(artifact, 'growth').isNotEmpty)
+          ('Growth', _metadataString(artifact, 'growth')),
+        if (_metadataInt(artifact, 'gateCount') > 0)
+          ('Gates', '${_metadataInt(artifact, 'gateCount')}'),
+        if (_metadataInt(artifact, 'riskCount') > 0)
+          ('Risks', '${_metadataInt(artifact, 'riskCount')}'),
+        if (_metadataInt(artifact, 'highRiskCount') > 0)
+          ('High risk', '${_metadataInt(artifact, 'highRiskCount')}'),
+        if (_metadataInt(artifact, 'candidateCheckCount') > 0)
+          (
+            'Candidate checks',
+            '${_metadataInt(artifact, 'candidateCheckCount')}',
+          ),
+        if (_metadataInt(artifact, 'validationCheckCount') > 0)
+          (
+            'Validation',
+            '${_metadataInt(artifact, 'validationCheckCount')} checks',
+          ),
+        if (_metadataInt(artifact, 'recommendationCount') > 0)
+          (
+            'Recommendations',
+            '${_metadataInt(artifact, 'recommendationCount')}',
+          ),
+        if (_metadataBool(artifact, 'hasHighPowerApSignal'))
+          ('Power', 'High-power AP/UPOE signal'),
+        if (_metadataBool(artifact, 'hasMultigigSignal'))
+          ('Access speed', 'mGig validation signal'),
+        if (_metadataBool(artifact, 'hasLifecycleValidation'))
+          ('Lifecycle', 'Validation included'),
       ],
       if (artifact.kind == GeneratedArtifactKind.chart) ...[
         if (_metadataInt(artifact, 'chartCount') > 0)
@@ -3582,6 +3635,13 @@ int _metadataInt(GeneratedArtifact artifact, String key) {
 String _metadataString(GeneratedArtifact artifact, String key) {
   final value = artifact.metadata[key]?.toString().trim() ?? '';
   return value;
+}
+
+bool _metadataBool(GeneratedArtifact artifact, String key) {
+  final value = artifact.metadata[key];
+  if (value is bool) return value;
+  final text = value?.toString().trim().toLowerCase() ?? '';
+  return text == 'true' || text == 'yes' || text == '1';
 }
 
 List<String> _metadataStringList(GeneratedArtifact artifact, String key) {

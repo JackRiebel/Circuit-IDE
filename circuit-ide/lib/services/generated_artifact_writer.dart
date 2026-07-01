@@ -346,22 +346,31 @@ class GeneratedArtifactWriter {
       final sizingWorkbook =
           requestedKind == GeneratedArtifactKind.excel &&
           solutionSizingBuilder.matches(prompt);
-      final tables = lifecycleEox
-          ? lifecycleEoxBuilder
-                .build(prompt: prompt, content: content, document: document)
-                .map((table) => _TableData(name: table.name, rows: table.rows))
-                .toList(growable: false)
-          : productComparison
-          ? productComparisonBuilder
-                .build(prompt: prompt, content: content, document: document)
-                .map((table) => _TableData(name: table.name, rows: table.rows))
-                .toList(growable: false)
-          : sizingWorkbook
-          ? solutionSizingBuilder
-                .build(prompt: prompt, content: content, document: document)
-                .map((table) => _TableData(name: table.name, rows: table.rows))
-                .toList(growable: false)
-          : _extractTables(content);
+      final List<_TableData> tables;
+      Map<String, Object?> workbookMetadata = const {};
+      if (lifecycleEox) {
+        tables = lifecycleEoxBuilder
+            .build(prompt: prompt, content: content, document: document)
+            .map((table) => _TableData(name: table.name, rows: table.rows))
+            .toList(growable: false);
+      } else if (productComparison) {
+        tables = productComparisonBuilder
+            .build(prompt: prompt, content: content, document: document)
+            .map((table) => _TableData(name: table.name, rows: table.rows))
+            .toList(growable: false);
+      } else if (sizingWorkbook) {
+        final workbookTables = solutionSizingBuilder.build(
+          prompt: prompt,
+          content: content,
+          document: document,
+        );
+        workbookMetadata = solutionSizingBuilder.metadataFor(workbookTables);
+        tables = workbookTables
+            .map((table) => _TableData(name: table.name, rows: table.rows))
+            .toList(growable: false);
+      } else {
+        tables = _extractTables(content);
+      }
       if (tables.isNotEmpty && requestedKind == GeneratedArtifactKind.excel) {
         final workbook = _xlsxBytes(tables);
         return _ResolvedArtifact(
@@ -380,6 +389,7 @@ class GeneratedArtifactWriter {
               : 'Created an Excel workbook with ${tables.length} sheets, formatted headers, and frozen first rows.',
           previewRows: tables.first.rows.take(6).toList(growable: false),
           sheetCount: tables.length,
+          metadata: workbookMetadata,
         );
       }
       if (tables.isNotEmpty) {

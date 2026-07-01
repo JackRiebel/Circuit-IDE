@@ -232,6 +232,110 @@ class SolutionSizingWorkbookBuilder {
     ];
   }
 
+  Map<String, Object?> metadataFor(List<WorkbookTable> tables) {
+    final requirementRows = _rowsFor(tables, 'Requirements').skip(1).toList();
+    final gateRows = _rowsFor(tables, 'Requirement Gates').skip(1).toList();
+    final candidateRows = _rowsFor(
+      tables,
+      'Candidate Validation',
+    ).skip(1).toList();
+    final recommendationRows = _rowsFor(
+      tables,
+      'Recommendations',
+    ).skip(1).toList();
+    final riskRows = _rowsFor(tables, 'Risk Register').skip(1).toList();
+    final validationRows = _rowsFor(tables, 'Validation').skip(1).toList();
+    final assumptionRows = _rowsFor(tables, 'Assumptions').skip(1).toList();
+    final decisionRows = _rowsFor(tables, 'Decision Summary').skip(1).toList();
+    final sourceSheetCount = tables
+        .where((table) => table.name.toLowerCase().startsWith('source '))
+        .length;
+
+    return {
+      'artifact': 'solution_sizing_workbook',
+      'workbookKind': 'solution_sizing',
+      'sheetCount': tables.length,
+      'sourceSheetCount': sourceSheetCount,
+      'requirementCount': requirementRows.length,
+      'gateCount': gateRows.length,
+      'candidateCheckCount': candidateRows.length,
+      'recommendationCount': recommendationRows.length,
+      'riskCount': riskRows.length,
+      'highRiskCount': _severityCount(riskRows, 'High'),
+      'mediumRiskCount': _severityCount(riskRows, 'Medium'),
+      'validationCheckCount': validationRows.length,
+      'assumptionCount': assumptionRows.length,
+      'decisionCount': decisionRows.length,
+      'users': _requirementValue(requirementRows, 'Users'),
+      'accessPoints': _requirementValue(requirementRows, 'Access points'),
+      'switches': _requirementValue(requirementRows, 'Switches'),
+      'wan': _requirementValue(requirementRows, 'WAN speed'),
+      'poe': _requirementValue(requirementRows, 'PoE'),
+      'growth': _requirementValue(requirementRows, 'Growth'),
+      'hasPoeBudget': _hasSheet(tables, 'PoE Budget'),
+      'hasWanThroughput': _hasSheet(tables, 'WAN Throughput'),
+      'hasClosetPower': _hasSheet(tables, 'Closet Power Plan'),
+      'hasCandidateValidation': candidateRows.isNotEmpty,
+      'hasLifecycleValidation': _containsText(tables, 'lifecycle'),
+      'hasHighPowerApSignal':
+          _containsText(tables, 'UPOE') ||
+          _containsText(tables, 'Wi-Fi 7') ||
+          _containsText(tables, '802.3bt'),
+      'hasMultigigSignal':
+          _containsText(tables, 'mGig') ||
+          _containsText(tables, 'multigig') ||
+          _containsText(tables, '2.5G') ||
+          _containsText(tables, '5G'),
+      'hasHaSignal':
+          _containsText(tables, 'High availability') ||
+          _containsText(tables, 'dual WAN') ||
+          _containsText(tables, 'warm spare'),
+    };
+  }
+
+  List<List<String>> _rowsFor(List<WorkbookTable> tables, String name) {
+    for (final table in tables) {
+      if (table.name.toLowerCase() == name.toLowerCase()) return table.rows;
+    }
+    return const [];
+  }
+
+  String _requirementValue(List<List<String>> rows, String metric) {
+    final needle = metric.toLowerCase();
+    for (final row in rows) {
+      if (row.length < 2) continue;
+      if (row.first.toLowerCase().contains(needle)) return row[1];
+    }
+    return '';
+  }
+
+  int _severityCount(List<List<String>> rows, String severity) {
+    final needle = severity.toLowerCase();
+    return rows.where((row) {
+      if (row.length < 4) return false;
+      return row[3].toLowerCase().contains(needle);
+    }).length;
+  }
+
+  bool _hasSheet(List<WorkbookTable> tables, String name) {
+    return tables.any(
+      (table) => table.name.toLowerCase() == name.toLowerCase(),
+    );
+  }
+
+  bool _containsText(List<WorkbookTable> tables, String text) {
+    final needle = text.toLowerCase();
+    for (final table in tables) {
+      if (table.name.toLowerCase().contains(needle)) return true;
+      for (final row in table.rows) {
+        if (row.any((cell) => cell.toLowerCase().contains(needle))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   List<List<String>> _executiveSummaryRows(_SizingProfile profile) {
     return [
       [
