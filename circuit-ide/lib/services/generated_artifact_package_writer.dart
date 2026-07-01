@@ -572,10 +572,24 @@ class GeneratedArtifactPackageWriter {
         normalized.contains('sizing')) {
       return 'solution sizing package';
     }
+    if (normalized.contains('product comparison') ||
+        normalized.contains('comparison matrix') ||
+        normalized.contains('model comparison') ||
+        normalized.contains('fit score') ||
+        normalized.contains('shortlist')) {
+      return 'product comparison package';
+    }
     if (normalized.contains('lifecycle') ||
         normalized.contains('eox') ||
         normalized.contains('ldos')) {
       return 'lifecycle review package';
+    }
+    if (normalized.contains('evidence pack') ||
+        normalized.contains('citation pack') ||
+        normalized.contains('source pack') ||
+        normalized.contains('source validation') ||
+        normalized.contains('claim validation')) {
+      return 'evidence pack package';
     }
     if (normalized.contains('topology') || normalized.contains('diagram')) {
       return 'topology package';

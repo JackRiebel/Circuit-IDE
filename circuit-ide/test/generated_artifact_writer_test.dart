@@ -2819,4 +2819,171 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     expect(package.artifacts[1].sheetCount, greaterThanOrEqualTo(18));
     expect(package.artifacts[2].fileName, endsWith('.svg'));
   });
+
+  test(
+    'product comparison package creates workbook and chart artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-comparison-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt:
+                'create a product comparison package for C9300, C9300X, and Meraki MS355 fit scoring',
+            content: '''
+# Access Switching Product Comparison
+
+## Summary
+Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access, and lifecycle runway.
+
+| Product | Capabilities | Constraints | Lifecycle | Fit Score |
+| --- | --- | --- | --- | ---: |
+| C9300-48P | 48-port access switching | UPOE and mGig validation needed | Current portfolio check required | 72 |
+| C9300X-48HX | UPOE, mGig, higher uplinks | Higher cost and licensing validation | Current portfolio check required | 88 |
+| Meraki MS355 | Cloud-managed access option | Operational model change | Current portfolio check required | 80 |
+
+## Requirements
+- Wi-Fi 7 APs require UPOE and multigig validation.
+- EoX replacement PID is only a migration hint.
+''',
+            turnId: 'turn-comparison-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      expect(package!.label, 'product comparison package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.chart,
+      ]);
+      expect(
+        package.primary!.metadata['artifact'],
+        'artifact_package_manifest',
+      );
+      expect(package.primary!.metadata['expectedArtifactKinds'], [
+        'Excel',
+        'Chart',
+      ]);
+      expect(package.primary!.metadata['producedArtifactKinds'], [
+        'Excel',
+        'Chart',
+      ]);
+      expect(
+        package.primary!.metadata['packageCompletenessStatus'],
+        'Complete',
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll(['Comparison matrix', 'Chart summary']),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        containsAll([
+          'Comparison sheets parse',
+          'Chart signal metadata persists',
+        ]),
+      );
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Product Comparison Package'));
+      expect(manifestText, contains('| Excel, Chart | Excel, Chart | None |'));
+      expect(manifestText, contains('.xlsx'));
+      expect(manifestText, contains('.svg'));
+      expect(package.artifacts[1].fileName, endsWith('.xlsx'));
+      expect(
+        package.artifacts[1].metadata['workbookKind'],
+        'product_comparison',
+      );
+      expect(package.artifacts[2].fileName, endsWith('.svg'));
+    },
+  );
+
+  test('final evidence package creates DOCX JSON and PDF artifacts', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-evidence-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a final evidence pack for customer handoff',
+          content: '''
+# Cisco Lifecycle Evidence Pack
+
+## Claims
+- AIR-AP2802I has support-risk exposure that needs official Cisco date validation.
+- Replacement selection must validate Wi-Fi 7, multigig, UPOE, uplinks, and lifecycle runway.
+- EoX replacement PID is a migration clue only, not the final recommendation.
+
+## Sources
+- Cisco EoX API — checked 2026-07-01 — https://www.cisco.com/c/en/us/products/eos-eol-listing.html
+- Cisco Catalyst datasheet — checked 2026-07-01 — https://www.cisco.com/
+
+## Assumptions
+- Customer inventory and contract data are current.
+- Current portfolio recommendations require sourced capability facts.
+
+## Unsupported Claims
+- Exact replacement model needs validation against current portfolio facts.
+''',
+          turnId: 'turn-final-evidence-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'evidence pack package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.json,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Word',
+      'JSON',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Word',
+      'JSON',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Report outline', 'Evidence register', 'PDF outline']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      containsAll([
+        'DOCX package opens/parses',
+        'Claim/source register is present',
+        'PDF header parses',
+      ]),
+    );
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(manifestText, contains('Evidence Pack Package'));
+    expect(
+      manifestText,
+      contains('| Word, JSON, PDF | Word, JSON, PDF | None |'),
+    );
+    expect(manifestText, contains('.docx'));
+    expect(manifestText, contains('.json'));
+    expect(manifestText, contains('.pdf'));
+    expect(package.artifacts[1].fileName, endsWith('.docx'));
+    expect(package.artifacts[1].metadata['artifactTemplate'], 'evidence_pack');
+    expect(package.artifacts[2].fileName, endsWith('.json'));
+    expect(package.artifacts[2].metadata['artifact'], 'json_evidence_pack');
+    expect(package.artifacts[3].fileName, endsWith('.pdf'));
+    expect(package.artifacts[3].metadata['artifactTemplate'], 'evidence_pack');
+  });
 }
