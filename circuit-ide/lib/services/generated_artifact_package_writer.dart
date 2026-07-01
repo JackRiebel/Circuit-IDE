@@ -157,10 +157,12 @@ class GeneratedArtifactPackageWriter {
     if (!p.isWithin(root, filePath)) {
       throw StateError('Package manifest path escaped workspace root.');
     }
+    final readiness = _packageReadinessFor(artifacts);
     final content = _manifestMarkdown(
       label: label,
       prompt: prompt,
       artifacts: artifacts,
+      readiness: readiness,
     );
     final bytes = utf8.encode(content);
     final file = File(filePath);
@@ -184,13 +186,26 @@ class GeneratedArtifactPackageWriter {
         'artifact': 'artifact_package_manifest',
         'packageLabel': label,
         'artifactCount': artifacts.length,
+        'readyArtifactCount': readiness.readyCount,
+        'fallbackArtifactCount': readiness.fallbackCount,
+        'failedArtifactCount': readiness.failedCount,
+        'averageQualityScore': readiness.averageQualityScore,
+        'packageQualityStatus': readiness.status,
+        'packageNextAction': readiness.nextAction,
+        'packageReviewWorkflow': readiness.reviewWorkflow,
+        'packageReadinessGaps': readiness.gaps,
+        'packageReadinessSignals': readiness.signals,
+        'packageFileTypes': artifacts
+            .map((artifact) => artifact.typeLabel)
+            .toSet()
+            .toList(growable: false),
         'artifactIds': artifacts.map((artifact) => artifact.id).toList(),
         'artifactFiles': artifacts
             .map((artifact) => artifact.fileName)
             .toList(),
-        'qualityStatus': 'Package ready',
-        'qualityScore': 100,
-        'hasCustomerReadyArtifact': true,
+        'qualityStatus': readiness.status,
+        'qualityScore': readiness.averageQualityScore,
+        'hasCustomerReadyArtifact': readiness.failedCount == 0,
       },
       threadId: threadId,
       requestId: requestId,
@@ -202,6 +217,7 @@ class GeneratedArtifactPackageWriter {
     required String label,
     required String prompt,
     required List<GeneratedArtifact> artifacts,
+    required _PackageReadiness readiness,
   }) {
     final buffer = StringBuffer()
       ..writeln('# ${_titleCase(label)}')
@@ -210,14 +226,52 @@ class GeneratedArtifactPackageWriter {
       ..writeln()
       ..writeln('> ${prompt.trim()}')
       ..writeln()
+      ..writeln('## Package Readiness')
+      ..writeln()
+      ..writeln('| Signal | Value |')
+      ..writeln('| --- | --- |')
+      ..writeln('| Status | ${_escapeTable(readiness.status)} |')
+      ..writeln('| Average quality score | ${readiness.averageQualityScore} |')
+      ..writeln(
+        '| Ready artifacts | ${readiness.readyCount}/${artifacts.length} |',
+      )
+      ..writeln('| Fallback artifacts | ${readiness.fallbackCount} |')
+      ..writeln('| Failed artifacts | ${readiness.failedCount} |')
+      ..writeln('| Next action | ${_escapeTable(readiness.nextAction)} |')
+      ..writeln()
       ..writeln('## Package Contents')
       ..writeln()
-      ..writeln('| File | Type | Status | Summary |')
-      ..writeln('| --- | --- | --- | --- |');
+      ..writeln('| File | Type | Status | Quality | Summary |')
+      ..writeln('| --- | --- | --- | --- | --- |');
     for (final artifact in artifacts) {
       buffer.writeln(
-        '| ${_escapeTable(artifact.fileName)} | ${artifact.typeLabel} | ${artifact.statusLabel} | ${_escapeTable(artifact.summary)} |',
+        '| ${_escapeTable(artifact.fileName)} | ${artifact.typeLabel} | ${artifact.statusLabel} | ${_escapeTable(_qualityLabel(artifact))} | ${_escapeTable(artifact.summary)} |',
       );
+    }
+    buffer
+      ..writeln()
+      ..writeln('## Review Workflow')
+      ..writeln();
+    for (final step in readiness.reviewWorkflow) {
+      buffer.writeln('- $step');
+    }
+    if (readiness.signals.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('## Readiness Signals')
+        ..writeln();
+      for (final signal in readiness.signals) {
+        buffer.writeln('- $signal');
+      }
+    }
+    if (readiness.gaps.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('## Gaps To Resolve')
+        ..writeln();
+      for (final gap in readiness.gaps) {
+        buffer.writeln('- $gap');
+      }
     }
     buffer
       ..writeln()
@@ -234,6 +288,164 @@ class GeneratedArtifactPackageWriter {
       buffer.writeln('- `${artifact.fileName}`');
     }
     return buffer.toString();
+  }
+
+  _PackageReadiness _packageReadinessFor(List<GeneratedArtifact> artifacts) {
+    final readyCount = artifacts
+        .where((artifact) => artifact.status == GeneratedArtifactStatus.ready)
+        .length;
+    final fallbackCount = artifacts
+        .where(
+          (artifact) => artifact.status == GeneratedArtifactStatus.fallback,
+        )
+        .length;
+    final failedCount = artifacts
+        .where((artifact) => artifact.status == GeneratedArtifactStatus.failed)
+        .length;
+    final scores = artifacts
+        .map((artifact) => _metadataInt(artifact, 'qualityScore'))
+        .whereType<int>()
+        .toList(growable: false);
+    final averageQualityScore = scores.isEmpty
+        ? (failedCount > 0 ? 0 : 100)
+        : (scores.reduce((a, b) => a + b) / scores.length).round();
+    final gaps = <String>{
+      for (final artifact in artifacts)
+        ..._metadataStringList(
+          artifact,
+          'qualityGaps',
+        ).map((gap) => '${artifact.fileName}: $gap'),
+      for (final artifact in artifacts)
+        ..._metadataStringList(
+          artifact,
+          'validationGaps',
+        ).map((gap) => '${artifact.fileName}: $gap'),
+    }.toList(growable: false);
+    final signals = <String>{
+      for (final artifact in artifacts)
+        ..._metadataStringList(
+          artifact,
+          'qualityGates',
+        ).map((gate) => '${artifact.typeLabel}: $gate'),
+      for (final artifact in artifacts)
+        ..._metadataStringList(
+          artifact,
+          'readinessSignals',
+        ).map((signal) => '${artifact.typeLabel}: $signal'),
+    }.take(10).toList(growable: false);
+    final status = failedCount > 0
+        ? 'Package has failed artifacts'
+        : fallbackCount > 0
+        ? 'Package has fallback artifacts'
+        : gaps.isNotEmpty
+        ? 'Package needs review'
+        : 'Package ready';
+    final nextAction = failedCount > 0
+        ? 'Regenerate failed artifacts before handoff.'
+        : fallbackCount > 0
+        ? 'Review fallback artifacts before sharing.'
+        : gaps.isNotEmpty
+        ? 'Resolve listed evidence and quality gaps.'
+        : 'Review the package and share the selected customer-ready files.';
+    return _PackageReadiness(
+      status: status,
+      nextAction: nextAction,
+      readyCount: readyCount,
+      fallbackCount: fallbackCount,
+      failedCount: failedCount,
+      averageQualityScore: averageQualityScore,
+      gaps: gaps,
+      signals: signals,
+      reviewWorkflow: _reviewWorkflowFor(artifacts),
+    );
+  }
+
+  List<String> _reviewWorkflowFor(List<GeneratedArtifact> artifacts) {
+    final steps = <String>[];
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.excel,
+    )) {
+      steps.add(
+        'Validate workbook inputs, formulas, gates, and source sheets.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.chart,
+    )) {
+      steps.add(
+        'Review chart thresholds, risk labels, and executive insights.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.diagram,
+    )) {
+      steps.add(
+        'Review topology assumptions, links, capacity, and failure domains.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.docx,
+    )) {
+      steps.add(
+        'Review Word report narrative, assumptions, citations, and sign-off gates.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
+    )) {
+      steps.add(
+        'Review deck slide order, speaker notes, and customer-facing framing.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
+    )) {
+      steps.add(
+        'Use PDF as final handoff only after source and assumption review.',
+      );
+    }
+    if (artifacts.any(
+      (artifact) => artifact.kind == GeneratedArtifactKind.json,
+    )) {
+      steps.add(
+        'Validate JSON evidence structure before importing into other tools.',
+      );
+    }
+    steps.add(
+      'Open each generated artifact from the Artifacts drawer before sharing.',
+    );
+    return steps.toList(growable: false);
+  }
+
+  String _qualityLabel(GeneratedArtifact artifact) {
+    final status = _metadataString(artifact, 'qualityStatus');
+    final score = _metadataInt(artifact, 'qualityScore');
+    if (status.isEmpty && score == null) return 'Not scored';
+    if (score == null) return status;
+    if (status.isEmpty) return '$score/100';
+    return '$status ($score/100)';
+  }
+
+  String _metadataString(GeneratedArtifact artifact, String key) {
+    return artifact.metadata[key]?.toString().trim() ?? '';
+  }
+
+  int? _metadataInt(GeneratedArtifact artifact, String key) {
+    final value = artifact.metadata[key];
+    if (value is int) return value;
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  List<String> _metadataStringList(GeneratedArtifact artifact, String key) {
+    final value = artifact.metadata[key];
+    if (value is Iterable) {
+      return value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+    }
+    return const [];
   }
 
   String _safeBaseName(String prompt) {
@@ -288,4 +500,28 @@ class GeneratedArtifactPackageWriter {
     }
     return artifacts.length == 1 ? 'artifact' : 'artifact package';
   }
+}
+
+class _PackageReadiness {
+  final String status;
+  final String nextAction;
+  final int readyCount;
+  final int fallbackCount;
+  final int failedCount;
+  final int averageQualityScore;
+  final List<String> gaps;
+  final List<String> signals;
+  final List<String> reviewWorkflow;
+
+  const _PackageReadiness({
+    required this.status,
+    required this.nextAction,
+    required this.readyCount,
+    required this.fallbackCount,
+    required this.failedCount,
+    required this.averageQualityScore,
+    required this.gaps,
+    required this.signals,
+    required this.reviewWorkflow,
+  });
 }

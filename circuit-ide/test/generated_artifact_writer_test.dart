@@ -2023,19 +2023,17 @@ Checkpoint:
     expect(exported.previewRows.first, ['Product', 'Count']);
   });
 
-  test(
-    'business case package creates DOCX, deck, and chart artifacts',
-    () async {
-      final root = await Directory.systemTemp.createTemp(
-        'circuit-artifact-package-',
-      );
-      addTearDown(() => root.delete(recursive: true));
+  test('business case package creates DOCX, deck, and chart artifacts', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-artifact-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
 
-      final package = await const GeneratedArtifactPackageWriter()
-          .writePackageFromAssistantOutput(
-            rootPath: root.path,
-            prompt: 'create a business case package for Acme manufacturing',
-            content: '''
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a business case package for Acme manufacturing',
+          content: '''
 # Acme Manufacturing Business Case
 
 ## Executive Summary
@@ -2056,48 +2054,64 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
 ## Sources
 - Customer workshop notes checked 2026-07-01.
 ''',
-            turnId: 'turn-business',
-            threadId: 'thread-1',
-            requestId: 'request-1',
-          );
+          turnId: 'turn-business',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
 
-      expect(package, isNotNull);
-      expect(package!.label, 'business use case package');
-      expect(package.artifacts.map((artifact) => artifact.kind), [
-        GeneratedArtifactKind.markdown,
-        GeneratedArtifactKind.docx,
-        GeneratedArtifactKind.powerPoint,
-        GeneratedArtifactKind.chart,
-      ]);
-      expect(
-        package.artifacts.map((artifact) => artifact.id).toSet().length,
-        4,
-      );
-      for (final artifact in package.artifacts) {
-        expect(artifact.status, GeneratedArtifactStatus.ready);
-        expect(File(artifact.filePath).existsSync(), isTrue);
-        expect(artifact.threadId, 'thread-1');
-        expect(artifact.requestId, 'request-1');
-        expect(artifact.metadata['qualityStatus'], isNotNull);
-      }
-      expect(package.primary!.fileName, endsWith('-package.md'));
-      expect(
-        package.primary!.metadata['artifact'],
-        'artifact_package_manifest',
-      );
-      expect(package.primary!.metadata['artifactCount'], 3);
-      final manifestText = File(package.primary!.filePath).readAsStringSync();
-      expect(manifestText, contains('Business Use Case Package'));
-      expect(manifestText, contains('Package Contents'));
-      expect(manifestText, contains('Next Actions'));
-      expect(manifestText, contains('.docx'));
-      expect(manifestText, contains('.pptx'));
-      expect(manifestText, contains('.svg'));
-      expect(package.artifacts[1].fileName, endsWith('.docx'));
-      expect(package.artifacts[2].fileName, endsWith('.pptx'));
-      expect(package.artifacts[3].fileName, endsWith('.svg'));
-    },
-  );
+    expect(package, isNotNull);
+    expect(package!.label, 'business use case package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.chart,
+    ]);
+    expect(package.artifacts.map((artifact) => artifact.id).toSet().length, 4);
+    for (final artifact in package.artifacts) {
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      expect(artifact.threadId, 'thread-1');
+      expect(artifact.requestId, 'request-1');
+      expect(artifact.metadata['qualityStatus'], isNotNull);
+    }
+    expect(package.primary!.fileName, endsWith('-package.md'));
+    expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
+    expect(package.primary!.metadata['artifactCount'], 3);
+    expect(package.primary!.metadata['readyArtifactCount'], 3);
+    expect(package.primary!.metadata['failedArtifactCount'], 0);
+    expect(package.primary!.metadata['packageQualityStatus'], isNotNull);
+    expect(package.primary!.metadata['packageNextAction'], isNotNull);
+    expect(
+      package.primary!.metadata['packageReviewWorkflow'],
+      containsAll([
+        'Review Word report narrative, assumptions, citations, and sign-off gates.',
+        'Review deck slide order, speaker notes, and customer-facing framing.',
+        'Review chart thresholds, risk labels, and executive insights.',
+        'Open each generated artifact from the Artifacts drawer before sharing.',
+      ]),
+    );
+    expect(
+      package.primary!.metadata['packageFileTypes'],
+      containsAll(['Word', 'PowerPoint', 'Chart']),
+    );
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(manifestText, contains('Business Use Case Package'));
+    expect(manifestText, contains('Package Readiness'));
+    expect(manifestText, contains('Package Contents'));
+    expect(manifestText, contains('Review Workflow'));
+    expect(manifestText, contains('Readiness Signals'));
+    expect(manifestText, contains('Next Actions'));
+    expect(manifestText, contains('Average quality score'));
+    expect(manifestText, contains('Ready artifacts'));
+    expect(manifestText, contains('Open each generated artifact'));
+    expect(manifestText, contains('.docx'));
+    expect(manifestText, contains('.pptx'));
+    expect(manifestText, contains('.svg'));
+    expect(package.artifacts[1].fileName, endsWith('.docx'));
+    expect(package.artifacts[2].fileName, endsWith('.pptx'));
+    expect(package.artifacts[3].fileName, endsWith('.svg'));
+  });
 
   test('solution sizing package creates workbook and chart artifacts', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -2146,8 +2160,24 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     }
     expect(package.primary!.fileName, endsWith('-package.md'));
     expect(package.primary!.metadata['artifactCount'], 2);
+    expect(package.primary!.metadata['readyArtifactCount'], 2);
+    expect(
+      package.primary!.metadata['packageReviewWorkflow'],
+      containsAll([
+        'Validate workbook inputs, formulas, gates, and source sheets.',
+        'Review chart thresholds, risk labels, and executive insights.',
+        'Open each generated artifact from the Artifacts drawer before sharing.',
+      ]),
+    );
+    expect(
+      package.primary!.metadata['packageFileTypes'],
+      containsAll(['Excel', 'Chart']),
+    );
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(manifestText, contains('Solution Sizing Package'));
+    expect(manifestText, contains('Package Readiness'));
+    expect(manifestText, contains('Review Workflow'));
+    expect(manifestText, contains('Validate workbook inputs'));
     expect(manifestText, contains('.xlsx'));
     expect(manifestText, contains('.svg'));
     expect(package.artifacts[1].fileName, endsWith('.xlsx'));
