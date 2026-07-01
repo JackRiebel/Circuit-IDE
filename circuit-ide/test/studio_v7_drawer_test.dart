@@ -1785,6 +1785,25 @@ void main() {
         'artifactFiles': ['brief.docx', 'deck.pptx', 'value-chart.svg'],
         'qualityStatus': 'Package ready',
         'qualityScore': 100,
+        'packageQualityStatus': 'Package ready',
+        'packageNextAction':
+            'Review the package and share the selected customer-ready files.',
+        'readyArtifactCount': 3,
+        'fallbackArtifactCount': 0,
+        'failedArtifactCount': 0,
+        'averageQualityScore': 92,
+        'packageReviewWorkflow': [
+          'Review Word report narrative, assumptions, citations, and sign-off gates.',
+          'Review deck slide order, speaker notes, and customer-facing framing.',
+          'Review chart thresholds, risk labels, and executive insights.',
+          'Open each generated artifact from the Artifacts drawer before sharing.',
+        ],
+        'packageFileTypes': ['Word', 'PowerPoint', 'Chart'],
+        'packageReadinessSignals': [
+          'Word: Native format ready',
+          'PowerPoint: Native format ready',
+          'Chart: Preview available',
+        ],
         'hasCustomerReadyArtifact': true,
       },
       createdAt: DateTime(2026, 7, 1, 12),
@@ -1875,8 +1894,32 @@ void main() {
 
     expect(find.text('Package'), findsOneWidget);
     expect(find.text('business use case package'), findsOneWidget);
+    expect(find.text('Package status'), findsOneWidget);
+    expect(find.text('Package ready'), findsAtLeastNWidgets(1));
+    expect(find.text('Package score'), findsOneWidget);
+    expect(find.text('92/100'), findsOneWidget);
     expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
     expect(find.text('3'), findsAtLeastNWidgets(1));
+    expect(find.text('Ready artifacts'), findsOneWidget);
+    expect(find.text('3/3'), findsOneWidget);
+    expect(find.text('Package next'), findsOneWidget);
+    expect(
+      find.text(
+        'Review the package and share the selected customer-ready files.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Review workflow'), findsOneWidget);
+    expect(find.textContaining('Review Word report narrative'), findsOneWidget);
+    expect(find.text('File types'), findsOneWidget);
+    expect(find.textContaining('Word, PowerPoint +1'), findsOneWidget);
+    expect(find.text('Package signals'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Word: Native format ready, PowerPoint: Native format ready +1',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Files'), findsOneWidget);
     expect(find.textContaining('brief.docx, deck.pptx +1'), findsOneWidget);
   });

@@ -3162,8 +3162,18 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     if (_isArtifactPackageManifest(artifact)) {
       final packageLabel = _metadataString(artifact, 'packageLabel');
       final artifactCount = _metadataInt(artifact, 'artifactCount');
+      final readyCount = _metadataInt(artifact, 'readyArtifactCount');
+      final packageStatus = _metadataString(artifact, 'packageQualityStatus');
+      final averageScore = _metadataInt(artifact, 'averageQualityScore');
       if (packageLabel.isNotEmpty) parts.add(packageLabel);
       if (artifactCount > 0) parts.add('$artifactCount artifacts');
+      if (readyCount > 0 && artifactCount > 0) {
+        parts.add('$readyCount ready');
+      }
+      if (packageStatus.isNotEmpty && packageStatus != qualityStatus) {
+        parts.add(packageStatus);
+      }
+      if (averageScore > 0) parts.add('$averageScore/100');
     }
     if (artifact.kind == GeneratedArtifactKind.diagram) {
       final nodeCount = _metadataInt(artifact, 'nodeCount');
@@ -3494,8 +3504,50 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       if (_isArtifactPackageManifest(artifact)) ...[
         if (_metadataString(artifact, 'packageLabel').isNotEmpty)
           ('Package', _metadataString(artifact, 'packageLabel')),
+        if (_metadataString(artifact, 'packageQualityStatus').isNotEmpty)
+          ('Package status', _metadataString(artifact, 'packageQualityStatus')),
+        if (_metadataInt(artifact, 'averageQualityScore') > 0)
+          (
+            'Package score',
+            '${_metadataInt(artifact, 'averageQualityScore')}/100',
+          ),
         if (_metadataInt(artifact, 'artifactCount') > 0)
           ('Artifacts', '${_metadataInt(artifact, 'artifactCount')}'),
+        if (_metadataInt(artifact, 'readyArtifactCount') > 0)
+          (
+            'Ready artifacts',
+            '${_metadataInt(artifact, 'readyArtifactCount')}/${_metadataInt(artifact, 'artifactCount')}',
+          ),
+        if (_metadataString(artifact, 'packageNextAction').isNotEmpty)
+          ('Package next', _metadataString(artifact, 'packageNextAction')),
+        if (_metadataStringList(artifact, 'packageReviewWorkflow').isNotEmpty)
+          (
+            'Review workflow',
+            _compactSignalList(
+              _metadataStringList(artifact, 'packageReviewWorkflow'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'packageFileTypes').isNotEmpty)
+          (
+            'File types',
+            _compactSignalList(
+              _metadataStringList(artifact, 'packageFileTypes'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'packageReadinessSignals').isNotEmpty)
+          (
+            'Package signals',
+            _compactSignalList(
+              _metadataStringList(artifact, 'packageReadinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'packageReadinessGaps').isNotEmpty)
+          (
+            'Package gaps',
+            _compactSignalList(
+              _metadataStringList(artifact, 'packageReadinessGaps'),
+            ),
+          ),
         if (_metadataStringList(artifact, 'artifactFiles').isNotEmpty)
           (
             'Files',
