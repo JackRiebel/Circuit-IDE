@@ -938,6 +938,116 @@ void main() {
     expect(artifacts.last.id, 'artifact-0');
   });
 
+  test(
+    'StudioSourceArtifactController persists generated artifacts from completed turns',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-generated-artifact-turn-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(studioSourceArtifactProvider);
+      final threadController = container.read(studioThreadProvider.notifier);
+      final thread = threadController.createBlankThread(title: 'Artifact turn');
+      final now = DateTime(2026);
+      const turnId = 'turn-artifact';
+      const requestId = 'request-artifact';
+      final contextSummary = StudioContextSummary(
+        rootPath: root.path,
+        projectLabel: 'Artifact workspace',
+        includedItemCount: 1,
+        estimatedTokens: 120,
+      );
+      threadController.markPhase(
+        thread.id,
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        requestId: requestId,
+        contextSummary: contextSummary,
+      );
+      final turn = StudioTurn(
+        id: turnId,
+        threadId: thread.id,
+        requestId: requestId,
+        userMessageId: 'message-artifact',
+        prompt: 'Create an Excel file from this inventory table.',
+        model: 'gpt-5-nano',
+        contextSummary: contextSummary,
+        status: StudioTurnStatus.completed,
+        events: [
+          StudioTurnEvent.assistantMessage(
+            turnId: turnId,
+            requestId: requestId,
+            threadId: thread.id,
+            content: '''
+| Product | Count | Notes |
+| --- | ---: | --- |
+| C9300 | 6 | MDF switching |
+| CW9176 | 90 | Wireless APs |
+''',
+            timestamp: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+      );
+
+      threadController.upsertTurn(thread.id, turn, select: true);
+
+      StudioThread? updated;
+      for (var i = 0; i < 25; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        updated = container
+            .read(studioThreadProvider)
+            .threads
+            .where((candidate) => candidate.id == thread.id)
+            .firstOrNull;
+        final hasGeneratedArtifact =
+            updated?.sourceArtifacts.any(
+              (artifact) =>
+                  artifact.kind == StudioSourceArtifactKind.generatedArtifact,
+            ) ??
+            false;
+        if (hasGeneratedArtifact) break;
+      }
+
+      final generatedArtifacts = updated!.sourceArtifacts
+          .where(
+            (artifact) =>
+                artifact.kind == StudioSourceArtifactKind.generatedArtifact,
+          )
+          .map(GeneratedArtifact.fromSourceArtifact)
+          .whereType<GeneratedArtifact>()
+          .toList();
+      expect(generatedArtifacts, isNotEmpty);
+      expect(
+        generatedArtifacts.map((artifact) => artifact.kind),
+        contains(GeneratedArtifactKind.excel),
+      );
+      final excelArtifact = generatedArtifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.excel,
+      );
+      expect(excelArtifact.threadId, thread.id);
+      expect(excelArtifact.requestId, requestId);
+      expect(excelArtifact.fileName, endsWith('.xlsx'));
+      expect(File(excelArtifact.filePath).existsSync(), isTrue);
+      expect(excelArtifact.filePath, startsWith(root.path));
+      final refreshedTurn = updated.turns.firstWhere(
+        (candidate) => candidate.id == turnId,
+      );
+      expect(
+        refreshedTurn.events
+            .where(
+              (event) => event.type == StudioTurnEventType.completionSummary,
+            )
+            .map((event) => event.title),
+        contains('Created Excel file'),
+      );
+    },
+  );
+
   testWidgets('Artifacts drawer shows selected artifact metadata and binary preview', (
     tester,
   ) async {
