@@ -2981,6 +2981,7 @@ class _ArtifactsDrawer extends ConsumerWidget {
               final selected = source?.id == drawer.selectedArtifactId;
               return _ArtifactDrawerCard(
                 artifact: artifact,
+                companionArtifacts: _packageCompanions(artifact, artifacts),
                 selected: selected,
                 onTap: source == null
                     ? null
@@ -3003,6 +3004,13 @@ class _ArtifactsDrawer extends ConsumerWidget {
                         .openArtifact(source);
                   }
                 },
+                onOpenCompanion: (companion) {
+                  final companionSource = sourceFor(companion);
+                  if (companionSource == null) return;
+                  ref
+                      .read(studioRightDrawerProvider.notifier)
+                      .openArtifact(companionSource);
+                },
               );
             },
           ),
@@ -3013,15 +3021,19 @@ class _ArtifactsDrawer extends ConsumerWidget {
 
 class _ArtifactDrawerCard extends ConsumerWidget {
   final GeneratedArtifact artifact;
+  final List<GeneratedArtifact> companionArtifacts;
   final bool selected;
   final VoidCallback? onTap;
   final VoidCallback onReview;
+  final ValueChanged<GeneratedArtifact> onOpenCompanion;
 
   const _ArtifactDrawerCard({
     required this.artifact,
+    required this.companionArtifacts,
     required this.selected,
     required this.onTap,
     required this.onReview,
+    required this.onOpenCompanion,
   });
 
   @override
@@ -3115,6 +3127,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                 ),
               ),
             _ArtifactDrawerPreview(artifact: artifact),
+            if (companionArtifacts.isNotEmpty)
+              _ArtifactPackageCompanionList(
+                artifacts: companionArtifacts,
+                onOpen: onOpenCompanion,
+              ),
             if (selected) _ArtifactDrawerDetailGrid(artifact: artifact),
             _ArtifactDrawerActions(artifact: artifact, onReview: onReview),
           ],
@@ -3268,6 +3285,23 @@ bool _isArtifactPackageManifest(GeneratedArtifact artifact) {
   return artifact.metadata['artifact'] == 'artifact_package_manifest';
 }
 
+List<GeneratedArtifact> _packageCompanions(
+  GeneratedArtifact package,
+  List<GeneratedArtifact> artifacts,
+) {
+  if (!_isArtifactPackageManifest(package)) return const [];
+  final ids = _metadataStringList(package, 'artifactIds').toSet();
+  final files = _metadataStringList(package, 'artifactFiles').toSet();
+  if (ids.isEmpty && files.isEmpty) return const [];
+  return artifacts
+      .where(
+        (artifact) =>
+            artifact.id != package.id &&
+            (ids.contains(artifact.id) || files.contains(artifact.fileName)),
+      )
+      .toList(growable: false);
+}
+
 bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
   return switch (kind) {
     GeneratedArtifactKind.csv ||
@@ -3281,6 +3315,147 @@ bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
     GeneratedArtifactKind.powerPoint ||
     GeneratedArtifactKind.docx => false,
   };
+}
+
+class _ArtifactPackageCompanionList extends ConsumerWidget {
+  final List<GeneratedArtifact> artifacts;
+  final ValueChanged<GeneratedArtifact> onOpen;
+
+  const _ArtifactPackageCompanionList({
+    required this.artifacts,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.2)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 5),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.inventory_2_outlined,
+                  color: tokens.textMuted,
+                  size: 13,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Package deliverables',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontSize: FontSizes.xxs,
+                      height: 1.1,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${artifacts.length}',
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xxs,
+                    height: 1.1,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final artifact in artifacts.take(6))
+            InkWell(
+              onTap: () => onOpen(artifact),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      _artifactCompanionIcon(artifact.kind),
+                      color: tokens.textMuted,
+                      size: 13,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            artifact.fileName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textSecondary,
+                              fontSize: FontSizes.xxs,
+                              height: 1.15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            artifact.typeLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xxs,
+                              height: 1.15,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: tokens.textMuted,
+                      size: 14,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (artifacts.length > 6)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 7),
+              child: Text(
+                '+${artifacts.length - 6} more deliverables',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                  height: 1.1,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  IconData _artifactCompanionIcon(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.csv => Icons.table_chart_outlined,
+      GeneratedArtifactKind.powerPoint => Icons.slideshow_outlined,
+      GeneratedArtifactKind.docx ||
+      GeneratedArtifactKind.pdf ||
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.report => Icons.article_outlined,
+      GeneratedArtifactKind.diagram ||
+      GeneratedArtifactKind.chart => Icons.account_tree_outlined,
+      GeneratedArtifactKind.json => Icons.data_object_outlined,
+    };
+  }
 }
 
 class _ArtifactDrawerDetailGrid extends ConsumerWidget {

@@ -1759,6 +1759,10 @@ void main() {
     addTearDown(() => root.deleteSync(recursive: true));
     final file = File('${root.path}/business-case-package.md')
       ..writeAsStringSync('# Business Use Case Package');
+    final briefFile = File('${root.path}/brief.docx')..writeAsBytesSync([1, 2]);
+    final deckFile = File('${root.path}/deck.pptx')..writeAsBytesSync([3, 4]);
+    final chartFile = File('${root.path}/value-chart.svg')
+      ..writeAsStringSync('<svg></svg>');
     final artifact = GeneratedArtifact(
       id: 'package-1',
       kind: GeneratedArtifactKind.markdown,
@@ -1785,6 +1789,48 @@ void main() {
       },
       createdAt: DateTime(2026, 7, 1, 12),
     );
+    final brief = GeneratedArtifact(
+      id: 'brief-1',
+      kind: GeneratedArtifactKind.docx,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'brief.docx',
+      filePath: briefFile.path,
+      summary: 'Created a Word brief.',
+      byteSize: briefFile.lengthSync(),
+      sheetCount: 4,
+      createdAt: DateTime(2026, 7, 1, 11, 57),
+    );
+    final deck = GeneratedArtifact(
+      id: 'deck-1',
+      kind: GeneratedArtifactKind.powerPoint,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'deck.pptx',
+      filePath: deckFile.path,
+      summary: 'Created an executive deck.',
+      byteSize: deckFile.lengthSync(),
+      sheetCount: 6,
+      createdAt: DateTime(2026, 7, 1, 11, 58),
+    );
+    final chart = GeneratedArtifact(
+      id: 'chart-1',
+      kind: GeneratedArtifactKind.chart,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'value-chart.svg',
+      filePath: chartFile.path,
+      summary: 'Created a value chart.',
+      byteSize: chartFile.lengthSync(),
+      previewRows: const [
+        ['Metric', 'Value'],
+        ['Pipeline', 'High'],
+      ],
+      sheetCount: 1,
+      createdAt: DateTime(2026, 7, 1, 11, 59),
+    );
+    for (final companion in [brief, deck, chart]) {
+      container
+          .read(studioSourceArtifactProvider.notifier)
+          .add(companion.toSourceArtifact());
+    }
     container
         .read(studioSourceArtifactProvider.notifier)
         .add(artifact.toSourceArtifact());
@@ -1812,7 +1858,17 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Package contents'), findsOneWidget);
-    expect(find.text('deck.pptx'), findsOneWidget);
+    expect(find.text('Package deliverables'), findsOneWidget);
+    expect(find.text('deck.pptx'), findsAtLeastNWidgets(1));
+    expect(find.text('PowerPoint'), findsAtLeastNWidgets(1));
+
+    await tester.tap(find.text('deck.pptx').last);
+    await tester.pump();
+
+    expect(
+      container.read(studioRightDrawerProvider).selectedArtifactId,
+      'generated-deck-1',
+    );
 
     await tester.tap(find.text('business-case-package.md'));
     await tester.pump();
