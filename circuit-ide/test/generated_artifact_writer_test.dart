@@ -70,14 +70,17 @@ Short executive summary for the customer.
       expect(packageText, contains('ppt/slides/slide1.xml'));
       expect(packageText, contains('Agenda'));
       expect(packageText, contains('Decision Snapshot'));
+      expect(packageText, contains('Key Takeaways'));
       expect(packageText, contains('Executive Summary'));
       expect(packageText, contains('Current State'));
       expect(packageText, contains('Recommended Architecture'));
+      expect(packageText, contains('Implementation Roadmap'));
       expect(packageText, contains('Data Snapshot'));
       expect(packageText, contains('Executive readout'));
       expect(packageText, contains('Data table'));
       expect(packageText, contains('Dual 2 Gbps'));
-      expect(packageText, contains('Assumptions &amp; Sources'));
+      expect(packageText, contains('Assumptions &amp; Caveats'));
+      expect(packageText, contains('Sources &amp; Evidence'));
       expect(packageText, contains('Customer workshop notes'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
     },

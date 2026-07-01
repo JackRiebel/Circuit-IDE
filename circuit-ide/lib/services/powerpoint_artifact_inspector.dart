@@ -15,9 +15,12 @@ class PowerPointArtifactInspection {
   final bool hasCircuitFooter;
   final bool hasAgenda;
   final bool hasDecisionSnapshot;
+  final bool hasKeyTakeaways;
   final bool hasSectionDivider;
+  final bool hasImplementationRoadmap;
   final bool hasTableSlide;
   final bool hasAppendix;
+  final bool hasSourcesSlide;
   final bool hasEnterpriseStyling;
 
   const PowerPointArtifactInspection({
@@ -35,9 +38,12 @@ class PowerPointArtifactInspection {
     required this.hasCircuitFooter,
     required this.hasAgenda,
     required this.hasDecisionSnapshot,
+    required this.hasKeyTakeaways,
     required this.hasSectionDivider,
+    required this.hasImplementationRoadmap,
     required this.hasTableSlide,
     required this.hasAppendix,
+    required this.hasSourcesSlide,
     required this.hasEnterpriseStyling,
   });
 
@@ -56,9 +62,12 @@ class PowerPointArtifactInspection {
       isStructurallyValid &&
       hasAgenda &&
       hasDecisionSnapshot &&
+      hasKeyTakeaways &&
       hasSectionDivider &&
+      hasImplementationRoadmap &&
       hasTableSlide &&
       hasAppendix &&
+      hasSourcesSlide &&
       hasCircuitFooter &&
       hasEnterpriseStyling;
 }
@@ -109,9 +118,15 @@ class PowerPointArtifactInspector {
       hasAgenda: text.contains('Agenda'),
       hasDecisionSnapshot:
           text.contains('Decision Snapshot') || slideTypes.contains('Decision'),
+      hasKeyTakeaways:
+          text.contains('Key Takeaways') || slideTypes.contains('Takeaways'),
       hasSectionDivider: slideTypes.contains('Section'),
+      hasImplementationRoadmap:
+          text.contains('Implementation Roadmap') ||
+          slideTypes.contains('Roadmap'),
       hasTableSlide: slideTypes.contains('Table'),
       hasAppendix: slideTypes.contains('Appendix'),
+      hasSourcesSlide: slideTypes.contains('Sources'),
       hasEnterpriseStyling:
           text.contains('Content panel') &&
           text.contains('Header rule') &&

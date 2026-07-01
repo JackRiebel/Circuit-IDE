@@ -46,16 +46,19 @@ void main() {
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedDeckStructure, isTrue);
     expect(inspection.title, 'Customer Architecture Proposal');
-    expect(inspection.slideCount, greaterThanOrEqualTo(8));
+    expect(inspection.slideCount, greaterThanOrEqualTo(10));
     expect(
       inspection.slideTypes,
       containsAll([
         'Title',
         'Agenda',
         'Decision',
+        'Takeaways',
         'Section',
+        'Roadmap',
         'Table',
         'Appendix',
+        'Sources',
       ]),
     );
   });
@@ -91,5 +94,7 @@ void main() {
     expect(inspection.slideCount, inspection.declaredSlideCount);
     expect(inspection.hasEnterpriseStyling, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
+    expect(inspection.hasKeyTakeaways, isTrue);
+    expect(inspection.hasImplementationRoadmap, isTrue);
   });
 }

@@ -89,6 +89,7 @@ class PowerPointArtifactRenderer {
           kind: _DeckSlideKind.content,
           bullets: _sentences(document.summary).take(5).toList(growable: false),
         ),
+      _keyTakeaways(document, sections),
     ];
     for (final section in sections) {
       final bullets = [
@@ -121,20 +122,60 @@ class PowerPointArtifactRenderer {
         );
       }
     }
-    if (document.assumptions.isNotEmpty || document.citations.isNotEmpty) {
+    slides.add(_implementationRoadmap(document, sections));
+    if (document.assumptions.isNotEmpty) {
       slides.add(
         _DeckSlide(
-          title: 'Assumptions & Sources',
-          eyebrow: 'Evidence and caveats',
+          title: 'Assumptions & Caveats',
+          eyebrow: 'Decision guardrails',
           kind: _DeckSlideKind.appendix,
-          bullets: [
-            ...document.assumptions.map((item) => 'Assumption: $item'),
-            ...document.citations.map((item) => 'Source: $item'),
-          ],
+          bullets: document.assumptions
+              .map((item) => 'Assumption: $item')
+              .toList(growable: false),
+        ),
+      );
+    }
+    if (document.citations.isNotEmpty) {
+      slides.add(
+        _DeckSlide(
+          title: 'Sources & Evidence',
+          eyebrow: 'Source-backed handoff',
+          kind: _DeckSlideKind.sources,
+          bullets: document.citations
+              .map((item) => 'Source: $item')
+              .toList(growable: false),
         ),
       );
     }
     return slides;
+  }
+
+  _DeckSlide _keyTakeaways(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+    ]);
+    final risk = _firstMatchingBullet(sections, ['risk', 'caveat', 'concern']);
+    final next = _firstMatchingBullet(sections, ['next', 'phase', 'action']);
+    return _DeckSlide(
+      title: 'Key Takeaways',
+      eyebrow: 'Executive highlights',
+      kind: _DeckSlideKind.takeaways,
+      bullets: [
+        if (document.summary.isNotEmpty)
+          'Outcome: ${_truncate(document.summary, 150)}',
+        if (recommendation != null)
+          'Recommendation: ${_truncate(recommendation, 145)}',
+        if (risk != null) 'Watch item: ${_truncate(risk, 145)}',
+        if (next != null) 'Next action: ${_truncate(next, 145)}',
+        if (document.tables.isNotEmpty)
+          'Data: ${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} packaged with the deck.',
+      ],
+    );
   }
 
   _DeckSlide _decisionSnapshot(
@@ -179,6 +220,42 @@ class PowerPointArtifactRenderer {
         if (document.tables.length > 6)
           '${document.tables.length - 6} additional table${document.tables.length - 6 == 1 ? '' : 's'} available in the source artifact.',
       ],
+    );
+  }
+
+  _DeckSlide _implementationRoadmap(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final roadmapBullets = <String>[];
+    for (final section in sections) {
+      final title = section.title.toLowerCase();
+      if (!title.contains('next') &&
+          !title.contains('phase') &&
+          !title.contains('roadmap') &&
+          !title.contains('implement') &&
+          !title.contains('verification')) {
+        continue;
+      }
+      roadmapBullets.addAll(section.bullets);
+      if (roadmapBullets.isEmpty && section.body.trim().isNotEmpty) {
+        roadmapBullets.addAll(_sentences(section.body).take(4));
+      }
+    }
+    if (roadmapBullets.isEmpty) {
+      roadmapBullets.addAll([
+        'Confirm stakeholder goals, scope, owners, and approval path.',
+        if (document.tables.isNotEmpty)
+          'Validate source data from ${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'}.',
+        'Finalize recommendations, assumptions, risks, and success criteria.',
+        'Run implementation or handoff review and capture verification evidence.',
+      ]);
+    }
+    return _DeckSlide(
+      title: 'Implementation Roadmap',
+      eyebrow: 'Action plan',
+      kind: _DeckSlideKind.roadmap,
+      bullets: roadmapBullets.take(6).toList(growable: false),
     );
   }
 
@@ -559,10 +636,13 @@ class PowerPointArtifactRenderer {
       _DeckSlideKind.agenda => '7A9CC6',
       _DeckSlideKind.snapshot => '78AAA5',
       _DeckSlideKind.dataSnapshot => 'B48EAD',
+      _DeckSlideKind.takeaways => '7FB7B2',
       _DeckSlideKind.sectionDivider => 'C7A77B',
       _DeckSlideKind.recommendation => 'A7C080',
+      _DeckSlideKind.roadmap => 'A7C080',
       _DeckSlideKind.table => 'B48EAD',
       _DeckSlideKind.appendix => '8A8F98',
+      _DeckSlideKind.sources => '7A9CC6',
       _DeckSlideKind.content => '7FB7B2',
     };
   }
@@ -570,7 +650,9 @@ class PowerPointArtifactRenderer {
   String _backgroundFor(_DeckSlideKind kind) {
     return switch (kind) {
       _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
-      _DeckSlideKind.snapshot => '121715',
+      _DeckSlideKind.snapshot ||
+      _DeckSlideKind.takeaways ||
+      _DeckSlideKind.roadmap => '121715',
       _ => '161616',
     };
   }
@@ -681,11 +763,14 @@ enum _DeckSlideKind {
   agenda,
   snapshot,
   dataSnapshot,
+  takeaways,
   sectionDivider,
   content,
   recommendation,
+  roadmap,
   table,
-  appendix;
+  appendix,
+  sources;
 
   String get label {
     return switch (this) {
@@ -693,11 +778,14 @@ enum _DeckSlideKind {
       _DeckSlideKind.agenda => 'Agenda',
       _DeckSlideKind.snapshot => 'Decision',
       _DeckSlideKind.dataSnapshot => 'Data',
+      _DeckSlideKind.takeaways => 'Takeaways',
       _DeckSlideKind.sectionDivider => 'Section',
       _DeckSlideKind.content => 'Content',
       _DeckSlideKind.recommendation => 'Recommendation',
+      _DeckSlideKind.roadmap => 'Roadmap',
       _DeckSlideKind.table => 'Table',
       _DeckSlideKind.appendix => 'Appendix',
+      _DeckSlideKind.sources => 'Sources',
     };
   }
 }
