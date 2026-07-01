@@ -923,6 +923,21 @@ Executive summary for a customer handoff.
       );
       expect(artifact.metadata['validationGapCount'], 0);
       expect(artifact.metadata['hasCustomerReadyReport'], isTrue);
+      expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
+      expect(artifact.metadata['externalHandoffManifestCount'], 9);
+      expect(
+        artifact.metadata['externalHandoffManifest'],
+        containsAll([
+          'Review owner: Architecture owner / customer sponsor',
+          'Report type: Architecture report',
+          'Review path: Architecture review -> risk validation -> implementation decision',
+          'Handoff readiness: Customer handoff ready',
+          'Evidence status: High - sources and assumptions captured',
+          'Publishing gate: ready for stakeholder approval',
+          'Source package: 1 source item attached',
+          'Assumption package: 1 assumption captured',
+        ]),
+      );
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
       expect(artifact.metadata['assumptionCount'], 1);
@@ -971,6 +986,19 @@ Executive summary for a customer handoff.
       expect(packageText, contains('Appendix A: Assumptions'));
       expect(packageText, contains('Appendix B: Sources / Evidence'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
+      expect(packageText, contains('CircuitExternalHandoffManifest'));
+      expect(
+        packageText,
+        contains('Review owner: Architecture owner / customer sponsor'),
+      );
+      expect(
+        packageText,
+        contains('Publishing gate: ready for stakeholder approval'),
+      );
+      expect(
+        packageText,
+        contains('Evidence status: High - sources and assumptions captured'),
+      );
     },
   );
 

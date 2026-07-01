@@ -83,6 +83,11 @@ class DocxArtifactRenderer {
     );
     final reportEvidencePolicy = _reportEvidencePolicyFor(document);
     final publishingMetadata = _publishingMetadataFor(document);
+    final externalHandoffManifest = _externalHandoffManifestFor(
+      document,
+      handoffScore: handoffScore,
+      validationGaps: validationGaps,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'word_report',
@@ -137,6 +142,9 @@ class DocxArtifactRenderer {
       'reportEvidencePolicyCount': reportEvidencePolicy.length,
       'publishingMetadata': publishingMetadata,
       'publishingMetadataCount': publishingMetadata.length,
+      'externalHandoffManifest': externalHandoffManifest,
+      'externalHandoffManifestCount': externalHandoffManifest.length,
+      'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
       'appendixCoverage': _appendixCoverageFor(document),
       'validationGaps': validationGaps,
@@ -272,6 +280,11 @@ class DocxArtifactRenderer {
       'CircuitReportEvidencePolicy': _reportEvidencePolicyFor(
         document,
       ).join('; '),
+      'CircuitExternalHandoffManifest': _externalHandoffManifestFor(
+        document,
+        handoffScore: handoffScore,
+        validationGaps: _validationGapsFor(document),
+      ).join(' | '),
       'CircuitPublishingStatus': _handoffStatus(document),
     };
     var pid = 2;
@@ -1427,6 +1440,27 @@ class DocxArtifactRenderer {
       'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
       'Evidence confidence: ${_evidenceConfidenceFor(document)}',
       'Publishing status: ${_handoffStatus(document)}',
+    ];
+  }
+
+  List<String> _externalHandoffManifestFor(
+    ArtifactDocument document, {
+    required int handoffScore,
+    required List<String> validationGaps,
+  }) {
+    final publishingGate = validationGaps.isEmpty
+        ? 'ready for stakeholder approval'
+        : 'resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'}';
+    return [
+      'Review owner: ${_decisionOwner(document)}',
+      'Report type: ${_reportTypeFor(document)}',
+      'Review path: ${_reviewPathFor(document)}',
+      'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
+      'Evidence status: ${_evidenceConfidenceFor(document)}',
+      'Publishing gate: $publishingGate',
+      'Decision ask: ${_decisionAskFor(document)}',
+      'Source package: ${document.citations.isEmpty ? 'sources missing' : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached'}',
+      'Assumption package: ${document.assumptions.isEmpty ? 'assumptions missing' : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'}',
     ];
   }
 

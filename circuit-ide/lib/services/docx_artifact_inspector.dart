@@ -42,6 +42,7 @@ class DocxArtifactInspection {
   final bool hasKeywordsMetadata;
   final bool hasReportQualityManifest;
   final bool hasAccessibilityManifest;
+  final bool hasExternalHandoffManifest;
 
   const DocxArtifactInspection({
     required this.hasZipHeader,
@@ -85,6 +86,7 @@ class DocxArtifactInspection {
     required this.hasKeywordsMetadata,
     required this.hasReportQualityManifest,
     required this.hasAccessibilityManifest,
+    required this.hasExternalHandoffManifest,
   });
 
   bool get isStructurallyValid =>
@@ -100,6 +102,7 @@ class DocxArtifactInspection {
       hasExtendedProperties &&
       hasCustomProperties &&
       hasReportQualityManifest &&
+      hasExternalHandoffManifest &&
       paragraphCount > 0 &&
       styleCount >= 6;
 
@@ -215,6 +218,12 @@ class DocxArtifactInspector {
           text.contains('CircuitAccessibilityPolicy') &&
           text.contains('Real Word headings') &&
           text.contains('repeating table headers'),
+      hasExternalHandoffManifest:
+          text.contains('CircuitExternalHandoffManifest') &&
+          text.contains('Review owner:') &&
+          text.contains('Report type:') &&
+          text.contains('Publishing gate:') &&
+          text.contains('Decision ask:'),
     );
   }
 

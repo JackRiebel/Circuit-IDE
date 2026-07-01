@@ -72,12 +72,22 @@ void main() {
     expect(inspection.hasCustomProperties, isTrue);
     expect(inspection.hasReportQualityManifest, isTrue);
     expect(inspection.hasAccessibilityManifest, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(packageText, contains('docProps/custom.xml'));
     expect(packageText, contains('CircuitReportQualityManifest'));
     expect(packageText, contains('CircuitAccessibilityPolicy'));
     expect(packageText, contains('CircuitDecisionAsk'));
     expect(packageText, contains('CircuitReviewPath'));
     expect(packageText, contains('CircuitHandoffReadiness'));
+    expect(packageText, contains('CircuitExternalHandoffManifest'));
+    expect(
+      packageText,
+      contains('Review owner: Architecture owner / customer sponsor'),
+    );
+    expect(
+      packageText,
+      contains('Publishing gate: ready for stakeholder approval'),
+    );
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
     expect(metadata['artifact'], 'word_report');
@@ -214,6 +224,21 @@ void main() {
       ]),
     );
     expect(metadata['publishingMetadataCount'], 6);
+    expect(metadata['hasExternalHandoffManifest'], isTrue);
+    expect(metadata['externalHandoffManifestCount'], 9);
+    expect(
+      metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Architecture owner / customer sponsor',
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence status: High - sources and assumptions captured',
+        'Publishing gate: ready for stakeholder approval',
+        'Source package: 1 source item attached',
+        'Assumption package: 1 assumption captured',
+      ]),
+    );
     expect(
       metadata['reportHandoffActions'],
       containsAll([
@@ -323,6 +348,7 @@ void main() {
     expect(inspection.hasCustomProperties, isTrue);
     expect(inspection.hasReportQualityManifest, isTrue);
     expect(inspection.hasAccessibilityManifest, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
     expect(metadata['reportType'], 'Implementation plan');
@@ -372,6 +398,19 @@ void main() {
     expect(metadata['hasReportQualityManifest'], isTrue);
     expect(metadata['hasPublishingMetadata'], isTrue);
     expect(metadata['hasAccessibilitySignals'], isTrue);
+    expect(metadata['hasExternalHandoffManifest'], isTrue);
+    expect(
+      metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Implementation owner',
+        'Report type: Implementation plan',
+        'Handoff readiness: Needs evidence before handoff',
+        'Evidence status: Low - sources and assumptions need validation',
+        'Publishing gate: resolve 2 validation gaps',
+        'Source package: sources missing',
+        'Assumption package: assumptions missing',
+      ]),
+    );
     expect(
       metadata['formFactors'],
       containsAll([
