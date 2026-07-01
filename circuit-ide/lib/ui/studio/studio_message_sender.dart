@@ -32,6 +32,7 @@ import '../../state/studio_thread_provider.dart';
 import '../../state/studio_turn_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/workspace_session_provider.dart';
+import '../../services/artifact_type_registry.dart';
 import '../../services/screenshot_context_attachment_builder.dart';
 import '../../core/config/studio_feature_flags.dart';
 import 'studio_plan_prompts.dart';
@@ -1214,20 +1215,8 @@ String _studioOutboundPromptWithArtifactContract({
       intent == TurnIntent.verify) {
     return prompt;
   }
-  final kind = detectGeneratedArtifactKind(text);
-  final artifactLabel = switch (kind) {
-    GeneratedArtifactKind.excel => 'Excel workbook',
-    GeneratedArtifactKind.csv => 'CSV',
-    GeneratedArtifactKind.json => 'JSON',
-    GeneratedArtifactKind.markdown => 'Markdown',
-    GeneratedArtifactKind.pdf => 'PDF report',
-    GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
-    GeneratedArtifactKind.docx => 'Word report',
-    GeneratedArtifactKind.diagram => 'SVG topology diagram',
-    GeneratedArtifactKind.chart => 'SVG chart artifact',
-    GeneratedArtifactKind.report => 'report Markdown',
-    null => 'file',
-  };
+  final route = const ArtifactTypeRegistry().routeForPrompt(text);
+  final artifactLabel = route.contractLabel;
   return '''
 $prompt
 

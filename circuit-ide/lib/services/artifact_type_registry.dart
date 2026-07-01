@@ -37,6 +37,42 @@ class ArtifactTypeDescriptor {
   bool get supportsCompanionPackage => packageKinds.length > 1;
 }
 
+class ArtifactRouteDecision {
+  final String prompt;
+  final ArtifactTypeDescriptor? descriptor;
+  final GeneratedArtifactKind? requestedKind;
+  final List<GeneratedArtifactKind> targetKinds;
+
+  const ArtifactRouteDecision({
+    required this.prompt,
+    required this.descriptor,
+    required this.requestedKind,
+    required this.targetKinds,
+  });
+
+  bool get isArtifactRequest => requestedKind != null || descriptor != null;
+
+  bool get createsPackage => targetKinds.length > 1;
+
+  GeneratedArtifactKind? get primaryKind =>
+      targetKinds.isNotEmpty ? targetKinds.first : requestedKind;
+
+  String get label {
+    final descriptorLabel = descriptor?.label;
+    if (descriptorLabel != null && descriptorLabel.isNotEmpty) {
+      return descriptorLabel;
+    }
+    final kind = primaryKind;
+    if (kind == null) return 'file';
+    return _artifactKindLabel(kind);
+  }
+
+  String get contractLabel {
+    if (createsPackage) return '$label package';
+    return label;
+  }
+}
+
 class ArtifactTypeRegistry {
   static const descriptors = <ArtifactTypeDescriptor>[
     ArtifactTypeDescriptor(
@@ -334,6 +370,13 @@ class ArtifactTypeRegistry {
       );
     }
     if (RegExp(
+      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'evidence_pack',
+      );
+    }
+    if (RegExp(
       r'\b(pdf|final handoff|customer handoff)\b',
     ).hasMatch(normalized)) {
       return descriptors.firstWhere(
@@ -357,14 +400,14 @@ class ArtifactTypeRegistry {
         (descriptor) => descriptor.id == 'chart_pack',
       );
     }
-    if (RegExp(r'\b(evidence|citations?|sources?)\b').hasMatch(normalized)) {
-      return descriptors.firstWhere(
-        (descriptor) => descriptor.id == 'evidence_pack',
-      );
-    }
     if (RegExp(r'\b(eox|eol|ldos|lifecycle)\b').hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'lifecycle_eox_report',
+      );
+    }
+    if (RegExp(r'\b(evidence|citations?|sources?)\b').hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'evidence_pack',
       );
     }
     if (RegExp(r'\b(comparison|compare|matrix)\b').hasMatch(normalized)) {
@@ -407,4 +450,192 @@ class ArtifactTypeRegistry {
     }
     return null;
   }
+
+  ArtifactRouteDecision routeForPrompt(String prompt) {
+    final descriptor = descriptorForPrompt(prompt);
+    final requestedKind = detectGeneratedArtifactKind(prompt);
+    return ArtifactRouteDecision(
+      prompt: prompt,
+      descriptor: descriptor,
+      requestedKind: requestedKind,
+      targetKinds: packageTargetsForPrompt(
+        prompt,
+        descriptor: descriptor,
+        requestedKind: requestedKind,
+      ),
+    );
+  }
+
+  List<GeneratedArtifactKind> packageTargetsForPrompt(
+    String prompt, {
+    ArtifactTypeDescriptor? descriptor,
+    GeneratedArtifactKind? requestedKind,
+  }) {
+    final resolvedDescriptor = descriptor ?? descriptorForPrompt(prompt);
+    final normalized = prompt.toLowerCase();
+    final primary = requestedKind ?? detectGeneratedArtifactKind(prompt);
+    if (resolvedDescriptor?.supportsCompanionPackage == true) {
+      final companionDescriptor = resolvedDescriptor!;
+      if (_requestsArtifactPackage(normalized) ||
+          _descriptorDefaultsToPackage(companionDescriptor, normalized)) {
+        if (companionDescriptor.id == 'evidence_pack' &&
+            RegExp(
+              r'\b(final|handoff|customer handoff)\b',
+            ).hasMatch(normalized)) {
+          return _withTarget(
+            companionDescriptor.packageKinds,
+            GeneratedArtifactKind.pdf,
+          );
+        }
+        return companionDescriptor.packageKinds;
+      }
+      final explicitKind = _explicitlyRequestedKind(normalized);
+      if (explicitKind != null &&
+          companionDescriptor.packageKinds.contains(explicitKind)) {
+        return [explicitKind];
+      }
+      return companionDescriptor.packageKinds;
+    }
+    final targets = <GeneratedArtifactKind>[];
+
+    void add(GeneratedArtifactKind kind) {
+      if (!targets.contains(kind)) targets.add(kind);
+    }
+
+    if (RegExp(
+      r'\b(solution sizing|sizing workbook|sizing package|datacenter sizing|data center sizing|poe budget|wan sizing)\b',
+    ).hasMatch(normalized)) {
+      add(GeneratedArtifactKind.excel);
+      add(GeneratedArtifactKind.chart);
+    } else if (RegExp(
+      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+    ).hasMatch(normalized)) {
+      add(primary ?? GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.json);
+      if (normalized.contains('handoff') || normalized.contains('final')) {
+        add(GeneratedArtifactKind.pdf);
+      }
+    } else if (RegExp(
+      r'\b(product comparison|comparison matrix|model comparison|shortlist|fit score)\b',
+    ).hasMatch(normalized)) {
+      add(GeneratedArtifactKind.excel);
+      add(GeneratedArtifactKind.chart);
+    } else if (RegExp(
+      r'\b(lifecycle|eox|eol|eos|ldos|replacement pid|migration pid)\b',
+    ).hasMatch(normalized)) {
+      add(GeneratedArtifactKind.excel);
+      add(GeneratedArtifactKind.pdf);
+    } else if (RegExp(
+      r'\b(topology package|network topology|topology diagram|architecture diagram|diagram package)\b',
+    ).hasMatch(normalized)) {
+      add(GeneratedArtifactKind.diagram);
+      add(GeneratedArtifactKind.pdf);
+    } else if (RegExp(
+      r'\b(business case|use case brief|company research|account plan|sales play|executive brief)\b',
+    ).hasMatch(normalized)) {
+      add(GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.powerPoint);
+      add(GeneratedArtifactKind.chart);
+    } else if (RegExp(
+      r'\b(architecture review|design review|review pack|proposal package|customer proposal|customer handoff package)\b',
+    ).hasMatch(normalized)) {
+      add(primary ?? GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.powerPoint);
+      add(GeneratedArtifactKind.pdf);
+    } else if (RegExp(
+      r'\b(implementation plan|deployment plan|migration plan|project plan)\b',
+    ).hasMatch(normalized)) {
+      add(primary ?? GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.powerPoint);
+      add(GeneratedArtifactKind.pdf);
+    } else if (RegExp(
+      r'\b(change summary|diff report|verification summary|post[- ]work summary|release summary)\b',
+    ).hasMatch(normalized)) {
+      add(primary ?? GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.pdf);
+    } else if (primary != null) {
+      add(primary);
+    }
+
+    return targets;
+  }
+}
+
+List<GeneratedArtifactKind> _withTarget(
+  List<GeneratedArtifactKind> kinds,
+  GeneratedArtifactKind target,
+) {
+  if (kinds.contains(target)) return kinds;
+  return [...kinds, target];
+}
+
+String _artifactKindLabel(GeneratedArtifactKind kind) {
+  return switch (kind) {
+    GeneratedArtifactKind.excel => 'Excel workbook',
+    GeneratedArtifactKind.csv => 'CSV dataset',
+    GeneratedArtifactKind.json => 'JSON artifact',
+    GeneratedArtifactKind.markdown => 'Markdown document',
+    GeneratedArtifactKind.pdf => 'PDF report',
+    GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
+    GeneratedArtifactKind.docx => 'Word report',
+    GeneratedArtifactKind.diagram => 'Network topology diagram',
+    GeneratedArtifactKind.chart => 'Chart pack',
+    GeneratedArtifactKind.report => 'Report',
+  };
+}
+
+bool _requestsArtifactPackage(String normalized) {
+  return RegExp(
+    r'\b(package|bundle|deliverables?|artifact set|handoff set|customer handoff package|proposal package|review pack)\b',
+  ).hasMatch(normalized);
+}
+
+bool _descriptorDefaultsToPackage(
+  ArtifactTypeDescriptor descriptor,
+  String normalized,
+) {
+  if (descriptor.id == 'lifecycle_eox_report') {
+    return RegExp(
+      r'\b(report|review|status|matrix|assessment)\b',
+    ).hasMatch(normalized);
+  }
+  if (descriptor.id == 'evidence_pack') {
+    return RegExp(r'\b(final|handoff|customer handoff)\b').hasMatch(normalized);
+  }
+  return false;
+}
+
+GeneratedArtifactKind? _explicitlyRequestedKind(String normalized) {
+  if (RegExp(r'\b(pdf)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.pdf;
+  }
+  if (RegExp(r'\b(json)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.json;
+  }
+  if (RegExp(r'\b(excel|xlsx|spreadsheet|workbook)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.excel;
+  }
+  if (RegExp(r'\b(csv|comma[- ]separated)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.csv;
+  }
+  if (RegExp(
+    r'\b(powerpoint|pptx|presentation|slide deck|deck|slides?)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.powerPoint;
+  }
+  if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
+  }
+  if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.diagram;
+  }
+  if (RegExp(
+    r'\b(chart|charts|graph|graphs|visualization)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.chart;
+  }
+  if (RegExp(r'\b(markdown|md|readme)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.markdown;
+  }
+  return null;
 }

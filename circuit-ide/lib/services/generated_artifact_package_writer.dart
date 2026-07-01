@@ -33,74 +33,7 @@ class GeneratedArtifactPackageWriter {
   });
 
   List<GeneratedArtifactKind> packageTargetsForPrompt(String prompt) {
-    final descriptor = registry.descriptorForPrompt(prompt);
-    if (descriptor?.supportsCompanionPackage == true) {
-      return descriptor!.packageKinds;
-    }
-    final normalized = prompt.toLowerCase();
-    final primary = detectGeneratedArtifactKind(prompt);
-    final targets = <GeneratedArtifactKind>[];
-
-    void add(GeneratedArtifactKind kind) {
-      if (!targets.contains(kind)) targets.add(kind);
-    }
-
-    if (RegExp(
-      r'\b(solution sizing|sizing workbook|sizing package|datacenter sizing|data center sizing|poe budget|wan sizing)\b',
-    ).hasMatch(normalized)) {
-      add(GeneratedArtifactKind.excel);
-      add(GeneratedArtifactKind.chart);
-    } else if (RegExp(
-      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
-    ).hasMatch(normalized)) {
-      add(primary ?? GeneratedArtifactKind.docx);
-      add(GeneratedArtifactKind.json);
-      if (normalized.contains('handoff') || normalized.contains('final')) {
-        add(GeneratedArtifactKind.pdf);
-      }
-    } else if (RegExp(
-      r'\b(product comparison|comparison matrix|model comparison|shortlist|fit score)\b',
-    ).hasMatch(normalized)) {
-      add(GeneratedArtifactKind.excel);
-      add(GeneratedArtifactKind.chart);
-    } else if (RegExp(
-      r'\b(lifecycle|eox|eol|eos|ldos|replacement pid|migration pid)\b',
-    ).hasMatch(normalized)) {
-      add(GeneratedArtifactKind.excel);
-      add(GeneratedArtifactKind.pdf);
-    } else if (RegExp(
-      r'\b(topology package|network topology|topology diagram|architecture diagram|diagram package)\b',
-    ).hasMatch(normalized)) {
-      add(GeneratedArtifactKind.diagram);
-      add(GeneratedArtifactKind.pdf);
-    } else if (RegExp(
-      r'\b(business case|use case brief|company research|account plan|sales play|executive brief)\b',
-    ).hasMatch(normalized)) {
-      add(GeneratedArtifactKind.docx);
-      add(GeneratedArtifactKind.powerPoint);
-      add(GeneratedArtifactKind.chart);
-    } else if (RegExp(
-      r'\b(architecture review|design review|review pack|proposal package|customer proposal|customer handoff package)\b',
-    ).hasMatch(normalized)) {
-      add(primary ?? GeneratedArtifactKind.docx);
-      add(GeneratedArtifactKind.powerPoint);
-      add(GeneratedArtifactKind.pdf);
-    } else if (RegExp(
-      r'\b(implementation plan|deployment plan|migration plan|project plan)\b',
-    ).hasMatch(normalized)) {
-      add(primary ?? GeneratedArtifactKind.docx);
-      add(GeneratedArtifactKind.powerPoint);
-      add(GeneratedArtifactKind.pdf);
-    } else if (RegExp(
-      r'\b(change summary|diff report|verification summary|post[- ]work summary|release summary)\b',
-    ).hasMatch(normalized)) {
-      add(primary ?? GeneratedArtifactKind.docx);
-      add(GeneratedArtifactKind.pdf);
-    } else if (primary != null) {
-      add(primary);
-    }
-
-    return targets;
+    return registry.packageTargetsForPrompt(prompt);
   }
 
   Future<GeneratedArtifactPackage?> writePackageFromAssistantOutput({

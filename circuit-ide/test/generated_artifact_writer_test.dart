@@ -2657,6 +2657,65 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     );
   });
 
+  test('artifact route decisions centralize enterprise package targets', () {
+    const registry = ArtifactTypeRegistry();
+
+    final deck = registry.routeForPrompt(
+      'create a PowerPoint deck for this customer proposal',
+    );
+    expect(deck.descriptor?.id, 'powerpoint_deck');
+    expect(deck.requestedKind, GeneratedArtifactKind.powerPoint);
+    expect(deck.primaryKind, GeneratedArtifactKind.powerPoint);
+    expect(deck.createsPackage, isFalse);
+    expect(deck.targetKinds, [GeneratedArtifactKind.powerPoint]);
+    expect(deck.contractLabel, 'PowerPoint Deck');
+
+    final sizing = registry.routeForPrompt(
+      'create a datacenter sizing package with PoE and WAN charts',
+    );
+    expect(sizing.descriptor?.id, 'solution_sizing_workbook');
+    expect(sizing.primaryKind, GeneratedArtifactKind.excel);
+    expect(sizing.targetKinds, [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.chart,
+    ]);
+
+    final lifecycle = registry.routeForPrompt(
+      'create an LDOS lifecycle report with evidence JSON',
+    );
+    expect(lifecycle.descriptor?.id, 'lifecycle_eox_report');
+    expect(lifecycle.targetKinds, [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.pdf,
+      GeneratedArtifactKind.json,
+    ]);
+
+    final topology = registry.routeForPrompt(
+      'create a network topology package for this Cisco campus',
+    );
+    expect(topology.descriptor?.id, 'network_topology_diagram');
+    expect(topology.targetKinds, [
+      GeneratedArtifactKind.diagram,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+
+    final evidence = registry.routeForPrompt(
+      'create a final evidence pack for customer handoff',
+    );
+    expect(evidence.descriptor?.id, 'evidence_pack');
+    expect(evidence.requestedKind, GeneratedArtifactKind.docx);
+    expect(evidence.targetKinds, [
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.json,
+      GeneratedArtifactKind.pdf,
+    ]);
+
+    final explicitJson = registry.routeForPrompt('create a JSON evidence pack');
+    expect(explicitJson.requestedKind, GeneratedArtifactKind.json);
+    expect(explicitJson.targetKinds, [GeneratedArtifactKind.json]);
+  });
+
   test('CSV artifacts can export to a real XLSX workbook', () async {
     final root = await Directory.systemTemp.createTemp(
       'circuit-artifact-export-',
