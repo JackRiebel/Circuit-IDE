@@ -178,6 +178,19 @@ class GeneratedArtifact {
 GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   final normalized = text.toLowerCase();
   if (RegExp(
+    r'\b(pdf|final customer handoff|final handoff|final report|finalized report|customer handoff pdf)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.pdf;
+  }
+  if (RegExp(r'\b(json)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.json;
+  }
+  if (RegExp(
+    r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
+  }
+  if (RegExp(
     r'\b(excel|xlsx|spreadsheet|workbook|sizing matrix|sizing model|solution sizing|product comparison matrix|comparison matrix|eox|eol|eos|ldos|last date of support|lifecycle (?:report|matrix|review|status)|replacement pid|migration pid)\b',
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.excel;
@@ -185,23 +198,12 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   if (RegExp(r'\b(csv|comma[- ]separated)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.csv;
   }
-  if (RegExp(r'\b(json)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.json;
-  }
-  if (RegExp(r'\b(pdf)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.pdf;
-  }
   if (RegExp(
     r'\b(powerpoint|pptx|presentation|slide deck|deck|slides?)\b',
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.powerPoint;
   }
   if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.docx;
-  }
-  if (RegExp(
-    r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
-  ).hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
   if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {

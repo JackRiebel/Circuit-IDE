@@ -44,6 +44,14 @@ class GeneratedArtifactPackageWriter {
       add(GeneratedArtifactKind.excel);
       add(GeneratedArtifactKind.chart);
     } else if (RegExp(
+      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+    ).hasMatch(normalized)) {
+      add(primary ?? GeneratedArtifactKind.docx);
+      add(GeneratedArtifactKind.json);
+      if (normalized.contains('handoff') || normalized.contains('final')) {
+        add(GeneratedArtifactKind.pdf);
+      }
+    } else if (RegExp(
       r'\b(product comparison|comparison matrix|model comparison|shortlist|fit score)\b',
     ).hasMatch(normalized)) {
       add(GeneratedArtifactKind.excel);

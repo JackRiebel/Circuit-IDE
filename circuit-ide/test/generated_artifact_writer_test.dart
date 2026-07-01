@@ -1950,6 +1950,26 @@ Checkpoint:
       detectGeneratedArtifactKind('create a markdown report'),
       GeneratedArtifactKind.markdown,
     );
+    expect(
+      detectGeneratedArtifactKind('create a final customer handoff report'),
+      GeneratedArtifactKind.pdf,
+    );
+    expect(
+      const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
+        'create an evidence pack for these lifecycle claims',
+      ),
+      [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+    );
+    expect(
+      const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
+        'create a final evidence pack for customer handoff',
+      ),
+      [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
+      ],
+    );
   });
 
   test('CSV artifacts can export to a real XLSX workbook', () async {
