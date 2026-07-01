@@ -35,6 +35,7 @@ void main() {
     expect(inspection.hasExecutiveInsights, isTrue);
     expect(inspection.hasValidationGates, isTrue);
     expect(inspection.hasRecommendedActions, isTrue);
+    expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasDataQualityPanel, isTrue);
     expect(inspection.hasThresholdGuidance, isTrue);
     expect(inspection.hasPoeSignal, isTrue);
@@ -42,6 +43,8 @@ void main() {
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(1));
+    expect(inspection.decisionActionCount, greaterThanOrEqualTo(1));
+    expect(inspection.criticalDecisionCount, 0);
     expect(inspection.dataQualityItemCount, 4);
     expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(2));
     expect(inspection.sourceTableCount, 1);
@@ -63,6 +66,10 @@ void main() {
     expect(result.metadata['validationGateCount'], 4);
     expect(result.metadata['validationGapCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['recommendedActionCount'], greaterThanOrEqualTo(1));
+    expect(result.metadata['hasDecisionMatrix'], isTrue);
+    expect(result.metadata['decisionActionCount'], greaterThanOrEqualTo(1));
+    expect(result.metadata['criticalDecisionCount'], 0);
+    expect(result.metadata['decisionOwners'], contains('Network architect'));
     expect(result.metadata['hasDataQualityPanel'], isTrue);
     expect(result.metadata['hasSourceProvenancePanel'], isTrue);
     expect(result.metadata['hasThresholdGuidance'], isTrue);
@@ -149,11 +156,14 @@ void main() {
     expect(inspection.hasExecutiveInsights, isTrue);
     expect(inspection.hasValidationGates, isTrue);
     expect(inspection.hasRecommendedActions, isTrue);
+    expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasDataQualityPanel, isTrue);
     expect(inspection.hasThresholdGuidance, isTrue);
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(4));
+    expect(inspection.decisionActionCount, greaterThanOrEqualTo(5));
+    expect(inspection.criticalDecisionCount, greaterThanOrEqualTo(3));
     expect(inspection.dataQualityItemCount, 4);
     expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(4));
     expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
@@ -206,12 +216,25 @@ void main() {
     expect(result.metadata['hasCost'], isTrue);
     expect(result.metadata['hasRoadmap'], isTrue);
     expect(result.metadata['hasDataQualityPanel'], isTrue);
+    expect(result.metadata['hasDecisionMatrix'], isTrue);
     expect(result.metadata['hasSourceProvenancePanel'], isTrue);
     expect(result.metadata['hasThresholdGuidance'], isTrue);
     expect(result.metadata['sourceTableCount'], 6);
     expect(result.metadata['citationCount'], 2);
     expect(result.metadata['assumptionCount'], 2);
     expect(result.metadata['dataQualityItemCount'], 4);
+    expect(result.metadata['decisionActionCount'], greaterThanOrEqualTo(5));
+    expect(result.metadata['criticalDecisionCount'], greaterThanOrEqualTo(3));
+    expect(
+      result.metadata['decisionOwners'],
+      containsAll([
+        'Executive / technical owner',
+        'Network architect',
+        'Lifecycle owner',
+        'SE / account team',
+        'Project owner',
+      ]),
+    );
     expect(result.metadata['thresholdGuidanceCount'], greaterThanOrEqualTo(4));
     expect(
       result.metadata['signals'],

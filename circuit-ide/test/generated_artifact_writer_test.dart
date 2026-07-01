@@ -1454,10 +1454,17 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
         artifact.metadata['recommendedActionCount'],
         greaterThanOrEqualTo(1),
       );
+      expect(artifact.metadata['hasDecisionMatrix'], isTrue);
+      expect(artifact.metadata['decisionActionCount'], greaterThanOrEqualTo(1));
+      expect(
+        artifact.metadata['decisionOwners'],
+        contains('Network architect'),
+      );
       expect(File(artifact.filePath).existsSync(), isTrue);
       final svg = File(artifact.filePath).readAsStringSync();
       expect(svg, startsWith('<svg'));
       expect(svg, contains('PoE Budget Risk'));
+      expect(svg, contains('Decision matrix'));
       expect(svg, contains('Branch 3'));
       expect(svg, contains('5100'));
     },
@@ -1571,6 +1578,19 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       containsAll(['Source data', 'Risk labels', 'Capacity signals']),
     );
     expect(artifact.metadata['validationGapCount'], 0);
+    expect(artifact.metadata['hasDecisionMatrix'], isTrue);
+    expect(artifact.metadata['decisionActionCount'], greaterThanOrEqualTo(5));
+    expect(artifact.metadata['criticalDecisionCount'], greaterThanOrEqualTo(3));
+    expect(
+      artifact.metadata['decisionOwners'],
+      containsAll([
+        'Executive / technical owner',
+        'Network architect',
+        'Lifecycle owner',
+        'SE / account team',
+        'Project owner',
+      ]),
+    );
     expect(artifact.metadata['hasCustomerReadyChartPack'], isFalse);
     expect(artifact.previewRows.first, ['Chart', 'Signal', 'Data points']);
     expect(
@@ -1604,11 +1624,14 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('id="chart-executive-insights"'));
     expect(svg, contains('id="chart-validation-gates"'));
     expect(svg, contains('id="chart-recommended-actions"'));
+    expect(svg, contains('id="chart-decision-matrix"'));
     expect(svg, contains('id="chart-risk-legend"'));
     expect(svg, contains('&quot;highRiskCount&quot;'));
     expect(svg, contains('&quot;insightCount&quot;'));
     expect(svg, contains('&quot;validationGateCount&quot;'));
     expect(svg, contains('&quot;recommendedActionCount&quot;'));
+    expect(svg, contains('&quot;decisionActionCount&quot;'));
+    expect(svg, contains('&quot;criticalDecisionCount&quot;'));
     expect(svg, contains('&quot;hasPoe&quot;'));
     expect(svg, contains('&quot;hasWan&quot;'));
     expect(svg, contains('&quot;hasLifecycle&quot;'));
@@ -1619,6 +1642,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('High=3'));
     expect(svg, contains('validated with current pricing'));
     expect(svg, contains('sequencing signals'));
+    expect(svg, contains('Decision matrix'));
+    expect(svg, contains('Risk ownership'));
+    expect(svg, contains('Lifecycle evidence'));
     expect(svg, contains('C9300X-48HX'));
   });
 

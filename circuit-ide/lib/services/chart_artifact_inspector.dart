@@ -13,6 +13,7 @@ class ChartArtifactInspection {
   final bool hasExecutiveInsights;
   final bool hasValidationGates;
   final bool hasRecommendedActions;
+  final bool hasDecisionMatrix;
   final bool hasDataQualityPanel;
   final bool hasThresholdGuidance;
   final int chartCount;
@@ -21,6 +22,8 @@ class ChartArtifactInspection {
   final int insightCount;
   final int validationGateCount;
   final int recommendedActionCount;
+  final int decisionActionCount;
+  final int criticalDecisionCount;
   final int dataQualityItemCount;
   final int thresholdGuidanceCount;
   final int highRiskCount;
@@ -54,6 +57,7 @@ class ChartArtifactInspection {
     required this.hasExecutiveInsights,
     required this.hasValidationGates,
     required this.hasRecommendedActions,
+    required this.hasDecisionMatrix,
     required this.hasDataQualityPanel,
     required this.hasThresholdGuidance,
     required this.chartCount,
@@ -62,6 +66,8 @@ class ChartArtifactInspection {
     required this.insightCount,
     required this.validationGateCount,
     required this.recommendedActionCount,
+    required this.decisionActionCount,
+    required this.criticalDecisionCount,
     required this.dataQualityItemCount,
     required this.thresholdGuidanceCount,
     required this.highRiskCount,
@@ -95,6 +101,7 @@ class ChartArtifactInspection {
       hasExecutiveInsights &&
       hasValidationGates &&
       hasRecommendedActions &&
+      hasDecisionMatrix &&
       hasDataQualityPanel &&
       hasThresholdGuidance &&
       chartCount > 0 &&
@@ -106,6 +113,7 @@ class ChartArtifactInspection {
       hasExecutiveInsights &&
       hasValidationGates &&
       hasRecommendedActions &&
+      hasDecisionMatrix &&
       hasDataQualityPanel &&
       hasThresholdGuidance &&
       chartKinds.toSet().length >= 2 &&
@@ -149,6 +157,14 @@ class ChartArtifactInspector {
         _metadataInt(metadata, 'recommendedActionCount') ??
         _dataInt(svg, 'data-recommended-action-count') ??
         0;
+    final decisionActionCount =
+        _metadataInt(metadata, 'decisionActionCount') ??
+        _dataInt(svg, 'data-decision-action-count') ??
+        0;
+    final criticalDecisionCount =
+        _metadataInt(metadata, 'criticalDecisionCount') ??
+        _dataInt(svg, 'data-critical-decision-count') ??
+        0;
     final dataQualityItemCount =
         _metadataInt(metadata, 'dataQualityItemCount') ??
         _dataInt(svg, 'data-data-quality-item-count') ??
@@ -173,6 +189,7 @@ class ChartArtifactInspector {
       hasExecutiveInsights: svg.contains('id="chart-executive-insights"'),
       hasValidationGates: svg.contains('id="chart-validation-gates"'),
       hasRecommendedActions: svg.contains('id="chart-recommended-actions"'),
+      hasDecisionMatrix: svg.contains('id="chart-decision-matrix"'),
       hasDataQualityPanel: svg.contains('id="chart-data-quality"'),
       hasThresholdGuidance: svg.contains('id="chart-threshold-guidance"'),
       chartCount: chartCount,
@@ -181,6 +198,8 @@ class ChartArtifactInspector {
       insightCount: insightCount,
       validationGateCount: validationGateCount,
       recommendedActionCount: recommendedActionCount,
+      decisionActionCount: decisionActionCount,
+      criticalDecisionCount: criticalDecisionCount,
       dataQualityItemCount: dataQualityItemCount,
       thresholdGuidanceCount: thresholdGuidanceCount,
       highRiskCount: highRiskCount,

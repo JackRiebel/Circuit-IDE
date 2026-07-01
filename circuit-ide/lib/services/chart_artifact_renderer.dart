@@ -4,6 +4,15 @@ import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
 
+typedef _DecisionActionRow = ({
+  String focus,
+  String signal,
+  String owner,
+  String nextAction,
+  String urgency,
+  bool critical,
+});
+
 class ChartRenderResult {
   final Uint8List bytes;
   final int chartCount;
@@ -31,7 +40,7 @@ class ChartArtifactRenderer {
       bytes: Uint8List.fromList(utf8.encode(svg)),
       chartCount: charts.length,
       signals: profile.signals,
-      previewRows: _previewRows(charts),
+      previewRows: _previewRows(charts, profile),
       metadata: _metadataFor(charts, profile, document),
     );
   }
@@ -47,6 +56,7 @@ class ChartArtifactRenderer {
     final validationGaps = _validationGapsFrom(gates);
     final dataQualityItems = _dataQualityItems(document, profile);
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
+    final decisionRows = _decisionActionRows(profile);
     return {
       'generator': 'CircuitCode',
       'artifact': 'chart_pack',
@@ -77,6 +87,7 @@ class ChartArtifactRenderer {
       'hasDataQualityPanel': dataQualityItems.isNotEmpty,
       'hasSourceProvenancePanel': true,
       'hasThresholdGuidance': thresholdItems.isNotEmpty,
+      'hasDecisionMatrix': decisionRows.isNotEmpty,
       'hasCustomerReadyChartPack':
           validationGaps.isEmpty && profile.highRiskCount == 0,
       'kinds': charts.map((chart) => chart.kind.name).toList(growable: false),
@@ -85,22 +96,38 @@ class ChartArtifactRenderer {
       'recommendedActionCount': actions.length,
       'dataQualityItemCount': dataQualityItems.length,
       'thresholdGuidanceCount': thresholdItems.length,
+      'decisionActionCount': decisionRows.length,
+      'criticalDecisionCount': decisionRows
+          .where((item) => item.critical)
+          .length,
+      'decisionOwners': decisionRows
+          .map((item) => item.owner)
+          .toSet()
+          .toList(growable: false),
     };
   }
 
-  List<List<String>> _previewRows(List<_ChartData> charts) {
+  List<List<String>> _previewRows(
+    List<_ChartData> charts,
+    _ChartPackProfile profile,
+  ) {
     if (charts.isEmpty) return const [];
+    final decisionRows = _decisionActionRows(profile);
     if (charts.length == 1) {
       return [
         ['Metric', charts.first.valueLabel],
         for (final point in charts.first.points.take(8))
           [point.label, _format(point.value)],
+        for (final item in decisionRows.take(1))
+          ['Decision: ${item.focus}', item.urgency],
       ];
     }
     return [
       ['Chart', 'Signal', 'Data points'],
       for (final chart in charts.take(8))
         [chart.title, chart.kind.label, chart.points.length.toString()],
+      for (final item in decisionRows.take(2))
+        ['Decision: ${item.focus}', item.urgency, item.owner],
     ];
   }
 
@@ -434,13 +461,14 @@ class ChartArtifactRenderer {
     const chartHeight = 330;
     const chartTop = 330;
     final footerTop = chartTop + (charts.length * chartHeight);
-    final height = math.max(720, footerTop + 330);
+    final height = math.max(720, footerTop + 430);
     const width = 1040;
     final insights = _executiveInsights(profile);
     final gates = _validationGates(profile);
     final actions = _recommendedActions(profile);
     final dataQualityItems = _dataQualityItems(document, profile);
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
+    final decisionRows = _decisionActionRows(profile);
     final metadata = _metadataFor(charts, profile, document);
     final buffer = StringBuffer()
       ..writeln(
@@ -480,16 +508,22 @@ class ChartArtifactRenderer {
       top: footerTop + 88,
       width: width,
     );
+    _writeDecisionMatrix(
+      buffer,
+      decisionRows,
+      top: footerTop + 176,
+      width: width,
+    );
     _writeDataQualityPanel(
       buffer,
       dataQualityItems,
-      top: footerTop + 176,
+      top: footerTop + 264,
       width: width,
     );
     _writeThresholdGuidance(
       buffer,
       thresholdItems,
-      top: footerTop + 246,
+      top: footerTop + 334,
       width: width,
     );
     buffer.writeln('</svg>');
@@ -708,6 +742,91 @@ class ChartArtifactRenderer {
     return actions.take(4).toList(growable: false);
   }
 
+  List<_DecisionActionRow> _decisionActionRows(_ChartPackProfile profile) {
+    final rows = <_DecisionActionRow>[];
+    if (profile.highRiskCount > 0) {
+      rows.add((
+        focus: 'Risk ownership',
+        signal:
+            '${profile.highRiskCount} high-risk item${profile.highRiskCount == 1 ? '' : 's'}',
+        owner: 'Executive / technical owner',
+        nextAction: 'Assign owners and due dates before customer handoff.',
+        urgency: 'Blocker',
+        critical: true,
+      ));
+    } else if (profile.mediumRiskCount > 0) {
+      rows.add((
+        focus: 'Risk review',
+        signal:
+            '${profile.mediumRiskCount} review item${profile.mediumRiskCount == 1 ? '' : 's'}',
+        owner: 'Solution owner',
+        nextAction: 'Confirm medium-risk items are accepted or mitigated.',
+        urgency: 'Review',
+        critical: false,
+      ));
+    }
+    if (profile.hasPoe || profile.hasWan) {
+      rows.add((
+        focus: 'Capacity validation',
+        signal: [
+          if (profile.hasPoe) 'PoE/UPOE',
+          if (profile.hasWan) 'WAN',
+        ].join(' + '),
+        owner: 'Network architect',
+        nextAction:
+            'Validate headroom, failover behavior, and growth assumptions.',
+        urgency: profile.highRiskCount > 0 ? 'Blocker' : 'Review',
+        critical: profile.highRiskCount > 0,
+      ));
+    }
+    if (profile.hasLifecycle) {
+      rows.add((
+        focus: 'Lifecycle evidence',
+        signal: 'LDOS/EoX/support runway',
+        owner: 'Lifecycle owner',
+        nextAction:
+            'Attach official checked-date lifecycle evidence and current-fit comparison.',
+        urgency: 'Review',
+        critical: true,
+      ));
+    }
+    if (profile.hasComparison || profile.hasCost) {
+      rows.add((
+        focus: 'Recommendation readiness',
+        signal: [
+          if (profile.hasComparison) 'Model fit',
+          if (profile.hasCost) 'Cost/TCO',
+        ].join(' + '),
+        owner: 'SE / account team',
+        nextAction:
+            'Validate datasheet facts, pricing, licensing, and rejected alternatives.',
+        urgency: 'Review',
+        critical: false,
+      ));
+    }
+    if (profile.hasRoadmap) {
+      rows.add((
+        focus: 'Delivery path',
+        signal: 'Roadmap / sequencing',
+        owner: 'Project owner',
+        nextAction: 'Convert roadmap scores into dated milestones and gates.',
+        urgency: 'Plan',
+        critical: false,
+      ));
+    }
+    if (rows.isEmpty) {
+      rows.add((
+        focus: 'Source readiness',
+        signal: '${profile.pointCount} data points',
+        owner: 'Artifact reviewer',
+        nextAction: 'Attach source data and decision thresholds.',
+        urgency: 'Review',
+        critical: false,
+      ));
+    }
+    return rows.take(5).toList(growable: false);
+  }
+
   List<({String label, String value, String guidance, bool ready})>
   _dataQualityItems(ArtifactDocument document, _ChartPackProfile profile) {
     return [
@@ -891,6 +1010,51 @@ class ChartArtifactRenderer {
       buffer.writeln(
         '<text class="chart-action" x="$x" y="$y" fill="#aeb6b2" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11">• ${_xml(_shorten(actions[i], 72))}</text>',
       );
+    }
+    buffer.writeln('</g>');
+  }
+
+  void _writeDecisionMatrix(
+    StringBuffer buffer,
+    List<_DecisionActionRow> rows, {
+    required int top,
+    required int width,
+  }) {
+    if (rows.isEmpty) return;
+    buffer
+      ..writeln(
+        '<g id="chart-decision-matrix" data-decision-action-count="${rows.length}" data-critical-decision-count="${rows.where((item) => item.critical).length}">',
+      )
+      ..writeln(
+        '<rect x="34" y="$top" width="${width - 68}" height="74" rx="16" fill="#151716" stroke="#29302d" stroke-width="1"/>',
+      )
+      ..writeln(
+        '<text x="42" y="${top + 25}" fill="#f4f1eb" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Decision matrix</text>',
+      );
+    final visible = rows.take(3).toList(growable: false);
+    const startX = 184.0;
+    final cardWidth =
+        (width - startX - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var i = 0; i < visible.length; i++) {
+      final row = visible[i];
+      final x = startX + (i * (cardWidth + 8));
+      final fill = row.critical ? '#2a241b' : '#182621';
+      final stroke = row.critical ? '#59482b' : '#2e5148';
+      final text = row.critical ? '#e1bb6d' : '#8dd3bd';
+      buffer
+        ..writeln(
+          '<rect class="chart-decision-card" x="${x.toStringAsFixed(1)}" y="${top + 12}" width="${cardWidth.toStringAsFixed(1)}" height="44" rx="10" fill="$fill" stroke="$stroke"/>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 26}" fill="$text" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten('${row.urgency}: ${row.focus}', 34))}</text>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 39}" fill="#d2d8d5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(row.owner, 36))}</text>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 52}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(row.nextAction, 48))}</text>',
+        );
     }
     buffer.writeln('</g>');
   }
