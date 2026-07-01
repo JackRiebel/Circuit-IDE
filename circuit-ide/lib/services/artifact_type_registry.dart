@@ -362,25 +362,14 @@ class ArtifactTypeRegistry {
 
   ArtifactTypeDescriptor? descriptorForPrompt(String prompt) {
     final normalized = prompt.toLowerCase();
-    if (RegExp(
-      r'\b(deck|slides?|powerpoint|pptx|presentation)\b',
-    ).hasMatch(normalized)) {
-      return descriptors.firstWhere(
-        (descriptor) => descriptor.id == 'powerpoint_deck',
-      );
-    }
+    // Prefer the business/domain artifact over the requested export format.
+    // "topology PDF" should produce a topology artifact rendered as PDF, not
+    // a generic PDF report. Generic formats are resolved after domain routes.
     if (RegExp(
       r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
     ).hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'evidence_pack',
-      );
-    }
-    if (RegExp(
-      r'\b(pdf|final handoff|customer handoff)\b',
-    ).hasMatch(normalized)) {
-      return descriptors.firstWhere(
-        (descriptor) => descriptor.id == 'pdf_report',
       );
     }
     if (RegExp(r'\b(sizing workbook|size|sizing)\b').hasMatch(normalized)) {
@@ -441,6 +430,20 @@ class ArtifactTypeRegistry {
     ).hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'change_summary_diff_report',
+      );
+    }
+    if (RegExp(
+      r'\b(deck|slides?|powerpoint|pptx|presentation)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'powerpoint_deck',
+      );
+    }
+    if (RegExp(
+      r'\b(pdf|final handoff|customer handoff)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'pdf_report',
       );
     }
     if (RegExp(r'\b(proposal|report|brief|document)\b').hasMatch(normalized)) {

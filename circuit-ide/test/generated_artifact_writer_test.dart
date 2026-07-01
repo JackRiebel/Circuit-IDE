@@ -2726,6 +2726,35 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(explicitJson.targetKinds, [GeneratedArtifactKind.json]);
   });
 
+  test(
+    'artifact route decisions prefer domain artifacts over generic formats',
+    () {
+      const registry = ArtifactTypeRegistry();
+
+      final topologyPdf = registry.routeForPrompt(
+        'create a topology PDF for this campus design',
+      );
+      expect(topologyPdf.descriptor?.id, 'network_topology_diagram');
+      expect(topologyPdf.requestedKind, GeneratedArtifactKind.pdf);
+      expect(topologyPdf.targetKinds, [GeneratedArtifactKind.pdf]);
+      expect(topologyPdf.contractLabel, 'Network Topology Diagram');
+
+      final businessDeck = registry.routeForPrompt(
+        'create a business case deck for Acme',
+      );
+      expect(businessDeck.descriptor?.id, 'business_use_case_brief');
+      expect(businessDeck.requestedKind, GeneratedArtifactKind.powerPoint);
+      expect(businessDeck.targetKinds, [GeneratedArtifactKind.powerPoint]);
+      expect(businessDeck.contractLabel, 'Business Use Case Brief');
+
+      final proposalDeck = registry.routeForPrompt(
+        'create a PowerPoint deck for this customer proposal',
+      );
+      expect(proposalDeck.descriptor?.id, 'powerpoint_deck');
+      expect(proposalDeck.targetKinds, [GeneratedArtifactKind.powerPoint]);
+    },
+  );
+
   test('CSV artifacts can export to a real XLSX workbook', () async {
     final root = await Directory.systemTemp.createTemp(
       'circuit-artifact-export-',
