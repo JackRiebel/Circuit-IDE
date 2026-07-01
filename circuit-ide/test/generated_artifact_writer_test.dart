@@ -393,6 +393,9 @@ Executive summary for a customer handoff.
       expect(packageText, contains('Report Overview'));
       expect(packageText, contains('Executive Decision Brief'));
       expect(packageText, contains('Document Map'));
+      expect(packageText, contains('Stakeholder Readout'));
+      expect(packageText, contains('Evidence Confidence Matrix'));
+      expect(packageText, contains('Approval Gates'));
       expect(packageText, contains('Validation Checklist'));
       expect(packageText, contains('<cp:keywords>'));
       expect(packageText, contains('WAN redundancy is required'));
@@ -487,6 +490,9 @@ Architecture review for a campus refresh with WAN, access, wireless, and securit
       expect(packageText, contains('Risk And Mitigation Register'));
       expect(packageText, contains('Recommendation Roadmap'));
       expect(packageText, contains('Decision And Assumption Log'));
+      expect(packageText, contains('Stakeholder Readout'));
+      expect(packageText, contains('Evidence Confidence Matrix'));
+      expect(packageText, contains('Approval Gates'));
       expect(packageText, contains('WAN failover has not been tested'));
       expect(packageText, contains('Unknown PoE headroom'));
       expect(packageText, contains('Validate PoE, multigig, and uplink'));
@@ -567,6 +573,9 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Stakeholder Discovery Map'));
     expect(packageText, contains('Evidence And Confidence Register'));
     expect(packageText, contains('30 / 60 / 90 Day Action Plan'));
+    expect(packageText, contains('Stakeholder Readout'));
+    expect(packageText, contains('Evidence Confidence Matrix'));
+    expect(packageText, contains('Approval Gates'));
     expect(packageText, contains('Predictive maintenance telemetry'));
     expect(packageText, contains('Operations leader / plant manager'));
     expect(packageText, contains('Business sponsor and technical owner'));
@@ -639,6 +648,9 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Unsupported Claim Triage'));
     expect(packageText, contains('Evidence Confidence Scorecard'));
     expect(packageText, contains('Customer Follow-Up Checklist'));
+    expect(packageText, contains('Stakeholder Readout'));
+    expect(packageText, contains('Evidence Confidence Matrix'));
+    expect(packageText, contains('Approval Gates'));
     expect(packageText, contains('Supporting source'));
     expect(packageText, contains('Freshness risk'));
     expect(packageText, contains('Required evidence'));

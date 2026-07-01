@@ -30,16 +30,23 @@ class DocxArtifactRenderer {
           'Data Tables',
           '${document.tables.length}',
         ],
-      ['${document.sections.length + 7}', 'Validation Checklist', '5'],
+      ['${document.sections.length + 7}', 'Stakeholder Readout', '4'],
+      [
+        '${document.sections.length + 8}',
+        'Evidence Confidence Matrix',
+        '${_evidenceConfidenceRows(document).length}',
+      ],
+      ['${document.sections.length + 9}', 'Approval Gates', '4'],
+      ['${document.sections.length + 10}', 'Validation Checklist', '5'],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 8}',
+          '${document.sections.length + 11}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 9}',
+          '${document.sections.length + 12}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -199,6 +206,12 @@ class DocxArtifactRenderer {
         ..write(_table(table));
     }
     body
+      ..write(_paragraph('Stakeholder Readout', style: 'Heading1'))
+      ..write(_stakeholderReadoutTable(document))
+      ..write(_paragraph('Evidence Confidence Matrix', style: 'Heading1'))
+      ..write(_evidenceConfidenceTable(document))
+      ..write(_paragraph('Approval Gates', style: 'Heading1'))
+      ..write(_approvalGatesTable(document))
       ..write(_paragraph('Validation Checklist', style: 'Heading1'))
       ..write(_validationChecklistTable(document));
     if (document.assumptions.isNotEmpty) {
@@ -269,6 +282,18 @@ class DocxArtifactRenderer {
           'Data Tables',
           '${document.tables.length} structured table${document.tables.length == 1 ? '' : 's'}',
         ],
+      [
+        'Stakeholder Readout',
+        'Audience, decision owner, business value, and technical owner summary.',
+      ],
+      [
+        'Evidence Confidence Matrix',
+        'Evidence status, confidence, gaps, and verification guidance.',
+      ],
+      [
+        'Approval Gates',
+        'Decision gates required before customer handoff or implementation.',
+      ],
       ['Validation Checklist', 'Quality and handoff readiness checks.'],
       if (document.assumptions.isNotEmpty)
         [
@@ -511,6 +536,133 @@ class DocxArtifactRenderer {
                 : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} included',
           ],
           ['Handoff readiness', _handoffStatus(document)],
+        ],
+      ),
+    );
+  }
+
+  String _stakeholderReadoutTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Stakeholder Readout',
+        rows: [
+          ['Audience', 'What They Need From This Report'],
+          [
+            'Executive sponsor',
+            'Business outcome, decision required, risk posture, and investment rationale.',
+          ],
+          [
+            _decisionOwner(document),
+            'Technical feasibility, implementation path, evidence quality, and validation gates.',
+          ],
+          [
+            'Implementation owner',
+            'Approved scope, dependencies, next steps, owners, and acceptance criteria.',
+          ],
+          [
+            'Evidence reviewer',
+            document.citations.isEmpty
+                ? 'Source evidence must be attached before final customer handoff.'
+                : 'Review ${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} and confirm freshness.',
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _evidenceConfidenceTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Evidence Confidence Matrix',
+        rows: _evidenceConfidenceRows(document),
+      ),
+    );
+  }
+
+  List<List<String>> _evidenceConfidenceRows(ArtifactDocument document) {
+    final recommendation = _firstMatchingBullet(document, [
+      'recommend',
+      'solution',
+      'architecture',
+      'proposal',
+      'should',
+    ]);
+    final rows = <List<String>>[
+      ['Evidence Area', 'Current Signal', 'Confidence', 'Required Validation'],
+      [
+        'Executive summary',
+        document.summary.trim().isEmpty ? 'Missing' : 'Included',
+        document.summary.trim().isEmpty ? 'Low' : 'Medium',
+        document.summary.trim().isEmpty
+            ? 'Add a concise customer-facing summary.'
+            : 'Confirm language with the business owner.',
+      ],
+      [
+        'Recommendations',
+        recommendation ?? 'No explicit recommendation detected',
+        recommendation == null ? 'Low' : 'Medium',
+        'Validate against requirements, constraints, and customer priorities.',
+      ],
+      [
+        'Assumptions',
+        document.assumptions.isEmpty
+            ? 'No explicit assumptions listed'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} listed',
+        document.assumptions.isEmpty ? 'Low' : 'Medium',
+        'Confirm assumptions with the accountable stakeholder.',
+      ],
+      [
+        'Sources / citations',
+        document.citations.isEmpty
+            ? 'No cited evidence included'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} included',
+        document.citations.isEmpty ? 'Low' : 'Medium',
+        'Verify freshness, authority, and citation relevance.',
+      ],
+    ];
+    if (document.tables.isNotEmpty) {
+      rows.add([
+        'Structured data',
+        '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} included',
+        'Medium',
+        'Validate source data, units, dates, and row completeness.',
+      ]);
+    }
+    return rows;
+  }
+
+  String _approvalGatesTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Approval Gates',
+        rows: [
+          ['Gate', 'Required Evidence', 'Suggested Owner', 'Status'],
+          [
+            'Scope approval',
+            'Confirmed goals, constraints, exclusions, and success criteria.',
+            _decisionOwner(document),
+            document.sections.isEmpty ? 'Needs input' : 'Ready for review',
+          ],
+          [
+            'Evidence approval',
+            'Source-backed claims, checked dates, and unresolved gaps.',
+            'Evidence reviewer',
+            document.citations.isEmpty ? 'Needs sources' : 'Ready for review',
+          ],
+          [
+            'Risk approval',
+            'Known risks, assumptions, mitigations, and owner acceptance.',
+            'Project owner',
+            document.assumptions.isEmpty
+                ? 'Needs assumptions'
+                : 'Ready for review',
+          ],
+          [
+            'Implementation approval',
+            'Approved next steps, owner, timeline, and verification plan.',
+            'Implementation owner',
+            _nextStepRows(document).length <= 1 ? 'Needs plan' : 'Ready',
+          ],
         ],
       ),
     );
