@@ -1921,13 +1921,14 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
       expect(package, isNotNull);
       expect(package!.label, 'business use case package');
       expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.chart,
       ]);
       expect(
         package.artifacts.map((artifact) => artifact.id).toSet().length,
-        3,
+        4,
       );
       for (final artifact in package.artifacts) {
         expect(artifact.status, GeneratedArtifactStatus.ready);
@@ -1936,9 +1937,22 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
         expect(artifact.requestId, 'request-1');
         expect(artifact.metadata['qualityStatus'], isNotNull);
       }
-      expect(package.artifacts[0].fileName, endsWith('.docx'));
-      expect(package.artifacts[1].fileName, endsWith('.pptx'));
-      expect(package.artifacts[2].fileName, endsWith('.svg'));
+      expect(package.primary!.fileName, endsWith('-package.md'));
+      expect(
+        package.primary!.metadata['artifact'],
+        'artifact_package_manifest',
+      );
+      expect(package.primary!.metadata['artifactCount'], 3);
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Business Use Case Package'));
+      expect(manifestText, contains('Package Contents'));
+      expect(manifestText, contains('Next Actions'));
+      expect(manifestText, contains('.docx'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.svg'));
+      expect(package.artifacts[1].fileName, endsWith('.docx'));
+      expect(package.artifacts[2].fileName, endsWith('.pptx'));
+      expect(package.artifacts[3].fileName, endsWith('.svg'));
     },
   );
 
@@ -1978,6 +1992,7 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     expect(package, isNotNull);
     expect(package!.label, 'solution sizing package');
     expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
       GeneratedArtifactKind.excel,
       GeneratedArtifactKind.chart,
     ]);
@@ -1986,8 +2001,14 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
       expect(File(artifact.filePath).existsSync(), isTrue);
       expect(artifact.metadata['qualityStatus'], isNotNull);
     }
-    expect(package.artifacts.first.fileName, endsWith('.xlsx'));
-    expect(package.artifacts.first.sheetCount, greaterThanOrEqualTo(18));
-    expect(package.artifacts.last.fileName, endsWith('.svg'));
+    expect(package.primary!.fileName, endsWith('-package.md'));
+    expect(package.primary!.metadata['artifactCount'], 2);
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(manifestText, contains('Solution Sizing Package'));
+    expect(manifestText, contains('.xlsx'));
+    expect(manifestText, contains('.svg'));
+    expect(package.artifacts[1].fileName, endsWith('.xlsx'));
+    expect(package.artifacts[1].sheetCount, greaterThanOrEqualTo(18));
+    expect(package.artifacts[2].fileName, endsWith('.svg'));
   });
 }

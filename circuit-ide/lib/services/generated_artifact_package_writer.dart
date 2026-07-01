@@ -1,3 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
 import '../models/generated_artifact.dart';
 import 'generated_artifact_writer.dart';
 
@@ -107,11 +112,141 @@ class GeneratedArtifactPackageWriter {
       );
       if (artifact != null) artifacts.add(artifact);
     }
+    if (artifacts.length > 1) {
+      artifacts.insert(
+        0,
+        await _writeManifestArtifact(
+          rootPath: rootPath,
+          prompt: prompt,
+          turnId: turnId,
+          threadId: threadId,
+          requestId: requestId,
+          artifacts: artifacts,
+        ),
+      );
+    }
     if (artifacts.isEmpty) return null;
     return GeneratedArtifactPackage(
       label: _labelFor(prompt, artifacts),
       artifacts: artifacts,
     );
+  }
+
+  Future<GeneratedArtifact> _writeManifestArtifact({
+    required String rootPath,
+    required String prompt,
+    required String turnId,
+    required String? threadId,
+    required String? requestId,
+    required List<GeneratedArtifact> artifacts,
+  }) async {
+    final root = p.normalize(rootPath);
+    final outputDir = Directory(p.join(root, 'outputs'));
+    await outputDir.create(recursive: true);
+    final label = _labelFor(prompt, artifacts);
+    final fileName = '${_safeBaseName(prompt)}-package.md';
+    final filePath = p.normalize(p.join(outputDir.path, fileName));
+    if (!p.isWithin(root, filePath)) {
+      throw StateError('Package manifest path escaped workspace root.');
+    }
+    final content = _manifestMarkdown(
+      label: label,
+      prompt: prompt,
+      artifacts: artifacts,
+    );
+    final bytes = utf8.encode(content);
+    final file = File(filePath);
+    await file.writeAsBytes(bytes);
+    return GeneratedArtifact(
+      id: '$turnId-package',
+      kind: GeneratedArtifactKind.markdown,
+      status: GeneratedArtifactStatus.ready,
+      fileName: fileName,
+      filePath: filePath,
+      summary:
+          'Created a package manifest for ${artifacts.length} generated artifacts.',
+      byteSize: bytes.length,
+      previewRows: [
+        const ['Artifact', 'Type', 'Status'],
+        for (final artifact in artifacts.take(8))
+          [artifact.fileName, artifact.typeLabel, artifact.statusLabel],
+      ],
+      sheetCount: artifacts.length,
+      metadata: {
+        'artifact': 'artifact_package_manifest',
+        'packageLabel': label,
+        'artifactCount': artifacts.length,
+        'artifactIds': artifacts.map((artifact) => artifact.id).toList(),
+        'artifactFiles': artifacts
+            .map((artifact) => artifact.fileName)
+            .toList(),
+        'qualityStatus': 'Package ready',
+        'qualityScore': 100,
+        'hasCustomerReadyArtifact': true,
+      },
+      threadId: threadId,
+      requestId: requestId,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  String _manifestMarkdown({
+    required String label,
+    required String prompt,
+    required List<GeneratedArtifact> artifacts,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('# ${_titleCase(label)}')
+      ..writeln()
+      ..writeln('Generated artifact package for:')
+      ..writeln()
+      ..writeln('> ${prompt.trim()}')
+      ..writeln()
+      ..writeln('## Package Contents')
+      ..writeln()
+      ..writeln('| File | Type | Status | Summary |')
+      ..writeln('| --- | --- | --- | --- |');
+    for (final artifact in artifacts) {
+      buffer.writeln(
+        '| ${_escapeTable(artifact.fileName)} | ${artifact.typeLabel} | ${artifact.statusLabel} | ${_escapeTable(artifact.summary)} |',
+      );
+    }
+    buffer
+      ..writeln()
+      ..writeln('## Next Actions')
+      ..writeln()
+      ..writeln('- Open or reveal individual files from the Artifacts drawer.')
+      ..writeln('- Review generated facts, assumptions, and source coverage.')
+      ..writeln(
+        '- Export companion formats only after confirming the package contents.',
+      )
+      ..writeln()
+      ..writeln('## Generated Files');
+    for (final artifact in artifacts) {
+      buffer.writeln('- `${artifact.fileName}`');
+    }
+    return buffer.toString();
+  }
+
+  String _safeBaseName(String prompt) {
+    final normalized = prompt
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    if (normalized.isEmpty) return 'artifact-package';
+    return normalized.length > 48 ? normalized.substring(0, 48) : normalized;
+  }
+
+  String _titleCase(String value) {
+    return value
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+        .join(' ');
+  }
+
+  String _escapeTable(String value) {
+    return value.replaceAll('|', r'\|').replaceAll('\n', ' ').trim();
   }
 
   String _labelFor(String prompt, List<GeneratedArtifact> artifacts) {
