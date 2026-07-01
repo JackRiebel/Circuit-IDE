@@ -33,15 +33,33 @@ class PowerPointArtifactRenderer {
       );
     }
     final readinessSignals = _readinessSignals(document, slideTypeCounts);
+    final validationGaps = _validationGapsFor(document, slideTypeCounts);
+    final agendaItems = _agendaItemsFor(document, sections);
+    final slideFamilies = _slideFamiliesFor(slideTypeCounts);
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
+      'deckType': _deckTypeFor(document),
+      'handoffStatus': _handoffStatusFor(validationGaps),
+      'decisionAsk': _decisionAskFor(document, sections),
       'slideCount': slides.length,
       'theme': theme.label,
       'audience': _audienceFor(document),
       'deckPurpose': _deckPurposeFor(document),
       'narrativeArc': _narrativeArcFor(document, sections),
       'communicationJob': _communicationJobFor(document, sections),
+      'agendaItems': agendaItems,
+      'agendaItemCount': agendaItems.length,
+      'slideFamilies': slideFamilies,
+      'slideFamilyCount': slideFamilies.length,
+      'tableCoverage': document.tables.isEmpty
+          ? 'No supporting tables'
+          : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
+      'sourceCoverage': document.citations.isEmpty
+          ? 'No citations attached'
+          : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
+      'validationGaps': validationGaps,
+      'validationGapCount': validationGaps.length,
       'slideTypes': slideTypeCounts.keys.toList(growable: false),
       'slideTypeCounts': slideTypeCounts,
       'sectionCount': document.sections.length,
@@ -72,6 +90,8 @@ class PowerPointArtifactRenderer {
       ),
       'hasSpeakerNotes': true,
       'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
+      'hasCustomerReadyDeck':
+          _hasCustomerReadyStructure(slideTypeCounts) && validationGaps.isEmpty,
       'maxSlides': 24,
     };
   }
@@ -501,6 +521,100 @@ class PowerPointArtifactRenderer {
       'Speaker notes',
     ];
     return signals;
+  }
+
+  List<String> _agendaItemsFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    return [
+      if (document.summary.isNotEmpty) 'Executive summary',
+      for (final section in sections.take(7)) section.title,
+      if (document.tables.isNotEmpty) 'Data tables and supporting detail',
+      if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
+        'Assumptions and sources',
+    ];
+  }
+
+  List<String> _slideFamiliesFor(Map<String, int> slideTypeCounts) {
+    return [
+      if (slideTypeCounts.containsKey(_DeckSlideKind.title.label)) 'Opening',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
+        'Decision snapshot',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
+        'Recommendations',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
+        'Data tables',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.sources.label))
+        'Assumptions/sources',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.appendix.label))
+        'Appendix',
+    ];
+  }
+
+  List<String> _validationGapsFor(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+  ) {
+    return [
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.agenda.label))
+        'Agenda slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
+        'Decision snapshot missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
+        'Recommendation slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label))
+        'Roadmap slide missing',
+      if (document.assumptions.isEmpty) 'Assumptions need confirmation',
+      if (document.citations.isEmpty) 'Sources need validation',
+    ];
+  }
+
+  String _deckTypeFor(ArtifactDocument document) {
+    final text =
+        '${document.metadata['prompt'] ?? ''} ${document.title} ${document.summary} ${document.sections.map((section) => section.title).join(' ')}'
+            .toLowerCase();
+    if (text.contains('implementation') || text.contains('roadmap')) {
+      return 'Implementation plan deck';
+    }
+    if (text.contains('business case') || text.contains('value')) {
+      return 'Business case deck';
+    }
+    if (text.contains('change summary') || text.contains('diff')) {
+      return 'Change summary deck';
+    }
+    if (text.contains('proposal') || text.contains('customer')) {
+      return 'Customer proposal deck';
+    }
+    if (text.contains('architecture') || text.contains('review')) {
+      return 'Architecture review deck';
+    }
+    return 'Executive briefing deck';
+  }
+
+  String _handoffStatusFor(List<String> validationGaps) {
+    if (validationGaps.isEmpty) return 'Ready for stakeholder review';
+    return 'Draft - ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'}';
+  }
+
+  String _decisionAskFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final next = _firstMatchingBullet(sections, [
+      'approve',
+      'decision',
+      'next',
+      'action',
+      'owner',
+    ]);
+    if (next != null) return _truncate(next, 140);
+    if (document.summary.isNotEmpty) {
+      return 'Review the recommendation, confirm assumptions, and approve the next implementation step.';
+    }
+    return 'Confirm scope, owners, and validation criteria before handoff.';
   }
 
   bool _hasCustomerReadyStructure(Map<String, int> slideTypeCounts) {

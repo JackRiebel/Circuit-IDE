@@ -3187,14 +3187,18 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     }
     if (artifact.kind == GeneratedArtifactKind.powerPoint) {
       final theme = _metadataString(artifact, 'theme');
+      final deckType = _metadataString(artifact, 'deckType');
+      final handoffStatus = _metadataString(artifact, 'handoffStatus');
       final readinessSignals = _metadataStringList(
         artifact,
         'readinessSignals',
       );
+      if (deckType.isNotEmpty) parts.add(deckType);
       if (theme.isNotEmpty) parts.add('$theme theme');
       if (readinessSignals.isNotEmpty) {
         parts.add(_compactSignalList(readinessSignals));
       }
+      if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.kind == GeneratedArtifactKind.docx) {
       final wordCount = _metadataInt(artifact, 'wordCount');
@@ -3420,20 +3424,45 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Package', 'Stakeholder-review chart pack'),
       ],
       if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
+        if (_metadataString(artifact, 'deckType').isNotEmpty)
+          ('Deck', _metadataString(artifact, 'deckType')),
+        if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
+          ('Handoff', _metadataString(artifact, 'handoffStatus')),
         if (_metadataString(artifact, 'theme').isNotEmpty)
           ('Theme', _metadataString(artifact, 'theme')),
         if (_metadataString(artifact, 'audience').isNotEmpty)
           ('Audience', _metadataString(artifact, 'audience')),
         if (_metadataString(artifact, 'deckPurpose').isNotEmpty)
           ('Purpose', _metadataString(artifact, 'deckPurpose')),
+        if (_metadataString(artifact, 'decisionAsk').isNotEmpty)
+          ('Ask', _metadataString(artifact, 'decisionAsk')),
         if (_metadataString(artifact, 'narrativeArc').isNotEmpty)
           ('Narrative', _metadataString(artifact, 'narrativeArc')),
+        if (_metadataStringList(artifact, 'agendaItems').isNotEmpty)
+          (
+            'Agenda',
+            _compactSignalList(_metadataStringList(artifact, 'agendaItems')),
+          ),
+        if (_metadataStringList(artifact, 'slideFamilies').isNotEmpty)
+          (
+            'Slide families',
+            _compactSignalList(_metadataStringList(artifact, 'slideFamilies')),
+          ),
         if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
           (
             'Readiness',
             _compactSignalList(
               _metadataStringList(artifact, 'readinessSignals'),
             ),
+          ),
+        if (_metadataString(artifact, 'tableCoverage').isNotEmpty)
+          ('Tables', _metadataString(artifact, 'tableCoverage')),
+        if (_metadataString(artifact, 'sourceCoverage').isNotEmpty)
+          ('Sources', _metadataString(artifact, 'sourceCoverage')),
+        if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
+          (
+            'Validation gaps',
+            _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
           ),
         if (_metadataInt(artifact, 'sectionCount') > 0)
           ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
@@ -3454,6 +3483,8 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Sources', '${_metadataInt(artifact, 'citationCount')}'),
         if (_metadataBool(artifact, 'hasCustomerReadyStructure'))
           ('Structure', 'Customer-ready deck flow'),
+        if (_metadataBool(artifact, 'hasCustomerReadyDeck'))
+          ('Package', 'Stakeholder-review deck'),
         if (_metadataBool(artifact, 'hasSpeakerNotes'))
           ('Notes', 'Speaker notes included'),
       ],

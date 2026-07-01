@@ -1190,10 +1190,35 @@ void main() {
           ],
           sheetCount: 6,
           metadata: const {
+            'deckType': 'Customer proposal deck',
+            'handoffStatus': 'Ready for stakeholder review',
+            'decisionAsk':
+                'Review the recommendation, confirm assumptions, and approve the next implementation step.',
             'theme': 'Light',
             'audience': 'Executive stakeholders',
             'deckPurpose': 'Support a decision',
             'narrativeArc': 'Context -> risk -> recommendation -> action',
+            'agendaItems': [
+              'Executive summary',
+              'Current State',
+              'Recommended Architecture',
+              'Data tables and supporting detail',
+              'Assumptions and sources',
+            ],
+            'slideFamilies': [
+              'Opening',
+              'Agenda',
+              'Decision snapshot',
+              'Recommendations',
+              'Roadmap',
+              'Data tables',
+              'Assumptions/sources',
+              'Appendix',
+            ],
+            'tableCoverage': '2 tables packaged',
+            'sourceCoverage': '5 source items captured',
+            'validationGaps': <String>[],
+            'validationGapCount': 0,
             'readinessSignals': [
               'Agenda',
               'Decision snapshot',
@@ -1209,6 +1234,7 @@ void main() {
             'assumptionCount': 3,
             'citationCount': 5,
             'hasCustomerReadyStructure': true,
+            'hasCustomerReadyDeck': true,
             'hasSpeakerNotes': true,
           },
           createdAt: DateTime(2026, 6, 30, 9, 15),
@@ -1284,40 +1310,72 @@ void main() {
       find.textContaining('Word • Architecture report • 860 words'),
       findsOneWidget,
     );
-    expect(find.textContaining('Ready for stakeholder review'), findsOneWidget);
+    expect(
+      find.textContaining('Ready for stakeholder review'),
+      findsAtLeastNWidgets(1),
+    );
     expect(find.text('Slide outline'), findsOneWidget);
     expect(find.text('Report outline'), findsOneWidget);
     expect(find.text('Executive Brief'), findsOneWidget);
     expect(find.text('Risk Register'), findsOneWidget);
-    expect(find.textContaining('PowerPoint • Light theme'), findsOneWidget);
+    expect(
+      find.textContaining('PowerPoint • Customer proposal deck • Light theme'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Ready for stakeholder review'),
+      findsAtLeastNWidgets(1),
+    );
     expect(find.textContaining('6 slides'), findsAtLeastNWidgets(1));
     expect(find.textContaining('Agenda, Decision snapshot +3'), findsOneWidget);
 
     await tester.tap(find.text('executive-brief.pptx'));
     await tester.pump();
 
+    expect(find.text('Deck'), findsOneWidget);
+    expect(find.text('Customer proposal deck'), findsOneWidget);
+    expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('Theme'), findsOneWidget);
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Audience'), findsOneWidget);
     expect(find.text('Executive stakeholders'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
     expect(find.text('Support a decision'), findsOneWidget);
+    expect(find.text('Ask'), findsOneWidget);
+    expect(
+      find.text(
+        'Review the recommendation, confirm assumptions, and approve the next implementation step.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Narrative'), findsOneWidget);
     expect(
       find.text('Context -> risk -> recommendation -> action'),
       findsOneWidget,
     );
+    expect(find.text('Agenda'), findsAtLeastNWidgets(1));
+    expect(
+      find.textContaining('Executive summary, Current State +3'),
+      findsOneWidget,
+    );
+    expect(find.text('Slide families'), findsOneWidget);
+    expect(find.textContaining('Opening, Agenda +6'), findsOneWidget);
     expect(find.text('Readiness'), findsOneWidget);
     expect(find.text('Agenda, Decision snapshot +3'), findsOneWidget);
     expect(find.text('Sections'), findsOneWidget);
     expect(find.text('Dividers'), findsOneWidget);
-    expect(find.text('Tables'), findsOneWidget);
+    expect(find.text('Tables'), findsAtLeastNWidgets(1));
+    expect(find.text('2 tables packaged'), findsOneWidget);
+    expect(find.text('5 source items captured'), findsOneWidget);
     expect(find.text('Table slides'), findsOneWidget);
     expect(find.text('Recommendations'), findsOneWidget);
     expect(find.text('Assumptions'), findsOneWidget);
     expect(find.text('Sources'), findsAtLeastNWidgets(1));
     expect(find.text('Structure'), findsOneWidget);
     expect(find.text('Customer-ready deck flow'), findsOneWidget);
+    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('Stakeholder-review deck'), findsOneWidget);
     expect(find.text('Notes'), findsOneWidget);
     expect(find.text('Speaker notes included'), findsOneWidget);
     expect(find.text('5'), findsAtLeastNWidgets(1));

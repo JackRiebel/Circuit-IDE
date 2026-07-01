@@ -74,6 +74,12 @@ void main() {
 
     final metadata = const PowerPointArtifactRenderer().metadataFor(document);
     expect(metadata['slideCount'], inspection.slideCount);
+    expect(metadata['deckType'], 'Customer proposal deck');
+    expect(metadata['handoffStatus'], 'Ready for stakeholder review');
+    expect(
+      metadata['decisionAsk'],
+      'Review the recommendation, confirm assumptions, and approve the next implementation step.',
+    );
     expect(metadata['theme'], 'Dark');
     expect(metadata['audience'], 'Customer stakeholders');
     expect(metadata['deckPurpose'], 'Support a decision');
@@ -86,6 +92,23 @@ void main() {
       contains('Customer stakeholders should support a decision because'),
     );
     expect(metadata['tableCount'], 1);
+    expect(metadata['tableCoverage'], '1 table packaged');
+    expect(metadata['sourceCoverage'], '1 source item captured');
+    expect(metadata['agendaItems'], contains('Current State'));
+    expect(
+      metadata['slideFamilies'],
+      containsAll([
+        'Opening',
+        'Agenda',
+        'Decision snapshot',
+        'Recommendations',
+        'Roadmap',
+        'Data tables',
+        'Assumptions/sources',
+        'Appendix',
+      ]),
+    );
+    expect(metadata['validationGapCount'], 0);
     expect(metadata['tableSlideCount'], 1);
     expect(metadata['sectionDividerCount'], 2);
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
@@ -113,6 +136,7 @@ void main() {
     expect(metadata['hasSourcesSlide'], isTrue);
     expect(metadata['hasSpeakerNotes'], isTrue);
     expect(metadata['hasCustomerReadyStructure'], isTrue);
+    expect(metadata['hasCustomerReadyDeck'], isTrue);
   });
 
   test('PowerPoint inspector tracks declared slide count metadata', () {

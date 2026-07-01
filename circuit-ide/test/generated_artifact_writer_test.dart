@@ -54,17 +54,35 @@ Short executive summary for the customer.
       expect(artifact.sheetCount, greaterThanOrEqualTo(8));
       expect(artifact.summary, contains('PowerPoint deck'));
       expect(artifact.previewRows.first, ['Slide', 'Type', 'Title']);
+      expect(artifact.metadata['deckType'], 'Customer proposal deck');
+      expect(
+        artifact.metadata['handoffStatus'],
+        'Ready for stakeholder review',
+      );
+      expect(
+        artifact.metadata['decisionAsk'],
+        'Review the recommendation, confirm assumptions, and approve the next implementation step.',
+      );
       expect(artifact.metadata['theme'], 'Dark');
       expect(artifact.metadata['slideCount'], artifact.sheetCount);
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
       expect(artifact.metadata['assumptionCount'], 1);
       expect(artifact.metadata['citationCount'], 1);
+      expect(artifact.metadata['agendaItems'], contains('Current State'));
+      expect(
+        artifact.metadata['slideFamilies'],
+        containsAll(['Opening', 'Agenda', 'Decision snapshot']),
+      );
+      expect(artifact.metadata['tableCoverage'], '1 table packaged');
+      expect(artifact.metadata['sourceCoverage'], '1 source item captured');
+      expect(artifact.metadata['validationGapCount'], 0);
       expect(artifact.metadata['hasAgenda'], isTrue);
       expect(artifact.metadata['hasDecisionSnapshot'], isTrue);
       expect(artifact.metadata['hasRoadmap'], isTrue);
       expect(artifact.metadata['hasTableSlides'], isTrue);
       expect(artifact.metadata['hasSourcesSlide'], isTrue);
+      expect(artifact.metadata['hasCustomerReadyDeck'], isTrue);
       expect(
         artifact.previewRows.map((row) => row.join(' / ')),
         contains(contains('Decision Snapshot')),
