@@ -2029,6 +2029,16 @@ void main() {
           'Open each generated artifact from the Artifacts drawer before sharing.',
         ],
         'packageFileTypes': ['Word', 'PowerPoint', 'Chart'],
+        'packagePreviewSurfaces': [
+          'Executive brief preview',
+          'Slide outline',
+          'Chart visual preview',
+        ],
+        'packageVerificationChecks': [
+          'Open every customer-ready file before sharing.',
+          'Confirm assumptions and citations are present.',
+          'Validate chart thresholds with the account team.',
+        ],
         'packageReadinessSignals': [
           'Word: Native format ready',
           'PowerPoint: Native format ready',
@@ -2108,9 +2118,19 @@ void main() {
     );
     expect(find.text('Package contents'), findsOneWidget);
     expect(find.text('Package deliverables'), findsOneWidget);
+    expect(find.text('Preview surfaces'), findsOneWidget);
+    expect(find.text('Executive brief preview'), findsOneWidget);
+    expect(find.text('Slide outline'), findsOneWidget);
+    expect(find.text('Verification checks'), findsOneWidget);
+    expect(
+      find.text('Open every customer-ready file before sharing.'),
+      findsOneWidget,
+    );
     expect(find.text('deck.pptx'), findsAtLeastNWidgets(1));
     expect(find.text('PowerPoint'), findsAtLeastNWidgets(1));
 
+    await tester.ensureVisible(find.text('deck.pptx').last);
+    await tester.pump();
     await tester.tap(find.text('deck.pptx').last);
     await tester.pump();
 
@@ -2119,11 +2139,13 @@ void main() {
       'generated-deck-1',
     );
 
+    await tester.ensureVisible(find.text('business-case-package.md'));
+    await tester.pump();
     await tester.tap(find.text('business-case-package.md'));
     await tester.pump();
 
     expect(find.text('Package'), findsOneWidget);
-    expect(find.text('business use case package'), findsOneWidget);
+    expect(find.text('business use case package'), findsAtLeastNWidgets(1));
     expect(find.text('Package status'), findsOneWidget);
     expect(find.text('Package ready'), findsAtLeastNWidgets(1));
     expect(find.text('Package score'), findsOneWidget);
@@ -2137,7 +2159,7 @@ void main() {
       find.text(
         'Review the package and share the selected customer-ready files.',
       ),
-      findsOneWidget,
+      findsAtLeastNWidgets(1),
     );
     expect(find.text('Review workflow'), findsOneWidget);
     expect(find.textContaining('Review Word report narrative'), findsOneWidget);

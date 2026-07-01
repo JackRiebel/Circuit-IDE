@@ -3127,6 +3127,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                   ),
                 ),
               ),
+            if (_isArtifactPackageManifest(artifact))
+              _ArtifactPackageReadinessPanel(
+                artifact: artifact,
+                companionArtifacts: companionArtifacts,
+              ),
             _ArtifactDrawerPreview(artifact: artifact),
             if (companionArtifacts.isNotEmpty)
               _ArtifactPackageCompanionList(
@@ -3310,6 +3315,332 @@ bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
     GeneratedArtifactKind.powerPoint ||
     GeneratedArtifactKind.docx => false,
   };
+}
+
+class _ArtifactPackageReadinessPanel extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+  final List<GeneratedArtifact> companionArtifacts;
+
+  const _ArtifactPackageReadinessPanel({
+    required this.artifact,
+    required this.companionArtifacts,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final label = _metadataString(artifact, 'packageLabel');
+    final packageStatus = _metadataString(artifact, 'packageQualityStatus');
+    final qualityStatus = _metadataString(artifact, 'qualityStatus');
+    final status = packageStatus.isNotEmpty
+        ? packageStatus
+        : qualityStatus.isNotEmpty
+        ? qualityStatus
+        : artifact.statusLabel;
+    final artifactCount = _metadataInt(artifact, 'artifactCount');
+    final readyCount = _metadataInt(artifact, 'readyArtifactCount');
+    final averageScore = _metadataInt(artifact, 'averageQualityScore');
+    final fileTypes = _metadataStringList(artifact, 'packageFileTypes');
+    final files = _metadataStringList(artifact, 'artifactFiles');
+    final previewSurfaces = _metadataStringList(
+      artifact,
+      'packagePreviewSurfaces',
+    );
+    final checks = _metadataStringList(artifact, 'packageVerificationChecks');
+    final signals = _metadataStringList(artifact, 'packageReadinessSignals');
+    final gaps = _metadataStringList(artifact, 'packageReadinessGaps');
+    final next = _metadataString(artifact, 'packageNextAction');
+    final companionCount = companionArtifacts.length;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.inventory_2_outlined,
+                color: tokens.textMuted,
+                size: 14,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  label.isEmpty ? 'Artifact package' : label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.xs,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _ArtifactPackageStatusPill(text: status),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: [
+              if (artifactCount > 0)
+                _ArtifactPackageMetricPill(
+                  label: 'Artifacts',
+                  value: readyCount > 0
+                      ? '$readyCount/$artifactCount'
+                      : '$artifactCount',
+                ),
+              if (companionCount > 0)
+                _ArtifactPackageMetricPill(
+                  label: 'Linked',
+                  value: '$companionCount',
+                ),
+              if (averageScore > 0)
+                _ArtifactPackageMetricPill(
+                  label: 'Quality',
+                  value: '$averageScore/100',
+                ),
+              for (final type in fileTypes.take(4))
+                _ArtifactPackageChip(text: type),
+              if (fileTypes.length > 4)
+                _ArtifactPackageChip(text: '+${fileTypes.length - 4} types'),
+            ],
+          ),
+          if (previewSurfaces.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArtifactPackageSignalGroup(
+              title: 'Preview surfaces',
+              values: previewSurfaces,
+            ),
+          ],
+          if (checks.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArtifactPackageSignalGroup(
+              title: 'Verification checks',
+              values: checks,
+            ),
+          ],
+          if (signals.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArtifactPackageSignalGroup(
+              title: 'Ready signals',
+              values: signals,
+            ),
+          ],
+          if (gaps.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArtifactPackageSignalGroup(
+              title: 'Readiness gaps',
+              values: gaps,
+              warning: true,
+            ),
+          ],
+          if (files.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _ArtifactPackageSignalGroup(
+              title: 'Included files',
+              values: files,
+              maxVisible: 5,
+            ),
+          ],
+          if (next.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              next,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ArtifactPackageStatusPill extends ConsumerWidget {
+  final String text;
+
+  const _ArtifactPackageStatusPill({required this.text});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: tokens.accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: tokens.textSecondary,
+          fontSize: FontSizes.xxs,
+          height: 1,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtifactPackageMetricPill extends ConsumerWidget {
+  final String label;
+  final String value;
+
+  const _ArtifactPackageMetricPill({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: tokens.studioControl.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.18)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xxs,
+            height: 1,
+          ),
+          children: [
+            TextSpan(text: '$label '),
+            TextSpan(
+              text: value,
+              style: TextStyle(
+                color: tokens.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtifactPackageChip extends ConsumerWidget {
+  final String text;
+
+  const _ArtifactPackageChip({required this.text});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: tokens.textMuted,
+          fontSize: FontSizes.xxs,
+          height: 1,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtifactPackageSignalGroup extends ConsumerWidget {
+  final String title;
+  final List<String> values;
+  final int maxVisible;
+  final bool warning;
+
+  const _ArtifactPackageSignalGroup({
+    required this.title,
+    required this.values,
+    this.maxVisible = 3,
+    this.warning = false,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final visible = values.take(maxVisible).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: tokens.textMuted,
+            fontSize: FontSizes.xxs,
+            height: 1.1,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        for (final value in visible)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  warning ? Icons.error_outline : Icons.check_circle_outline,
+                  color: warning
+                      ? tokens.warning.withValues(alpha: 0.86)
+                      : tokens.textMuted,
+                  size: 12,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    value,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontSize: FontSizes.xxs,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (values.length > visible.length)
+          Padding(
+            padding: const EdgeInsets.only(left: 17),
+            child: Text(
+              '+${values.length - visible.length} more',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                height: 1.1,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _ArtifactPackageCompanionList extends ConsumerWidget {
