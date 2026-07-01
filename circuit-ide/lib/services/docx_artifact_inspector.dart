@@ -20,6 +20,9 @@ class DocxArtifactInspection {
   final int declaredParagraphCount;
   final bool hasReportOverview;
   final bool hasExecutiveDecisionBrief;
+  final bool hasRecommendationSummary;
+  final bool hasRiskRegister;
+  final bool hasNextStepActionPlan;
   final bool hasDocumentMap;
   final bool hasValidationChecklist;
   final bool hasAssumptionsAppendix;
@@ -48,6 +51,9 @@ class DocxArtifactInspection {
     required this.declaredParagraphCount,
     required this.hasReportOverview,
     required this.hasExecutiveDecisionBrief,
+    required this.hasRecommendationSummary,
+    required this.hasRiskRegister,
+    required this.hasNextStepActionPlan,
     required this.hasDocumentMap,
     required this.hasValidationChecklist,
     required this.hasAssumptionsAppendix,
@@ -74,6 +80,9 @@ class DocxArtifactInspection {
       isStructurallyValid &&
       hasReportOverview &&
       hasExecutiveDecisionBrief &&
+      hasRecommendationSummary &&
+      hasRiskRegister &&
+      hasNextStepActionPlan &&
       hasDocumentMap &&
       hasValidationChecklist &&
       hasCircuitFooter &&
@@ -120,6 +129,9 @@ class DocxArtifactInspector {
       declaredParagraphCount: _intElement(text, 'Paragraphs') ?? 0,
       hasReportOverview: text.contains('Report Overview'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
+      hasRecommendationSummary: text.contains('Recommendation Summary'),
+      hasRiskRegister: text.contains('Risk &amp; Assumption Register'),
+      hasNextStepActionPlan: text.contains('Next-Step Action Plan'),
       hasDocumentMap: text.contains('Document Map'),
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),

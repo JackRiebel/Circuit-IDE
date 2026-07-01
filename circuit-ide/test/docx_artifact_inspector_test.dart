@@ -53,6 +53,9 @@ void main() {
     expect(inspection.declaredWordCount, greaterThan(20));
     expect(inspection.declaredParagraphCount, greaterThan(10));
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasRecommendationSummary, isTrue);
+    expect(inspection.hasRiskRegister, isTrue);
+    expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasAssumptionsAppendix, isTrue);
     expect(inspection.hasSourcesAppendix, isTrue);
@@ -85,9 +88,48 @@ void main() {
     expect(inspection.hasSourcesAppendix, isFalse);
     expect(inspection.tableCount, greaterThanOrEqualTo(2));
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasRecommendationSummary, isTrue);
+    expect(inspection.hasRiskRegister, isTrue);
+    expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
+  });
+
+  test('DOCX report records evidence gaps and next-step actions', () {
+    const document = ArtifactDocument(
+      title: 'Business Use Case Brief',
+      summary: 'Business brief for customer automation opportunities.',
+      sections: [
+        ArtifactSection(
+          title: 'Recommended Use Cases',
+          bullets: [
+            'Recommend prioritizing lifecycle automation first.',
+            'Validate data quality before customer handoff.',
+          ],
+        ),
+        ArtifactSection(
+          title: 'Risks',
+          bullets: [
+            'Risk: Source data may be incomplete.',
+            'Next action: confirm executive sponsor and success metrics.',
+          ],
+        ),
+      ],
+    );
+
+    final bytes = const DocxArtifactRenderer().render(document);
+    final inspection = const DocxArtifactInspector().inspect(bytes);
+    final packageText = String.fromCharCodes(bytes);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(inspection.hasExpectedReportStructure, isTrue);
+    expect(inspection.hasRiskRegister, isTrue);
+    expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(packageText, contains('No cited evidence included'));
+    expect(packageText, contains('Evidence gap'));
+    expect(packageText, contains('Decision owner'));
+    expect(packageText, contains('Next-Step Action Plan'));
   });
 }

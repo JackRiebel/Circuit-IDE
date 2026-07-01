@@ -10,29 +10,36 @@ class DocxArtifactRenderer {
     return [
       ['Section', 'Type', 'Items'],
       ['1', 'Executive Decision Brief', '5'],
-      ['2', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
+      ['2', 'Recommendation Summary', '4'],
+      [
+        '3',
+        'Risk & Assumption Register',
+        '${_riskRegisterRows(document).length}',
+      ],
+      ['4', 'Next-Step Action Plan', '${_nextStepRows(document).length}'],
+      ['5', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
       for (var i = 0; i < document.sections.length; i++)
         [
-          '${i + 3}',
+          '${i + 6}',
           document.sections[i].title,
           '${document.sections[i].bullets.length + (document.sections[i].body.trim().isEmpty ? 0 : 1)}',
         ],
       if (document.tables.isNotEmpty)
         [
-          '${document.sections.length + 3}',
+          '${document.sections.length + 6}',
           'Data Tables',
           '${document.tables.length}',
         ],
-      ['${document.sections.length + 4}', 'Validation Checklist', '5'],
+      ['${document.sections.length + 7}', 'Validation Checklist', '5'],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 5}',
+          '${document.sections.length + 8}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 6}',
+          '${document.sections.length + 9}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -165,6 +172,12 @@ class DocxArtifactRenderer {
       ..write(_reportOverviewTable(document))
       ..write(_paragraph('Executive Decision Brief', style: 'Heading1'))
       ..write(_executiveDecisionBriefTable(document))
+      ..write(_paragraph('Recommendation Summary', style: 'Heading1'))
+      ..write(_recommendationSummaryTable(document))
+      ..write(_paragraph('Risk & Assumption Register', style: 'Heading1'))
+      ..write(_riskRegisterTable(document))
+      ..write(_paragraph('Next-Step Action Plan', style: 'Heading1'))
+      ..write(_nextStepActionTable(document))
       ..write(_paragraph('Document Map', style: 'Heading1'))
       ..write(_documentMapTable(document))
       ..write(_paragraph('Executive Summary', style: 'Heading1'))
@@ -231,6 +244,18 @@ class DocxArtifactRenderer {
     final rows = <List<String>>[
       ['Section', 'Purpose'],
       ['Executive Decision Brief', 'Decision and handoff guidance.'],
+      [
+        'Recommendation Summary',
+        'Recommended path, rationale, dependencies, and decision owner.',
+      ],
+      [
+        'Risk & Assumption Register',
+        'Known risks, assumptions, evidence gaps, and mitigation guidance.',
+      ],
+      [
+        'Next-Step Action Plan',
+        'Immediate action items, owners, validation gates, and expected outputs.',
+      ],
       ['Executive Summary', 'Decision-ready summary of the artifact.'],
       for (final section in document.sections.take(12))
         [
@@ -304,6 +329,153 @@ class DocxArtifactRenderer {
     );
   }
 
+  String _recommendationSummaryTable(ArtifactDocument document) {
+    final recommendation = _firstMatchingBullet(document, [
+      'recommend',
+      'solution',
+      'architecture',
+      'proposal',
+      'should',
+    ]);
+    final rationale = _firstMatchingBullet(document, [
+      'because',
+      'rationale',
+      'value',
+      'impact',
+      'benefit',
+    ]);
+    final dependency = _firstMatchingBullet(document, [
+      'depend',
+      'require',
+      'prereq',
+      'license',
+      'source',
+      'data',
+    ]);
+    return _table(
+      ArtifactTable(
+        title: 'Recommendation Summary',
+        rows: [
+          ['Field', 'Recommendation Detail'],
+          [
+            'Recommended path',
+            recommendation ??
+                'Use this report as a review artifact, then confirm the preferred implementation path with stakeholders.',
+          ],
+          [
+            'Rationale',
+            rationale ??
+                'The recommendation should be validated against customer goals, constraints, source data, and implementation risk.',
+          ],
+          [
+            'Dependencies',
+            dependency ??
+                'Confirm source evidence, ownership, timeline, access, licensing, and acceptance criteria.',
+          ],
+          ['Decision owner', _decisionOwner(document)],
+        ],
+      ),
+    );
+  }
+
+  String _riskRegisterTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Risk & Assumption Register',
+        rows: _riskRegisterRows(document),
+      ),
+    );
+  }
+
+  List<List<String>> _riskRegisterRows(ArtifactDocument document) {
+    final rows = <List<String>>[
+      ['Item', 'Type', 'Impact', 'Mitigation / Evidence Needed'],
+    ];
+    final riskBullets = _matchingBullets(document, [
+      'risk',
+      'block',
+      'gap',
+      'unknown',
+      'constraint',
+      'unsupported',
+    ]);
+    for (final risk in riskBullets.take(4)) {
+      rows.add([
+        _truncate(risk, 90),
+        'Risk',
+        'Can affect decision confidence or implementation readiness.',
+        'Validate with owner, source data, or technical evidence.',
+      ]);
+    }
+    for (final assumption in document.assumptions.take(4)) {
+      rows.add([
+        _truncate(assumption, 90),
+        'Assumption',
+        'If incorrect, the recommendation may need revision.',
+        'Confirm with customer or authoritative source before handoff.',
+      ]);
+    }
+    if (document.citations.isEmpty) {
+      rows.add([
+        'No cited evidence included',
+        'Evidence gap',
+        'Limits confidence for final customer handoff.',
+        'Attach source URLs, checked dates, or workshop evidence.',
+      ]);
+    }
+    if (rows.length == 1) {
+      rows.add([
+        'No explicit risks were provided',
+        'Review item',
+        'Unknown risks may still exist.',
+        'Run stakeholder review and capture assumptions before final approval.',
+      ]);
+    }
+    return rows;
+  }
+
+  String _nextStepActionTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Next-Step Action Plan',
+        rows: _nextStepRows(document),
+      ),
+    );
+  }
+
+  List<List<String>> _nextStepRows(ArtifactDocument document) {
+    final explicit = _matchingBullets(document, [
+      'next',
+      'phase',
+      'action',
+      'implement',
+      'validate',
+      'verify',
+      'confirm',
+    ]).take(5).toList(growable: false);
+    final actions = explicit.isEmpty
+        ? [
+            'Review the recommendation with stakeholders.',
+            'Confirm assumptions, source evidence, and acceptance criteria.',
+            if (document.tables.isNotEmpty)
+              'Validate the ${document.tables.length} supporting data table${document.tables.length == 1 ? '' : 's'}.',
+            'Approve or revise the implementation path.',
+          ]
+        : explicit;
+    return [
+      ['Step', 'Action', 'Owner', 'Expected Output'],
+      for (var i = 0; i < actions.length; i++)
+        [
+          '${i + 1}',
+          _truncate(actions[i], 110),
+          i == 0 ? 'Project owner' : 'Assigned stakeholder',
+          i == actions.length - 1
+              ? 'Decision-ready handoff or implementation request'
+              : 'Validated input for the next step',
+        ],
+    ];
+  }
+
   String _validationChecklistTable(ArtifactDocument document) {
     return _table(
       ArtifactTable(
@@ -373,14 +545,31 @@ class DocxArtifactRenderer {
   }
 
   String? _firstMatchingBullet(ArtifactDocument document, List<String> terms) {
+    final matches = _matchingBullets(document, terms);
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  List<String> _matchingBullets(ArtifactDocument document, List<String> terms) {
     final loweredTerms = terms.map((term) => term.toLowerCase()).toList();
+    final matches = <String>[];
     for (final section in document.sections) {
+      final titleMatches = loweredTerms.any(
+        section.title.toLowerCase().contains,
+      );
       for (final bullet in section.bullets) {
         final normalized = bullet.toLowerCase();
-        if (loweredTerms.any(normalized.contains)) return bullet;
+        if (titleMatches || loweredTerms.any(normalized.contains)) {
+          matches.add(bullet);
+        }
+      }
+      for (final paragraph in _paragraphs(section.body).take(3)) {
+        final normalized = paragraph.toLowerCase();
+        if (titleMatches || loweredTerms.any(normalized.contains)) {
+          matches.add(paragraph);
+        }
       }
     }
-    return null;
+    return matches;
   }
 
   String _sectionTitleFallback(ArtifactDocument document) {
@@ -404,6 +593,27 @@ class DocxArtifactRenderer {
       return 'Add source evidence before using this as a final customer handoff.';
     }
     return 'Review with stakeholders and confirm final action owners.';
+  }
+
+  String _decisionOwner(ArtifactDocument document) {
+    final combined = [
+      document.title,
+      document.summary,
+      for (final section in document.sections) section.title,
+    ].join(' ').toLowerCase();
+    if (combined.contains('architecture')) {
+      return 'Architecture owner / customer sponsor';
+    }
+    if (combined.contains('business')) return 'Business sponsor';
+    if (combined.contains('evidence')) return 'Evidence reviewer';
+    if (combined.contains('implementation')) return 'Implementation owner';
+    return 'Customer stakeholder';
+  }
+
+  String _truncate(String value, int maxLength) {
+    final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+    return '${normalized.substring(0, maxLength - 3).trim()}...';
   }
 
   String _handoffStatus(ArtifactDocument document) {
