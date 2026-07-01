@@ -161,12 +161,18 @@ Here is the data.
     final packageText = String.fromCharCodes(bytes);
     expect(packageText, contains('Requirements'));
     expect(packageText, contains('Sizing Inputs'));
+    expect(packageText, contains('Capacity Model'));
+    expect(packageText, contains('PoE Budget'));
+    expect(packageText, contains('WAN Throughput'));
+    expect(packageText, contains('HA Growth'));
     expect(packageText, contains('Recommendations'));
     expect(packageText, contains('Validation'));
     expect(packageText, contains('Assumptions'));
+    expect(packageText, contains('Decision Summary'));
     expect(packageText, contains('500'));
     expect(packageText, contains('90'));
     expect(packageText, contains('2 Gbps'));
+    expect(packageText, contains('inspected throughput'));
   });
 
   test(

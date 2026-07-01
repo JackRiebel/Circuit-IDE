@@ -50,14 +50,36 @@ void main() {
         inspection.hasSheets(const [
           'Requirements',
           'Sizing Inputs',
+          'Capacity Model',
+          'PoE Budget',
+          'WAN Throughput',
+          'HA Growth',
           'Recommendations',
           'Validation',
           'Assumptions',
+          'Decision Summary',
         ]),
         isTrue,
       );
       expect(inspection.sheetContains('Requirements', '500'), isTrue);
       expect(inspection.sheetContains('Requirements', '90'), isTrue);
+      expect(
+        inspection.sheetContains('Capacity Model', 'Planning Value'),
+        isTrue,
+      );
+      expect(inspection.sheetContains('PoE Budget', 'Wi-Fi 7/UPOE'), isTrue);
+      expect(
+        inspection.sheetContains('WAN Throughput', 'inspected throughput'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('HA Growth', 'EoX replacement PID'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Decision Summary', 'Access switching'),
+        isTrue,
+      );
       expect(inspection.sheetContains('Validation', 'PoE/UPOE budget'), isTrue);
       expect(
         inspection.sheetContains('Validation', 'Lifecycle / LDOS'),
