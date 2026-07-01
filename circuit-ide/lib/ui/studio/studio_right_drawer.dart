@@ -3889,6 +3889,15 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Readiness score',
             '${_metadataInt(artifact, 'topologyReadinessScore')}/100',
           ),
+        if (_metadataString(artifact, 'topologyQualityStatus').isNotEmpty)
+          ('Quality', _metadataString(artifact, 'topologyQualityStatus')),
+        if (_metadataBool(artifact, 'hasTopologyQualityManifest'))
+          (
+            'Quality manifest',
+            _metadataString(artifact, 'topologyQualityManifestVersion').isEmpty
+                ? 'Embedded'
+                : 'Manifest v${_metadataString(artifact, 'topologyQualityManifestVersion')}',
+          ),
         if (_metadataString(artifact, 'resiliencyModel').isNotEmpty)
           ('Resiliency', _metadataString(artifact, 'resiliencyModel')),
         if (_metadataStringList(artifact, 'designZones').isNotEmpty)
@@ -3918,6 +3927,36 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Readiness',
             _compactSignalList(
               _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'topologyVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(
+                artifact,
+                'topologyVisualVerificationChecklist',
+              ),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'topologyEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'topologyEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'topologyPublishingMetadata',
+        ).isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'topologyPublishingMetadata'),
             ),
           ),
         if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)

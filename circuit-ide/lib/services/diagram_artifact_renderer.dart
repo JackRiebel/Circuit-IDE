@@ -134,6 +134,29 @@ class DiagramArtifactRenderer {
       graph: graph,
       assumptions: assumptions,
     );
+    final topologyQualityChecklist = _topologyQualityChecklistFor(
+      graph: graph,
+      tiers: tiers,
+      assumptions: assumptions,
+      readinessItems: readinessItems,
+      capacityItems: capacityItems,
+      linkSchedule: linkSchedule,
+      advisories: advisories,
+      failureDomains: failureDomains,
+    );
+    final topologyVisualVerificationChecklist =
+        _topologyVisualVerificationChecklistFor(profile);
+    final topologyEvidencePolicy = _topologyEvidencePolicyFor(profile);
+    final topologyPublishingMetadata = _topologyPublishingMetadataFor(
+      topologyReadinessScore,
+      validationGapLabels,
+      topologyRiskFlags,
+    );
+    final topologyQualityStatus = _topologyQualityStatusFor(
+      topologyReadinessScore,
+      validationGapLabels,
+      topologyRiskFlags,
+    );
     final customerReady =
         validationGapLabels.isEmpty &&
         graph.nodes.isNotEmpty &&
@@ -186,6 +209,18 @@ class DiagramArtifactRenderer {
         topologyReadinessScore,
         topologyRiskFlags,
       ),
+      'topologyQualityManifestVersion': '1.0',
+      'topologyQualityStatus': topologyQualityStatus,
+      'topologyQualityChecklist': topologyQualityChecklist,
+      'topologyQualityChecklistCount': topologyQualityChecklist.length,
+      'topologyVisualVerificationChecklist':
+          topologyVisualVerificationChecklist,
+      'topologyVisualVerificationChecklistCount':
+          topologyVisualVerificationChecklist.length,
+      'topologyEvidencePolicy': topologyEvidencePolicy,
+      'topologyEvidencePolicyCount': topologyEvidencePolicy.length,
+      'topologyPublishingMetadata': topologyPublishingMetadata,
+      'topologyPublishingMetadataCount': topologyPublishingMetadata.length,
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
       'advisoryCount': advisories.length,
@@ -199,6 +234,21 @@ class DiagramArtifactRenderer {
       'hasLinkSchedule': linkSchedule.isNotEmpty,
       'hasCapacityChecks': capacityItems.isNotEmpty,
       'hasReadinessScorecard': readinessItems.isNotEmpty,
+      'hasTopologyQualityManifest': true,
+      'hasTopologySvgMetadata': true,
+      'hasEmbeddedTopologySpec': true,
+      'hasTopologyEvidencePolicy': topologyEvidencePolicy.isNotEmpty,
+      'hasTopologyVisualVerificationChecklist':
+          topologyVisualVerificationChecklist.isNotEmpty,
+      'hasTopologyValidationGate': topologyQualityChecklist.isNotEmpty,
+      'hasTopologyPublishingMetadata': topologyPublishingMetadata.isNotEmpty,
+      'hasRoleLegend': designZoneLabels.isNotEmpty,
+      'hasPortPowerWarnings': topologyRiskFlags.any(
+        (flag) =>
+            flag.contains('Wi-Fi 7') ||
+            flag.contains('PoE') ||
+            flag.contains('power'),
+      ),
       'hasDesignAdvisoryPanel': advisories.isNotEmpty,
       'hasFailureDomainReview': failureDomains.isNotEmpty,
       'hasLifecycleReplacementCaveat': advisories.any(
@@ -693,6 +743,17 @@ class DiagramArtifactRenderer {
       );
 
     _drawTopologySummary(buffer, profile, width: width);
+    _drawQualityGate(
+      buffer,
+      status: metadata['topologyQualityStatus']?.toString() ?? 'Draft',
+      score: metadata['topologyReadinessScore'] is int
+          ? metadata['topologyReadinessScore'] as int
+          : 0,
+      checklistCount: metadata['topologyQualityChecklistCount'] is int
+          ? metadata['topologyQualityChecklistCount'] as int
+          : 0,
+      width: width,
+    );
     _drawDesignLegend(buffer, tiers, width: width);
     _drawTierBands(buffer, tiers, width: width, height: height);
 
@@ -870,6 +931,32 @@ class DiagramArtifactRenderer {
         );
     }
     buffer.writeln('</g>');
+  }
+
+  void _drawQualityGate(
+    StringBuffer buffer, {
+    required String status,
+    required int score,
+    required int checklistCount,
+    required int width,
+  }) {
+    const cardWidth = 294.0;
+    final x = width - cardWidth - 36;
+    const y = 36.0;
+    buffer
+      ..writeln(
+        '<g id="topology-quality-gate" data-quality-status="${_xml(status)}" data-readiness-score="$score" data-quality-check-count="$checklistCount">',
+      )
+      ..writeln(
+        '<rect x="${x.toStringAsFixed(1)}" y="$y" width="$cardWidth" height="42" rx="12" fill="#141817" stroke="#2f3a37"/>',
+      )
+      ..writeln(
+        '<text x="${(x + 14).toStringAsFixed(1)}" y="${y + 18}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">Quality gate</text>',
+      )
+      ..writeln(
+        '<text x="${(x + 14).toStringAsFixed(1)}" y="${y + 34}" fill="#8dd3bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">${_xml(_shorten('$status • $score/100 • $checklistCount checks', 48))}</text>',
+      )
+      ..writeln('</g>');
   }
 
   void _drawDesignLegend(
@@ -1466,6 +1553,86 @@ class DiagramArtifactRenderer {
       return 'Needs validation before handoff';
     }
     return 'Discovery inputs required';
+  }
+
+  String _topologyQualityStatusFor(
+    int readinessScore,
+    List<String> validationGaps,
+    List<String> topologyRiskFlags,
+  ) {
+    if (validationGaps.isEmpty &&
+        topologyRiskFlags.length <= 2 &&
+        readinessScore >= 88) {
+      return 'Customer-review ready';
+    }
+    if (readinessScore >= 72) return 'Architecture-review ready';
+    if (readinessScore >= 50) return 'Needs validation';
+    return 'Discovery required';
+  }
+
+  List<String> _topologyQualityChecklistFor({
+    required _DiagramGraph graph,
+    required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
+    required List<String> assumptions,
+    required List<({String check, String state, bool ready})> readinessItems,
+    required List<({String metric, String value, String guidance, bool ready})>
+    capacityItems,
+    required List<({String from, String to, String link, String validation})>
+    linkSchedule,
+    required List<({String topic, String guidance, bool critical})> advisories,
+    required List<_FailureDomainRow> failureDomains,
+  }) {
+    return <String>[
+      if (graph.nodes.isNotEmpty) 'Device and role inventory embedded',
+      if (graph.edges.isNotEmpty) 'Logical links and labels embedded',
+      if (tiers.isNotEmpty) 'Design-zone legend embedded',
+      if (linkSchedule.isNotEmpty) 'Link validation schedule embedded',
+      if (readinessItems.isNotEmpty) 'Readiness scorecard embedded',
+      if (capacityItems.isNotEmpty) 'Capacity checks embedded',
+      if (failureDomains.isNotEmpty) 'Failure-domain review embedded',
+      if (advisories.isNotEmpty) 'Architecture advisories embedded',
+      if (assumptions.isNotEmpty) 'Assumptions embedded',
+    ];
+  }
+
+  List<String> _topologyVisualVerificationChecklistFor(
+    _TopologyProfile profile,
+  ) {
+    return <String>[
+      'SVG has title, description, viewBox, and embedded metadata',
+      'Topology summary, design zones, links, and nodes are visible',
+      'Readiness, capacity, validation, and failure-domain panels are visible',
+      if (profile.apCount > 0)
+        'Wireless/AP counts and port-power checks are visible',
+      if (profile.hasDualWan || profile.hasWarmSpare)
+        'Resiliency model and failure-domain posture are visible',
+    ];
+  }
+
+  List<String> _topologyEvidencePolicyFor(_TopologyProfile profile) {
+    return <String>[
+      'Lifecycle and EoX data is evidence for dates, not final replacement selection',
+      'Replacement choices require current portfolio, PoE, uplink, licensing, and lifecycle validation',
+      if (profile.hasWifi7)
+        'Wi-Fi 7 designs require explicit UPOE/UPOE+, mGig, and power-supply validation',
+      'Customer handoff requires named assumptions, validation gaps, and review owner',
+    ];
+  }
+
+  List<String> _topologyPublishingMetadataFor(
+    int readinessScore,
+    List<String> validationGaps,
+    List<String> topologyRiskFlags,
+  ) {
+    return <String>[
+      'Readiness score: $readinessScore/100',
+      validationGaps.isEmpty
+          ? 'No validation gaps detected by parser'
+          : 'Validation gaps: ${validationGaps.take(3).join(', ')}',
+      topologyRiskFlags.length <= 2
+          ? 'Risk posture: review standard topology assumptions'
+          : 'Risk posture: ${topologyRiskFlags.take(3).join(', ')}',
+    ];
   }
 
   List<String> _designZoneLabels(

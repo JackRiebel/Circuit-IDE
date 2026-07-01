@@ -18,6 +18,11 @@ class DiagramArtifactInspection {
   final bool hasCapacityPanel;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
+  final bool hasTopologyQualityManifest;
+  final bool hasTopologyQualityGate;
+  final bool hasEmbeddedTopologySpec;
+  final bool hasTopologyEvidencePolicy;
+  final bool hasTopologyVisualVerificationChecklist;
   final int nodeCount;
   final int edgeCount;
   final int tierCount;
@@ -29,6 +34,9 @@ class DiagramArtifactInspection {
   final int failureDomainCount;
   final int criticalFailureDomainCount;
   final int capacityItemCount;
+  final int topologyQualityChecklistCount;
+  final int topologyEvidencePolicyCount;
+  final int topologyVisualVerificationChecklistCount;
   final int siteCount;
   final int mdfCount;
   final int idfCount;
@@ -48,6 +56,7 @@ class DiagramArtifactInspection {
   final bool hasWifi7;
   final bool hasLifecycleReplacementCaveat;
   final bool hasWifi7PowerAdvisory;
+  final String topologyQualityStatus;
   final String? title;
   final List<String> tierLabels;
   final List<String> deviceTokens;
@@ -70,6 +79,11 @@ class DiagramArtifactInspection {
     required this.hasCapacityPanel,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
+    required this.hasTopologyQualityManifest,
+    required this.hasTopologyQualityGate,
+    required this.hasEmbeddedTopologySpec,
+    required this.hasTopologyEvidencePolicy,
+    required this.hasTopologyVisualVerificationChecklist,
     required this.nodeCount,
     required this.edgeCount,
     required this.tierCount,
@@ -81,6 +95,9 @@ class DiagramArtifactInspection {
     required this.failureDomainCount,
     required this.criticalFailureDomainCount,
     required this.capacityItemCount,
+    required this.topologyQualityChecklistCount,
+    required this.topologyEvidencePolicyCount,
+    required this.topologyVisualVerificationChecklistCount,
     required this.siteCount,
     required this.mdfCount,
     required this.idfCount,
@@ -100,6 +117,7 @@ class DiagramArtifactInspection {
     required this.hasWifi7,
     required this.hasLifecycleReplacementCaveat,
     required this.hasWifi7PowerAdvisory,
+    required this.topologyQualityStatus,
     required this.title,
     required this.tierLabels,
     required this.deviceTokens,
@@ -128,7 +146,12 @@ class DiagramArtifactInspection {
       hasFailureDomainReview &&
       hasCapacityPanel &&
       hasValidationChecklist &&
-      hasAssumptionsPanel;
+      hasAssumptionsPanel &&
+      hasTopologyQualityManifest &&
+      hasTopologyQualityGate &&
+      hasEmbeddedTopologySpec &&
+      hasTopologyEvidencePolicy &&
+      hasTopologyVisualVerificationChecklist;
 
   bool containsDeviceToken(String value) => deviceTokens.any((token) {
     final normalizedToken = token.toLowerCase();
@@ -201,6 +224,10 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'criticalFailureDomainCount') ??
         _dataInt(svg, 'data-critical-failure-domain-count') ??
         0;
+    final topologyQualityChecklistCount =
+        _metadataInt(metadata, 'topologyQualityChecklistCount') ??
+        _dataInt(svg, 'data-quality-check-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -224,6 +251,20 @@ class DiagramArtifactInspector {
       hasAssumptionsPanel:
           svg.contains('id="topology-assumptions"') ||
           svg.contains('Assumptions'),
+      hasTopologyQualityManifest:
+          metadata['hasTopologyQualityManifest'] == true &&
+          metadata['topologyQualityManifestVersion']?.toString().isNotEmpty ==
+              true,
+      hasTopologyQualityGate: svg.contains('id="topology-quality-gate"'),
+      hasEmbeddedTopologySpec: metadata['topologySpec'] is Map,
+      hasTopologyEvidencePolicy:
+          metadata['hasTopologyEvidencePolicy'] == true &&
+          (_metadataInt(metadata, 'topologyEvidencePolicyCount') ?? 0) > 0,
+      hasTopologyVisualVerificationChecklist:
+          metadata['hasTopologyVisualVerificationChecklist'] == true &&
+          (_metadataInt(metadata, 'topologyVisualVerificationChecklistCount') ??
+                  0) >
+              0,
       nodeCount: nodeCount,
       edgeCount: edgeCount,
       tierCount: tierCount,
@@ -235,6 +276,12 @@ class DiagramArtifactInspector {
       failureDomainCount: failureDomainCount,
       criticalFailureDomainCount: criticalFailureDomainCount,
       capacityItemCount: capacityItemCount,
+      topologyQualityChecklistCount: topologyQualityChecklistCount,
+      topologyEvidencePolicyCount:
+          _metadataInt(metadata, 'topologyEvidencePolicyCount') ?? 0,
+      topologyVisualVerificationChecklistCount:
+          _metadataInt(metadata, 'topologyVisualVerificationChecklistCount') ??
+          0,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
       idfCount: _metadataInt(metadata, 'idfCount') ?? 0,
@@ -267,6 +314,8 @@ class DiagramArtifactInspector {
       hasWifi7PowerAdvisory:
           metadata['hasWifi7PowerAdvisory'] == true ||
           svg.contains('Wi-Fi 7 APs require explicit UPOE'),
+      topologyQualityStatus:
+          metadata['topologyQualityStatus']?.toString() ?? '',
       title: title,
       tierLabels: tierLabels,
       deviceTokens: deviceTokens,

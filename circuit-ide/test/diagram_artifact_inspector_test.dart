@@ -39,6 +39,11 @@ graph LR
     expect(inspection.hasFailureDomainReview, isTrue);
     expect(inspection.hasCapacityPanel, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasTopologyQualityManifest, isTrue);
+    expect(inspection.hasTopologyQualityGate, isTrue);
+    expect(inspection.hasEmbeddedTopologySpec, isTrue);
+    expect(inspection.hasTopologyEvidencePolicy, isTrue);
+    expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
     expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
     expect(inspection.linkScheduleCount, 2);
     expect(inspection.readinessItemCount, 4);
@@ -47,6 +52,13 @@ graph LR
     expect(inspection.criticalFailureDomainCount, greaterThanOrEqualTo(1));
     expect(inspection.hasLifecycleReplacementCaveat, isTrue);
     expect(inspection.capacityItemCount, 4);
+    expect(inspection.topologyQualityChecklistCount, greaterThanOrEqualTo(8));
+    expect(inspection.topologyEvidencePolicyCount, greaterThanOrEqualTo(3));
+    expect(
+      inspection.topologyVisualVerificationChecklistCount,
+      greaterThanOrEqualTo(3),
+    );
+    expect(inspection.topologyQualityStatus, isNotEmpty);
   });
 
   test(
@@ -79,6 +91,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasDesignAdvisoryPanel, isTrue);
       expect(inspection.hasFailureDomainReview, isTrue);
       expect(inspection.hasCapacityPanel, isTrue);
+      expect(inspection.hasTopologyQualityManifest, isTrue);
+      expect(inspection.hasTopologyQualityGate, isTrue);
+      expect(inspection.hasEmbeddedTopologySpec, isTrue);
+      expect(inspection.hasTopologyEvidencePolicy, isTrue);
+      expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
       expect(
@@ -131,6 +148,24 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(result.metadata['topologyHandoffActionCount'], greaterThan(2));
       expect(result.metadata['topologyRiskFlagCount'], greaterThan(3));
       expect(result.metadata['topologyReadinessScore'], lessThan(100));
+      expect(result.metadata['topologyQualityManifestVersion'], '1.0');
+      expect(result.metadata['hasTopologyQualityManifest'], isTrue);
+      expect(result.metadata['hasEmbeddedTopologySpec'], isTrue);
+      expect(result.metadata['hasTopologyEvidencePolicy'], isTrue);
+      expect(result.metadata['hasTopologyVisualVerificationChecklist'], isTrue);
+      expect(result.metadata['hasTopologyValidationGate'], isTrue);
+      expect(result.metadata['topologyQualityChecklistCount'], greaterThan(7));
+      expect(result.metadata['topologyEvidencePolicyCount'], greaterThan(2));
+      expect(
+        result.metadata['topologyVisualVerificationChecklistCount'],
+        greaterThan(3),
+      );
+      expect(
+        result.metadata['topologyEvidencePolicy'],
+        contains(
+          'Lifecycle and EoX data is evidence for dates, not final replacement selection',
+        ),
+      );
       expect(
         result.metadata['topologyReadinessLevel'],
         'Needs validation before handoff',
@@ -145,6 +180,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       );
       expect(svg, contains('Architecture advisories'));
       expect(svg, contains('Failure-domain review'));
+      expect(svg, contains('Quality gate'));
       expect(svg, contains('EoX replacement PIDs'));
       expect(svg, contains('Wi-Fi 7 APs require explicit UPOE'));
     },
@@ -188,15 +224,24 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.hasWifi7, isTrue);
     expect(inspection.hasDesignAdvisoryPanel, isTrue);
     expect(inspection.hasFailureDomainReview, isTrue);
+    expect(inspection.hasTopologyQualityManifest, isTrue);
+    expect(inspection.hasTopologyQualityGate, isTrue);
+    expect(inspection.hasEmbeddedTopologySpec, isTrue);
+    expect(inspection.hasTopologyEvidencePolicy, isTrue);
+    expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
     expect(inspection.hasLifecycleReplacementCaveat, isTrue);
     expect(inspection.hasWifi7PowerAdvisory, isTrue);
     expect(inspection.advisoryCount, greaterThanOrEqualTo(3));
     expect(inspection.failureDomainCount, 5);
     expect(inspection.criticalFailureDomainCount, 0);
+    expect(inspection.topologyQualityStatus, isNotEmpty);
+    expect(inspection.topologyQualityChecklistCount, greaterThanOrEqualTo(8));
+    expect(inspection.topologyEvidencePolicyCount, greaterThanOrEqualTo(4));
     expect(svg, contains('Inventory'));
     expect(svg, contains('Design zones'));
     expect(svg, contains('Architecture advisories'));
     expect(svg, contains('Failure-domain review'));
+    expect(svg, contains('Quality gate'));
     expect(svg, contains('Link schedule'));
     expect(svg, contains('Readiness scorecard'));
     expect(svg, contains('Capacity checks'));
