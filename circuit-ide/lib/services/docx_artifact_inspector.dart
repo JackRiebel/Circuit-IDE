@@ -19,11 +19,14 @@ class DocxArtifactInspection {
   final int declaredWordCount;
   final int declaredParagraphCount;
   final bool hasReportOverview;
+  final bool hasExecutiveDecisionBrief;
   final bool hasDocumentMap;
+  final bool hasValidationChecklist;
   final bool hasAssumptionsAppendix;
   final bool hasSourcesAppendix;
   final bool hasCircuitFooter;
   final bool hasEnterpriseStyles;
+  final bool hasKeywordsMetadata;
 
   const DocxArtifactInspection({
     required this.hasZipHeader,
@@ -44,11 +47,14 @@ class DocxArtifactInspection {
     required this.declaredWordCount,
     required this.declaredParagraphCount,
     required this.hasReportOverview,
+    required this.hasExecutiveDecisionBrief,
     required this.hasDocumentMap,
+    required this.hasValidationChecklist,
     required this.hasAssumptionsAppendix,
     required this.hasSourcesAppendix,
     required this.hasCircuitFooter,
     required this.hasEnterpriseStyles,
+    required this.hasKeywordsMetadata,
   });
 
   bool get isStructurallyValid =>
@@ -67,9 +73,12 @@ class DocxArtifactInspection {
   bool get hasExpectedReportStructure =>
       isStructurallyValid &&
       hasReportOverview &&
+      hasExecutiveDecisionBrief &&
       hasDocumentMap &&
+      hasValidationChecklist &&
       hasCircuitFooter &&
-      hasEnterpriseStyles;
+      hasEnterpriseStyles &&
+      hasKeywordsMetadata;
 }
 
 class DocxArtifactInspector {
@@ -110,7 +119,9 @@ class DocxArtifactInspector {
       declaredWordCount: _intElement(text, 'Words') ?? 0,
       declaredParagraphCount: _intElement(text, 'Paragraphs') ?? 0,
       hasReportOverview: text.contains('Report Overview'),
+      hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
       hasDocumentMap: text.contains('Document Map'),
+      hasValidationChecklist: text.contains('Validation Checklist'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),
       hasSourcesAppendix: text.contains('Appendix B: Sources / Evidence'),
       hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
@@ -119,6 +130,10 @@ class DocxArtifactInspector {
           text.contains('Heading1') &&
           text.contains('Caption') &&
           text.contains('CBD5E1'),
+      hasKeywordsMetadata:
+          text.contains('<cp:keywords>') &&
+          text.contains('enterprise') &&
+          text.contains('CircuitCode'),
     );
   }
 

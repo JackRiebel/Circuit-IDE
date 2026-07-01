@@ -52,8 +52,11 @@ void main() {
     expect(inspection.headingCount, greaterThanOrEqualTo(6));
     expect(inspection.declaredWordCount, greaterThan(20));
     expect(inspection.declaredParagraphCount, greaterThan(10));
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasAssumptionsAppendix, isTrue);
     expect(inspection.hasSourcesAppendix, isTrue);
+    expect(inspection.hasKeywordsMetadata, isTrue);
   });
 
   test('DOCX inspector verifies report package without appendices', () {
@@ -81,7 +84,10 @@ void main() {
     expect(inspection.hasAssumptionsAppendix, isFalse);
     expect(inspection.hasSourcesAppendix, isFalse);
     expect(inspection.tableCount, greaterThanOrEqualTo(2));
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
+    expect(inspection.hasKeywordsMetadata, isTrue);
   });
 }

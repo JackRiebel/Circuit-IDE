@@ -350,7 +350,10 @@ Executive summary for a customer handoff.
       expect(packageText, contains('Branch Network Architecture Report'));
       expect(packageText, contains('CircuitCode generated report'));
       expect(packageText, contains('Report Overview'));
+      expect(packageText, contains('Executive Decision Brief'));
       expect(packageText, contains('Document Map'));
+      expect(packageText, contains('Validation Checklist'));
+      expect(packageText, contains('<cp:keywords>'));
       expect(packageText, contains('WAN redundancy is required'));
       expect(packageText, contains('PoE budget unknown'));
       expect(packageText, contains('<w:numPr>'));
@@ -422,8 +425,10 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('word/document.xml'));
     expect(packageText, contains('Acme Manufacturing Business Use Case Brief'));
     expect(packageText, contains('Executive Summary'));
+    expect(packageText, contains('Executive Decision Brief'));
     expect(packageText, contains('Priority Use Cases'));
     expect(packageText, contains('Value And Impact'));
+    expect(packageText, contains('Validation Checklist'));
     expect(packageText, contains('Sources / Evidence'));
     expect(packageText, contains('Acme annual report'));
     expect(packageText, contains('word/footer1.xml'));
@@ -476,12 +481,14 @@ Evidence supporting the lifecycle and replacement recommendation.
     final packageText = String.fromCharCodes(bytes);
     expect(packageText, contains('word/document.xml'));
     expect(packageText, contains('Cisco Lifecycle Evidence Pack'));
+    expect(packageText, contains('Executive Decision Brief'));
     expect(packageText, contains('Evidence Summary'));
     expect(packageText, contains('Claim Register'));
     expect(packageText, contains('Source Inventory'));
     expect(packageText, contains('Checked Dates'));
     expect(packageText, contains('Confidence And Risk'));
     expect(packageText, contains('Unsupported Claims / Follow-Up'));
+    expect(packageText, contains('Validation Checklist'));
     expect(packageText, contains('https://www.cisco.com/'));
     expect(packageText, contains('word/numbering.xml'));
     expect(packageText, contains('CircuitCode - Generated artifact'));
