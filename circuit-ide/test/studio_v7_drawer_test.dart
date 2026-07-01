@@ -1079,6 +1079,67 @@ void main() {
     expect(find.textContaining('Word document ready'), findsNothing);
   });
 
+  testWidgets('Artifacts drawer shows topology readiness metadata', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'diagram-1',
+      kind: GeneratedArtifactKind.diagram,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'campus-topology.svg',
+      filePath: '/tmp/campus-topology.svg',
+      summary: 'Created an SVG topology diagram with 7 nodes and 6 links.',
+      byteSize: 6144,
+      previewRows: const [
+        ['Signal', 'Value', 'Guidance'],
+        ['Topology', '7 nodes / 6 links', 'Review before handoff.'],
+        ['AP power', '2700W est.', 'Validate UPOE budget.'],
+        ['Access ports', '90/144 AP ports', 'Validate spare ports per IDF.'],
+      ],
+      metadata: const {
+        'nodeCount': 7,
+        'edgeCount': 6,
+        'apCount': 90,
+        'accessPortCount': 144,
+        'estimatedApPowerWatts': 2700,
+      },
+      createdAt: DateTime(2026, 7, 1, 10),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('campus-topology.svg'), findsOneWidget);
+    expect(find.textContaining('Diagram • 7 nodes • 6 links'), findsOneWidget);
+    expect(find.text('Topology readiness'), findsOneWidget);
+    expect(find.text('7 nodes'), findsOneWidget);
+    expect(find.text('AP power'), findsOneWidget);
+    expect(find.text('2700W est.'), findsOneWidget);
+    expect(find.text('90/144 AP ports'), findsOneWidget);
+
+    await tester.tap(find.text('campus-topology.svg'));
+    await tester.pump();
+
+    expect(find.text('Nodes'), findsOneWidget);
+    expect(find.text('Links'), findsOneWidget);
+    expect(find.text('APs'), findsOneWidget);
+    expect(find.text('Access ports'), findsAtLeastNWidgets(1));
+    expect(find.text('AP power'), findsAtLeastNWidgets(1));
+  });
+
   testWidgets('Artifacts drawer Review opens text artifacts in code mode', (
     tester,
   ) async {

@@ -97,6 +97,7 @@ class GeneratedArtifactWriter {
       byteSize: size,
       previewRows: resolved.previewRows,
       sheetCount: resolved.sheetCount,
+      metadata: resolved.metadata,
       threadId: threadId,
       requestId: requestId,
       createdAt: now,
@@ -150,6 +151,7 @@ class GeneratedArtifactWriter {
       byteSize: size,
       previewRows: resolved.previewRows,
       sheetCount: resolved.sheetCount,
+      metadata: resolved.metadata,
       threadId: threadId,
       requestId: requestId,
       createdAt: DateTime.now(),
@@ -307,6 +309,7 @@ class GeneratedArtifactWriter {
         summary:
             'Created an SVG topology diagram with ${diagram.nodeCount} nodes and ${diagram.edgeCount} links.',
         previewRows: diagram.previewRows,
+        metadata: diagram.metadata,
       );
     }
 
@@ -766,6 +769,7 @@ class _ResolvedArtifact {
   final String summary;
   final List<List<String>> previewRows;
   final int sheetCount;
+  final Map<String, Object?> metadata;
 
   const _ResolvedArtifact({
     required this.kind,
@@ -775,6 +779,7 @@ class _ResolvedArtifact {
     required this.summary,
     this.previewRows = const [],
     this.sheetCount = 0,
+    this.metadata = const {},
   });
 }
 

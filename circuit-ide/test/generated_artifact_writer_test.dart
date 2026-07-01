@@ -1057,7 +1057,8 @@ graph LR
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.svg'));
     expect(artifact.summary, contains('SVG topology diagram'));
-    expect(artifact.previewRows.first, ['From', 'To', 'Label']);
+    expect(artifact.previewRows.first, ['Signal', 'Value', 'Guidance']);
+    expect(artifact.previewRows.expand((row) => row), contains('Topology'));
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, startsWith('<svg'));
@@ -1091,8 +1092,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
 
     expect(artifact, isNotNull);
     expect(artifact!.kind, GeneratedArtifactKind.diagram);
-    expect(artifact.previewRows.first, ['From', 'To', 'Label']);
-    expect(artifact.previewRows.expand((row) => row), contains('WAN / ISP'));
+    expect(artifact.previewRows.first, ['Signal', 'Value', 'Guidance']);
+    expect(artifact.previewRows.expand((row) => row), contains('AP power'));
+    expect(artifact.previewRows.expand((row) => row), contains('2700W est.'));
+    expect(artifact.metadata['nodeCount'], greaterThanOrEqualTo(6));
+    expect(artifact.metadata['accessPortCount'], 144);
+    expect(artifact.metadata['estimatedApPowerWatts'], 2700);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('Logical topology'));

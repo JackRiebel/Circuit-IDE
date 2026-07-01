@@ -3140,6 +3140,14 @@ class _ArtifactDrawerCard extends ConsumerWidget {
 
   String _artifactMeta(GeneratedArtifact artifact) {
     final parts = <String>[artifact.typeLabel];
+    if (artifact.kind == GeneratedArtifactKind.diagram) {
+      final nodeCount = _metadataInt(artifact, 'nodeCount');
+      final edgeCount = _metadataInt(artifact, 'edgeCount');
+      if (nodeCount > 0 && edgeCount > 0) {
+        parts.add('$nodeCount nodes');
+        parts.add('$edgeCount links');
+      }
+    }
     if (artifact.sheetCount > 1) {
       parts.add(switch (artifact.kind) {
         GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
@@ -3211,6 +3219,21 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       if (extension.isNotEmpty) ('Format', extension.toUpperCase()),
       if (artifact.sheetCount > 0)
         (_countLabel(artifact.kind), '${artifact.sheetCount}'),
+      if (artifact.kind == GeneratedArtifactKind.diagram) ...[
+        if (_metadataInt(artifact, 'nodeCount') > 0)
+          ('Nodes', '${_metadataInt(artifact, 'nodeCount')}'),
+        if (_metadataInt(artifact, 'edgeCount') > 0)
+          ('Links', '${_metadataInt(artifact, 'edgeCount')}'),
+        if (_metadataInt(artifact, 'apCount') > 0)
+          ('APs', '${_metadataInt(artifact, 'apCount')}'),
+        if (_metadataInt(artifact, 'accessPortCount') > 0)
+          ('Access ports', '${_metadataInt(artifact, 'accessPortCount')}'),
+        if (_metadataInt(artifact, 'estimatedApPowerWatts') > 0)
+          (
+            'AP power',
+            '${_metadataInt(artifact, 'estimatedApPowerWatts')}W est.',
+          ),
+      ],
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),
       if (folder.trim().isNotEmpty) ('Folder', folder),
@@ -3401,7 +3424,8 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
                     ),
                   ),
                 ),
-                if (artifact.sheetCount > 0)
+                if (artifact.sheetCount > 0 ||
+                    artifact.kind == GeneratedArtifactKind.diagram)
                   Text(
                     _previewCount(artifact),
                     maxLines: 1,
@@ -3444,7 +3468,7 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
       GeneratedArtifactKind.powerPoint => 'Slide outline',
       GeneratedArtifactKind.docx => 'Report outline',
       GeneratedArtifactKind.pdf => 'PDF outline',
-      GeneratedArtifactKind.diagram => 'Diagram structure',
+      GeneratedArtifactKind.diagram => 'Topology readiness',
       GeneratedArtifactKind.chart => 'Chart summary',
       GeneratedArtifactKind.json => 'Structured data preview',
       GeneratedArtifactKind.markdown ||
@@ -3459,9 +3483,20 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
       GeneratedArtifactKind.pdf => '${artifact.sheetCount} pages',
       GeneratedArtifactKind.chart => '${artifact.sheetCount} charts',
       GeneratedArtifactKind.excel => '${artifact.sheetCount} sheets',
+      GeneratedArtifactKind.diagram =>
+        _metadataInt(artifact, 'nodeCount') > 0
+            ? '${_metadataInt(artifact, 'nodeCount')} nodes'
+            : '${artifact.previewRows.length - 1} signals',
       _ => '${artifact.sheetCount} items',
     };
   }
+}
+
+int _metadataInt(GeneratedArtifact artifact, String key) {
+  final value = artifact.metadata[key];
+  if (value is int) return value;
+  if (value is num) return value.round();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
 }
 
 class _BinaryArtifactPreview extends ConsumerWidget {

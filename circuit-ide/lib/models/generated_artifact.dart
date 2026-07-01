@@ -27,6 +27,7 @@ class GeneratedArtifact {
   final int byteSize;
   final List<List<String>> previewRows;
   final int sheetCount;
+  final Map<String, Object?> metadata;
   final String? threadId;
   final String? requestId;
   final DateTime createdAt;
@@ -41,6 +42,7 @@ class GeneratedArtifact {
     required this.byteSize,
     this.previewRows = const [],
     this.sheetCount = 0,
+    this.metadata = const {},
     this.threadId,
     this.requestId,
     required this.createdAt,
@@ -94,6 +96,7 @@ class GeneratedArtifact {
       'byteSize': byteSize,
       'previewRows': previewRows,
       'sheetCount': sheetCount,
+      'metadata': metadata,
       'threadId': threadId,
       'requestId': requestId,
       'createdAt': createdAt.toIso8601String(),
@@ -118,6 +121,7 @@ class GeneratedArtifact {
         byteSize: json['byteSize'] as int? ?? 0,
         previewRows: _previewRowsFromJson(json['previewRows']),
         sheetCount: json['sheetCount'] as int? ?? 0,
+        metadata: _metadataFromJson(json['metadata']),
         threadId: json['threadId'] as String?,
         requestId: json['requestId'] as String?,
         createdAt:
@@ -148,6 +152,7 @@ class GeneratedArtifact {
         byteSize: artifact.value.length,
         previewRows: const [],
         sheetCount: 0,
+        metadata: const {},
         threadId: artifact.threadId,
         requestId: artifact.requestId,
         createdAt: artifact.createdAt,
@@ -162,6 +167,11 @@ class GeneratedArtifact {
         .map((row) => row.map((cell) => cell?.toString() ?? '').toList())
         .where((row) => row.isNotEmpty)
         .toList(growable: false);
+  }
+
+  static Map<String, Object?> _metadataFromJson(Object? value) {
+    if (value is! Map) return const {};
+    return value.map((key, value) => MapEntry(key.toString(), value));
   }
 }
 

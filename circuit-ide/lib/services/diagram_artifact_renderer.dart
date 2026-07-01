@@ -9,12 +9,14 @@ class DiagramRenderResult {
   final int nodeCount;
   final int edgeCount;
   final List<List<String>> previewRows;
+  final Map<String, Object?> metadata;
 
   const DiagramRenderResult({
     required this.bytes,
     required this.nodeCount,
     required this.edgeCount,
     required this.previewRows,
+    this.metadata = const {},
   });
 }
 
@@ -36,6 +38,21 @@ class DiagramArtifactRenderer {
         ? document.assumptions
         : _extractAssumptions(content);
     final profile = _profileFrom(content, document);
+    final tiers = _layoutTiers(
+      resolvedGraph.nodes.values.toList(growable: false),
+    );
+    final readinessItems = _readinessItems(profile, assumptions);
+    final capacityItems = _capacityItems(profile);
+    final linkSchedule = _linkSchedule(resolvedGraph, profile);
+    final metadata = _metadataFor(
+      graph: resolvedGraph,
+      tiers: tiers,
+      assumptions: assumptions,
+      profile: profile,
+      readinessItems: readinessItems,
+      capacityItems: capacityItems,
+      linkSchedule: linkSchedule,
+    );
     final svg = _svgFor(
       resolvedGraph,
       title: document.title,
@@ -46,16 +63,84 @@ class DiagramArtifactRenderer {
       bytes: Uint8List.fromList(utf8.encode(svg)),
       nodeCount: resolvedGraph.nodes.length,
       edgeCount: resolvedGraph.edges.length,
-      previewRows: [
-        const ['From', 'To', 'Label'],
-        for (final edge in resolvedGraph.edges.take(8))
-          [
-            resolvedGraph.nodes[edge.from]?.label ?? edge.from,
-            resolvedGraph.nodes[edge.to]?.label ?? edge.to,
-            edge.label,
-          ],
-      ],
+      previewRows: _previewRowsFor(
+        resolvedGraph,
+        profile,
+        readinessItems,
+        capacityItems,
+      ),
+      metadata: metadata,
     );
+  }
+
+  Map<String, Object?> _metadataFor({
+    required _DiagramGraph graph,
+    required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
+    required List<String> assumptions,
+    required _TopologyProfile profile,
+    required List<({String check, String state, bool ready})> readinessItems,
+    required List<({String metric, String value, String guidance, bool ready})>
+    capacityItems,
+    required List<({String from, String to, String link, String validation})>
+    linkSchedule,
+  }) {
+    return {
+      'generator': 'CircuitCode',
+      'artifact': 'network_topology_diagram',
+      'nodeCount': graph.nodes.length,
+      'edgeCount': graph.edges.length,
+      'tierCount': tiers.length,
+      'assumptionCount': assumptions.length,
+      'siteCount': profile.siteCount,
+      'mdfCount': profile.mdfCount,
+      'idfCount': profile.idfCount,
+      'firewallCount': profile.firewallCount,
+      'coreSwitchCount': profile.coreSwitchCount,
+      'accessSwitchCount': profile.accessSwitchCount,
+      'switchCount': profile.switchCount,
+      'apCount': profile.apCount,
+      'accessPortCount': profile.accessPortCount,
+      'estimatedApPowerWatts': profile.estimatedApPowerWatts,
+      'apPortLoadPercent': profile.apPortLoadPercent,
+      'hasDualWan': profile.hasDualWan,
+      'hasWarmSpare': profile.hasWarmSpare,
+      'hasPoe': profile.hasPoe,
+      'hasUpoe': profile.hasUpoe,
+      'hasMultigig': profile.hasMultigig,
+      'hasWifi7': profile.hasWifi7,
+      'readinessItemCount': readinessItems.length,
+      'capacityItemCount': capacityItems.length,
+      'linkScheduleCount': linkSchedule.length,
+      'designZoneCount': tiers.length,
+    };
+  }
+
+  List<List<String>> _previewRowsFor(
+    _DiagramGraph graph,
+    _TopologyProfile profile,
+    List<({String check, String state, bool ready})> readinessItems,
+    List<({String metric, String value, String guidance, bool ready})>
+    capacityItems,
+  ) {
+    return [
+      const ['Signal', 'Value', 'Guidance'],
+      [
+        'Topology',
+        '${graph.nodes.length} nodes / ${graph.edges.length} links',
+        'Review generated topology before customer handoff.',
+      ],
+      [
+        'Sites',
+        '${profile.siteCount} sites • ${profile.mdfCount} MDF • ${profile.idfCount} IDF',
+        profile.hasDualWan || profile.hasWarmSpare
+            ? profile.resiliencyLabel
+            : 'Confirm redundancy model.',
+      ],
+      for (final item in capacityItems.take(4))
+        [item.metric, item.value, item.guidance],
+      for (final item in readinessItems.take(2))
+        [item.check, item.state, item.ready ? 'Captured' : 'Needs input'],
+    ];
   }
 
   _DiagramGraph _graphFromMermaid(String content) {
