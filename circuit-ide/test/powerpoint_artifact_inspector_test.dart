@@ -53,20 +53,24 @@ void main() {
         'Title',
         'Agenda',
         'Decision',
+        'Decision Matrix',
         'Takeaways',
         'Section',
         'Roadmap',
+        'Close',
         'Table',
         'Appendix',
         'Sources',
       ]),
     );
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasSectionDividerLayout, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
+    expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
@@ -105,6 +109,7 @@ void main() {
         'Opening',
         'Agenda',
         'Decision snapshot',
+        'Decision matrix',
         'Recommendations',
         'Roadmap',
         'Data tables',
@@ -121,11 +126,15 @@ void main() {
         'Branded title slide',
         'Numbered agenda',
         'Section divider slides',
+        'Decision matrix',
         'Recommendation cards',
         'Roadmap timeline',
+        'Closing decision ask',
         'Speaker notes',
       ]),
     );
+    expect(metadata['decisionMatrixSlideCount'], 1);
+    expect(metadata['closingDecisionSlideCount'], 1);
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
     expect(metadata['assumptionCount'], 1);
     expect(metadata['citationCount'], 1);
@@ -134,20 +143,24 @@ void main() {
       containsAll([
         'Agenda',
         'Decision snapshot',
+        'Decision matrix',
         'Recommendation slides',
         'Roadmap',
+        'Closing ask',
         'Table slides',
         'Assumptions/sources',
         'Speaker notes',
       ]),
     );
-    expect(metadata['readinessSignalCount'], 7);
+    expect(metadata['readinessSignalCount'], 9);
     expect(metadata['hasAgenda'], isTrue);
     expect(metadata['hasDecisionSnapshot'], isTrue);
+    expect(metadata['hasDecisionMatrix'], isTrue);
     expect(metadata['hasSectionDividers'], isTrue);
     expect(metadata['hasSectionDividerLayout'], isTrue);
     expect(metadata['hasEnterpriseBrandPill'], isTrue);
     expect(metadata['hasRecommendation'], isTrue);
+    expect(metadata['hasClosingDecisionAsk'], isTrue);
     expect(metadata['hasRoadmap'], isTrue);
     expect(metadata['hasTableSlides'], isTrue);
     expect(metadata['hasSourcesSlide'], isTrue);
@@ -191,11 +204,13 @@ void main() {
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasKeyTakeaways, isTrue);
     expect(inspection.hasImplementationRoadmap, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
+    expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
@@ -223,10 +238,12 @@ void main() {
     expect(inspection.hasExpectedDeckStructure, isFalse);
     expect(inspection.usesLightTheme, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
+    expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasSpeakerNotes, isTrue);
   });

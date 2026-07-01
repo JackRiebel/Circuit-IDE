@@ -16,6 +16,7 @@ class PowerPointArtifactInspection {
   final bool hasAgenda;
   final bool hasAgendaLayout;
   final bool hasDecisionSnapshot;
+  final bool hasDecisionMatrix;
   final bool hasExecutiveRecommendation;
   final bool hasRecommendationCards;
   final bool hasKeyTakeaways;
@@ -24,6 +25,7 @@ class PowerPointArtifactInspection {
   final bool hasEnterpriseBrandPill;
   final bool hasImplementationRoadmap;
   final bool hasRoadmapTimeline;
+  final bool hasClosingDecisionAsk;
   final bool hasTableSlide;
   final bool hasAppendix;
   final bool hasSourcesSlide;
@@ -51,6 +53,7 @@ class PowerPointArtifactInspection {
     required this.hasAgenda,
     required this.hasAgendaLayout,
     required this.hasDecisionSnapshot,
+    required this.hasDecisionMatrix,
     required this.hasExecutiveRecommendation,
     required this.hasRecommendationCards,
     required this.hasKeyTakeaways,
@@ -59,6 +62,7 @@ class PowerPointArtifactInspection {
     required this.hasEnterpriseBrandPill,
     required this.hasImplementationRoadmap,
     required this.hasRoadmapTimeline,
+    required this.hasClosingDecisionAsk,
     required this.hasTableSlide,
     required this.hasAppendix,
     required this.hasSourcesSlide,
@@ -87,6 +91,7 @@ class PowerPointArtifactInspection {
       hasAgenda &&
       hasAgendaLayout &&
       hasDecisionSnapshot &&
+      hasDecisionMatrix &&
       hasExecutiveRecommendation &&
       hasRecommendationCards &&
       hasKeyTakeaways &&
@@ -95,6 +100,7 @@ class PowerPointArtifactInspection {
       hasEnterpriseBrandPill &&
       hasImplementationRoadmap &&
       hasRoadmapTimeline &&
+      hasClosingDecisionAsk &&
       hasTableSlide &&
       hasAppendix &&
       hasSourcesSlide &&
@@ -161,6 +167,9 @@ class PowerPointArtifactInspector {
           text.contains('Agenda step') && text.contains('Agenda number rail'),
       hasDecisionSnapshot:
           text.contains('Decision Snapshot') || slideTypes.contains('Decision'),
+      hasDecisionMatrix:
+          text.contains('Decision Matrix') ||
+          slideTypes.contains('Decision Matrix'),
       hasExecutiveRecommendation:
           text.contains('Executive Recommendation') ||
           slideTypes.contains('Recommendation'),
@@ -184,6 +193,9 @@ class PowerPointArtifactInspector {
       hasRoadmapTimeline:
           text.contains('Roadmap timeline') &&
           text.contains('Roadmap phase marker'),
+      hasClosingDecisionAsk:
+          text.contains('Decision Ask &amp; Next Steps') ||
+          slideTypes.contains('Close'),
       hasTableSlide: slideTypes.contains('Table'),
       hasAppendix: slideTypes.contains('Appendix'),
       hasSourcesSlide: slideTypes.contains('Sources'),

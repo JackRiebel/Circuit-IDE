@@ -7,12 +7,16 @@ import '../models/artifact_document.dart';
 class PowerPointArtifactRenderer {
   const PowerPointArtifactRenderer();
 
+  static const int _maxSlides = 32;
+
   int slideCountFor(ArtifactDocument document) {
-    return _slidesFor(document).take(24).length;
+    return _slidesFor(document).take(_maxSlides).length;
   }
 
   List<List<String>> previewRowsFor(ArtifactDocument document) {
-    final slides = _slidesFor(document).take(24).toList(growable: false);
+    final slides = _slidesFor(
+      document,
+    ).take(_maxSlides).toList(growable: false);
     return [
       ['Slide', 'Type', 'Title'],
       for (var i = 0; i < slides.length; i++)
@@ -21,7 +25,9 @@ class PowerPointArtifactRenderer {
   }
 
   Map<String, Object?> metadataFor(ArtifactDocument document) {
-    final slides = _slidesFor(document).take(24).toList(growable: false);
+    final slides = _slidesFor(
+      document,
+    ).take(_maxSlides).toList(growable: false);
     final theme = _DeckTheme.forDocument(document);
     final sections = document.sections.take(10).toList(growable: false);
     final slideTypeCounts = <String, int>{};
@@ -58,8 +64,10 @@ class PowerPointArtifactRenderer {
         'Branded title slide',
         'Numbered agenda',
         'Decision snapshot tiles',
+        'Decision matrix',
         'Recommendation cards',
         'Roadmap timeline',
+        'Closing decision ask',
         if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
           'Section divider slides',
         if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
@@ -81,6 +89,10 @@ class PowerPointArtifactRenderer {
           slideTypeCounts[_DeckSlideKind.sectionDivider.label] ?? 0,
       'tableCount': document.tables.length,
       'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
+      'decisionMatrixSlideCount':
+          slideTypeCounts[_DeckSlideKind.decisionMatrix.label] ?? 0,
+      'closingDecisionSlideCount':
+          slideTypeCounts[_DeckSlideKind.closing.label] ?? 0,
       'recommendationSlideCount':
           slideTypeCounts[_DeckSlideKind.recommendation.label] ?? 0,
       'assumptionCount': document.assumptions.length,
@@ -101,6 +113,12 @@ class PowerPointArtifactRenderer {
       'hasRecommendation': slideTypeCounts.containsKey(
         _DeckSlideKind.recommendation.label,
       ),
+      'hasDecisionMatrix': slideTypeCounts.containsKey(
+        _DeckSlideKind.decisionMatrix.label,
+      ),
+      'hasClosingDecisionAsk': slideTypeCounts.containsKey(
+        _DeckSlideKind.closing.label,
+      ),
       'hasRoadmap': slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label),
       'hasTableSlides': slideTypeCounts.containsKey(_DeckSlideKind.table.label),
       'hasSourcesSlide': slideTypeCounts.containsKey(
@@ -116,12 +134,14 @@ class PowerPointArtifactRenderer {
       'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
       'hasCustomerReadyDeck':
           _hasCustomerReadyStructure(slideTypeCounts) && validationGaps.isEmpty,
-      'maxSlides': 24,
+      'maxSlides': _maxSlides,
     };
   }
 
   Uint8List render(ArtifactDocument document) {
-    final slides = _slidesFor(document).take(24).toList(growable: false);
+    final slides = _slidesFor(
+      document,
+    ).take(_maxSlides).toList(growable: false);
     final theme = _DeckTheme.forDocument(document);
     final files = <_PptxFile>[
       _PptxFile('[Content_Types].xml', _bytes(_contentTypes(slides.length))),
@@ -209,6 +229,7 @@ class PowerPointArtifactRenderer {
       ),
       _decisionSnapshot(document, sections),
       _executiveRecommendation(document, sections),
+      _decisionMatrix(document, sections),
       if (document.summary.isNotEmpty)
         _DeckSlide(
           title: 'Executive Summary',
@@ -251,6 +272,7 @@ class PowerPointArtifactRenderer {
       }
     }
     slides.add(_assumptionsAndSources(document));
+    slides.add(_closingDecisionAsk(document, sections));
     slides.add(_appendixHandoff(document));
     return slides;
   }
@@ -351,6 +373,82 @@ class PowerPointArtifactRenderer {
     );
   }
 
+  _DeckSlide _decisionMatrix(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+    ]);
+    final evidence = _firstMatchingBullet(sections, [
+      'evidence',
+      'source',
+      'validate',
+      'data',
+    ]);
+    final risk = _firstMatchingBullet(sections, ['risk', 'caveat', 'concern']);
+    final next = _firstMatchingBullet(sections, [
+      'next',
+      'phase',
+      'action',
+      'owner',
+    ]);
+    return _DeckSlide(
+      title: 'Decision Matrix',
+      eyebrow: 'Executive decision support',
+      kind: _DeckSlideKind.decisionMatrix,
+      bullets: [
+        'Decision matrix captures recommendation, evidence, risk, and next action so the deck can be reviewed without reading every appendix.',
+      ],
+      tableRows: [
+        ['Decision Area', 'Current Signal', 'Stakeholder Action'],
+        [
+          'Recommendation',
+          _truncate(
+            recommendation ??
+                (document.summary.isEmpty
+                    ? 'Preferred path requires stakeholder confirmation.'
+                    : document.summary),
+            64,
+          ),
+          'Approve, revise, or ask for another option.',
+        ],
+        [
+          'Evidence',
+          _truncate(
+            evidence ??
+                (document.tables.isEmpty
+                    ? 'Attach supporting data before customer handoff.'
+                    : '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} packaged.'),
+            64,
+          ),
+          'Confirm source data and assumptions.',
+        ],
+        [
+          'Risk',
+          _truncate(
+            risk ??
+                (document.assumptions.isEmpty
+                    ? 'Assumptions still need confirmation.'
+                    : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} documented.'),
+            64,
+          ),
+          'Resolve blockers before execution.',
+        ],
+        [
+          'Next Step',
+          _truncate(
+            next ?? 'Assign owner, due date, and verification criteria.',
+            64,
+          ),
+          'Turn decision into an implementation task.',
+        ],
+      ],
+    );
+  }
+
   _DeckSlide _dataSnapshot(ArtifactDocument document) {
     return _DeckSlide(
       title: 'Data Snapshot',
@@ -439,6 +537,34 @@ class PowerPointArtifactRenderer {
           'Supporting material: ${artifactTypes.join(', ')} included in this generated artifact.',
         'Customer readiness: Validate terminology, product names, dates, and stakeholder-specific language.',
         'Approval path: Capture owner, due date, and success criteria before converting this into an implementation packet.',
+      ],
+    );
+  }
+
+  _DeckSlide _closingDecisionAsk(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final ask = _decisionAskFor(document, sections);
+    final next = _firstMatchingBullet(sections, ['next', 'phase', 'action']);
+    final validation = _firstMatchingBullet(sections, [
+      'validate',
+      'verify',
+      'evidence',
+    ]);
+    return _DeckSlide(
+      title: 'Decision Ask & Next Steps',
+      eyebrow: 'Close',
+      kind: _DeckSlideKind.closing,
+      bullets: [
+        'Decision ask: $ask',
+        next == null
+            ? 'Owner action: Confirm scope, timeline, and approval path.'
+            : 'Owner action: $next',
+        validation == null
+            ? 'Validation: Confirm assumptions, source data, and success criteria.'
+            : 'Validation: $validation',
+        'Handoff: Use this deck as the stakeholder readout and keep the source artifact attached for review.',
       ],
     );
   }
@@ -537,7 +663,11 @@ class PowerPointArtifactRenderer {
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
         'Recommendation slides',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
+        'Decision matrix',
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
+        'Closing ask',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Table slides',
       if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
@@ -568,6 +698,8 @@ class PowerPointArtifactRenderer {
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
         'Recommendations',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
+        'Decision matrix',
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Data tables',
@@ -589,8 +721,12 @@ class PowerPointArtifactRenderer {
         'Decision snapshot missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
         'Recommendation slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
+        'Decision matrix missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label))
         'Roadmap slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
+        'Closing decision ask missing',
       if (document.assumptions.isEmpty) 'Assumptions need confirmation',
       if (document.citations.isEmpty) 'Sources need validation',
     ];
@@ -1609,12 +1745,14 @@ enum _DeckSlideKind {
   title,
   agenda,
   snapshot,
+  decisionMatrix,
   dataSnapshot,
   takeaways,
   sectionDivider,
   content,
   recommendation,
   roadmap,
+  closing,
   table,
   appendix,
   sources;
@@ -1624,12 +1762,14 @@ enum _DeckSlideKind {
       _DeckSlideKind.title => 'Title',
       _DeckSlideKind.agenda => 'Agenda',
       _DeckSlideKind.snapshot => 'Decision',
+      _DeckSlideKind.decisionMatrix => 'Decision Matrix',
       _DeckSlideKind.dataSnapshot => 'Data',
       _DeckSlideKind.takeaways => 'Takeaways',
       _DeckSlideKind.sectionDivider => 'Section',
       _DeckSlideKind.content => 'Content',
       _DeckSlideKind.recommendation => 'Recommendation',
       _DeckSlideKind.roadmap => 'Roadmap',
+      _DeckSlideKind.closing => 'Close',
       _DeckSlideKind.table => 'Table',
       _DeckSlideKind.appendix => 'Appendix',
       _DeckSlideKind.sources => 'Sources',
@@ -1699,7 +1839,9 @@ class _DeckTheme {
       _DeckSlideKind.takeaways => '7FB7B2',
       _DeckSlideKind.sectionDivider => 'C7A77B',
       _DeckSlideKind.recommendation => 'A7C080',
+      _DeckSlideKind.decisionMatrix => '7FB7B2',
       _DeckSlideKind.roadmap => 'A7C080',
+      _DeckSlideKind.closing => '7FB7B2',
       _DeckSlideKind.table => 'B48EAD',
       _DeckSlideKind.appendix => '8A8F98',
       _DeckSlideKind.sources => '7A9CC6',
@@ -1713,6 +1855,7 @@ class _DeckTheme {
         _DeckSlideKind.title || _DeckSlideKind.sectionDivider => 'F8FAFC',
         _DeckSlideKind.snapshot ||
         _DeckSlideKind.takeaways ||
+        _DeckSlideKind.decisionMatrix ||
         _DeckSlideKind.roadmap => 'F1F5F9',
         _ => canvas,
       };
@@ -1721,6 +1864,7 @@ class _DeckTheme {
       _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
       _DeckSlideKind.snapshot ||
       _DeckSlideKind.takeaways ||
+      _DeckSlideKind.decisionMatrix ||
       _DeckSlideKind.roadmap => '121715',
       _ => canvas,
     };
