@@ -3145,6 +3145,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                 artifact: artifact,
                 companionArtifacts: companionArtifacts,
               ),
+            if (_metadataStringList(
+              artifact,
+              'externalHandoffManifest',
+            ).isNotEmpty)
+              _ArtifactHandoffManifestPanel(artifact: artifact),
             _ArtifactDrawerPreview(artifact: artifact),
             if (companionArtifacts.isNotEmpty)
               _ArtifactPackageCompanionList(
@@ -3478,6 +3483,139 @@ class _ArtifactPackageReadinessPanel extends ConsumerWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ArtifactHandoffManifestPanel extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+
+  const _ArtifactHandoffManifestPanel({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final manifest = _metadataStringList(artifact, 'externalHandoffManifest');
+    if (manifest.isEmpty) return const SizedBox.shrink();
+    final gate = manifest.firstWhere(
+      (item) => item.toLowerCase().startsWith('publishing gate:'),
+      orElse: () => '',
+    );
+    final owner = manifest.firstWhere(
+      (item) => item.toLowerCase().startsWith('review owner:'),
+      orElse: () => '',
+    );
+    final evidence = manifest.firstWhere(
+      (item) => item.toLowerCase().startsWith('evidence status:'),
+      orElse: () => '',
+    );
+    final sourcePackage = manifest.firstWhere(
+      (item) => item.toLowerCase().startsWith('source package:'),
+      orElse: () => '',
+    );
+    final assumptionPackage = manifest.firstWhere(
+      (item) => item.toLowerCase().startsWith('assumption package:'),
+      orElse: () => '',
+    );
+    final visible = [
+      if (gate.isNotEmpty) gate,
+      if (owner.isNotEmpty) owner,
+      if (evidence.isNotEmpty) evidence,
+      if (sourcePackage.isNotEmpty) sourcePackage,
+      if (assumptionPackage.isNotEmpty) assumptionPackage,
+      for (final item in manifest)
+        if (![
+          gate,
+          owner,
+          evidence,
+          sourcePackage,
+          assumptionPackage,
+        ].contains(item))
+          item,
+    ].take(5).toList(growable: false);
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.fact_check_outlined,
+                color: tokens.textMuted,
+                size: 14,
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'External handoff manifest',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.textPrimary,
+                    fontSize: FontSizes.xs,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (manifest.length > visible.length)
+                Text(
+                  '+${manifest.length - visible.length}',
+                  style: TextStyle(
+                    color: tokens.textMuted,
+                    fontSize: FontSizes.xxs,
+                    height: 1.1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          for (final item in visible)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 78,
+                    child: Text(
+                      _manifestLabel(item),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xxs,
+                        height: 1.18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      _manifestDetail(item),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: FontSizes.xxs,
+                        height: 1.18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -4981,6 +5119,18 @@ int _metadataInt(GeneratedArtifact artifact, String key) {
 String _metadataString(GeneratedArtifact artifact, String key) {
   final value = artifact.metadata[key]?.toString().trim() ?? '';
   return value;
+}
+
+String _manifestLabel(String value) {
+  final index = value.indexOf(':');
+  if (index <= 0) return 'Manifest';
+  return value.substring(0, index).trim();
+}
+
+String _manifestDetail(String value) {
+  final index = value.indexOf(':');
+  if (index < 0 || index + 1 >= value.length) return value.trim();
+  return value.substring(index + 1).trim();
 }
 
 bool _metadataBool(GeneratedArtifact artifact, String key) {

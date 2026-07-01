@@ -1087,6 +1087,16 @@ void main() {
           'Review path: Architecture review -> risk validation -> implementation decision',
           'Handoff readiness: Customer handoff ready',
         ],
+        'externalHandoffManifest': [
+          'Review owner: Architecture owner / customer sponsor',
+          'Report type: Architecture report',
+          'Review path: Architecture review -> risk validation -> implementation decision',
+          'Handoff readiness: Customer handoff ready',
+          'Evidence status: High - sources and assumptions captured',
+          'Publishing gate: ready for stakeholder approval',
+          'Source package: 3 source items attached',
+          'Assumption package: 2 assumptions captured',
+        ],
         'visualVerificationChecklist': [
           'Render-safe text frame',
           'US Letter media box',
@@ -1168,6 +1178,16 @@ void main() {
     expect(find.textContaining('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('PDF outline'), findsOneWidget);
     expect(find.text('2 pages'), findsOneWidget);
+    expect(find.text('External handoff manifest'), findsOneWidget);
+    expect(find.text('Publishing gate'), findsOneWidget);
+    expect(find.text('ready for stakeholder approval'), findsOneWidget);
+    expect(find.text('Review owner'), findsOneWidget);
+    expect(find.text('Architecture owner / customer sponsor'), findsOneWidget);
+    expect(find.text('Evidence status'), findsOneWidget);
+    expect(
+      find.text('High - sources and assumptions captured'),
+      findsOneWidget,
+    );
     expect(find.text('Section'), findsOneWidget);
     expect(find.text('Executive Summary'), findsOneWidget);
     expect(
@@ -1195,7 +1215,10 @@ void main() {
     expect(find.text('Handoff'), findsOneWidget);
     expect(find.text('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('Owner'), findsOneWidget);
-    expect(find.text('Architecture owner / customer sponsor'), findsOneWidget);
+    expect(
+      find.text('Architecture owner / customer sponsor'),
+      findsAtLeastNWidgets(1),
+    );
     expect(find.text('Ask'), findsOneWidget);
     expect(
       find.text(
