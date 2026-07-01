@@ -3174,12 +3174,16 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     if (artifact.kind == GeneratedArtifactKind.chart) {
       final pointCount = _metadataInt(artifact, 'pointCount');
       final highRiskCount = _metadataInt(artifact, 'highRiskCount');
+      final chartPackType = _metadataString(artifact, 'chartPackType');
+      final handoffStatus = _metadataString(artifact, 'handoffStatus');
       final signals = _metadataStringList(artifact, 'signals');
+      if (chartPackType.isNotEmpty) parts.add(chartPackType);
       if (pointCount > 0) parts.add('$pointCount points');
       if (highRiskCount > 0) {
         parts.add('$highRiskCount high risk');
       }
       if (signals.isNotEmpty) parts.add(_compactSignalList(signals));
+      if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.kind == GeneratedArtifactKind.powerPoint) {
       final theme = _metadataString(artifact, 'theme');
@@ -3364,6 +3368,12 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Lifecycle', 'Validation included'),
       ],
       if (artifact.kind == GeneratedArtifactKind.chart) ...[
+        if (_metadataString(artifact, 'chartPackType').isNotEmpty)
+          ('Pack', _metadataString(artifact, 'chartPackType')),
+        if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
+          ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataString(artifact, 'decisionPurpose').isNotEmpty)
+          ('Purpose', _metadataString(artifact, 'decisionPurpose')),
         if (_metadataInt(artifact, 'chartCount') > 0)
           ('Charts', '${_metadataInt(artifact, 'chartCount')}'),
         if (_metadataInt(artifact, 'pointCount') > 0)
@@ -3379,6 +3389,23 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Signals',
             _compactSignalList(_metadataStringList(artifact, 'signals')),
           ),
+        if (_metadataStringList(artifact, 'chartFamilies').isNotEmpty)
+          (
+            'Families',
+            _compactSignalList(_metadataStringList(artifact, 'chartFamilies')),
+          ),
+        if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
+          (
+            'Readiness',
+            _compactSignalList(
+              _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
+          (
+            'Validation gaps',
+            _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
+          ),
         if (_metadataInt(artifact, 'validationGateCount') > 0)
           (
             'Validation',
@@ -3389,6 +3416,8 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Actions',
             '${_metadataInt(artifact, 'recommendedActionCount')} recommended',
           ),
+        if (_metadataBool(artifact, 'hasCustomerReadyChartPack'))
+          ('Package', 'Stakeholder-review chart pack'),
       ],
       if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
         if (_metadataString(artifact, 'theme').isNotEmpty)

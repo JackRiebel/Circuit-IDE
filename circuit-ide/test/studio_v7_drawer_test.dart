@@ -1467,12 +1467,32 @@ void main() {
       sheetCount: 4,
       metadata: const {
         'artifact': 'chart_pack',
+        'chartPackType': 'Enterprise readiness chart pack',
+        'handoffStatus': 'Review required - high risk signals',
+        'decisionPurpose': 'Capacity and lifecycle decision support',
         'chartCount': 4,
         'pointCount': 18,
         'highRiskCount': 2,
         'mediumRiskCount': 3,
         'lowRiskCount': 6,
         'signals': ['PoE/UPOE', 'WAN Capacity', 'Lifecycle'],
+        'chartFamilies': [
+          'PoE Budget',
+          'WAN Capacity',
+          'Lifecycle Risk',
+          'Risk Scorecard',
+          'Validation Gates',
+        ],
+        'readinessSignals': [
+          'Source data',
+          'Risk labels',
+          'Capacity signals',
+          'Decision context',
+          'High-risk review required',
+        ],
+        'validationGaps': <String>[],
+        'validationGapCount': 0,
+        'hasCustomerReadyChartPack': false,
         'validationGateCount': 4,
         'recommendedActionCount': 3,
       },
@@ -1495,7 +1515,13 @@ void main() {
 
     expect(find.text('enterprise-chart-pack.svg'), findsOneWidget);
     expect(
-      find.textContaining('Chart • 18 points • 2 high risk'),
+      find.textContaining(
+        'Chart • Enterprise readiness chart pack • 18 points',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Review required - high risk signals'),
       findsOneWidget,
     );
     expect(find.textContaining('PoE/UPOE, WAN Capacity +1'), findsOneWidget);
@@ -1506,11 +1532,23 @@ void main() {
     await tester.pump();
 
     expect(find.text('Charts'), findsAtLeastNWidgets(1));
+    expect(find.text('Pack'), findsOneWidget);
+    expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Purpose'), findsOneWidget);
+    expect(find.text('Enterprise readiness chart pack'), findsOneWidget);
+    expect(
+      find.text('Capacity and lifecycle decision support'),
+      findsOneWidget,
+    );
     expect(find.text('Data points'), findsAtLeastNWidgets(1));
     expect(find.text('High risk'), findsOneWidget);
     expect(find.text('Review'), findsAtLeastNWidgets(1));
     expect(find.text('Low/active'), findsOneWidget);
     expect(find.text('Signals'), findsOneWidget);
+    expect(find.text('Families'), findsOneWidget);
+    expect(find.textContaining('PoE Budget, WAN Capacity +3'), findsOneWidget);
+    expect(find.text('Readiness'), findsOneWidget);
+    expect(find.textContaining('Source data, Risk labels +3'), findsOneWidget);
     expect(find.text('Validation'), findsOneWidget);
     expect(find.text('Actions'), findsOneWidget);
     expect(find.text('18'), findsOneWidget);

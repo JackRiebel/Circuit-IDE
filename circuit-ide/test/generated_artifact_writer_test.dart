@@ -1287,10 +1287,25 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(artifact.previewRows.first, ['Metric', 'Watts Required']);
       expect(artifact.sheetCount, 1);
       expect(artifact.metadata['artifact'], 'chart_pack');
+      expect(
+        artifact.metadata['chartPackType'],
+        'Capacity planning chart pack',
+      );
+      expect(
+        artifact.metadata['handoffStatus'],
+        'Review required - high risk signals',
+      );
+      expect(
+        artifact.metadata['decisionPurpose'],
+        'Capacity validation and sizing support',
+      );
       expect(artifact.metadata['chartCount'], 1);
       expect(artifact.metadata['pointCount'], 4);
       expect(artifact.metadata['hasPoe'], isTrue);
+      expect(artifact.metadata['chartFamilies'], contains('PoE Budget'));
+      expect(artifact.metadata['readinessSignals'], contains('Source data'));
       expect(artifact.metadata['validationGateCount'], 4);
+      expect(artifact.metadata['validationGapCount'], greaterThanOrEqualTo(1));
       expect(
         artifact.metadata['recommendedActionCount'],
         greaterThanOrEqualTo(1),
@@ -1376,6 +1391,18 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.summary, contains('Roadmap'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(6));
     expect(artifact.metadata['artifact'], 'chart_pack');
+    expect(
+      artifact.metadata['chartPackType'],
+      'Enterprise readiness chart pack',
+    );
+    expect(
+      artifact.metadata['handoffStatus'],
+      'Review required - high risk signals',
+    );
+    expect(
+      artifact.metadata['decisionPurpose'],
+      'Capacity and lifecycle decision support',
+    );
     expect(artifact.metadata['chartCount'], 6);
     expect(artifact.metadata['pointCount'], 17);
     expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(1));
@@ -1391,6 +1418,16 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       artifact.metadata['signals'],
       containsAll(['PoE/UPOE', 'WAN capacity', 'Lifecycle']),
     );
+    expect(
+      artifact.metadata['chartFamilies'],
+      containsAll(['PoE Budget', 'WAN Capacity', 'Lifecycle Risk']),
+    );
+    expect(
+      artifact.metadata['readinessSignals'],
+      containsAll(['Source data', 'Risk labels', 'Capacity signals']),
+    );
+    expect(artifact.metadata['validationGapCount'], 0);
+    expect(artifact.metadata['hasCustomerReadyChartPack'], isFalse);
     expect(artifact.previewRows.first, ['Chart', 'Signal', 'Data points']);
     expect(
       artifact.previewRows.any(

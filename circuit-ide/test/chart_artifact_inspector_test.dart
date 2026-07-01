@@ -40,10 +40,18 @@ void main() {
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(1));
     expect(result.metadata['artifact'], 'chart_pack');
+    expect(result.metadata['chartPackType'], 'Capacity planning chart pack');
+    expect(
+      result.metadata['decisionPurpose'],
+      'Capacity validation and sizing support',
+    );
     expect(result.metadata['chartCount'], 1);
     expect(result.metadata['pointCount'], 3);
     expect(result.metadata['hasPoe'], isTrue);
+    expect(result.metadata['chartFamilies'], contains('PoE Budget'));
+    expect(result.metadata['readinessSignals'], contains('Source data'));
     expect(result.metadata['validationGateCount'], 4);
+    expect(result.metadata['validationGapCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['recommendedActionCount'], greaterThanOrEqualTo(1));
   });
 
@@ -146,6 +154,15 @@ void main() {
     );
     expect(result.metadata['chartCount'], 6);
     expect(result.metadata['pointCount'], 13);
+    expect(result.metadata['chartPackType'], 'Enterprise readiness chart pack');
+    expect(
+      result.metadata['handoffStatus'],
+      'Review required - high risk signals',
+    );
+    expect(
+      result.metadata['decisionPurpose'],
+      'Capacity and lifecycle decision support',
+    );
     expect(result.metadata['highRiskCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
     expect(result.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
@@ -159,5 +176,15 @@ void main() {
       result.metadata['signals'],
       containsAll(['PoE/UPOE', 'WAN capacity', 'Lifecycle']),
     );
+    expect(
+      result.metadata['chartFamilies'],
+      containsAll(['PoE Budget', 'WAN Capacity', 'Lifecycle Risk']),
+    );
+    expect(
+      result.metadata['readinessSignals'],
+      containsAll(['Source data', 'Risk labels', 'Capacity signals']),
+    );
+    expect(result.metadata['validationGapCount'], 0);
+    expect(result.metadata['hasCustomerReadyChartPack'], isFalse);
   });
 }
