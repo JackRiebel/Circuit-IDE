@@ -430,9 +430,11 @@ Executive summary for a customer handoff.
       expect(packageText, contains('word/styles.xml'));
       expect(packageText, contains('word/numbering.xml'));
       expect(packageText, contains('word/settings.xml'));
+      expect(packageText, contains('word/header1.xml'));
       expect(packageText, contains('word/footer1.xml'));
       expect(packageText, contains('Branch Network Architecture Report'));
       expect(packageText, contains('CircuitCode generated report'));
+      expect(packageText, contains('Table of Contents'));
       expect(packageText, contains('Report Overview'));
       expect(packageText, contains('Executive Decision Brief'));
       expect(packageText, contains('Document Map'));

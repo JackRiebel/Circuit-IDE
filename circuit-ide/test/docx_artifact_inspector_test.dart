@@ -53,12 +53,14 @@ void main() {
     expect(inspection.declaredWordCount, greaterThan(20));
     expect(inspection.declaredParagraphCount, greaterThan(10));
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasTableOfContents, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasAssumptionsAppendix, isTrue);
     expect(inspection.hasSourcesAppendix, isTrue);
+    expect(inspection.hasCircuitHeader, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
   });
 
@@ -88,10 +90,12 @@ void main() {
     expect(inspection.hasSourcesAppendix, isFalse);
     expect(inspection.tableCount, greaterThanOrEqualTo(2));
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasTableOfContents, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasCircuitHeader, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
@@ -125,11 +129,14 @@ void main() {
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportStructure, isTrue);
+    expect(inspection.hasTableOfContents, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
     expect(packageText, contains('No cited evidence included'));
     expect(packageText, contains('Evidence gap'));
     expect(packageText, contains('Decision owner'));
     expect(packageText, contains('Next-Step Action Plan'));
+    expect(packageText, contains('CircuitCode report package'));
+    expect(packageText, contains('Table of Contents'));
   });
 }

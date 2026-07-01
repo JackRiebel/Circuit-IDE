@@ -63,6 +63,7 @@ class DocxArtifactRenderer {
       _DocxFile('word/styles.xml', _bytes(_stylesXml())),
       _DocxFile('word/numbering.xml', _bytes(_numberingXml())),
       _DocxFile('word/settings.xml', _bytes(_settingsXml())),
+      _DocxFile('word/header1.xml', _bytes(_headerXml(document))),
       _DocxFile('word/footer1.xml', _bytes(_footerXml())),
       _DocxFile('word/_rels/document.xml.rels', _bytes(_documentRelsXml())),
     ];
@@ -82,6 +83,7 @@ class DocxArtifactRenderer {
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
         '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>'
         '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'
+        '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>'
         '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
         '</Types>';
   }
@@ -98,6 +100,7 @@ class DocxArtifactRenderer {
   String _documentRelsXml() {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rIdHeader1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>'
         '<Relationship Id="rIdFooter1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
         '</Relationships>';
   }
@@ -175,6 +178,7 @@ class DocxArtifactRenderer {
     final body = StringBuffer()
       ..write(_paragraph(document.title, style: 'Title'))
       ..write(_paragraph('CircuitCode generated report', style: 'Subtitle'))
+      ..write(_tableOfContentsBlock(document))
       ..write(_paragraph('Report Overview', style: 'Heading1'))
       ..write(_reportOverviewTable(document))
       ..write(_paragraph('Executive Decision Brief', style: 'Heading1'))
@@ -232,8 +236,35 @@ class DocxArtifactRenderer {
         '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
         '<w:body>$body'
-        '<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter1"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
+        '<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader1"/><w:footerReference w:type="default" r:id="rIdFooter1"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
         '</w:body></w:document>';
+  }
+
+  String _tableOfContentsBlock(ArtifactDocument document) {
+    final entries = [
+      'Report Overview',
+      'Executive Decision Brief',
+      'Recommendation Summary',
+      'Risk & Assumption Register',
+      'Next-Step Action Plan',
+      'Document Map',
+      'Executive Summary',
+      for (final section in document.sections.take(8)) section.title,
+      if (document.tables.isNotEmpty) 'Data Tables',
+      'Stakeholder Readout',
+      'Evidence Confidence Matrix',
+      'Approval Gates',
+      'Validation Checklist',
+      if (document.assumptions.isNotEmpty) 'Appendix A: Assumptions',
+      if (document.citations.isNotEmpty) 'Appendix B: Sources / Evidence',
+    ];
+    return '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Table of Contents</w:t></w:r></w:p>'
+        '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve">TOC \\o "1-2" \\h \\z \\u</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>Update fields in Word to refresh page numbers.</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+        '<w:tbl><w:tblPr><w:tblW w:w="9120" w:type="dxa"/><w:tblInd w:w="120" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="E2E8F0"/><w:left w:val="single" w:sz="4" w:color="E2E8F0"/><w:bottom w:val="single" w:sz="4" w:color="E2E8F0"/><w:right w:val="single" w:sz="4" w:color="E2E8F0"/><w:insideH w:val="single" w:sz="4" w:color="F1F5F9"/></w:tblBorders><w:tblCellMar><w:top w:w="80" w:type="dxa"/><w:left w:w="120" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="120" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="960"/><w:gridCol w:w="8160"/></w:tblGrid>'
+        '${[
+          for (var i = 0; i < entries.length; i++) _tableRow(['${i + 1}', entries[i]], [960, 8160], i == 0),
+        ].join()}'
+        '</w:tbl>';
   }
 
   String _reportOverviewTable(ArtifactDocument document) {
@@ -801,6 +832,15 @@ class DocxArtifactRenderer {
         '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
         '<w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr><w:r><w:t>CircuitCode - Generated artifact</w:t></w:r></w:p>'
         '</w:ftr>';
+  }
+
+  String _headerXml(ArtifactDocument document) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="CBD5E1"/></w:pBdr></w:pPr>'
+        '<w:r><w:rPr><w:b/><w:color w:val="334155"/></w:rPr><w:t>${_xml(_truncate(document.title, 72))}</w:t></w:r>'
+        '<w:r><w:rPr><w:color w:val="64748B"/></w:rPr><w:t xml:space="preserve">  |  CircuitCode report package</w:t></w:r>'
+        '</w:p></w:hdr>';
   }
 
   Iterable<String> _paragraphs(String body) {

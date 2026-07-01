@@ -7,6 +7,7 @@ class DocxArtifactInspection {
   final bool hasStyles;
   final bool hasNumbering;
   final bool hasSettings;
+  final bool hasHeader;
   final bool hasFooter;
   final bool hasCoreProperties;
   final bool hasExtendedProperties;
@@ -19,6 +20,7 @@ class DocxArtifactInspection {
   final int declaredWordCount;
   final int declaredParagraphCount;
   final bool hasReportOverview;
+  final bool hasTableOfContents;
   final bool hasExecutiveDecisionBrief;
   final bool hasRecommendationSummary;
   final bool hasRiskRegister;
@@ -27,6 +29,7 @@ class DocxArtifactInspection {
   final bool hasValidationChecklist;
   final bool hasAssumptionsAppendix;
   final bool hasSourcesAppendix;
+  final bool hasCircuitHeader;
   final bool hasCircuitFooter;
   final bool hasEnterpriseStyles;
   final bool hasKeywordsMetadata;
@@ -38,6 +41,7 @@ class DocxArtifactInspection {
     required this.hasStyles,
     required this.hasNumbering,
     required this.hasSettings,
+    required this.hasHeader,
     required this.hasFooter,
     required this.hasCoreProperties,
     required this.hasExtendedProperties,
@@ -50,6 +54,7 @@ class DocxArtifactInspection {
     required this.declaredWordCount,
     required this.declaredParagraphCount,
     required this.hasReportOverview,
+    required this.hasTableOfContents,
     required this.hasExecutiveDecisionBrief,
     required this.hasRecommendationSummary,
     required this.hasRiskRegister,
@@ -58,6 +63,7 @@ class DocxArtifactInspection {
     required this.hasValidationChecklist,
     required this.hasAssumptionsAppendix,
     required this.hasSourcesAppendix,
+    required this.hasCircuitHeader,
     required this.hasCircuitFooter,
     required this.hasEnterpriseStyles,
     required this.hasKeywordsMetadata,
@@ -70,6 +76,7 @@ class DocxArtifactInspection {
       hasStyles &&
       hasNumbering &&
       hasSettings &&
+      hasHeader &&
       hasFooter &&
       hasCoreProperties &&
       hasExtendedProperties &&
@@ -79,12 +86,14 @@ class DocxArtifactInspection {
   bool get hasExpectedReportStructure =>
       isStructurallyValid &&
       hasReportOverview &&
+      hasTableOfContents &&
       hasExecutiveDecisionBrief &&
       hasRecommendationSummary &&
       hasRiskRegister &&
       hasNextStepActionPlan &&
       hasDocumentMap &&
       hasValidationChecklist &&
+      hasCircuitHeader &&
       hasCircuitFooter &&
       hasEnterpriseStyles &&
       hasKeywordsMetadata;
@@ -110,6 +119,7 @@ class DocxArtifactInspector {
           text.contains('word/numbering.xml') && text.contains('<w:numbering'),
       hasSettings:
           text.contains('word/settings.xml') && text.contains('<w:settings'),
+      hasHeader: text.contains('word/header1.xml') && text.contains('<w:hdr'),
       hasFooter: text.contains('word/footer1.xml') && text.contains('<w:ftr'),
       hasCoreProperties:
           text.contains('docProps/core.xml') &&
@@ -128,6 +138,8 @@ class DocxArtifactInspector {
       declaredWordCount: _intElement(text, 'Words') ?? 0,
       declaredParagraphCount: _intElement(text, 'Paragraphs') ?? 0,
       hasReportOverview: text.contains('Report Overview'),
+      hasTableOfContents:
+          text.contains('Table of Contents') && text.contains('TOC \\o'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
       hasRecommendationSummary: text.contains('Recommendation Summary'),
       hasRiskRegister: text.contains('Risk &amp; Assumption Register'),
@@ -136,6 +148,7 @@ class DocxArtifactInspector {
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),
       hasSourcesAppendix: text.contains('Appendix B: Sources / Evidence'),
+      hasCircuitHeader: text.contains('CircuitCode report package'),
       hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
       hasEnterpriseStyles:
           text.contains('Aptos') &&
