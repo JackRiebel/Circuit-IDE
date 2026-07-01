@@ -13,6 +13,9 @@ class PdfArtifactInspection {
   final bool hasPageNumberFooter;
   final bool hasAccentBar;
   final bool hasTableGrid;
+  final bool hasExecutiveDecisionBrief;
+  final bool hasValidationChecklist;
+  final bool hasInfoKeywords;
   final String? title;
 
   const PdfArtifactInspection({
@@ -28,6 +31,9 @@ class PdfArtifactInspection {
     required this.hasPageNumberFooter,
     required this.hasAccentBar,
     required this.hasTableGrid,
+    required this.hasExecutiveDecisionBrief,
+    required this.hasValidationChecklist,
+    required this.hasInfoKeywords,
     required this.title,
   });
 
@@ -44,7 +50,10 @@ class PdfArtifactInspection {
       hasCircuitHeader &&
       hasCircuitFooter &&
       hasPageNumberFooter &&
-      hasAccentBar;
+      hasAccentBar &&
+      hasExecutiveDecisionBrief &&
+      hasValidationChecklist &&
+      hasInfoKeywords;
 
   bool containsText(String text) =>
       _normalizedTitle(title).contains(_normalizedTitle(text));
@@ -71,6 +80,12 @@ class PdfArtifactInspector {
       hasPageNumberFooter: RegExp(r'Page \d+ of \d+').hasMatch(text),
       hasAccentBar: text.contains('0 0 8 792 re f'),
       hasTableGrid: text.contains(' re S'),
+      hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
+      hasValidationChecklist: text.contains('Validation Checklist'),
+      hasInfoKeywords:
+          text.contains('/Keywords') &&
+          text.contains('enterprise') &&
+          text.contains('CircuitCode'),
       title: _titleFromInfo(text),
     );
   }

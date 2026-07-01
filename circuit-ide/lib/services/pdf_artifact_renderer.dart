@@ -14,28 +14,30 @@ class PdfArtifactRenderer {
     return [
       ['Section', 'Type', 'Items'],
       if (pageCount > 0) ['0', 'Pages', '$pageCount'],
-      ['1', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
+      ['1', 'Executive Decision Brief', '5'],
+      ['2', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
       for (var i = 0; i < document.sections.length; i++)
         [
-          '${i + 2}',
+          '${i + 3}',
           document.sections[i].title,
           '${document.sections[i].bullets.length + (document.sections[i].body.trim().isEmpty ? 0 : 1)}',
         ],
       if (document.tables.isNotEmpty)
         [
-          '${document.sections.length + 2}',
+          '${document.sections.length + 3}',
           'Data Tables',
           '${document.tables.length}',
         ],
+      ['${document.sections.length + 4}', 'Validation Checklist', '6'],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 3}',
+          '${document.sections.length + 5}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 4}',
+          '${document.sections.length + 6}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -56,6 +58,8 @@ class PdfArtifactRenderer {
     objects[5] = _bytes('<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>');
     objects[6] = _bytes(
       '<< /Title (${_pdfText(document.title)}) /Author (CircuitCode) '
+      '/Subject (${_pdfText('Enterprise customer handoff report')}) '
+      '/Keywords (${_pdfText(_keywords(document).join(', '))}) '
       '/Creator (CircuitCode) /Producer (CircuitCode Artifact Renderer) >>',
     );
 
@@ -133,6 +137,14 @@ class PdfArtifactRenderer {
         gapAfter: 8,
       ),
       const _PdfText(
+        'Executive Decision Brief',
+        size: 15,
+        bold: true,
+        gapBefore: 8,
+        gapAfter: 6,
+      ),
+      _PdfTable(_executiveDecisionBriefRows(document)),
+      const _PdfText(
         'Document Map',
         size: 15,
         bold: true,
@@ -181,6 +193,17 @@ class PdfArtifactRenderer {
         )
         ..add(_PdfTable(table.rows.take(16).toList(growable: false)));
     }
+    items
+      ..add(
+        const _PdfText(
+          'Validation Checklist',
+          size: 13.5,
+          bold: true,
+          gapBefore: 12,
+          gapAfter: 6,
+        ),
+      )
+      ..add(_PdfTable(_validationChecklistRows(document)));
     if (document.assumptions.isNotEmpty) {
       items.add(
         const _PdfText(
@@ -214,16 +237,166 @@ class PdfArtifactRenderer {
 
   List<String> _documentMap(ArtifactDocument document) {
     return [
+      'Executive Decision Brief - decision and handoff guidance',
       'Executive Summary - decision-ready overview',
       for (final section in document.sections)
         '${section.title} - ${section.bullets.isNotEmpty ? '${section.bullets.length} key point${section.bullets.length == 1 ? '' : 's'}' : 'narrative section'}',
       if (document.tables.isNotEmpty)
         'Data Tables - ${document.tables.length} structured table${document.tables.length == 1 ? '' : 's'}',
+      'Validation Checklist - quality and handoff readiness checks',
       if (document.assumptions.isNotEmpty)
         'Assumptions - ${document.assumptions.length} captured caveat${document.assumptions.length == 1 ? '' : 's'}',
       if (document.citations.isNotEmpty)
         'Sources / Evidence - ${document.citations.length} source item${document.citations.length == 1 ? '' : 's'}',
     ];
+  }
+
+  List<List<String>> _executiveDecisionBriefRows(ArtifactDocument document) {
+    final recommendation = _firstMatchingBullet(document, [
+      'recommend',
+      'next',
+      'implement',
+      'should',
+      'use',
+    ]);
+    final risk = _firstMatchingBullet(document, [
+      'risk',
+      'block',
+      'gap',
+      'unknown',
+      'validate',
+      'confirm',
+    ]);
+    return [
+      ['Decision Area', 'Brief'],
+      ['Primary outcome', _firstSentence(document.summary)],
+      [
+        'Recommendation focus',
+        recommendation ?? _sectionTitleFallback(document),
+      ],
+      [
+        'Evidence included',
+        document.citations.isEmpty
+            ? 'No cited source evidence included yet.'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} included.',
+      ],
+      [
+        'Open risks',
+        risk ??
+            (document.assumptions.isEmpty
+                ? 'No explicit risks or assumptions were provided.'
+                : document.assumptions.first),
+      ],
+      ['Required follow-up', _followUpGuidance(document)],
+    ];
+  }
+
+  List<List<String>> _validationChecklistRows(ArtifactDocument document) {
+    return [
+      ['Check', 'Status'],
+      [
+        'Executive summary',
+        document.summary.trim().isEmpty ? 'Missing' : 'Included',
+      ],
+      [
+        'Structured sections',
+        document.sections.isEmpty
+            ? 'Missing'
+            : '${document.sections.length} section${document.sections.length == 1 ? '' : 's'}',
+      ],
+      [
+        'Data tables',
+        document.tables.isEmpty
+            ? 'No structured tables included'
+            : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'}',
+      ],
+      [
+        'Assumptions',
+        document.assumptions.isEmpty
+            ? 'No assumptions listed'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} listed',
+      ],
+      [
+        'Evidence / citations',
+        document.citations.isEmpty
+            ? 'No cited evidence included'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} included',
+      ],
+      ['Handoff readiness', _handoffStatus(document)],
+    ];
+  }
+
+  List<String> _keywords(ArtifactDocument document) {
+    final keywords = <String>{
+      'artifact',
+      'report',
+      'CircuitCode',
+      'enterprise',
+      'PDF',
+    };
+    final combined = [
+      document.title,
+      document.summary,
+      for (final section in document.sections) section.title,
+    ].join(' ').toLowerCase();
+    if (combined.contains('architecture')) keywords.add('architecture');
+    if (combined.contains('business')) keywords.add('business');
+    if (combined.contains('implementation')) keywords.add('implementation');
+    if (combined.contains('evidence')) keywords.add('evidence');
+    if (combined.contains('lifecycle')) keywords.add('lifecycle');
+    if (combined.contains('sizing')) keywords.add('sizing');
+    return keywords.toList(growable: false);
+  }
+
+  String _firstSentence(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return 'No executive summary was provided.';
+    final match = RegExp(r'^(.+?[.!?])(?:\s|$)').firstMatch(trimmed);
+    return (match?.group(1) ?? trimmed).trim();
+  }
+
+  String? _firstMatchingBullet(ArtifactDocument document, List<String> terms) {
+    final loweredTerms = terms.map((term) => term.toLowerCase()).toList();
+    for (final section in document.sections) {
+      for (final bullet in section.bullets) {
+        final normalized = bullet.toLowerCase();
+        if (loweredTerms.any(normalized.contains)) return bullet;
+      }
+    }
+    return null;
+  }
+
+  String _sectionTitleFallback(ArtifactDocument document) {
+    if (document.sections.isEmpty) return 'No recommendation section provided.';
+    return 'Review ${document.sections.first.title}.';
+  }
+
+  String _followUpGuidance(ArtifactDocument document) {
+    final explicitNextStep = _firstMatchingBullet(document, [
+      'next',
+      'follow',
+      'workshop',
+      'validate',
+      'confirm',
+    ]);
+    if (explicitNextStep != null) return explicitNextStep;
+    if (document.assumptions.isNotEmpty) {
+      return 'Validate assumptions with the customer before final handoff.';
+    }
+    if (document.citations.isEmpty) {
+      return 'Add source evidence before using this as a final customer handoff.';
+    }
+    return 'Review with stakeholders and confirm final action owners.';
+  }
+
+  String _handoffStatus(ArtifactDocument document) {
+    if (document.summary.trim().isEmpty || document.sections.isEmpty) {
+      return 'Needs more narrative before handoff';
+    }
+    if (document.citations.isEmpty || document.assumptions.isEmpty) {
+      return 'Draft - validate assumptions and evidence';
+    }
+    return 'Ready for stakeholder review';
   }
 
   Iterable<String> _paragraphs(String body) {

@@ -591,7 +591,10 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('CircuitCode customer handoff report'));
     expect(pdfText, contains('Campus Refresh Handoff'));
     expect(pdfText, contains('Report Overview'));
+    expect(pdfText, contains('Executive Decision Brief'));
     expect(pdfText, contains('Document Map'));
+    expect(pdfText, contains('Validation Checklist'));
+    expect(pdfText, contains('/Keywords'));
     expect(pdfText, contains('Access layer needs multigig validation'));
     expect(pdfText, contains('Sources / Evidence'));
     expect(pdfText, contains('Workshop notes'));

@@ -48,11 +48,16 @@ void main() {
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportChrome, isTrue);
     expect(inspection.hasTableGrid, isTrue);
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
     expect(inspection.objectCount, greaterThanOrEqualTo(8));
     expect(inspection.title, 'Campus Refresh Handoff (Draft)');
     expect(text, contains('Report Overview'));
+    expect(text, contains('Executive Decision Brief'));
     expect(text, contains('Document Map'));
+    expect(text, contains('Validation Checklist'));
     expect(text, contains('Sizing Inputs'));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
   });
@@ -95,6 +100,8 @@ void main() {
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportChrome, isTrue);
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
     expect(
