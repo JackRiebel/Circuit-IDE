@@ -61,15 +61,20 @@ class PdfArtifactRenderer {
         'Decision Sign-Off',
         '${_decisionSignOffRows(document).length - 1} gates',
       ],
+      [
+        '${document.sections.length + 15}',
+        'External Handoff Manifest',
+        '${_externalHandoffManifestRows(document).length - 1}',
+      ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 15}',
+          '${document.sections.length + 16}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 16}',
+          '${document.sections.length + 17}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -129,6 +134,7 @@ class PdfArtifactRenderer {
         'Customer handoff scorecard',
         'Decision log',
         'Decision sign-off page',
+        'External handoff manifest',
         if (document.tables.isNotEmpty) 'Data tables',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
@@ -171,6 +177,8 @@ class PdfArtifactRenderer {
       'handoffScorecardItemCount': scorecardRows.length,
       'decisionLogCount': _decisionLogRows(document).length - 1,
       'decisionSignOffGateCount': _decisionSignOffRows(document).length - 1,
+      'externalHandoffManifestRowCount':
+          _externalHandoffManifestRows(document).length - 1,
       'approvalGateCount': _approvalGateRows(document).length,
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
@@ -187,6 +195,7 @@ class PdfArtifactRenderer {
       'hasCustomerHandoffScorecard': true,
       'hasDecisionLog': true,
       'hasDecisionSignOffPage': true,
+      'hasVisibleExternalHandoffManifest': true,
       'hasFooterPageNumbers': true,
       'hasExplicitTableGeometry': true,
       'hasReportQualityManifest': true,
@@ -490,7 +499,17 @@ class PdfArtifactRenderer {
           gapAfter: 6,
         ),
       )
-      ..add(_PdfTable(_decisionSignOffRows(document)));
+      ..add(_PdfTable(_decisionSignOffRows(document)))
+      ..add(
+        const _PdfText(
+          'External Handoff Manifest',
+          size: 13.5,
+          bold: true,
+          gapBefore: 12,
+          gapAfter: 6,
+        ),
+      )
+      ..add(_PdfTable(_externalHandoffManifestRows(document)));
     if (document.assumptions.isNotEmpty) {
       items.add(
         const _PdfText(
@@ -541,6 +560,7 @@ class PdfArtifactRenderer {
       const _PdfOutlineEntry('Customer Handoff Scorecard'),
       const _PdfOutlineEntry('Decision Log'),
       const _PdfOutlineEntry('Decision Sign-Off'),
+      const _PdfOutlineEntry('External Handoff Manifest'),
       if (document.assumptions.isNotEmpty)
         const _PdfOutlineEntry('Assumptions'),
       if (document.citations.isNotEmpty)
@@ -587,6 +607,7 @@ class PdfArtifactRenderer {
       'Customer Handoff Scorecard - readiness score, status signals, and owner follow-up',
       'Decision Log - decision, owner, evidence, and next-action record',
       'Decision Sign-Off - final approval fields, signature owners, and dates',
+      'External Handoff Manifest - review owner, publishing gate, evidence package, and assumption package',
       if (document.assumptions.isNotEmpty)
         'Assumptions - ${document.assumptions.length} captured caveat${document.assumptions.length == 1 ? '' : 's'}',
       if (document.citations.isNotEmpty)
@@ -1262,6 +1283,7 @@ class PdfArtifactRenderer {
       'Customer handoff scorecard',
       'Decision log',
       'Decision sign-off',
+      'External handoff manifest',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
@@ -1283,6 +1305,7 @@ class PdfArtifactRenderer {
       'Customer handoff scorecard',
       'Decision log',
       'Decision sign-off',
+      'External handoff manifest',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',
@@ -1429,6 +1452,34 @@ class PdfArtifactRenderer {
       'Source package: ${document.citations.isEmpty ? 'sources missing' : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached'}',
       'Assumption package: ${document.assumptions.isEmpty ? 'assumptions missing' : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'}',
     ];
+  }
+
+  List<List<String>> _externalHandoffManifestRows(ArtifactDocument document) {
+    final handoffScore = _handoffScoreFor(
+      _handoffScorecardRows(document).skip(1).toList(),
+    );
+    final manifest = _externalHandoffManifestFor(
+      document,
+      handoffScore: handoffScore,
+      validationGaps: _validationGapsFor(document),
+    );
+    return [
+      ['Handoff Control', 'Readiness Detail'],
+      for (final item in manifest)
+        [_manifestLabel(item), _manifestDetail(item)],
+    ];
+  }
+
+  String _manifestLabel(String value) {
+    final index = value.indexOf(':');
+    if (index <= 0) return 'Manifest item';
+    return value.substring(0, index).trim();
+  }
+
+  String _manifestDetail(String value) {
+    final index = value.indexOf(':');
+    if (index < 0 || index + 1 >= value.length) return value.trim();
+    return value.substring(index + 1).trim();
   }
 
   List<String> _reportRiskFlagsFor(

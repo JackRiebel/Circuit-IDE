@@ -66,6 +66,7 @@ void main() {
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
+    expect(inspection.hasVisibleExternalHandoffManifest, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.hasCustomQualityInfo, isTrue);
@@ -101,6 +102,9 @@ void main() {
     expect(text, contains('Customer Handoff Scorecard'));
     expect(text, contains('Decision Log'));
     expect(text, contains('Decision Sign-Off'));
+    expect(text, contains('External Handoff Manifest'));
+    expect(text, contains('Handoff Control'));
+    expect(text, contains('Readiness Detail'));
     expect(text, contains('Signature / Date'));
     expect(text, contains('Handoff approval'));
     expect(text, contains('Sizing Inputs'));
@@ -161,6 +165,7 @@ void main() {
         'Customer handoff scorecard',
         'Decision log',
         'Decision sign-off page',
+        'External handoff manifest',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -181,6 +186,7 @@ void main() {
         'Customer handoff scorecard',
         'Decision log',
         'Decision sign-off',
+        'External handoff manifest',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -192,6 +198,7 @@ void main() {
     expect(metadata['handoffScorecardItemCount'], 5);
     expect(metadata['decisionLogCount'], 4);
     expect(metadata['decisionSignOffGateCount'], 4);
+    expect(metadata['externalHandoffManifestRowCount'], 9);
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -315,6 +322,7 @@ void main() {
     expect(metadata['hasCustomerHandoffScorecard'], isTrue);
     expect(metadata['hasDecisionLog'], isTrue);
     expect(metadata['hasDecisionSignOffPage'], isTrue);
+    expect(metadata['hasVisibleExternalHandoffManifest'], isTrue);
     expect(metadata['hasFooterPageNumbers'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasReportQualityManifest'], isTrue);
@@ -383,6 +391,7 @@ void main() {
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
+    expect(inspection.hasVisibleExternalHandoffManifest, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasCustomQualityInfo, isTrue);
     expect(inspection.hasVisualVerificationManifest, isTrue);
@@ -397,5 +406,6 @@ void main() {
     );
     expect(text, contains('Large Customer Handoff Report'));
     expect(text, contains('Decision Sign-Off'));
+    expect(text, contains('External Handoff Manifest'));
   });
 }

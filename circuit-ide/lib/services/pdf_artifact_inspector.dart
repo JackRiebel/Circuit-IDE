@@ -31,6 +31,7 @@ class PdfArtifactInspection {
   final bool hasCustomerHandoffScorecard;
   final bool hasDecisionLog;
   final bool hasDecisionSignOff;
+  final bool hasVisibleExternalHandoffManifest;
   final bool hasExplicitTableGeometry;
   final bool hasInfoKeywords;
   final bool hasCustomQualityInfo;
@@ -72,6 +73,7 @@ class PdfArtifactInspection {
     required this.hasCustomerHandoffScorecard,
     required this.hasDecisionLog,
     required this.hasDecisionSignOff,
+    required this.hasVisibleExternalHandoffManifest,
     required this.hasExplicitTableGeometry,
     required this.hasInfoKeywords,
     required this.hasCustomQualityInfo,
@@ -116,6 +118,7 @@ class PdfArtifactInspection {
       hasCustomerHandoffScorecard &&
       hasDecisionLog &&
       hasDecisionSignOff &&
+      hasVisibleExternalHandoffManifest &&
       hasExplicitTableGeometry &&
       hasInfoKeywords &&
       hasCustomQualityInfo &&
@@ -181,6 +184,13 @@ class PdfArtifactInspector {
           text.contains('Decision Sign-Off') &&
           text.contains('Signature / Date') &&
           text.contains('Handoff approval'),
+      hasVisibleExternalHandoffManifest:
+          text.contains('External Handoff Manifest') &&
+          text.contains('Handoff Control') &&
+          text.contains('Readiness Detail') &&
+          text.contains('Publishing gate') &&
+          text.contains('Source package') &&
+          text.contains('Assumption package'),
       hasExplicitTableGeometry:
           text.contains(' re f') &&
           text.contains(' re S') &&
