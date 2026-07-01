@@ -32,7 +32,13 @@ graph LR
     expect(inspection.hasLogicalTopologyGuidance, isTrue);
     expect(inspection.hasTopologySummaryPanel, isTrue);
     expect(inspection.hasInventoryPanel, isTrue);
+    expect(inspection.hasDesignZones, isTrue);
+    expect(inspection.hasLinkSchedule, isTrue);
+    expect(inspection.hasReadinessScorecard, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
+    expect(inspection.linkScheduleCount, 2);
+    expect(inspection.readinessItemCount, 4);
   });
 
   test(
@@ -58,6 +64,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
 
       expect(inspection.isStructurallyValid, isTrue);
       expect(inspection.hasEnterpriseTopologyStructure, isTrue);
+      expect(inspection.hasDesignZones, isTrue);
+      expect(inspection.hasLinkSchedule, isTrue);
+      expect(inspection.hasReadinessScorecard, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
       expect(
@@ -76,6 +85,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.containsDeviceToken('C9300'), isTrue);
       expect(inspection.containsDeviceToken('CW9176'), isTrue);
       expect(inspection.assumptionCount, 2);
+      expect(inspection.designZoneCount, greaterThanOrEqualTo(6));
+      expect(inspection.linkScheduleCount, greaterThanOrEqualTo(5));
+      expect(inspection.readinessItemCount, 4);
       expect(inspection.siteCount, 4);
       expect(inspection.mdfCount, 1);
       expect(inspection.idfCount, 3);
@@ -125,6 +137,9 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.hasMultigig, isTrue);
     expect(inspection.hasWifi7, isTrue);
     expect(svg, contains('Inventory'));
+    expect(svg, contains('Design zones'));
+    expect(svg, contains('Link schedule'));
+    expect(svg, contains('Readiness scorecard'));
     expect(svg, contains('MDF 1'));
     expect(svg, contains('IDF 3'));
     expect(svg, contains('Core 6'));

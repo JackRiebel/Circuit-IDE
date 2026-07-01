@@ -848,6 +848,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('Logical topology'));
     expect(svg, contains('id="topology-summary"'));
+    expect(svg, contains('id="topology-design-zones"'));
+    expect(svg, contains('id="topology-link-schedule"'));
+    expect(svg, contains('id="topology-readiness"'));
     expect(svg, contains('id="topology-inventory"'));
     expect(svg, contains('id="topology-validation"'));
     expect(svg, contains('WAN / Cloud'));

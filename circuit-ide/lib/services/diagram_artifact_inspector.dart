@@ -10,12 +10,18 @@ class DiagramArtifactInspection {
   final bool hasLogicalTopologyGuidance;
   final bool hasTopologySummaryPanel;
   final bool hasInventoryPanel;
+  final bool hasDesignZones;
+  final bool hasLinkSchedule;
+  final bool hasReadinessScorecard;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
   final int nodeCount;
   final int edgeCount;
   final int tierCount;
   final int assumptionCount;
+  final int designZoneCount;
+  final int linkScheduleCount;
+  final int readinessItemCount;
   final int siteCount;
   final int mdfCount;
   final int idfCount;
@@ -43,12 +49,18 @@ class DiagramArtifactInspection {
     required this.hasLogicalTopologyGuidance,
     required this.hasTopologySummaryPanel,
     required this.hasInventoryPanel,
+    required this.hasDesignZones,
+    required this.hasLinkSchedule,
+    required this.hasReadinessScorecard,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
     required this.nodeCount,
     required this.edgeCount,
     required this.tierCount,
     required this.assumptionCount,
+    required this.designZoneCount,
+    required this.linkScheduleCount,
+    required this.readinessItemCount,
     required this.siteCount,
     required this.mdfCount,
     required this.idfCount,
@@ -83,6 +95,9 @@ class DiagramArtifactInspection {
       hasLogicalTopologyGuidance &&
       hasTopologySummaryPanel &&
       hasInventoryPanel &&
+      hasDesignZones &&
+      hasLinkSchedule &&
+      hasReadinessScorecard &&
       hasValidationChecklist &&
       hasAssumptionsPanel;
 
@@ -129,6 +144,18 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'assumptionCount') ??
         _dataInt(svg, 'data-assumption-count') ??
         0;
+    final designZoneCount =
+        _metadataInt(metadata, 'designZoneCount') ??
+        _dataInt(svg, 'data-zone-count') ??
+        0;
+    final linkScheduleCount =
+        _metadataInt(metadata, 'linkScheduleCount') ??
+        _dataInt(svg, 'data-link-schedule-count') ??
+        0;
+    final readinessItemCount =
+        _metadataInt(metadata, 'readinessItemCount') ??
+        _dataInt(svg, 'data-readiness-item-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -142,6 +169,9 @@ class DiagramArtifactInspector {
       hasLogicalTopologyGuidance: svg.contains('Logical topology'),
       hasTopologySummaryPanel: svg.contains('id="topology-summary"'),
       hasInventoryPanel: svg.contains('id="topology-inventory"'),
+      hasDesignZones: svg.contains('id="topology-design-zones"'),
+      hasLinkSchedule: svg.contains('id="topology-link-schedule"'),
+      hasReadinessScorecard: svg.contains('id="topology-readiness"'),
       hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
           svg.contains('id="topology-assumptions"') ||
@@ -150,6 +180,9 @@ class DiagramArtifactInspector {
       edgeCount: edgeCount,
       tierCount: tierCount,
       assumptionCount: assumptionCount,
+      designZoneCount: designZoneCount,
+      linkScheduleCount: linkScheduleCount,
+      readinessItemCount: readinessItemCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
       idfCount: _metadataInt(metadata, 'idfCount') ?? 0,
