@@ -848,9 +848,19 @@ Implementation plan for a customer-ready artifact workspace.
       expect(deck.fileName, endsWith('.pptx'));
       expect(deck.summary, contains('implementation plan PowerPoint deck'));
       expect(deck.sheetCount, greaterThanOrEqualTo(10));
+      expect(deck.metadata['hasPresenterTalkTrack'], isTrue);
+      expect(deck.metadata['presenterTalkTrackSlideCount'], 1);
+      expect(deck.metadata['presenterBrief'], isA<String>());
+      expect(
+        deck.metadata['readinessSignals'],
+        contains('Presenter talk track'),
+      );
+      expect(deck.metadata['slideFamilies'], contains('Presenter talk track'));
       final deckText = String.fromCharCodes(
         File(deck.filePath).readAsBytesSync(),
       );
+      expect(deckText, contains('Presenter Talk Track'));
+      expect(deckText, contains('How to use this deck'));
       expect(deckText, contains('Implementation Phases'));
       expect(deckText, contains('Scope And Success Criteria'));
       expect(deckText, contains('Approval And Handoff Gates'));

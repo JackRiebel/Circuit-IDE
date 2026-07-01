@@ -63,6 +63,7 @@ class PowerPointArtifactRenderer {
       'layoutFeatures': [
         'Branded title slide',
         'Numbered agenda',
+        'Presenter talk track',
         'Decision snapshot tiles',
         'Decision matrix',
         'Stakeholder alignment lanes',
@@ -88,6 +89,8 @@ class PowerPointArtifactRenderer {
       'sectionCount': document.sections.length,
       'sectionDividerCount':
           slideTypeCounts[_DeckSlideKind.sectionDivider.label] ?? 0,
+      'presenterTalkTrackSlideCount':
+          slideTypeCounts[_DeckSlideKind.talkTrack.label] ?? 0,
       'tableCount': document.tables.length,
       'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
       'decisionMatrixSlideCount':
@@ -103,6 +106,10 @@ class PowerPointArtifactRenderer {
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
       'hasAgenda': slideTypeCounts.containsKey(_DeckSlideKind.agenda.label),
+      'hasPresenterTalkTrack': slideTypeCounts.containsKey(
+        _DeckSlideKind.talkTrack.label,
+      ),
+      'presenterBrief': _communicationJobFor(document, sections),
       'hasDecisionSnapshot': slideTypeCounts.containsKey(
         _DeckSlideKind.snapshot.label,
       ),
@@ -233,6 +240,7 @@ class PowerPointArtifactRenderer {
             'Assumptions and sources',
         ],
       ),
+      _presenterTalkTrack(document, sections),
       _decisionSnapshot(document, sections),
       _executiveRecommendation(document, sections),
       _decisionMatrix(document, sections),
@@ -317,6 +325,38 @@ class PowerPointArtifactRenderer {
         next == null
             ? 'Next action: Assign owners, confirm timeline, and approve the first implementation batch.'
             : 'Next action: $next',
+      ],
+    );
+  }
+
+  _DeckSlide _presenterTalkTrack(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final audience = _audienceFor(document);
+    final purpose = _deckPurposeFor(document);
+    final decisionAsk = _decisionAskFor(document, sections);
+    final narrative = _narrativeArcFor(document, sections);
+    final job = _communicationJobFor(document, sections);
+    final validation = _firstMatchingBullet(sections, [
+      'validate',
+      'verify',
+      'evidence',
+      'source',
+    ]);
+    return _DeckSlide(
+      title: 'Presenter Talk Track',
+      eyebrow: 'How to use this deck',
+      kind: _DeckSlideKind.talkTrack,
+      bullets: [
+        'Audience: $audience',
+        'Purpose: $purpose',
+        'Narrative: $narrative',
+        'Decision ask: $decisionAsk',
+        validation == null
+            ? 'Validation cue: Call out assumptions, source data, and open evidence gaps before asking for approval.'
+            : 'Validation cue: $validation',
+        'Presenter cue: $job',
       ],
     );
   }
@@ -773,6 +813,8 @@ class PowerPointArtifactRenderer {
   ) {
     final signals = <String>[
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
+        'Presenter talk track',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -812,6 +854,8 @@ class PowerPointArtifactRenderer {
     return [
       if (slideTypeCounts.containsKey(_DeckSlideKind.title.label)) 'Opening',
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
+        'Presenter talk track',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -839,6 +883,8 @@ class PowerPointArtifactRenderer {
     return [
       if (!slideTypeCounts.containsKey(_DeckSlideKind.agenda.label))
         'Agenda slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
+        'Presenter talk track missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -906,6 +952,7 @@ class PowerPointArtifactRenderer {
   bool _hasCustomerReadyStructure(Map<String, int> slideTypeCounts) {
     return slideTypeCounts.containsKey(_DeckSlideKind.title.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.agenda.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label) &&
         slideTypeCounts.containsKey(
@@ -1873,6 +1920,7 @@ class _DeckSlide {
 enum _DeckSlideKind {
   title,
   agenda,
+  talkTrack,
   snapshot,
   decisionMatrix,
   stakeholderAlignment,
@@ -1891,6 +1939,7 @@ enum _DeckSlideKind {
     return switch (this) {
       _DeckSlideKind.title => 'Title',
       _DeckSlideKind.agenda => 'Agenda',
+      _DeckSlideKind.talkTrack => 'Talk Track',
       _DeckSlideKind.snapshot => 'Decision',
       _DeckSlideKind.decisionMatrix => 'Decision Matrix',
       _DeckSlideKind.stakeholderAlignment => 'Stakeholders',
@@ -1965,6 +2014,7 @@ class _DeckTheme {
     return switch (kind) {
       _DeckSlideKind.title => '7FB7B2',
       _DeckSlideKind.agenda => '7A9CC6',
+      _DeckSlideKind.talkTrack => '7FB7B2',
       _DeckSlideKind.snapshot => '78AAA5',
       _DeckSlideKind.dataSnapshot => 'B48EAD',
       _DeckSlideKind.takeaways => '7FB7B2',
@@ -1986,6 +2036,7 @@ class _DeckTheme {
       return switch (kind) {
         _DeckSlideKind.title || _DeckSlideKind.sectionDivider => 'F8FAFC',
         _DeckSlideKind.snapshot ||
+        _DeckSlideKind.talkTrack ||
         _DeckSlideKind.takeaways ||
         _DeckSlideKind.decisionMatrix ||
         _DeckSlideKind.stakeholderAlignment ||
@@ -1996,6 +2047,7 @@ class _DeckTheme {
     return switch (kind) {
       _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
       _DeckSlideKind.snapshot ||
+      _DeckSlideKind.talkTrack ||
       _DeckSlideKind.takeaways ||
       _DeckSlideKind.decisionMatrix ||
       _DeckSlideKind.stakeholderAlignment ||

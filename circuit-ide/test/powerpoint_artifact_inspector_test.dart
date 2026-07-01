@@ -52,6 +52,7 @@ void main() {
       containsAll([
         'Title',
         'Agenda',
+        'Talk Track',
         'Decision',
         'Decision Matrix',
         'Stakeholders',
@@ -109,6 +110,7 @@ void main() {
       containsAll([
         'Opening',
         'Agenda',
+        'Presenter talk track',
         'Decision snapshot',
         'Decision matrix',
         'Stakeholder alignment',
@@ -127,6 +129,7 @@ void main() {
       containsAll([
         'Branded title slide',
         'Numbered agenda',
+        'Presenter talk track',
         'Section divider slides',
         'Decision matrix',
         'Stakeholder alignment lanes',
@@ -146,6 +149,7 @@ void main() {
       metadata['readinessSignals'],
       containsAll([
         'Agenda',
+        'Presenter talk track',
         'Decision snapshot',
         'Decision matrix',
         'Stakeholder alignment',
@@ -157,8 +161,11 @@ void main() {
         'Speaker notes',
       ]),
     );
-    expect(metadata['readinessSignalCount'], 10);
+    expect(metadata['readinessSignalCount'], 11);
     expect(metadata['hasAgenda'], isTrue);
+    expect(metadata['hasPresenterTalkTrack'], isTrue);
+    expect(metadata['presenterTalkTrackSlideCount'], 1);
+    expect(metadata['presenterBrief'], isA<String>());
     expect(metadata['hasDecisionSnapshot'], isTrue);
     expect(metadata['hasDecisionMatrix'], isTrue);
     expect(metadata['hasStakeholderAlignment'], isTrue);
