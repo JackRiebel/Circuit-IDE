@@ -167,6 +167,7 @@ void main() {
         'Fit Scoring',
         'Requirements',
         'Requirement Gates',
+        'Hard Gate Evaluation',
         'Scored Shortlist',
         'Alternatives',
         'Replacement Cautions',
@@ -193,7 +194,29 @@ void main() {
       inspection.sheetContains('Requirement Gates', 'Reject stale migration'),
       isTrue,
     );
+    expect(
+      inspection.sheetContains('Hard Gate Evaluation', 'Power / UPOE'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Hard Gate Evaluation',
+        'Reject if sourced data does not prove',
+      ),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Hard Gate Evaluation', 'Multigig access'),
+      isTrue,
+    );
     expect(inspection.sheetContains('Scored Shortlist', 'C9300-48P'), isTrue);
+    expect(
+      inspection.sheetContains(
+        'Alternatives',
+        'Reconsider only if sourced facts prove hard-gate compliance',
+      ),
+      isTrue,
+    );
     expect(
       inspection.sheetContains('Replacement Cautions', 'suggestedMigrationPid'),
       isTrue,

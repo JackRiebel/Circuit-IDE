@@ -233,6 +233,7 @@ Here is the data.
       expect(packageText, contains('Fit Scoring'));
       expect(packageText, contains('Requirements'));
       expect(packageText, contains('Requirement Gates'));
+      expect(packageText, contains('Hard Gate Evaluation'));
       expect(packageText, contains('Scored Shortlist'));
       expect(packageText, contains('Alternatives'));
       expect(packageText, contains('Replacement Cautions'));
@@ -244,6 +245,9 @@ Here is the data.
       expect(packageText, contains('Wi-Fi 7'));
       expect(packageText, contains('UPOE'));
       expect(packageText, contains('suggestedMigrationPid'));
+      expect(packageText, contains('Power / UPOE'));
+      expect(packageText, contains('Multigig access'));
+      expect(packageText, contains('hard-gate compliance'));
       expect(packageText, contains('Official datasheet'));
     },
   );

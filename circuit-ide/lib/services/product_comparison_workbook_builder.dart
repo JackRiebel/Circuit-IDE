@@ -115,6 +115,19 @@ class ProductComparisonWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Hard Gate Evaluation',
+        rows: [
+          const [
+            'Product / Model',
+            'Hard gate',
+            'Detected requirement',
+            'Gate status',
+            'Evidence / rejection rule',
+          ],
+          ..._hardGateRows(candidates, '$prompt\n$content'),
+        ],
+      ),
+      WorkbookTable(
         name: 'Scored Shortlist',
         rows: [
           const [
@@ -134,8 +147,10 @@ class ProductComparisonWorkbookBuilder {
             'Alternative',
             'Reason to consider',
             'Reason to reject / caveat',
+            'What would change the decision',
           ],
           ..._alternativeRows(document, content),
+          ..._rejectedAlternativeRows(candidates),
         ],
       ),
       WorkbookTable(
@@ -480,6 +495,77 @@ class ProductComparisonWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _hardGateRows(
+    List<_ComparisonCandidate> candidates,
+    String content,
+  ) {
+    final requiresHighPower = RegExp(
+      r'\b(wi[- ]?fi\s*7|upoe\+?|802\.3bt|class\s*[68]|60w|90w)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final requiresMultiGig = RegExp(
+      r'\b(multigig|mGig|2\.5g|5g|10g(?:base)?(?: access)?|10gig|wi[- ]?fi\s*7)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final hasLifecycleConcern = RegExp(
+      r'\b(eox|eol|eos|ldos|lifecycle|migration|replacement pid|verify ldos)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final rows = <List<String>>[];
+    final targetCandidates = candidates.isEmpty
+        ? const [
+            _ComparisonCandidate(
+              product: 'TBD',
+              capabilities: 'Add sourced capability facts.',
+              constraints: 'Validate hard requirements.',
+              lifecycle: 'Needs lifecycle validation',
+              fitScore: 'TBD',
+              recommendation: 'Review',
+            ),
+          ]
+        : candidates.take(12);
+    for (final candidate in targetCandidates) {
+      rows.addAll([
+        [
+          candidate.product,
+          'Power / UPOE',
+          requiresHighPower ? 'Wi-Fi 7 / UPOE / 802.3bt signal' : 'TBD',
+          requiresHighPower
+              ? candidate.supportsHighPower
+                    ? 'Review pass'
+                    : 'At risk'
+              : 'Needs input',
+          requiresHighPower
+              ? 'Reject if sourced data does not prove required UPOE/UPOE+ power budget.'
+              : 'Collect AP power class before final recommendation.',
+        ],
+        [
+          candidate.product,
+          'Multigig access',
+          requiresMultiGig ? 'mGig / high-speed access signal' : 'TBD',
+          requiresMultiGig
+              ? candidate.supportsMultiGig
+                    ? 'Review pass'
+                    : 'At risk'
+              : 'Needs input',
+          requiresMultiGig
+              ? 'Reject if AP/client access speed requires 2.5/5/10G and candidate lacks it.'
+              : 'Collect AP access speed before final recommendation.',
+        ],
+        [
+          candidate.product,
+          'Lifecycle runway',
+          hasLifecycleConcern ? 'Lifecycle/EoX concern detected' : 'TBD',
+          candidate.lifecycleNeedsValidation
+              ? 'Needs validation'
+              : 'Review pass',
+          'Reject stale suggestedMigrationPid or migration candidates when newer current models better fit requirements.',
+        ],
+      ]);
+    }
+    return rows;
+  }
+
   List<List<String>> _shortlistRows(List<_ComparisonCandidate> candidates) {
     final ranked = [...candidates]
       ..sort((a, b) => b.numericFit.compareTo(a.numericFit));
@@ -548,13 +634,19 @@ class ProductComparisonWorkbookBuilder {
         continue;
       }
       for (final bullet in section.bullets) {
-        rows.add([section.title, bullet, 'Review against requirements.']);
+        rows.add([
+          section.title,
+          bullet,
+          'Review against requirements.',
+          'Reconsider only with sourced capability, lifecycle, or requirement-fit evidence.',
+        ]);
       }
       if (section.bullets.isEmpty && section.body.trim().isNotEmpty) {
         rows.add([
           section.title,
           _shorten(section.body.trim(), 180),
           'Review against requirements.',
+          'Reconsider only with sourced capability, lifecycle, or requirement-fit evidence.',
         ]);
       }
     }
@@ -568,6 +660,35 @@ class ProductComparisonWorkbookBuilder {
             product,
             'Candidate alternative',
             'Reject only with sourced capability, lifecycle, or requirement-fit evidence.',
+            'Reconsider only if sourced facts prove hard-gate compliance and stronger lifecycle/current-portfolio fit.',
+          ],
+        )
+        .toList(growable: false);
+  }
+
+  List<List<String>> _rejectedAlternativeRows(
+    List<_ComparisonCandidate> candidates,
+  ) {
+    final ranked = [...candidates]
+      ..sort((a, b) => b.numericFit.compareTo(a.numericFit));
+    final alternatives = ranked.skip(1).take(12).toList(growable: false);
+    if (alternatives.isEmpty) {
+      return const [
+        [
+          'TBD',
+          'No structured alternative candidates',
+          'No alternate candidates were structured enough to reject.',
+          'Add source-backed candidate facts and requirement gates.',
+        ],
+      ];
+    }
+    return alternatives
+        .map(
+          (candidate) => [
+            candidate.product,
+            'Ranked lower than the primary shortlist',
+            candidate.primaryCaution,
+            'Reconsider only if sourced facts prove hard-gate compliance and stronger lifecycle/current-portfolio fit.',
           ],
         )
         .toList(growable: false);
@@ -660,6 +781,7 @@ class ProductComparisonWorkbookBuilder {
 
 class _ComparisonCandidate {
   final String product;
+  final String capabilities;
   final String constraints;
   final String lifecycle;
   final String fitScore;
@@ -667,6 +789,7 @@ class _ComparisonCandidate {
 
   const _ComparisonCandidate({
     required this.product,
+    required this.capabilities,
     required this.constraints,
     required this.lifecycle,
     required this.fitScore,
@@ -682,6 +805,7 @@ class _ComparisonCandidate {
 
     return _ComparisonCandidate(
       product: cell(0, 'TBD'),
+      capabilities: cell(2, 'Add sourced capability facts.'),
       constraints: cell(3, 'Validate hard requirements.'),
       lifecycle: cell(4, 'Needs lifecycle validation'),
       fitScore: cell(5, 'TBD'),
@@ -709,5 +833,26 @@ class _ComparisonCandidate {
       return lifecycle;
     }
     return constraints;
+  }
+
+  bool get supportsHighPower {
+    final text = '$product $capabilities $constraints'.toLowerCase();
+    return RegExp(
+      r'\b(upoe\+?|802\.3bt|class\s*[68]|60w|90w|high power)\b',
+    ).hasMatch(text);
+  }
+
+  bool get supportsMultiGig {
+    final text = '$product $capabilities $constraints'.toLowerCase();
+    return RegExp(
+      r'\b(multigig|mgig|2\.5g|5g|10g|25g|40g|100g)\b',
+    ).hasMatch(text);
+  }
+
+  bool get lifecycleNeedsValidation {
+    final text = '$lifecycle $constraints $recommendation'.toLowerCase();
+    return RegExp(
+      r'\b(verify|ldos|eol|eos|eox|lifecycle|support|migration|stale)\b',
+    ).hasMatch(text);
   }
 }
