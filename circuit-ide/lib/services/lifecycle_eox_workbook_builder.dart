@@ -175,6 +175,25 @@ class LifecycleEoxWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Current Portfolio Shortlist',
+        rows: [
+          const [
+            'Current product',
+            'Migration hint',
+            'Current candidate class',
+            'Requirement fit pressure',
+            'Supersede rule',
+            'Evidence needed',
+            'Recommendation posture',
+          ],
+          ..._currentPortfolioShortlistRows(
+            document: document,
+            content: fullContent,
+            profile: profile,
+          ),
+        ],
+      ),
+      WorkbookTable(
         name: 'Migration Decision',
         rows: [
           const [
@@ -717,6 +736,102 @@ class LifecycleEoxWorkbookBuilder {
           ];
         })
         .toList(growable: false);
+  }
+
+  List<List<String>> _currentPortfolioShortlistRows({
+    required ArtifactDocument document,
+    required String content,
+    required _LifecycleProfile profile,
+  }) {
+    final migrationRows = _migrationHintRows(document, content);
+    final rows = migrationRows.isEmpty
+        ? const [
+            ['TBD', 'TBD'],
+          ]
+        : migrationRows.take(48);
+    return [
+      for (final row in rows)
+        ..._portfolioRowsFor(
+          product: row.isNotEmpty ? row[0] : 'TBD',
+          migrationHint: row.length > 1 ? row[1] : 'TBD',
+          profile: profile,
+        ),
+    ];
+  }
+
+  List<List<String>> _portfolioRowsFor({
+    required String product,
+    required String migrationHint,
+    required _LifecycleProfile profile,
+  }) {
+    final requirementPressure = _replacementRequirementSignal(profile.content);
+    final classes = {
+      _candidateClassFor(product, profile),
+      if (migrationHint != 'TBD') 'EoX suggestedMigrationPid comparator',
+      'Newest current portfolio candidate',
+    }.toList(growable: false);
+    return [
+      for (final candidateClass in classes)
+        [
+          product,
+          migrationHint,
+          candidateClass,
+          requirementPressure,
+          candidateClass == 'EoX suggestedMigrationPid comparator'
+              ? 'Supersede if a current candidate has better requirement fit or longer lifecycle runway.'
+              : 'Prefer only when sourced facts satisfy requirements better than migration hint and alternatives.',
+          _portfolioEvidenceNeeded(candidateClass, profile),
+          candidateClass == 'EoX suggestedMigrationPid comparator'
+              ? 'Migration clue only; not final recommendation.'
+              : 'Candidate shortlist item; needs sourced capability and lifecycle evidence.',
+        ],
+    ];
+  }
+
+  String _candidateClassFor(String product, _LifecycleProfile profile) {
+    final normalized = product.toLowerCase();
+    if (normalized.contains('air-ap') ||
+        normalized.contains('cw') ||
+        normalized.contains('mr')) {
+      return profile.hasWifi7
+          ? 'Current Wi-Fi 7 AP family'
+          : 'Current wireless AP family';
+    }
+    if (normalized.contains('c93') ||
+        normalized.contains('c94') ||
+        normalized.contains('c95') ||
+        normalized.contains('ms')) {
+      return profile.hasWifi7 || profile.hasHighPower || profile.hasMultiGig
+          ? 'Current UPOE/mGig access switching family'
+          : 'Current campus switching family';
+    }
+    if (normalized.contains('mx') ||
+        normalized.contains('isr') ||
+        normalized.contains('asr')) {
+      return 'Current edge/WAN platform family';
+    }
+    return 'Current portfolio candidate family';
+  }
+
+  String _portfolioEvidenceNeeded(
+    String candidateClass,
+    _LifecycleProfile profile,
+  ) {
+    final evidence = <String>[
+      'Official datasheet/catalog capability facts',
+      'Candidate lifecycle runway and checked date',
+    ];
+    if (profile.hasWifi7 || candidateClass.toLowerCase().contains('wi-fi 7')) {
+      evidence.add('Wi-Fi 7 support and AP model fit');
+    }
+    if (profile.hasHighPower || candidateClass.toLowerCase().contains('upoe')) {
+      evidence.add('UPOE/UPOE+ per-port and aggregate budget');
+    }
+    if (profile.hasMultiGig || candidateClass.toLowerCase().contains('mgig')) {
+      evidence.add('mGig access, uplinks, and oversubscription');
+    }
+    evidence.add('Rejected alternatives and final fit rationale');
+    return evidence.join('; ');
   }
 
   List<List<String>> _migrationDecisionRows(

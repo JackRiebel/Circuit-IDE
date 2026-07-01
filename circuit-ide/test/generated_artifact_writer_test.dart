@@ -401,7 +401,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(artifact.summary, contains('Lifecycle / EoX workbook'));
     expect(artifact.summary, contains('executive risk'));
     expect(artifact.summary, contains('replacement readiness'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(17));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(18));
     expect(artifact.previewRows.first, [
       'Decision Signal',
       'Current Answer',
@@ -422,6 +422,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('Date Authority'));
     expect(packageText, contains('Support Runway'));
     expect(packageText, contains('Replacement Suitability'));
+    expect(packageText, contains('Current Portfolio Shortlist'));
     expect(packageText, contains('Migration Decision'));
     expect(packageText, contains('Replacement Readiness'));
     expect(packageText, contains('WiFi7 UPOE Readiness'));
@@ -447,6 +448,21 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('Replacement Gate'));
     expect(packageText, contains('Customer-ready action plan'));
     expect(packageText, contains('current portfolio comparison'));
+    expect(packageText, contains('Current UPOE/mGig access switching family'));
+    expect(packageText, contains('Current Wi-Fi 7 AP family'));
+    expect(packageText, contains('EoX suggestedMigrationPid comparator'));
+    expect(
+      packageText,
+      contains('Supersede if a current candidate has better requirement fit'),
+    );
+    expect(
+      packageText,
+      contains('Official datasheet/catalog capability facts'),
+    );
+    expect(
+      packageText,
+      contains('Rejected alternatives and final fit rationale'),
+    );
     expect(packageText, contains('Wi-Fi 7'));
     expect(packageText, contains('UPOE'));
   });
