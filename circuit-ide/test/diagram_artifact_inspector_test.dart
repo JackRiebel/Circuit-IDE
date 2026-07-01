@@ -35,10 +35,12 @@ graph LR
     expect(inspection.hasDesignZones, isTrue);
     expect(inspection.hasLinkSchedule, isTrue);
     expect(inspection.hasReadinessScorecard, isTrue);
+    expect(inspection.hasCapacityPanel, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
     expect(inspection.linkScheduleCount, 2);
     expect(inspection.readinessItemCount, 4);
+    expect(inspection.capacityItemCount, 4);
   });
 
   test(
@@ -67,6 +69,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasDesignZones, isTrue);
       expect(inspection.hasLinkSchedule, isTrue);
       expect(inspection.hasReadinessScorecard, isTrue);
+      expect(inspection.hasCapacityPanel, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
       expect(
@@ -96,9 +99,13 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.accessSwitchCount, 3);
       expect(inspection.switchCount, greaterThanOrEqualTo(4));
       expect(inspection.apCount, 90);
+      expect(inspection.accessPortCount, 144);
+      expect(inspection.estimatedApPowerWatts, 2700);
+      expect(inspection.apPortLoadPercent, 63);
       expect(inspection.hasDualWan, isTrue);
       expect(inspection.hasWarmSpare, isTrue);
       expect(inspection.hasPoe, isTrue);
+      expect(inspection.hasUpoe, isTrue);
       expect(inspection.hasMultigig, isFalse);
       expect(inspection.hasWifi7, isTrue);
     },
@@ -131,20 +138,27 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.accessSwitchCount, 6);
     expect(inspection.switchCount, 12);
     expect(inspection.apCount, 90);
+    expect(inspection.accessPortCount, 288);
+    expect(inspection.estimatedApPowerWatts, 2700);
+    expect(inspection.apPortLoadPercent, 31);
     expect(inspection.hasDualWan, isTrue);
     expect(inspection.hasWarmSpare, isTrue);
     expect(inspection.hasPoe, isTrue);
+    expect(inspection.hasUpoe, isTrue);
     expect(inspection.hasMultigig, isTrue);
     expect(inspection.hasWifi7, isTrue);
     expect(svg, contains('Inventory'));
     expect(svg, contains('Design zones'));
     expect(svg, contains('Link schedule'));
     expect(svg, contains('Readiness scorecard'));
+    expect(svg, contains('Capacity checks'));
     expect(svg, contains('MDF 1'));
     expect(svg, contains('IDF 3'));
     expect(svg, contains('Core 6'));
     expect(svg, contains('Access 6'));
     expect(svg, contains('Requirements: Dual WAN'));
     expect(svg, contains('mGig/10G'));
+    expect(svg, contains('2700W est.'));
+    expect(svg, contains('90/288 AP ports'));
   });
 }

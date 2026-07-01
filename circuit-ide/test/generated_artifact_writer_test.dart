@@ -1100,6 +1100,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('id="topology-design-zones"'));
     expect(svg, contains('id="topology-link-schedule"'));
     expect(svg, contains('id="topology-readiness"'));
+    expect(svg, contains('id="topology-capacity"'));
     expect(svg, contains('id="topology-inventory"'));
     expect(svg, contains('id="topology-validation"'));
     expect(svg, contains('WAN / Cloud'));
@@ -1114,10 +1115,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('Dual WAN + HA'));
     expect(svg, contains('PoE/UPOE'));
     expect(svg, contains('Wi-Fi 7'));
+    expect(svg, contains('Capacity checks'));
+    expect(svg, contains('2700W est.'));
+    expect(svg, contains('90/144 AP ports'));
     expect(svg, contains('&quot;siteCount&quot;:4'));
     expect(svg, contains('&quot;idfCount&quot;:3'));
     expect(svg, contains('&quot;accessSwitchCount&quot;:3'));
     expect(svg, contains('&quot;apCount&quot;:90'));
+    expect(svg, contains('&quot;accessPortCount&quot;:144'));
+    expect(svg, contains('&quot;estimatedApPowerWatts&quot;:2700'));
     expect(svg, contains('Assumptions'));
     expect(svg, contains('Validate PoE budget'));
   });

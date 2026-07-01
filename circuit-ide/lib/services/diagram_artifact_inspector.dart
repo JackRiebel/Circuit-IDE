@@ -13,6 +13,7 @@ class DiagramArtifactInspection {
   final bool hasDesignZones;
   final bool hasLinkSchedule;
   final bool hasReadinessScorecard;
+  final bool hasCapacityPanel;
   final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
   final int nodeCount;
@@ -22,6 +23,7 @@ class DiagramArtifactInspection {
   final int designZoneCount;
   final int linkScheduleCount;
   final int readinessItemCount;
+  final int capacityItemCount;
   final int siteCount;
   final int mdfCount;
   final int idfCount;
@@ -30,9 +32,13 @@ class DiagramArtifactInspection {
   final int accessSwitchCount;
   final int switchCount;
   final int apCount;
+  final int accessPortCount;
+  final int estimatedApPowerWatts;
+  final int apPortLoadPercent;
   final bool hasDualWan;
   final bool hasWarmSpare;
   final bool hasPoe;
+  final bool hasUpoe;
   final bool hasMultigig;
   final bool hasWifi7;
   final String? title;
@@ -52,6 +58,7 @@ class DiagramArtifactInspection {
     required this.hasDesignZones,
     required this.hasLinkSchedule,
     required this.hasReadinessScorecard,
+    required this.hasCapacityPanel,
     required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
     required this.nodeCount,
@@ -61,6 +68,7 @@ class DiagramArtifactInspection {
     required this.designZoneCount,
     required this.linkScheduleCount,
     required this.readinessItemCount,
+    required this.capacityItemCount,
     required this.siteCount,
     required this.mdfCount,
     required this.idfCount,
@@ -69,9 +77,13 @@ class DiagramArtifactInspection {
     required this.accessSwitchCount,
     required this.switchCount,
     required this.apCount,
+    required this.accessPortCount,
+    required this.estimatedApPowerWatts,
+    required this.apPortLoadPercent,
     required this.hasDualWan,
     required this.hasWarmSpare,
     required this.hasPoe,
+    required this.hasUpoe,
     required this.hasMultigig,
     required this.hasWifi7,
     required this.title,
@@ -98,6 +110,7 @@ class DiagramArtifactInspection {
       hasDesignZones &&
       hasLinkSchedule &&
       hasReadinessScorecard &&
+      hasCapacityPanel &&
       hasValidationChecklist &&
       hasAssumptionsPanel;
 
@@ -156,6 +169,10 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'readinessItemCount') ??
         _dataInt(svg, 'data-readiness-item-count') ??
         0;
+    final capacityItemCount =
+        _metadataInt(metadata, 'capacityItemCount') ??
+        _dataInt(svg, 'data-capacity-item-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -172,6 +189,7 @@ class DiagramArtifactInspector {
       hasDesignZones: svg.contains('id="topology-design-zones"'),
       hasLinkSchedule: svg.contains('id="topology-link-schedule"'),
       hasReadinessScorecard: svg.contains('id="topology-readiness"'),
+      hasCapacityPanel: svg.contains('id="topology-capacity"'),
       hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
           svg.contains('id="topology-assumptions"') ||
@@ -183,6 +201,7 @@ class DiagramArtifactInspector {
       designZoneCount: designZoneCount,
       linkScheduleCount: linkScheduleCount,
       readinessItemCount: readinessItemCount,
+      capacityItemCount: capacityItemCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
       idfCount: _metadataInt(metadata, 'idfCount') ?? 0,
@@ -191,9 +210,22 @@ class DiagramArtifactInspector {
       accessSwitchCount: _metadataInt(metadata, 'accessSwitchCount') ?? 0,
       switchCount: _metadataInt(metadata, 'switchCount') ?? 0,
       apCount: _metadataInt(metadata, 'apCount') ?? 0,
+      accessPortCount:
+          _metadataInt(metadata, 'accessPortCount') ??
+          _dataInt(svg, 'data-access-port-count') ??
+          0,
+      estimatedApPowerWatts:
+          _metadataInt(metadata, 'estimatedApPowerWatts') ??
+          _dataInt(svg, 'data-estimated-ap-power-watts') ??
+          0,
+      apPortLoadPercent:
+          _metadataInt(metadata, 'apPortLoadPercent') ??
+          _dataInt(svg, 'data-ap-port-load-percent') ??
+          0,
       hasDualWan: metadata['hasDualWan'] == true,
       hasWarmSpare: metadata['hasWarmSpare'] == true,
       hasPoe: metadata['hasPoe'] == true,
+      hasUpoe: metadata['hasUpoe'] == true,
       hasMultigig: metadata['hasMultigig'] == true,
       hasWifi7: metadata['hasWifi7'] == true,
       title: title,
