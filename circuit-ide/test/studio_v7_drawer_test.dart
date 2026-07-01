@@ -1389,6 +1389,18 @@ void main() {
             'approvalGateCount': 4,
             'tableCoverage': '3 tables packaged',
             'evidenceCoverage': '6 source items captured',
+            'evidenceConfidence': 'High - sources and assumptions captured',
+            'reportReviewChecklist': [
+              'Confirm report title, audience, decision owner, and decision ask.',
+              'Review executive decision brief and recommendation summary for customer-specific language.',
+              'Validate risk register, next-step action plan, and approval gates.',
+            ],
+            'reportHandoffActions': [
+              'Send report to internal reviewer with source artifacts attached.',
+              'Walk through the decision ask: Review findings, confirm assumptions, and approve the recommended architecture path.',
+              'Keep cited sources with the handoff package.',
+            ],
+            'reportRiskFlags': <String>[],
             'appendixCoverage': '2 assumptions, 6 source items in appendices',
             'validationGaps': <String>[],
             'validationGapCount': 0,
@@ -1561,6 +1573,25 @@ void main() {
     expect(find.text('3 tables packaged'), findsOneWidget);
     expect(find.text('Evidence'), findsOneWidget);
     expect(find.text('6 source items captured'), findsOneWidget);
+    expect(find.text('Evidence confidence'), findsOneWidget);
+    expect(
+      find.text('High - sources and assumptions captured'),
+      findsOneWidget,
+    );
+    expect(find.text('Report review'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Confirm report title, audience, decision owner, and decision ask.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff actions'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Send report to internal reviewer with source artifacts attached.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Appendices'), findsOneWidget);
     expect(
       find.text('2 assumptions, 6 source items in appendices'),

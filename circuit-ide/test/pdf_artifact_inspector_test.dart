@@ -173,6 +173,32 @@ void main() {
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
+      metadata['evidenceConfidence'],
+      'High - sources and assumptions captured',
+    );
+    expect(
+      metadata['reportReviewChecklist'],
+      containsAll([
+        'Confirm report title, audience, decision owner, and decision ask.',
+        'Review executive decision brief and recommendation summary for customer-specific language.',
+        'Validate risk register, next-step action plan, and approval gates.',
+        'Review data tables for stale values, sensitive data, and source alignment.',
+        'Confirm assumptions with the accountable owner.',
+        'Check source authority, freshness, and cited facts.',
+      ]),
+    );
+    expect(metadata['reportReviewChecklistCount'], 6);
+    expect(
+      metadata['reportHandoffActions'],
+      containsAll([
+        'Send report to internal reviewer with source artifacts attached.',
+        'Capture owner, due date, approval gates, and follow-up actions.',
+        'Keep cited sources with the handoff package.',
+      ]),
+    );
+    expect(metadata['reportHandoffActionCount'], 4);
+    expect(metadata['reportRiskFlags'], isEmpty);
+    expect(
       metadata['appendixCoverage'],
       '1 assumption, 1 source item in appendices',
     );

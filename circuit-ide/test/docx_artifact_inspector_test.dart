@@ -141,6 +141,32 @@ void main() {
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
+      metadata['evidenceConfidence'],
+      'High - sources and assumptions captured',
+    );
+    expect(
+      metadata['reportReviewChecklist'],
+      containsAll([
+        'Confirm report title, audience, decision owner, and decision ask.',
+        'Review executive decision brief and recommendation summary for customer-specific language.',
+        'Validate risk register, next-step action plan, and approval gates.',
+        'Review data tables for stale values, sensitive data, and source alignment.',
+        'Confirm assumptions with the accountable owner.',
+        'Check source authority, freshness, and cited facts.',
+      ]),
+    );
+    expect(metadata['reportReviewChecklistCount'], 6);
+    expect(
+      metadata['reportHandoffActions'],
+      containsAll([
+        'Send report to internal reviewer with source artifacts attached.',
+        'Capture owner, due date, approval gates, and follow-up actions.',
+        'Keep cited sources with the handoff package.',
+      ]),
+    );
+    expect(metadata['reportHandoffActionCount'], 4);
+    expect(metadata['reportRiskFlags'], isEmpty);
+    expect(
       metadata['appendixCoverage'],
       '1 assumption, 1 source item in appendices',
     );
@@ -244,6 +270,30 @@ void main() {
     expect(metadata['handoffScore'], 50);
     expect(metadata['handoffReadinessLevel'], 'Needs evidence before handoff');
     expect(metadata['readinessSignals'], contains('Evidence gaps'));
+    expect(
+      metadata['evidenceConfidence'],
+      'Low - sources and assumptions need validation',
+    );
+    expect(
+      metadata['reportReviewChecklist'],
+      containsAll([
+        'Capture assumptions before customer handoff.',
+        'Attach sources or mark the report as an unsourced draft.',
+        'Resolve 2 validation gaps before stakeholder handoff.',
+      ]),
+    );
+    expect(
+      metadata['reportHandoffActions'],
+      contains('Add cited evidence before external handoff.'),
+    );
+    expect(
+      metadata['reportRiskFlags'],
+      containsAll([
+        'No cited sources attached',
+        'No assumptions captured',
+        'No supporting data tables',
+      ]),
+    );
     expect(metadata['hasCustomerReadyPackage'], isFalse);
     expect(metadata['hasCustomerReadyReport'], isFalse);
     expect(

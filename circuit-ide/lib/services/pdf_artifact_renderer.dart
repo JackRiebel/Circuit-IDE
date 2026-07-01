@@ -85,6 +85,8 @@ class PdfArtifactRenderer {
     final documentParts = _documentPartsFor(document);
     final scorecardRows = _handoffScorecardRows(document).skip(1).toList();
     final handoffScore = _handoffScoreFor(scorecardRows);
+    final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
+    final handoffActions = _reportHandoffActionsFor(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'pdf_report',
@@ -126,6 +128,12 @@ class PdfArtifactRenderer {
       'evidenceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
+      'evidenceConfidence': _evidenceConfidenceFor(document),
+      'reportReviewChecklist': reviewChecklist,
+      'reportReviewChecklistCount': reviewChecklist.length,
+      'reportHandoffActions': handoffActions,
+      'reportHandoffActionCount': handoffActions.length,
+      'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
       'appendixCoverage': _appendixCoverageFor(document),
       'validationGaps': validationGaps,
       'validationGapCount': validationGaps.length,
@@ -1272,6 +1280,70 @@ class PdfArtifactRenderer {
     if (document.assumptions.isEmpty) gaps++;
     if (document.citations.isEmpty) gaps++;
     return gaps;
+  }
+
+  String _evidenceConfidenceFor(ArtifactDocument document) {
+    if (document.citations.isNotEmpty && document.assumptions.isNotEmpty) {
+      return 'High - sources and assumptions captured';
+    }
+    if (document.citations.isNotEmpty) {
+      return 'Medium - sources captured, assumptions need owner review';
+    }
+    if (document.assumptions.isNotEmpty) {
+      return 'Medium - assumptions captured, sources need validation';
+    }
+    return 'Low - sources and assumptions need validation';
+  }
+
+  List<String> _reportReviewChecklistFor(
+    ArtifactDocument document,
+    List<String> validationGaps,
+  ) {
+    return [
+      'Confirm report title, audience, decision owner, and decision ask.',
+      'Review executive decision brief and recommendation summary for customer-specific language.',
+      'Validate risk register, next-step action plan, and approval gates.',
+      if (document.tables.isNotEmpty)
+        'Review data tables for stale values, sensitive data, and source alignment.'
+      else
+        'Attach supporting data or state why no data table is required.',
+      if (document.assumptions.isNotEmpty)
+        'Confirm assumptions with the accountable owner.'
+      else
+        'Capture assumptions before customer handoff.',
+      if (document.citations.isNotEmpty)
+        'Check source authority, freshness, and cited facts.'
+      else
+        'Attach sources or mark the report as an unsourced draft.',
+      if (validationGaps.isNotEmpty)
+        'Resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'} before stakeholder handoff.',
+    ];
+  }
+
+  List<String> _reportHandoffActionsFor(ArtifactDocument document) {
+    return [
+      'Send report to internal reviewer with source artifacts attached.',
+      'Walk through the decision ask: ${_decisionAskFor(document)}',
+      'Capture owner, due date, approval gates, and follow-up actions.',
+      if (document.citations.isNotEmpty)
+        'Keep cited sources with the handoff package.'
+      else
+        'Add cited evidence before external handoff.',
+    ];
+  }
+
+  List<String> _reportRiskFlagsFor(
+    ArtifactDocument document,
+    List<String> validationGaps,
+  ) {
+    return [
+      if (document.summary.trim().isEmpty) 'Missing executive summary',
+      if (document.sections.isEmpty) 'Missing report sections',
+      if (document.citations.isEmpty) 'No cited sources attached',
+      if (document.assumptions.isEmpty) 'No assumptions captured',
+      if (document.tables.isEmpty) 'No supporting data tables',
+      for (final gap in validationGaps.take(3)) gap,
+    ];
   }
 
   bool _hasCustomerReadyPackage(ArtifactDocument document) {

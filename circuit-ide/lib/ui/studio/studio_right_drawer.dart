@@ -3819,6 +3819,32 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Tables', _metadataString(artifact, 'tableCoverage')),
         if (_metadataString(artifact, 'evidenceCoverage').isNotEmpty)
           ('Evidence', _metadataString(artifact, 'evidenceCoverage')),
+        if (_metadataString(artifact, 'evidenceConfidence').isNotEmpty)
+          (
+            'Evidence confidence',
+            _metadataString(artifact, 'evidenceConfidence'),
+          ),
+        if (_metadataStringList(artifact, 'reportReviewChecklist').isNotEmpty)
+          (
+            'Report review',
+            _compactSignalList(
+              _metadataStringList(artifact, 'reportReviewChecklist'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'reportHandoffActions').isNotEmpty)
+          (
+            'Handoff actions',
+            _compactSignalList(
+              _metadataStringList(artifact, 'reportHandoffActions'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'reportRiskFlags').isNotEmpty)
+          (
+            'Report risks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'reportRiskFlags'),
+            ),
+          ),
         if (_metadataString(artifact, 'appendixCoverage').isNotEmpty)
           ('Appendices', _metadataString(artifact, 'appendixCoverage')),
         if (_metadataStringList(artifact, 'validationGaps').isNotEmpty)
