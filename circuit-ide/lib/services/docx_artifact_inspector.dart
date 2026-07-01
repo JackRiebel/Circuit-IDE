@@ -20,6 +20,7 @@ class DocxArtifactInspection {
   final int declaredWordCount;
   final int declaredParagraphCount;
   final bool hasReportOverview;
+  final bool hasLeadDecisionCallout;
   final bool hasTableOfContents;
   final bool hasExecutiveDecisionBrief;
   final bool hasRecommendationSummary;
@@ -32,6 +33,8 @@ class DocxArtifactInspection {
   final bool hasCircuitHeader;
   final bool hasCircuitFooter;
   final bool hasEnterpriseStyles;
+  final bool hasExplicitTableGeometry;
+  final bool hasRepeatingTableHeaders;
   final bool hasKeywordsMetadata;
 
   const DocxArtifactInspection({
@@ -54,6 +57,7 @@ class DocxArtifactInspection {
     required this.declaredWordCount,
     required this.declaredParagraphCount,
     required this.hasReportOverview,
+    required this.hasLeadDecisionCallout,
     required this.hasTableOfContents,
     required this.hasExecutiveDecisionBrief,
     required this.hasRecommendationSummary,
@@ -66,6 +70,8 @@ class DocxArtifactInspection {
     required this.hasCircuitHeader,
     required this.hasCircuitFooter,
     required this.hasEnterpriseStyles,
+    required this.hasExplicitTableGeometry,
+    required this.hasRepeatingTableHeaders,
     required this.hasKeywordsMetadata,
   });
 
@@ -86,6 +92,7 @@ class DocxArtifactInspection {
   bool get hasExpectedReportStructure =>
       isStructurallyValid &&
       hasReportOverview &&
+      hasLeadDecisionCallout &&
       hasTableOfContents &&
       hasExecutiveDecisionBrief &&
       hasRecommendationSummary &&
@@ -96,6 +103,8 @@ class DocxArtifactInspection {
       hasCircuitHeader &&
       hasCircuitFooter &&
       hasEnterpriseStyles &&
+      hasExplicitTableGeometry &&
+      hasRepeatingTableHeaders &&
       hasKeywordsMetadata;
 }
 
@@ -138,6 +147,11 @@ class DocxArtifactInspector {
       declaredWordCount: _intElement(text, 'Words') ?? 0,
       declaredParagraphCount: _intElement(text, 'Paragraphs') ?? 0,
       hasReportOverview: text.contains('Report Overview'),
+      hasLeadDecisionCallout:
+          text.contains('Decision ask') &&
+          text.contains('Review path') &&
+          text.contains('CalloutLabel') &&
+          text.contains('CCFBF1'),
       hasTableOfContents:
           text.contains('Table of Contents') && text.contains('TOC \\o'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
@@ -154,7 +168,13 @@ class DocxArtifactInspector {
           text.contains('Aptos') &&
           text.contains('Heading1') &&
           text.contains('Caption') &&
+          text.contains('CalloutLabel') &&
           text.contains('CBD5E1'),
+      hasExplicitTableGeometry:
+          text.contains('<w:tblW w:w="9120" w:type="dxa"/>') &&
+          text.contains('<w:tblGrid>') &&
+          text.contains('<w:tcW w:w='),
+      hasRepeatingTableHeaders: text.contains('<w:tblHeader/>'),
       hasKeywordsMetadata:
           text.contains('<cp:keywords>') &&
           text.contains('enterprise') &&

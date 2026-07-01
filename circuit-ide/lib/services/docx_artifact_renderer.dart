@@ -70,6 +70,23 @@ class DocxArtifactRenderer {
       'reviewPath': _reviewPathFor(document),
       'documentParts': documentParts,
       'documentPartCount': documentParts.length,
+      'documentQuality': 'Enterprise structured report',
+      'designPreset': 'standard_business_brief',
+      'layoutSystem': 'US Letter, 1 inch margins, Aptos type scale',
+      'formFactors': [
+        'Lead decision callout',
+        'Table of contents',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        if (document.tables.isNotEmpty) 'Data tables',
+        if (document.assumptions.isNotEmpty) 'Assumptions appendix',
+        if (document.citations.isNotEmpty) 'Sources appendix',
+      ],
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
@@ -93,6 +110,7 @@ class DocxArtifactRenderer {
       'approvalGateCount': 4,
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
+      'hasLeadDecisionCallout': true,
       'hasExecutiveDecisionBrief': true,
       'hasTableOfContents': true,
       'hasRecommendationSummary': true,
@@ -102,6 +120,8 @@ class DocxArtifactRenderer {
       'hasEvidenceConfidenceMatrix': true,
       'hasApprovalGates': true,
       'hasValidationChecklist': true,
+      'hasExplicitTableGeometry': true,
+      'hasRepeatingTableHeaders': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -206,7 +226,7 @@ class DocxArtifactRenderer {
   }
 
   int _paragraphCount(ArtifactDocument document) {
-    return 8 +
+    return 12 +
         document.sections.length +
         document.sections.fold<int>(
           0,
@@ -227,6 +247,7 @@ class DocxArtifactRenderer {
         '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="420" w:after="180"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="30"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="260" w:after="140"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="334155"/><w:sz w:val="25"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="60" w:after="120"/></w:pPr><w:rPr><w:color w:val="64748B"/><w:sz w:val="19"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="CalloutLabel"><w:name w:val="Callout Label"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:b/><w:color w:val="0F766E"/><w:sz w:val="20"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="Footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="64748B"/><w:sz w:val="18"/></w:rPr></w:style>'
         '</w:styles>';
   }
@@ -235,6 +256,7 @@ class DocxArtifactRenderer {
     final body = StringBuffer()
       ..write(_paragraph(document.title, style: 'Title'))
       ..write(_paragraph('CircuitCode generated report', style: 'Subtitle'))
+      ..write(_leadDecisionCallout(document))
       ..write(_tableOfContentsBlock(document))
       ..write(_paragraph('Report Overview', style: 'Heading1'))
       ..write(_reportOverviewTable(document))
@@ -295,6 +317,23 @@ class DocxArtifactRenderer {
         '<w:body>$body'
         '<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader1"/><w:footerReference w:type="default" r:id="rIdFooter1"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
         '</w:body></w:document>';
+  }
+
+  String _leadDecisionCallout(ArtifactDocument document) {
+    final rows = [
+      ['Decision ask', _decisionAskFor(document)],
+      ['Owner', _decisionOwner(document)],
+      ['Handoff status', _handoffStatus(document)],
+      ['Review path', _reviewPathFor(document)],
+    ];
+    return '<w:tbl><w:tblPr><w:tblW w:w="9120" w:type="dxa"/><w:tblInd w:w="120" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="8" w:color="5EEAD4"/><w:left w:val="single" w:sz="8" w:color="5EEAD4"/><w:bottom w:val="single" w:sz="8" w:color="CCFBF1"/><w:right w:val="single" w:sz="8" w:color="CCFBF1"/><w:insideH w:val="single" w:sz="4" w:color="CCFBF1"/><w:insideV w:val="single" w:sz="4" w:color="CCFBF1"/></w:tblBorders><w:tblCellMar><w:top w:w="120" w:type="dxa"/><w:left w:w="180" w:type="dxa"/><w:bottom w:w="120" w:type="dxa"/><w:right w:w="180" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="2160"/><w:gridCol w:w="6960"/></w:tblGrid>${rows.map((row) => _calloutRow(row[0], row[1])).join()}</w:tbl>';
+  }
+
+  String _calloutRow(String label, String value) {
+    return '<w:tr>'
+        '<w:tc><w:tcPr><w:tcW w:w="2160" w:type="dxa"/><w:vAlign w:val="center"/><w:shd w:fill="CCFBF1"/></w:tcPr><w:p><w:pPr><w:pStyle w:val="CalloutLabel"/></w:pPr><w:r><w:rPr><w:b/><w:color w:val="0F766E"/><w:sz w:val="20"/></w:rPr><w:t xml:space="preserve">${_xml(label)}</w:t></w:r></w:p></w:tc>'
+        '<w:tc><w:tcPr><w:tcW w:w="6960" w:type="dxa"/><w:vAlign w:val="center"/><w:shd w:fill="F0FDFA"/></w:tcPr><w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr><w:color w:val="134E4A"/><w:sz w:val="21"/></w:rPr><w:t xml:space="preserve">${_xml(value)}</w:t></w:r></w:p></w:tc>'
+        '</w:tr>';
   }
 
   String _tableOfContentsBlock(ArtifactDocument document) {
@@ -1126,7 +1165,7 @@ class DocxArtifactRenderer {
   }
 
   String _tableRow(List<String> row, List<int> widths, bool isHeader) {
-    return '<w:tr>${[for (var i = 0; i < widths.length; i++) _tableCell(i < row.length ? row[i] : '', widths[i], isHeader)].join()}</w:tr>';
+    return '<w:tr>${isHeader ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${[for (var i = 0; i < widths.length; i++) _tableCell(i < row.length ? row[i] : '', widths[i], isHeader)].join()}</w:tr>';
   }
 
   String _tableCell(String value, int width, bool isHeader) {

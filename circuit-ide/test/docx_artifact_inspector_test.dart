@@ -52,6 +52,7 @@ void main() {
     expect(inspection.headingCount, greaterThanOrEqualTo(6));
     expect(inspection.declaredWordCount, greaterThan(20));
     expect(inspection.declaredParagraphCount, greaterThan(10));
+    expect(inspection.hasLeadDecisionCallout, isTrue);
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
     expect(inspection.hasTableOfContents, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
@@ -61,6 +62,8 @@ void main() {
     expect(inspection.hasAssumptionsAppendix, isTrue);
     expect(inspection.hasSourcesAppendix, isTrue);
     expect(inspection.hasCircuitHeader, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
+    expect(inspection.hasRepeatingTableHeaders, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
@@ -80,6 +83,29 @@ void main() {
     expect(
       metadata['reviewPath'],
       'Architecture review -> risk validation -> implementation decision',
+    );
+    expect(metadata['documentQuality'], 'Enterprise structured report');
+    expect(metadata['designPreset'], 'standard_business_brief');
+    expect(
+      metadata['layoutSystem'],
+      'US Letter, 1 inch margins, Aptos type scale',
+    );
+    expect(
+      metadata['formFactors'],
+      containsAll([
+        'Lead decision callout',
+        'Table of contents',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
     );
     expect(
       metadata['documentParts'],
@@ -131,12 +157,15 @@ void main() {
       ]),
     );
     expect(metadata['hasExecutiveDecisionBrief'], isTrue);
+    expect(metadata['hasLeadDecisionCallout'], isTrue);
     expect(metadata['hasTableOfContents'], isTrue);
     expect(metadata['hasRiskRegister'], isTrue);
     expect(metadata['hasDocumentMap'], isTrue);
     expect(metadata['hasEvidenceConfidenceMatrix'], isTrue);
     expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasExplicitTableGeometry'], isTrue);
+    expect(metadata['hasRepeatingTableHeaders'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
@@ -177,6 +206,9 @@ void main() {
     expect(inspection.hasCircuitHeader, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasEnterpriseStyles, isTrue);
+    expect(inspection.hasLeadDecisionCallout, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
+    expect(inspection.hasRepeatingTableHeaders, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
@@ -195,6 +227,23 @@ void main() {
     );
     expect(metadata['validationGapCount'], 2);
     expect(metadata['appendixCoverage'], 'No appendices attached');
+    expect(metadata['hasLeadDecisionCallout'], isTrue);
+    expect(metadata['hasExplicitTableGeometry'], isTrue);
+    expect(metadata['hasRepeatingTableHeaders'], isTrue);
+    expect(
+      metadata['formFactors'],
+      containsAll([
+        'Lead decision callout',
+        'Table of contents',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+      ]),
+    );
   });
 
   test('DOCX report records evidence gaps and next-step actions', () {
@@ -231,8 +280,12 @@ void main() {
     expect(packageText, contains('No cited evidence included'));
     expect(packageText, contains('Evidence gap'));
     expect(packageText, contains('Decision owner'));
+    expect(packageText, contains('Decision ask'));
+    expect(packageText, contains('Review path'));
     expect(packageText, contains('Next-Step Action Plan'));
     expect(packageText, contains('CircuitCode report package'));
     expect(packageText, contains('Table of Contents'));
+    expect(packageText, contains('CalloutLabel'));
+    expect(packageText, contains('<w:tblHeader/>'));
   });
 }
