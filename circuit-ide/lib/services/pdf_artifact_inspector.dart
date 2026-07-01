@@ -33,6 +33,11 @@ class PdfArtifactInspection {
   final bool hasDecisionSignOff;
   final bool hasExplicitTableGeometry;
   final bool hasInfoKeywords;
+  final bool hasCustomQualityInfo;
+  final bool hasVisualVerificationManifest;
+  final bool hasRenderSafeTextFrame;
+  final bool hasPageCountConsistency;
+  final bool hasResolvableBookmarkDestinations;
   final String? title;
 
   const PdfArtifactInspection({
@@ -68,6 +73,11 @@ class PdfArtifactInspection {
     required this.hasDecisionSignOff,
     required this.hasExplicitTableGeometry,
     required this.hasInfoKeywords,
+    required this.hasCustomQualityInfo,
+    required this.hasVisualVerificationManifest,
+    required this.hasRenderSafeTextFrame,
+    required this.hasPageCountConsistency,
+    required this.hasResolvableBookmarkDestinations,
     required this.title,
   });
 
@@ -76,6 +86,7 @@ class PdfArtifactInspection {
       hasCatalog &&
       hasXref &&
       hasTrailer &&
+      hasPageCountConsistency &&
       pageCount > 0 &&
       objectCount >= pageCount + 6;
 
@@ -104,7 +115,11 @@ class PdfArtifactInspection {
       hasDecisionLog &&
       hasDecisionSignOff &&
       hasExplicitTableGeometry &&
-      hasInfoKeywords;
+      hasInfoKeywords &&
+      hasCustomQualityInfo &&
+      hasVisualVerificationManifest &&
+      hasRenderSafeTextFrame &&
+      hasResolvableBookmarkDestinations;
 
   bool containsText(String text) =>
       _normalizedTitle(title).contains(_normalizedTitle(text));
@@ -171,8 +186,62 @@ class PdfArtifactInspector {
           text.contains('/Keywords') &&
           text.contains('enterprise') &&
           text.contains('CircuitCode'),
+      hasCustomQualityInfo:
+          text.contains('/CircuitReportQualityManifest') &&
+          text.contains('/CircuitPublishingStatus') &&
+          text.contains('/CircuitReviewPath'),
+      hasVisualVerificationManifest:
+          text.contains('/CircuitVisualVerification') &&
+          text.contains('Render-safe text frame') &&
+          text.contains('Bookmark destinations resolve'),
+      hasRenderSafeTextFrame: _hasRenderSafeTextFrame(text),
+      hasPageCountConsistency: _hasPageCountConsistency(text),
+      hasResolvableBookmarkDestinations: _hasResolvableBookmarkDestinations(
+        text,
+      ),
       title: _titleFromInfo(text),
     );
+  }
+
+  static bool _hasPageCountConsistency(String text) {
+    final declared = RegExp(
+      r'/Type /Pages /Kids \[[^\]]*\] /Count (\d+)',
+    ).firstMatch(text);
+    final declaredCount = int.tryParse(declared?.group(1) ?? '');
+    if (declaredCount == null) return false;
+    final actualCount = RegExp(r'/Type /Page\b').allMatches(text).length;
+    return declaredCount == actualCount && actualCount > 0;
+  }
+
+  static bool _hasResolvableBookmarkDestinations(String text) {
+    final pageIds = RegExp(r'\n(\d+) 0 obj\n<< /Type /Page\b')
+        .allMatches(text)
+        .map((match) => match.group(1))
+        .whereType<String>()
+        .toSet();
+    final destinationIds = RegExp(r'/Dest \[(\d+) 0 R')
+        .allMatches(text)
+        .map((match) => match.group(1))
+        .whereType<String>()
+        .toList(growable: false);
+    return pageIds.isNotEmpty &&
+        destinationIds.isNotEmpty &&
+        destinationIds.every(pageIds.contains);
+  }
+
+  static bool _hasRenderSafeTextFrame(String text) {
+    final textPositions = RegExp(
+      r'(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+Td\s+\(',
+    ).allMatches(text);
+    var found = false;
+    for (final match in textPositions) {
+      found = true;
+      final x = double.tryParse(match.group(1) ?? '');
+      final y = double.tryParse(match.group(2) ?? '');
+      if (x == null || y == null) return false;
+      if (x < 40 || x > 560 || y < 28 || y > 770) return false;
+    }
+    return found;
   }
 
   static String? _titleFromInfo(String text) {

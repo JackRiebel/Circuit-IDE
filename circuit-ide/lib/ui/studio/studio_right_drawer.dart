@@ -4257,6 +4257,37 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Ask', _metadataString(artifact, 'decisionAsk')),
         if (_metadataString(artifact, 'reviewPath').isNotEmpty)
           ('Review path', _metadataString(artifact, 'reviewPath')),
+        if (_metadataBool(artifact, 'hasReportQualityManifest'))
+          (
+            'Quality',
+            _metadataString(artifact, 'qualityManifestVersion').isEmpty
+                ? 'Report quality manifest'
+                : 'Manifest v${_metadataString(artifact, 'qualityManifestVersion')}',
+          ),
+        if (_metadataStringList(artifact, 'publishingMetadata').isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'publishingMetadata'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'accessibilitySignals').isNotEmpty)
+          (
+            'Accessibility',
+            _compactSignalList(
+              _metadataStringList(artifact, 'accessibilitySignals'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'visualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'visualVerificationChecklist'),
+            ),
+          ),
         if (_metadataStringList(artifact, 'documentParts').isNotEmpty)
           (
             'Parts',

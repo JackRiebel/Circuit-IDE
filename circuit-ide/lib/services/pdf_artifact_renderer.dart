@@ -87,9 +87,14 @@ class PdfArtifactRenderer {
     final handoffScore = _handoffScoreFor(scorecardRows);
     final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
     final handoffActions = _reportHandoffActionsFor(document);
+    final visualVerificationChecklist = _visualVerificationChecklistFor(
+      document,
+    );
+    final publishingMetadata = _publishingMetadataFor(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'pdf_report',
+      'qualityManifestVersion': '1.0',
       'reportType': _reportTypeFor(document),
       'audience': _audienceFor(document),
       'reportPurpose': _reportPurposeFor(document),
@@ -133,6 +138,10 @@ class PdfArtifactRenderer {
       'reportReviewChecklistCount': reviewChecklist.length,
       'reportHandoffActions': handoffActions,
       'reportHandoffActionCount': handoffActions.length,
+      'visualVerificationChecklist': visualVerificationChecklist,
+      'visualVerificationChecklistCount': visualVerificationChecklist.length,
+      'publishingMetadata': publishingMetadata,
+      'publishingMetadataCount': publishingMetadata.length,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
       'appendixCoverage': _appendixCoverageFor(document),
       'validationGaps': validationGaps,
@@ -169,6 +178,10 @@ class PdfArtifactRenderer {
       'hasDecisionSignOffPage': true,
       'hasFooterPageNumbers': true,
       'hasExplicitTableGeometry': true,
+      'hasReportQualityManifest': true,
+      'hasVisualVerificationManifest': true,
+      'hasRenderSafeContentFrame': true,
+      'hasPublishingMetadata': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -193,7 +206,12 @@ class PdfArtifactRenderer {
       '<< /Title (${_pdfText(document.title)}) /Author (CircuitCode) '
       '/Subject (${_pdfText('Enterprise customer handoff report')}) '
       '/Keywords (${_pdfText(_keywords(document).join(', '))}) '
-      '/Creator (CircuitCode) /Producer (CircuitCode Artifact Renderer) >>',
+      '/Creator (CircuitCode) /Producer (CircuitCode Artifact Renderer) '
+      '/CircuitReportQualityManifest (${_pdfText('Bookmark outline, render-safe frame, page numbering, table grid, handoff sections, validation checklist.')}) '
+      '/CircuitVisualVerification (${_pdfText(_visualVerificationChecklistFor(document).join('; '))}) '
+      '/CircuitAccessibilityPolicy (${_pdfText('Readable type scale, explicit table grid, bookmark outline, page footer, source appendix support.')}) '
+      '/CircuitPublishingStatus (${_pdfText(_handoffStatus(document))}) '
+      '/CircuitReviewPath (${_pdfText(_reviewPathFor(document))}) >>',
     );
 
     for (var i = 0; i < pages.length; i++) {
@@ -1329,6 +1347,33 @@ class PdfArtifactRenderer {
         'Keep cited sources with the handoff package.'
       else
         'Add cited evidence before external handoff.',
+    ];
+  }
+
+  List<String> _visualVerificationChecklistFor(ArtifactDocument document) {
+    return [
+      'Render-safe text frame',
+      'US Letter media box',
+      'Header and footer present',
+      'Page numbers present',
+      'Bookmark destinations resolve',
+      'Table grid draws inside content frame',
+      if (document.citations.isNotEmpty) 'Source appendix included',
+      if (document.assumptions.isNotEmpty) 'Assumption appendix included',
+    ];
+  }
+
+  List<String> _publishingMetadataFor(ArtifactDocument document) {
+    final handoffScore = _handoffScoreFor(
+      _handoffScorecardRows(document).skip(1).toList(),
+    );
+    return [
+      'Report type: ${_reportTypeFor(document)}',
+      'Decision ask: ${_decisionAskFor(document)}',
+      'Review path: ${_reviewPathFor(document)}',
+      'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
+      'Evidence confidence: ${_evidenceConfidenceFor(document)}',
+      'Publishing status: ${_handoffStatus(document)}',
     ];
   }
 

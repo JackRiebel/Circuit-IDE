@@ -68,6 +68,11 @@ void main() {
     expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
+    expect(inspection.hasCustomQualityInfo, isTrue);
+    expect(inspection.hasVisualVerificationManifest, isTrue);
+    expect(inspection.hasRenderSafeTextFrame, isTrue);
+    expect(inspection.hasPageCountConsistency, isTrue);
+    expect(inspection.hasResolvableBookmarkDestinations, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
     expect(inspection.objectCount, greaterThanOrEqualTo(8));
     expect(inspection.title, 'Campus Refresh Handoff (Draft)');
@@ -98,10 +103,16 @@ void main() {
     expect(text, contains('Signature / Date'));
     expect(text, contains('Handoff approval'));
     expect(text, contains('Sizing Inputs'));
+    expect(text, contains('/CircuitReportQualityManifest'));
+    expect(text, contains('/CircuitVisualVerification'));
+    expect(text, contains('/CircuitAccessibilityPolicy'));
+    expect(text, contains('/CircuitPublishingStatus'));
+    expect(text, contains('/CircuitReviewPath'));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
 
     final metadata = const PdfArtifactRenderer().metadataFor(document);
     expect(metadata['artifact'], 'pdf_report');
+    expect(metadata['qualityManifestVersion'], '1.0');
     expect(metadata['reportType'], 'Architecture report');
     expect(metadata['audience'], 'Architecture reviewers');
     expect(
@@ -189,6 +200,31 @@ void main() {
     );
     expect(metadata['reportReviewChecklistCount'], 6);
     expect(
+      metadata['visualVerificationChecklist'],
+      containsAll([
+        'Render-safe text frame',
+        'US Letter media box',
+        'Header and footer present',
+        'Page numbers present',
+        'Bookmark destinations resolve',
+        'Table grid draws inside content frame',
+        'Source appendix included',
+        'Assumption appendix included',
+      ]),
+    );
+    expect(metadata['visualVerificationChecklistCount'], 8);
+    expect(
+      metadata['publishingMetadata'],
+      containsAll([
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence confidence: High - sources and assumptions captured',
+        'Publishing status: Ready for stakeholder review',
+      ]),
+    );
+    expect(metadata['publishingMetadataCount'], 6);
+    expect(
       metadata['reportHandoffActions'],
       containsAll([
         'Send report to internal reviewer with source artifacts attached.',
@@ -244,6 +280,10 @@ void main() {
     expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasFooterPageNumbers'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
+    expect(metadata['hasReportQualityManifest'], isTrue);
+    expect(metadata['hasVisualVerificationManifest'], isTrue);
+    expect(metadata['hasRenderSafeContentFrame'], isTrue);
+    expect(metadata['hasPublishingMetadata'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
@@ -307,6 +347,11 @@ void main() {
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
+    expect(inspection.hasCustomQualityInfo, isTrue);
+    expect(inspection.hasVisualVerificationManifest, isTrue);
+    expect(inspection.hasRenderSafeTextFrame, isTrue);
+    expect(inspection.hasPageCountConsistency, isTrue);
+    expect(inspection.hasResolvableBookmarkDestinations, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
     expect(

@@ -938,192 +938,217 @@ void main() {
     expect(artifacts.last.id, 'artifact-0');
   });
 
-  testWidgets(
-    'Artifacts drawer shows selected artifact metadata and binary preview',
-    (tester) async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
-      final artifact = GeneratedArtifact(
-        id: 'pdf-1',
-        kind: GeneratedArtifactKind.pdf,
-        status: GeneratedArtifactStatus.ready,
-        fileName: 'campus-refresh.pdf',
-        filePath: '/tmp/campus-refresh.pdf',
-        summary: 'Created a PDF handoff report.',
-        byteSize: 2048,
-        previewRows: const [
-          ['Section', 'Type', 'Items'],
-          ['1', 'Executive Summary', '1'],
-          ['2', 'Recommendations', '4'],
+  testWidgets('Artifacts drawer shows selected artifact metadata and binary preview', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'pdf-1',
+      kind: GeneratedArtifactKind.pdf,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'campus-refresh.pdf',
+      filePath: '/tmp/campus-refresh.pdf',
+      summary: 'Created a PDF handoff report.',
+      byteSize: 2048,
+      previewRows: const [
+        ['Section', 'Type', 'Items'],
+        ['1', 'Executive Summary', '1'],
+        ['2', 'Recommendations', '4'],
+      ],
+      sheetCount: 2,
+      metadata: const {
+        'reportType': 'Architecture report',
+        'audience': 'Architecture reviewers',
+        'reportPurpose': 'Review findings, risks, and recommendations',
+        'handoffStatus': 'Ready for stakeholder review',
+        'decisionOwner': 'Architecture owner / customer sponsor',
+        'decisionAsk':
+            'Review findings, confirm assumptions, and approve the recommended architecture path.',
+        'reviewPath':
+            'Architecture review -> risk validation -> implementation decision',
+        'qualityManifestVersion': '1.0',
+        'hasReportQualityManifest': true,
+        'hasVisualVerificationManifest': true,
+        'hasRenderSafeContentFrame': true,
+        'hasPublishingMetadata': true,
+        'publishingMetadata': [
+          'Report type: Architecture report',
+          'Review path: Architecture review -> risk validation -> implementation decision',
+          'Handoff readiness: Customer handoff ready',
         ],
-        sheetCount: 2,
-        metadata: const {
-          'reportType': 'Architecture report',
-          'audience': 'Architecture reviewers',
-          'reportPurpose': 'Review findings, risks, and recommendations',
-          'handoffStatus': 'Ready for stakeholder review',
-          'decisionOwner': 'Architecture owner / customer sponsor',
-          'decisionAsk':
-              'Review findings, confirm assumptions, and approve the recommended architecture path.',
-          'reviewPath':
-              'Architecture review -> risk validation -> implementation decision',
-          'documentParts': [
-            'Executive decision brief',
-            'Recommendation summary',
-            'Risk register',
-            'Next-step action plan',
-            'Document map',
-            'Evidence confidence matrix',
-            'Approval gates',
-            'Validation checklist',
-            'Data tables',
-            'Assumptions appendix',
-            'Sources appendix',
-          ],
-          'readinessSignals': [
-            'Decision brief',
-            'Recommendation summary',
-            'Risk register',
-            'Next steps',
-            'Validation checklist',
-            'Data tables',
-            'Assumptions',
-            'Sources',
-          ],
-          'pageCount': 2,
-          'bookmarkCount': 8,
-          'reportSectionCount': 12,
-          'sectionCount': 4,
-          'tableCount': 1,
-          'assumptionCount': 2,
-          'citationCount': 3,
-          'evidenceGapCount': 0,
-          'approvalGateCount': 4,
-          'tableCoverage': '1 table packaged',
-          'evidenceCoverage': '3 source items captured',
-          'appendixCoverage': '2 assumptions, 3 source items in appendices',
-          'validationGaps': <String>[],
-          'validationGapCount': 0,
-          'hasCustomerReadyPackage': true,
-          'hasCustomerReadyPdf': true,
-        },
-        threadId: null,
-        requestId: 'request-pdf',
-        createdAt: DateTime(2026, 6, 30, 9, 12),
-      );
-      container
-          .read(studioSourceArtifactProvider.notifier)
-          .add(artifact.toSourceArtifact());
-      container
-          .read(studioRightDrawerProvider.notifier)
-          .openMode(StudioDrawerMode.artifacts);
+        'visualVerificationChecklist': [
+          'Render-safe text frame',
+          'US Letter media box',
+          'Header and footer present',
+          'Page numbers present',
+          'Bookmark destinations resolve',
+          'Table grid draws inside content frame',
+        ],
+        'documentParts': [
+          'Executive decision brief',
+          'Recommendation summary',
+          'Risk register',
+          'Next-step action plan',
+          'Document map',
+          'Evidence confidence matrix',
+          'Approval gates',
+          'Validation checklist',
+          'Data tables',
+          'Assumptions appendix',
+          'Sources appendix',
+        ],
+        'readinessSignals': [
+          'Decision brief',
+          'Recommendation summary',
+          'Risk register',
+          'Next steps',
+          'Validation checklist',
+          'Data tables',
+          'Assumptions',
+          'Sources',
+        ],
+        'pageCount': 2,
+        'bookmarkCount': 8,
+        'reportSectionCount': 12,
+        'sectionCount': 4,
+        'tableCount': 1,
+        'assumptionCount': 2,
+        'citationCount': 3,
+        'evidenceGapCount': 0,
+        'approvalGateCount': 4,
+        'tableCoverage': '1 table packaged',
+        'evidenceCoverage': '3 source items captured',
+        'appendixCoverage': '2 assumptions, 3 source items in appendices',
+        'validationGaps': <String>[],
+        'validationGapCount': 0,
+        'hasCustomerReadyPackage': true,
+        'hasCustomerReadyPdf': true,
+      },
+      threadId: null,
+      requestId: 'request-pdf',
+      createdAt: DateTime(2026, 6, 30, 9, 12),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
 
-      await tester.pumpWidget(
-        UncontrolledProviderScope(
-          container: container,
-          child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
-        ),
-      );
-      await tester.pump();
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
 
-      expect(find.text('campus-refresh.pdf'), findsOneWidget);
-      expect(
-        find.textContaining('PDF • Architecture report • 8 bookmarks'),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining('Ready for stakeholder review'),
-        findsOneWidget,
-      );
-      expect(find.text('PDF outline'), findsOneWidget);
-      expect(find.text('2 pages'), findsOneWidget);
-      expect(find.text('Section'), findsOneWidget);
-      expect(find.text('Executive Summary'), findsOneWidget);
-      expect(
-        find.textContaining('Open to inspect the full document'),
-        findsNothing,
-      );
-      expect(find.text('2 pages'), findsOneWidget);
-      expect(
-        find.text('PDF Report for customer handoff, final report'),
-        findsOneWidget,
-      );
+    expect(find.text('campus-refresh.pdf'), findsOneWidget);
+    expect(
+      find.textContaining('PDF • Architecture report • 8 bookmarks'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Ready for stakeholder review'), findsOneWidget);
+    expect(find.text('PDF outline'), findsOneWidget);
+    expect(find.text('2 pages'), findsOneWidget);
+    expect(find.text('Section'), findsOneWidget);
+    expect(find.text('Executive Summary'), findsOneWidget);
+    expect(
+      find.textContaining('Open to inspect the full document'),
+      findsNothing,
+    );
+    expect(find.text('2 pages'), findsOneWidget);
+    expect(
+      find.text('PDF Report for customer handoff, final report'),
+      findsOneWidget,
+    );
 
-      await tester.tap(find.text('campus-refresh.pdf'));
-      await tester.pump();
+    await tester.tap(find.text('campus-refresh.pdf'));
+    await tester.pump();
 
-      expect(find.text('Type'), findsAtLeastNWidgets(1));
-      expect(find.text('Architecture report'), findsOneWidget);
-      expect(find.text('Audience'), findsAtLeastNWidgets(1));
-      expect(find.text('Architecture reviewers'), findsOneWidget);
-      expect(find.text('Purpose'), findsAtLeastNWidgets(1));
-      expect(
-        find.text('Review findings, risks, and recommendations'),
-        findsOneWidget,
-      );
-      expect(find.text('Handoff'), findsOneWidget);
-      expect(find.text('Ready for stakeholder review'), findsOneWidget);
-      expect(find.text('Owner'), findsOneWidget);
-      expect(
-        find.text('Architecture owner / customer sponsor'),
-        findsOneWidget,
-      );
-      expect(find.text('Ask'), findsOneWidget);
-      expect(
-        find.text(
-          'Review findings, confirm assumptions, and approve the recommended architecture path.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Review path'), findsOneWidget);
-      expect(
-        find.text(
-          'Architecture review -> risk validation -> implementation decision',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Parts'), findsOneWidget);
-      expect(
-        find.textContaining(
-          'Executive decision brief, Recommendation summary +9',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Readiness'), findsAtLeastNWidgets(1));
-      expect(
-        find.text('Decision brief, Recommendation summary +6'),
-        findsOneWidget,
-      );
-      expect(find.text('1 table packaged'), findsOneWidget);
-      expect(find.text('Evidence'), findsOneWidget);
-      expect(find.text('3 source items captured'), findsOneWidget);
-      expect(find.text('Appendices'), findsOneWidget);
-      expect(
-        find.text('2 assumptions, 3 source items in appendices'),
-        findsOneWidget,
-      );
-      expect(find.text('Status'), findsOneWidget);
-      expect(find.text('Format'), findsOneWidget);
-      expect(find.text('Pages'), findsOneWidget);
-      expect(find.text('Bookmarks'), findsOneWidget);
-      expect(find.text('Report parts'), findsOneWidget);
-      expect(find.text('Sections'), findsOneWidget);
-      expect(find.text('Tables'), findsOneWidget);
-      expect(find.text('Assumptions'), findsOneWidget);
-      expect(find.text('Sources'), findsOneWidget);
-      expect(find.text('Approval gates'), findsOneWidget);
-      expect(find.text('Package'), findsOneWidget);
-      expect(find.text('Customer-ready report flow'), findsOneWidget);
-      expect(find.text('Handoff package'), findsOneWidget);
-      expect(find.text('Final customer PDF'), findsOneWidget);
-      expect(find.text('8'), findsOneWidget);
-      expect(find.text('Request'), findsOneWidget);
-      expect(find.text('Folder'), findsOneWidget);
-      expect(find.text('Path'), findsOneWidget);
-      expect(find.text('request-pdf'), findsOneWidget);
-      expect(find.text('/tmp/campus-refresh.pdf'), findsOneWidget);
-    },
-  );
+    expect(find.text('Type'), findsAtLeastNWidgets(1));
+    expect(find.text('Architecture report'), findsOneWidget);
+    expect(find.text('Audience'), findsAtLeastNWidgets(1));
+    expect(find.text('Architecture reviewers'), findsOneWidget);
+    expect(find.text('Purpose'), findsAtLeastNWidgets(1));
+    expect(
+      find.text('Review findings, risks, and recommendations'),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff'), findsOneWidget);
+    expect(find.text('Ready for stakeholder review'), findsOneWidget);
+    expect(find.text('Owner'), findsOneWidget);
+    expect(find.text('Architecture owner / customer sponsor'), findsOneWidget);
+    expect(find.text('Ask'), findsOneWidget);
+    expect(
+      find.text(
+        'Review findings, confirm assumptions, and approve the recommended architecture path.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Review path'), findsOneWidget);
+    expect(
+      find.text(
+        'Architecture review -> risk validation -> implementation decision',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Quality'), findsOneWidget);
+    expect(find.text('Manifest v1.0'), findsOneWidget);
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(
+      find.text(
+        'Report type: Architecture report, Review path: Architecture review -> risk validation -> implementation decision +1',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.text('Render-safe text frame, US Letter media box +4'),
+      findsOneWidget,
+    );
+    expect(find.text('Parts'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Executive decision brief, Recommendation summary +9',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Readiness'), findsAtLeastNWidgets(1));
+    expect(
+      find.text('Decision brief, Recommendation summary +6'),
+      findsOneWidget,
+    );
+    expect(find.text('1 table packaged'), findsOneWidget);
+    expect(find.text('Evidence'), findsOneWidget);
+    expect(find.text('3 source items captured'), findsOneWidget);
+    expect(find.text('Appendices'), findsOneWidget);
+    expect(
+      find.text('2 assumptions, 3 source items in appendices'),
+      findsOneWidget,
+    );
+    expect(find.text('Status'), findsOneWidget);
+    expect(find.text('Format'), findsOneWidget);
+    expect(find.text('Pages'), findsOneWidget);
+    expect(find.text('Bookmarks'), findsOneWidget);
+    expect(find.text('Report parts'), findsOneWidget);
+    expect(find.text('Sections'), findsOneWidget);
+    expect(find.text('Tables'), findsOneWidget);
+    expect(find.text('Assumptions'), findsOneWidget);
+    expect(find.text('Sources'), findsOneWidget);
+    expect(find.text('Approval gates'), findsOneWidget);
+    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('Customer-ready report flow'), findsOneWidget);
+    expect(find.text('Handoff package'), findsOneWidget);
+    expect(find.text('Final customer PDF'), findsOneWidget);
+    expect(find.text('8'), findsOneWidget);
+    expect(find.text('Request'), findsOneWidget);
+    expect(find.text('Folder'), findsOneWidget);
+    expect(find.text('Path'), findsOneWidget);
+    expect(find.text('request-pdf'), findsOneWidget);
+    expect(find.text('/tmp/campus-refresh.pdf'), findsOneWidget);
+  });
 
   testWidgets('Artifacts drawer shows solution sizing workbook metadata', (
     tester,
