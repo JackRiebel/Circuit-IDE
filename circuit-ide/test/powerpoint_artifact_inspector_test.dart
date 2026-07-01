@@ -54,6 +54,7 @@ void main() {
         'Agenda',
         'Decision',
         'Decision Matrix',
+        'Stakeholders',
         'Takeaways',
         'Section',
         'Roadmap',
@@ -110,6 +111,7 @@ void main() {
         'Agenda',
         'Decision snapshot',
         'Decision matrix',
+        'Stakeholder alignment',
         'Recommendations',
         'Roadmap',
         'Data tables',
@@ -127,6 +129,7 @@ void main() {
         'Numbered agenda',
         'Section divider slides',
         'Decision matrix',
+        'Stakeholder alignment lanes',
         'Recommendation cards',
         'Roadmap timeline',
         'Closing decision ask',
@@ -134,6 +137,7 @@ void main() {
       ]),
     );
     expect(metadata['decisionMatrixSlideCount'], 1);
+    expect(metadata['stakeholderAlignmentSlideCount'], 1);
     expect(metadata['closingDecisionSlideCount'], 1);
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
     expect(metadata['assumptionCount'], 1);
@@ -144,6 +148,7 @@ void main() {
         'Agenda',
         'Decision snapshot',
         'Decision matrix',
+        'Stakeholder alignment',
         'Recommendation slides',
         'Roadmap',
         'Closing ask',
@@ -152,10 +157,11 @@ void main() {
         'Speaker notes',
       ]),
     );
-    expect(metadata['readinessSignalCount'], 9);
+    expect(metadata['readinessSignalCount'], 10);
     expect(metadata['hasAgenda'], isTrue);
     expect(metadata['hasDecisionSnapshot'], isTrue);
     expect(metadata['hasDecisionMatrix'], isTrue);
+    expect(metadata['hasStakeholderAlignment'], isTrue);
     expect(metadata['hasSectionDividers'], isTrue);
     expect(metadata['hasSectionDividerLayout'], isTrue);
     expect(metadata['hasEnterpriseBrandPill'], isTrue);

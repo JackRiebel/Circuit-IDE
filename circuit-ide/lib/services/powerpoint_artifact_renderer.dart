@@ -65,6 +65,7 @@ class PowerPointArtifactRenderer {
         'Numbered agenda',
         'Decision snapshot tiles',
         'Decision matrix',
+        'Stakeholder alignment lanes',
         'Recommendation cards',
         'Roadmap timeline',
         'Closing decision ask',
@@ -91,6 +92,8 @@ class PowerPointArtifactRenderer {
       'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
       'decisionMatrixSlideCount':
           slideTypeCounts[_DeckSlideKind.decisionMatrix.label] ?? 0,
+      'stakeholderAlignmentSlideCount':
+          slideTypeCounts[_DeckSlideKind.stakeholderAlignment.label] ?? 0,
       'closingDecisionSlideCount':
           slideTypeCounts[_DeckSlideKind.closing.label] ?? 0,
       'recommendationSlideCount':
@@ -115,6 +118,9 @@ class PowerPointArtifactRenderer {
       ),
       'hasDecisionMatrix': slideTypeCounts.containsKey(
         _DeckSlideKind.decisionMatrix.label,
+      ),
+      'hasStakeholderAlignment': slideTypeCounts.containsKey(
+        _DeckSlideKind.stakeholderAlignment.label,
       ),
       'hasClosingDecisionAsk': slideTypeCounts.containsKey(
         _DeckSlideKind.closing.label,
@@ -230,6 +236,7 @@ class PowerPointArtifactRenderer {
       _decisionSnapshot(document, sections),
       _executiveRecommendation(document, sections),
       _decisionMatrix(document, sections),
+      _stakeholderAlignment(document, sections),
       if (document.summary.isNotEmpty)
         _DeckSlide(
           title: 'Executive Summary',
@@ -449,6 +456,29 @@ class PowerPointArtifactRenderer {
     );
   }
 
+  _DeckSlide _stakeholderAlignment(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    return _DeckSlide(
+      title: 'Stakeholder Alignment',
+      eyebrow: 'Owner lanes',
+      kind: _DeckSlideKind.stakeholderAlignment,
+      bullets: const [
+        'Stakeholder alignment maps decision roles, evidence needs, and follow-up actions so the deck can move from readout to execution.',
+      ],
+      tableRows: [
+        const [
+          'Owner / stakeholder',
+          'Decision role',
+          'What they need',
+          'Follow-up action',
+        ],
+        ..._stakeholderRows(document, sections),
+      ],
+    );
+  }
+
   _DeckSlide _dataSnapshot(ArtifactDocument document) {
     return _DeckSlide(
       title: 'Data Snapshot',
@@ -461,6 +491,90 @@ class PowerPointArtifactRenderer {
           '${document.tables.length - 6} additional table${document.tables.length - 6 == 1 ? '' : 's'} available in the source artifact.',
       ],
     );
+  }
+
+  List<List<String>> _stakeholderRows(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+    ]);
+    final risk = _firstMatchingBullet(sections, ['risk', 'caveat', 'concern']);
+    final next = _firstMatchingBullet(sections, [
+      'next',
+      'phase',
+      'action',
+      'owner',
+    ]);
+    final evidence = _firstMatchingBullet(sections, [
+      'evidence',
+      'source',
+      'validate',
+      'data',
+    ]);
+    return [
+      [
+        _primarySponsorFor(document),
+        'Approve direction',
+        _truncate(
+          recommendation ??
+              (document.summary.isEmpty
+                  ? 'Clear recommendation and business rationale.'
+                  : document.summary),
+          70,
+        ),
+        'Confirm decision, scope, and success criteria.',
+      ],
+      [
+        'Technical owner',
+        'Validate feasibility',
+        _truncate(
+          evidence ??
+              (document.tables.isEmpty
+                  ? 'Supporting data, constraints, and implementation path.'
+                  : '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} and implementation assumptions.'),
+          70,
+        ),
+        'Validate design constraints, dependencies, and rollout path.',
+      ],
+      [
+        'Risk / operations owner',
+        'Accept risk posture',
+        _truncate(
+          risk ??
+              (document.assumptions.isEmpty
+                  ? 'Known risks and assumptions still need owner review.'
+                  : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} requiring confirmation.'),
+          70,
+        ),
+        'Resolve blockers and record operational acceptance.',
+      ],
+      [
+        'Implementation owner',
+        'Drive next step',
+        _truncate(next ?? 'Owner, timeline, and verification plan.', 70),
+        'Turn the decision into a tracked implementation or handoff task.',
+      ],
+    ];
+  }
+
+  String _primarySponsorFor(ArtifactDocument document) {
+    final text =
+        '${document.metadata['prompt'] ?? ''} ${document.title} ${document.summary}'
+            .toLowerCase();
+    if (text.contains('customer') || text.contains('proposal')) {
+      return 'Customer sponsor';
+    }
+    if (text.contains('business case') || text.contains('value')) {
+      return 'Business sponsor';
+    }
+    if (text.contains('architecture') || text.contains('technical')) {
+      return 'Architecture sponsor';
+    }
+    return 'Executive sponsor';
   }
 
   _DeckSlide _implementationRoadmap(
@@ -665,6 +779,10 @@ class PowerPointArtifactRenderer {
         'Recommendation slides',
       if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
         'Decision matrix',
+      if (slideTypeCounts.containsKey(
+        _DeckSlideKind.stakeholderAlignment.label,
+      ))
+        'Stakeholder alignment',
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
       if (slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
         'Closing ask',
@@ -700,6 +818,10 @@ class PowerPointArtifactRenderer {
         'Recommendations',
       if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
         'Decision matrix',
+      if (slideTypeCounts.containsKey(
+        _DeckSlideKind.stakeholderAlignment.label,
+      ))
+        'Stakeholder alignment',
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Data tables',
@@ -723,6 +845,10 @@ class PowerPointArtifactRenderer {
         'Recommendation slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
         'Decision matrix missing',
+      if (!slideTypeCounts.containsKey(
+        _DeckSlideKind.stakeholderAlignment.label,
+      ))
+        'Stakeholder alignment missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label))
         'Roadmap slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
@@ -782,6 +908,9 @@ class PowerPointArtifactRenderer {
         slideTypeCounts.containsKey(_DeckSlideKind.agenda.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label) &&
+        slideTypeCounts.containsKey(
+          _DeckSlideKind.stakeholderAlignment.label,
+        ) &&
         slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.sources.label);
   }
@@ -1746,6 +1875,7 @@ enum _DeckSlideKind {
   agenda,
   snapshot,
   decisionMatrix,
+  stakeholderAlignment,
   dataSnapshot,
   takeaways,
   sectionDivider,
@@ -1763,6 +1893,7 @@ enum _DeckSlideKind {
       _DeckSlideKind.agenda => 'Agenda',
       _DeckSlideKind.snapshot => 'Decision',
       _DeckSlideKind.decisionMatrix => 'Decision Matrix',
+      _DeckSlideKind.stakeholderAlignment => 'Stakeholders',
       _DeckSlideKind.dataSnapshot => 'Data',
       _DeckSlideKind.takeaways => 'Takeaways',
       _DeckSlideKind.sectionDivider => 'Section',
@@ -1840,6 +1971,7 @@ class _DeckTheme {
       _DeckSlideKind.sectionDivider => 'C7A77B',
       _DeckSlideKind.recommendation => 'A7C080',
       _DeckSlideKind.decisionMatrix => '7FB7B2',
+      _DeckSlideKind.stakeholderAlignment => '7A9CC6',
       _DeckSlideKind.roadmap => 'A7C080',
       _DeckSlideKind.closing => '7FB7B2',
       _DeckSlideKind.table => 'B48EAD',
@@ -1856,6 +1988,7 @@ class _DeckTheme {
         _DeckSlideKind.snapshot ||
         _DeckSlideKind.takeaways ||
         _DeckSlideKind.decisionMatrix ||
+        _DeckSlideKind.stakeholderAlignment ||
         _DeckSlideKind.roadmap => 'F1F5F9',
         _ => canvas,
       };
@@ -1865,6 +1998,7 @@ class _DeckTheme {
       _DeckSlideKind.snapshot ||
       _DeckSlideKind.takeaways ||
       _DeckSlideKind.decisionMatrix ||
+      _DeckSlideKind.stakeholderAlignment ||
       _DeckSlideKind.roadmap => '121715',
       _ => canvas,
     };

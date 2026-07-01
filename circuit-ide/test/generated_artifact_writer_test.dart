@@ -80,6 +80,7 @@ Short executive summary for the customer.
       expect(artifact.metadata['validationGapCount'], 0);
       expect(artifact.metadata['hasAgenda'], isTrue);
       expect(artifact.metadata['hasDecisionSnapshot'], isTrue);
+      expect(artifact.metadata['hasStakeholderAlignment'], isTrue);
       expect(artifact.metadata['hasRoadmap'], isTrue);
       expect(artifact.metadata['hasTableSlides'], isTrue);
       expect(artifact.metadata['hasSourcesSlide'], isTrue);
@@ -101,6 +102,8 @@ Short executive summary for the customer.
       expect(packageText, contains('Agenda'));
       expect(packageText, contains('Agenda step'));
       expect(packageText, contains('Decision Snapshot'));
+      expect(packageText, contains('Stakeholder Alignment'));
+      expect(packageText, contains('Owner / stakeholder'));
       expect(packageText, contains('Key Takeaways'));
       expect(packageText, contains('Executive Summary'));
       expect(packageText, contains('Current State'));
