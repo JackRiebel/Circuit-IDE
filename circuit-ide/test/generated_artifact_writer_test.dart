@@ -77,6 +77,19 @@ Short executive summary for the customer.
         artifact.metadata['deckReviewPriority'],
         'Low - ready for stakeholder review',
       );
+      expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
+      expect(artifact.metadata['externalHandoffManifestCount'], 7);
+      expect(
+        artifact.metadata['externalHandoffManifest'],
+        containsAll([
+          'Review owner: Customer sponsor',
+          'Delivery readiness: Customer handoff ready',
+          'Evidence status: High - sources and assumptions captured',
+          'Publishing gate: ready for reviewer approval',
+          'Source package: 1 source item attached',
+          'Assumption package: 1 assumption captured',
+        ]),
+      );
       expect(artifact.metadata['slideCount'], artifact.sheetCount);
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
@@ -151,6 +164,17 @@ Short executive summary for the customer.
       expect(packageText, contains('Slide 1 of'));
       expect(packageText, contains('Customer workshop notes'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
+      expect(packageText, contains('CircuitExternalHandoffManifest'));
+      expect(packageText, contains('Review owner: Customer sponsor'));
+      expect(
+        packageText,
+        contains('Evidence status: High - sources and assumptions captured'),
+      );
+      expect(
+        packageText,
+        contains('Publishing gate: ready for reviewer approval'),
+      );
+      expect(packageText, contains('Decision ask: Review the recommendation'));
     },
   );
 

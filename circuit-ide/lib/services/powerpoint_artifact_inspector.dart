@@ -10,6 +10,7 @@ class PowerPointArtifactInspection {
   final bool hasExtendedProperties;
   final bool hasCustomProperties;
   final bool hasNarrativeManifest;
+  final bool hasExternalHandoffManifest;
   final int slideCount;
   final int declaredSlideCount;
   final String? title;
@@ -50,6 +51,7 @@ class PowerPointArtifactInspection {
     required this.hasExtendedProperties,
     required this.hasCustomProperties,
     required this.hasNarrativeManifest,
+    required this.hasExternalHandoffManifest,
     required this.slideCount,
     required this.declaredSlideCount,
     required this.title,
@@ -91,6 +93,7 @@ class PowerPointArtifactInspection {
       hasExtendedProperties &&
       hasCustomProperties &&
       hasNarrativeManifest &&
+      hasExternalHandoffManifest &&
       slideCount > 0 &&
       declaredSlideCount == slideCount;
 
@@ -174,6 +177,12 @@ class PowerPointArtifactInspector {
           text.contains('CircuitNarrativeArc') &&
           text.contains('CircuitDecisionAsk') &&
           text.contains('CircuitVisibleCopyPolicy'),
+      hasExternalHandoffManifest:
+          text.contains('CircuitExternalHandoffManifest') &&
+          text.contains('Review owner:') &&
+          text.contains('Evidence status:') &&
+          text.contains('Publishing gate:') &&
+          text.contains('Decision ask:'),
       slideCount: slideFiles.length,
       declaredSlideCount: _declaredSlideCount(text),
       title: _firstElementText(text, 'dc:title'),

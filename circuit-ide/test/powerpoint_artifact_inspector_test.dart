@@ -81,6 +81,7 @@ void main() {
     expect(inspection.hasSpeakerNotes, isTrue);
     expect(inspection.hasCustomProperties, isTrue);
     expect(inspection.hasNarrativeManifest, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(inspection.notesSlideCount, inspection.slideCount);
     expect(inspection.usesDarkTheme, isTrue);
 
@@ -179,6 +180,19 @@ void main() {
     expect(metadata['hasDeckVisualVerificationChecklist'], isTrue);
     expect(metadata['hasDeckEvidencePolicy'], isTrue);
     expect(metadata['hasDeckPublishingMetadata'], isTrue);
+    expect(metadata['hasExternalHandoffManifest'], isTrue);
+    expect(metadata['externalHandoffManifestCount'], 7);
+    expect(
+      metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Customer sponsor',
+        'Delivery readiness: Customer handoff ready',
+        'Evidence status: High - sources and assumptions captured',
+        'Publishing gate: ready for reviewer approval',
+        'Source package: 1 source item attached',
+        'Assumption package: 1 assumption captured',
+      ]),
+    );
     expect(metadata['deckHandoffActionCount'], 4);
     expect(
       metadata['deckHandoffActions'],

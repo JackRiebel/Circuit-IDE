@@ -80,6 +80,13 @@ class PowerPointArtifactRenderer {
       validationGaps: validationGaps,
       evidenceConfidence: evidenceConfidence,
     );
+    final externalHandoffManifest = _externalHandoffManifestFor(
+      document,
+      sections,
+      deliveryReadinessLevel: deliveryReadinessLevel,
+      validationGaps: validationGaps,
+      evidenceConfidence: evidenceConfidence,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -146,6 +153,9 @@ class PowerPointArtifactRenderer {
       'deckEvidencePolicyCount': evidencePolicy.length,
       'deckPublishingMetadata': publishingMetadata,
       'deckPublishingMetadataCount': publishingMetadata.length,
+      'externalHandoffManifest': externalHandoffManifest,
+      'externalHandoffManifestCount': externalHandoffManifest.length,
+      'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
       'deckHandoffActions': handoffActions,
       'deckHandoffActionCount': handoffActions.length,
       'presentationRiskFlags': _presentationRiskFlagsFor(
@@ -1276,6 +1286,27 @@ class PowerPointArtifactRenderer {
     ];
   }
 
+  List<String> _externalHandoffManifestFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections, {
+    required String deliveryReadinessLevel,
+    required List<String> validationGaps,
+    required String evidenceConfidence,
+  }) {
+    final publishingGate = validationGaps.isEmpty
+        ? 'ready for reviewer approval'
+        : 'resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'}';
+    return [
+      'Review owner: ${_primarySponsorFor(document)}',
+      'Delivery readiness: $deliveryReadinessLevel',
+      'Evidence status: $evidenceConfidence',
+      'Publishing gate: $publishingGate',
+      'Decision ask: ${_decisionAskFor(document, sections)}',
+      'Source package: ${document.citations.isEmpty ? 'sources missing' : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached'}',
+      'Assumption package: ${document.assumptions.isEmpty ? 'assumptions missing' : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'}',
+    ];
+  }
+
   String _evidenceConfidenceFor(ArtifactDocument document) {
     if (document.citations.isNotEmpty && document.assumptions.isNotEmpty) {
       return 'High - sources and assumptions captured';
@@ -1570,18 +1601,36 @@ class PowerPointArtifactRenderer {
     required _DeckTheme theme,
   }) {
     final sections = document.sections.take(10).toList(growable: false);
-    final slideFamilies = _slideFamiliesFor({
+    final slideTypeCounts = {
       for (final slide in slides)
         slide.kind.label: slides
             .where((candidate) => candidate.kind == slide.kind)
             .length,
-    }).join(', ');
+    };
+    final slideFamilies = _slideFamiliesFor(slideTypeCounts).join(', ');
+    final validationGaps = _validationGapsFor(document, slideTypeCounts);
+    final deliveryReadinessScore = _deliveryReadinessScore(
+      document,
+      slideTypeCounts,
+      validationGaps,
+    );
+    final deliveryReadinessLevel = _deliveryReadinessLevel(
+      deliveryReadinessScore,
+    );
+    final evidenceConfidence = _evidenceConfidenceFor(document);
     final values = <String, String>{
       'CircuitDeckQualityManifest':
           'Narrative arc, audience, decision ask, agenda, readout framing, decision support, validation, handoff.',
       'CircuitCommunicationJob': _communicationJobFor(document, sections),
       'CircuitNarrativeArc': _narrativeArcFor(document, sections),
       'CircuitDecisionAsk': _decisionAskFor(document, sections),
+      'CircuitExternalHandoffManifest': _externalHandoffManifestFor(
+        document,
+        sections,
+        deliveryReadinessLevel: deliveryReadinessLevel,
+        validationGaps: validationGaps,
+        evidenceConfidence: evidenceConfidence,
+      ).join(' | '),
       'CircuitDeckTheme': theme.label,
       'CircuitSlideFamilies': slideFamilies,
       'CircuitVisibleCopyPolicy':
