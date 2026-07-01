@@ -8,6 +8,7 @@ void main() {
     const document = ArtifactDocument(
       title: 'PoE Budget Risk',
       summary: 'PoE budget chart for campus access switching.',
+      assumptions: ['AP draw is estimated until site survey validation.'],
       tables: [
         ArtifactTable(
           title: 'PoE Budget',
@@ -34,11 +35,20 @@ void main() {
     expect(inspection.hasExecutiveInsights, isTrue);
     expect(inspection.hasValidationGates, isTrue);
     expect(inspection.hasRecommendedActions, isTrue);
+    expect(inspection.hasDataQualityPanel, isTrue);
+    expect(inspection.hasThresholdGuidance, isTrue);
     expect(inspection.hasPoeSignal, isTrue);
     expect(inspection.noteCount, greaterThanOrEqualTo(1));
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(1));
+    expect(inspection.dataQualityItemCount, 4);
+    expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(2));
+    expect(inspection.sourceTableCount, 1);
+    expect(inspection.citationCount, 0);
+    expect(inspection.assumptionCount, 1);
+    expect(inspection.hasSourceEvidence, isFalse);
+    expect(inspection.hasAssumptions, isTrue);
     expect(result.metadata['artifact'], 'chart_pack');
     expect(result.metadata['chartPackType'], 'Capacity planning chart pack');
     expect(
@@ -53,6 +63,12 @@ void main() {
     expect(result.metadata['validationGateCount'], 4);
     expect(result.metadata['validationGapCount'], greaterThanOrEqualTo(1));
     expect(result.metadata['recommendedActionCount'], greaterThanOrEqualTo(1));
+    expect(result.metadata['hasDataQualityPanel'], isTrue);
+    expect(result.metadata['hasSourceProvenancePanel'], isTrue);
+    expect(result.metadata['hasThresholdGuidance'], isTrue);
+    expect(result.metadata['sourceTableCount'], 1);
+    expect(result.metadata['citationCount'], 0);
+    expect(result.metadata['assumptionCount'], 1);
   });
 
   test('chart inspector verifies enterprise multi-panel chart packs', () {
@@ -60,6 +76,14 @@ void main() {
       title: 'Enterprise Sizing Chart Pack',
       summary:
           'Enterprise charts covering PoE, WAN, lifecycle, product fit, cost, and roadmap.',
+      assumptions: [
+        'PoE and WAN values are planning estimates pending site validation.',
+        'Lifecycle dates require official source confirmation before handoff.',
+      ],
+      citations: [
+        'Cisco portfolio datasheet checked 2026-06-30',
+        'Customer inventory export checked 2026-06-30',
+      ],
       tables: [
         ArtifactTable(
           title: 'PoE Budget',
@@ -125,9 +149,13 @@ void main() {
     expect(inspection.hasExecutiveInsights, isTrue);
     expect(inspection.hasValidationGates, isTrue);
     expect(inspection.hasRecommendedActions, isTrue);
+    expect(inspection.hasDataQualityPanel, isTrue);
+    expect(inspection.hasThresholdGuidance, isTrue);
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(4));
+    expect(inspection.dataQualityItemCount, 4);
+    expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(4));
     expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
     expect(inspection.mediumRiskCount, greaterThanOrEqualTo(2));
     expect(inspection.lowRiskCount, greaterThanOrEqualTo(2));
@@ -137,6 +165,11 @@ void main() {
     expect(inspection.hasComparisonSignal, isTrue);
     expect(inspection.hasCostSignal, isTrue);
     expect(inspection.hasRoadmapSignal, isTrue);
+    expect(inspection.sourceTableCount, 6);
+    expect(inspection.citationCount, 2);
+    expect(inspection.assumptionCount, 2);
+    expect(inspection.hasSourceEvidence, isTrue);
+    expect(inspection.hasAssumptions, isTrue);
     expect(
       inspection.chartKinds,
       containsAll(['poe', 'wan', 'lifecycle', 'comparison', 'cost', 'roadmap']),
@@ -172,6 +205,14 @@ void main() {
     expect(result.metadata['hasComparison'], isTrue);
     expect(result.metadata['hasCost'], isTrue);
     expect(result.metadata['hasRoadmap'], isTrue);
+    expect(result.metadata['hasDataQualityPanel'], isTrue);
+    expect(result.metadata['hasSourceProvenancePanel'], isTrue);
+    expect(result.metadata['hasThresholdGuidance'], isTrue);
+    expect(result.metadata['sourceTableCount'], 6);
+    expect(result.metadata['citationCount'], 2);
+    expect(result.metadata['assumptionCount'], 2);
+    expect(result.metadata['dataQualityItemCount'], 4);
+    expect(result.metadata['thresholdGuidanceCount'], greaterThanOrEqualTo(4));
     expect(
       result.metadata['signals'],
       containsAll(['PoE/UPOE', 'WAN capacity', 'Lifecycle']),

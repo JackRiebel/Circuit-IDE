@@ -13,21 +13,30 @@ class ChartArtifactInspection {
   final bool hasExecutiveInsights;
   final bool hasValidationGates;
   final bool hasRecommendedActions;
+  final bool hasDataQualityPanel;
+  final bool hasThresholdGuidance;
   final int chartCount;
   final int pointCount;
   final int noteCount;
   final int insightCount;
   final int validationGateCount;
   final int recommendedActionCount;
+  final int dataQualityItemCount;
+  final int thresholdGuidanceCount;
   final int highRiskCount;
   final int mediumRiskCount;
   final int lowRiskCount;
+  final int sourceTableCount;
+  final int citationCount;
+  final int assumptionCount;
   final bool hasPoeSignal;
   final bool hasWanSignal;
   final bool hasLifecycleSignal;
   final bool hasComparisonSignal;
   final bool hasCostSignal;
   final bool hasRoadmapSignal;
+  final bool hasSourceEvidence;
+  final bool hasAssumptions;
   final String? title;
   final List<String> chartKinds;
   final List<String> chartTitles;
@@ -45,21 +54,30 @@ class ChartArtifactInspection {
     required this.hasExecutiveInsights,
     required this.hasValidationGates,
     required this.hasRecommendedActions,
+    required this.hasDataQualityPanel,
+    required this.hasThresholdGuidance,
     required this.chartCount,
     required this.pointCount,
     required this.noteCount,
     required this.insightCount,
     required this.validationGateCount,
     required this.recommendedActionCount,
+    required this.dataQualityItemCount,
+    required this.thresholdGuidanceCount,
     required this.highRiskCount,
     required this.mediumRiskCount,
     required this.lowRiskCount,
+    required this.sourceTableCount,
+    required this.citationCount,
+    required this.assumptionCount,
     required this.hasPoeSignal,
     required this.hasWanSignal,
     required this.hasLifecycleSignal,
     required this.hasComparisonSignal,
     required this.hasCostSignal,
     required this.hasRoadmapSignal,
+    required this.hasSourceEvidence,
+    required this.hasAssumptions,
     required this.title,
     required this.chartKinds,
     required this.chartTitles,
@@ -77,6 +95,8 @@ class ChartArtifactInspection {
       hasExecutiveInsights &&
       hasValidationGates &&
       hasRecommendedActions &&
+      hasDataQualityPanel &&
+      hasThresholdGuidance &&
       chartCount > 0 &&
       pointCount > 0;
 
@@ -86,6 +106,8 @@ class ChartArtifactInspection {
       hasExecutiveInsights &&
       hasValidationGates &&
       hasRecommendedActions &&
+      hasDataQualityPanel &&
+      hasThresholdGuidance &&
       chartKinds.toSet().length >= 2 &&
       noteCount > 0;
 
@@ -127,6 +149,14 @@ class ChartArtifactInspector {
         _metadataInt(metadata, 'recommendedActionCount') ??
         _dataInt(svg, 'data-recommended-action-count') ??
         0;
+    final dataQualityItemCount =
+        _metadataInt(metadata, 'dataQualityItemCount') ??
+        _dataInt(svg, 'data-data-quality-item-count') ??
+        0;
+    final thresholdGuidanceCount =
+        _metadataInt(metadata, 'thresholdGuidanceCount') ??
+        _dataInt(svg, 'data-threshold-guidance-count') ??
+        0;
 
     return ChartArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -143,21 +173,30 @@ class ChartArtifactInspector {
       hasExecutiveInsights: svg.contains('id="chart-executive-insights"'),
       hasValidationGates: svg.contains('id="chart-validation-gates"'),
       hasRecommendedActions: svg.contains('id="chart-recommended-actions"'),
+      hasDataQualityPanel: svg.contains('id="chart-data-quality"'),
+      hasThresholdGuidance: svg.contains('id="chart-threshold-guidance"'),
       chartCount: chartCount,
       pointCount: pointCount,
       noteCount: RegExp(r'class="chart-note"').allMatches(svg).length,
       insightCount: insightCount,
       validationGateCount: validationGateCount,
       recommendedActionCount: recommendedActionCount,
+      dataQualityItemCount: dataQualityItemCount,
+      thresholdGuidanceCount: thresholdGuidanceCount,
       highRiskCount: highRiskCount,
       mediumRiskCount: mediumRiskCount,
       lowRiskCount: lowRiskCount,
+      sourceTableCount: _metadataInt(metadata, 'sourceTableCount') ?? 0,
+      citationCount: _metadataInt(metadata, 'citationCount') ?? 0,
+      assumptionCount: _metadataInt(metadata, 'assumptionCount') ?? 0,
       hasPoeSignal: metadata['hasPoe'] == true,
       hasWanSignal: metadata['hasWan'] == true,
       hasLifecycleSignal: metadata['hasLifecycle'] == true,
       hasComparisonSignal: metadata['hasComparison'] == true,
       hasCostSignal: metadata['hasCost'] == true,
       hasRoadmapSignal: metadata['hasRoadmap'] == true,
+      hasSourceEvidence: metadata['hasSourceEvidence'] == true,
+      hasAssumptions: metadata['hasAssumptions'] == true,
       title: _firstElementText(svg, 'title'),
       chartKinds: chartKinds,
       chartTitles: chartTitles,
