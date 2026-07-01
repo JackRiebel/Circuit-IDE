@@ -65,6 +65,18 @@ Short executive summary for the customer.
         'Review the recommendation, confirm assumptions, and approve the next implementation step.',
       );
       expect(artifact.metadata['theme'], 'Dark');
+      expect(
+        artifact.metadata['deliveryReadinessScore'],
+        greaterThanOrEqualTo(90),
+      );
+      expect(
+        artifact.metadata['deliveryReadinessLevel'],
+        'Customer handoff ready',
+      );
+      expect(
+        artifact.metadata['deckReviewPriority'],
+        'Low - ready for stakeholder review',
+      );
       expect(artifact.metadata['slideCount'], artifact.sheetCount);
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
@@ -81,6 +93,16 @@ Short executive summary for the customer.
       );
       expect(artifact.metadata['slidePreviewCount'], greaterThanOrEqualTo(8));
       expect(artifact.metadata['speakerNoteCount'], artifact.sheetCount);
+      expect(artifact.metadata['hasDeliveryBrief'], isTrue);
+      expect(artifact.metadata['deliveryBriefSlideCount'], 1);
+      expect(
+        artifact.metadata['deliveryReadinessDrivers'],
+        contains('Executive delivery brief included'),
+      );
+      expect(
+        artifact.metadata['audienceHandoffNotes'],
+        contains(contains('Audience: Customer stakeholders.')),
+      );
       expect(artifact.metadata['tableCoverage'], '1 table packaged');
       expect(artifact.metadata['sourceCoverage'], '1 source item captured');
       expect(artifact.metadata['validationGapCount'], 0);
@@ -107,6 +129,8 @@ Short executive summary for the customer.
       expect(packageText, contains('ppt/slides/slide1.xml'));
       expect(packageText, contains('Agenda'));
       expect(packageText, contains('Agenda step'));
+      expect(packageText, contains('Executive Delivery Brief'));
+      expect(packageText, contains('Customer handoff'));
       expect(packageText, contains('Decision Snapshot'));
       expect(packageText, contains('Stakeholder Alignment'));
       expect(packageText, contains('Owner / stakeholder'));

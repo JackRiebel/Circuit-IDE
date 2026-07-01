@@ -1316,6 +1316,24 @@ void main() {
             'theme': 'Light',
             'audience': 'Executive stakeholders',
             'deckPurpose': 'Support a decision',
+            'deliveryReadinessScore': 94,
+            'deliveryReadinessLevel': 'Customer handoff ready',
+            'deckReviewPriority': 'Low - ready for stakeholder review',
+            'deliveryReadinessDrivers': [
+              'Executive delivery brief included',
+              'Decision matrix included',
+              'Stakeholder ownership lanes included',
+              '2 supporting tables included',
+              '3 assumptions captured',
+              '5 source items captured',
+            ],
+            'deliveryReadinessDriverCount': 6,
+            'audienceHandoffNotes': [
+              'Audience: Executive stakeholders.',
+              'Lead with: By the end, Executive stakeholders should support a decision because validate the recommendation.',
+              'Decision ask: Review the recommendation, confirm assumptions, and approve the next implementation step.',
+            ],
+            'audienceHandoffNoteCount': 3,
             'narrativeArc': 'Context -> risk -> recommendation -> action',
             'agendaItems': [
               'Executive summary',
@@ -1327,6 +1345,7 @@ void main() {
             'slideFamilies': [
               'Opening',
               'Agenda',
+              'Executive delivery brief',
               'Decision snapshot',
               'Recommendations',
               'Roadmap',
@@ -1358,6 +1377,7 @@ void main() {
             'validationGapCount': 0,
             'readinessSignals': [
               'Agenda',
+              'Delivery brief',
               'Decision snapshot',
               'Recommendation slides',
               'Roadmap',
@@ -1365,6 +1385,7 @@ void main() {
             ],
             'sectionCount': 4,
             'sectionDividerCount': 3,
+            'deliveryBriefSlideCount': 1,
             'tableCount': 2,
             'tableSlideCount': 2,
             'recommendationSlideCount': 2,
@@ -1372,6 +1393,7 @@ void main() {
             'citationCount': 5,
             'hasCustomerReadyStructure': true,
             'hasCustomerReadyDeck': true,
+            'hasDeliveryBrief': true,
             'hasSpeakerNotes': true,
             'speakerNoteCount': 6,
           },
@@ -1500,7 +1522,10 @@ void main() {
       findsAtLeastNWidgets(1),
     );
     expect(find.textContaining('6 slides'), findsAtLeastNWidgets(1));
-    expect(find.textContaining('Agenda, Decision snapshot +3'), findsOneWidget);
+    expect(
+      find.textContaining('Agenda, Delivery brief'),
+      findsAtLeastNWidgets(1),
+    );
 
     await tester.tap(find.text('executive-brief.pptx'));
     await tester.pump();
@@ -1515,6 +1540,12 @@ void main() {
     expect(find.text('Executive stakeholders'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
     expect(find.text('Support a decision'), findsOneWidget);
+    expect(find.text('Delivery readiness'), findsOneWidget);
+    expect(find.text('Customer handoff ready'), findsOneWidget);
+    expect(find.text('Delivery score'), findsOneWidget);
+    expect(find.text('94/100'), findsOneWidget);
+    expect(find.text('Review priority'), findsOneWidget);
+    expect(find.text('Low - ready for stakeholder review'), findsOneWidget);
     expect(find.text('Ask'), findsOneWidget);
     expect(
       find.text(
@@ -1533,7 +1564,8 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Slide families'), findsOneWidget);
-    expect(find.textContaining('Opening, Agenda +6'), findsOneWidget);
+    expect(find.textContaining('Opening, Agenda'), findsOneWidget);
+    expect(find.textContaining('Executive delivery brief'), findsOneWidget);
     expect(find.text('Slide preview'), findsOneWidget);
     expect(
       find.textContaining(
@@ -1542,9 +1574,23 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Readiness'), findsOneWidget);
-    expect(find.text('Agenda, Decision snapshot +3'), findsOneWidget);
+    expect(
+      find.textContaining('Agenda, Delivery brief'),
+      findsAtLeastNWidgets(1),
+    );
+    expect(find.text('Readiness drivers'), findsOneWidget);
+    expect(
+      find.textContaining('Executive delivery brief included'),
+      findsOneWidget,
+    );
+    expect(find.text('Audience handoff'), findsOneWidget);
+    expect(
+      find.textContaining('Audience: Executive stakeholders.'),
+      findsOneWidget,
+    );
     expect(find.text('Sections'), findsOneWidget);
     expect(find.text('Dividers'), findsOneWidget);
+    expect(find.text('Delivery brief'), findsOneWidget);
     expect(find.text('Tables'), findsAtLeastNWidgets(1));
     expect(find.text('2 tables packaged'), findsOneWidget);
     expect(find.text('5 source items captured'), findsOneWidget);

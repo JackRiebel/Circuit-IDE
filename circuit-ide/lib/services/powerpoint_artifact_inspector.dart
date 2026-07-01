@@ -15,6 +15,7 @@ class PowerPointArtifactInspection {
   final bool hasCircuitFooter;
   final bool hasAgenda;
   final bool hasAgendaLayout;
+  final bool hasDeliveryBrief;
   final bool hasDecisionSnapshot;
   final bool hasDecisionMatrix;
   final bool hasExecutiveRecommendation;
@@ -52,6 +53,7 @@ class PowerPointArtifactInspection {
     required this.hasCircuitFooter,
     required this.hasAgenda,
     required this.hasAgendaLayout,
+    required this.hasDeliveryBrief,
     required this.hasDecisionSnapshot,
     required this.hasDecisionMatrix,
     required this.hasExecutiveRecommendation,
@@ -90,6 +92,7 @@ class PowerPointArtifactInspection {
       isStructurallyValid &&
       hasAgenda &&
       hasAgendaLayout &&
+      hasDeliveryBrief &&
       hasDecisionSnapshot &&
       hasDecisionMatrix &&
       hasExecutiveRecommendation &&
@@ -165,6 +168,9 @@ class PowerPointArtifactInspector {
       hasAgenda: text.contains('Agenda'),
       hasAgendaLayout:
           text.contains('Agenda step') && text.contains('Agenda number rail'),
+      hasDeliveryBrief:
+          text.contains('Executive Delivery Brief') ||
+          slideTypes.contains('Delivery Brief'),
       hasDecisionSnapshot:
           text.contains('Decision Snapshot') || slideTypes.contains('Decision'),
       hasDecisionMatrix:

@@ -53,6 +53,7 @@ void main() {
         'Title',
         'Agenda',
         'Talk Track',
+        'Delivery Brief',
         'Decision',
         'Decision Matrix',
         'Stakeholders',
@@ -68,6 +69,7 @@ void main() {
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
+    expect(inspection.hasDeliveryBrief, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasSectionDividerLayout, isTrue);
@@ -93,6 +95,27 @@ void main() {
     expect(metadata['visualSystem'], 'Dark enterprise presentation system');
     expect(metadata['audience'], 'Customer stakeholders');
     expect(metadata['deckPurpose'], 'Support a decision');
+    expect(metadata['deliveryReadinessScore'], greaterThanOrEqualTo(90));
+    expect(metadata['deliveryReadinessLevel'], 'Customer handoff ready');
+    expect(
+      metadata['deckReviewPriority'],
+      'Low - ready for stakeholder review',
+    );
+    expect(
+      metadata['deliveryReadinessDrivers'],
+      containsAll([
+        'Executive delivery brief included',
+        'Decision matrix included',
+        'Stakeholder ownership lanes included',
+        '1 supporting table included',
+        '1 assumption captured',
+        '1 source item captured',
+      ]),
+    );
+    expect(
+      metadata['audienceHandoffNotes'],
+      contains(contains('Audience: Customer stakeholders.')),
+    );
     expect(
       metadata['narrativeArc'],
       'Context -> evidence -> implication -> next step',
@@ -108,7 +131,7 @@ void main() {
       metadata['evidenceConfidence'],
       'High - sources and assumptions captured',
     );
-    expect(metadata['deckReviewChecklistCount'], 6);
+    expect(metadata['deckReviewChecklistCount'], 7);
     expect(
       metadata['deckReviewChecklist'],
       containsAll([
@@ -137,6 +160,7 @@ void main() {
         'Opening',
         'Agenda',
         'Presenter talk track',
+        'Executive delivery brief',
         'Decision snapshot',
         'Decision matrix',
         'Stakeholder alignment',
@@ -165,6 +189,7 @@ void main() {
         'Branded title slide',
         'Numbered agenda',
         'Presenter talk track',
+        'Executive delivery brief',
         'Section divider slides',
         'Decision matrix',
         'Stakeholder alignment lanes',
@@ -185,6 +210,7 @@ void main() {
       containsAll([
         'Agenda',
         'Presenter talk track',
+        'Delivery brief',
         'Decision snapshot',
         'Decision matrix',
         'Stakeholder alignment',
@@ -196,10 +222,12 @@ void main() {
         'Speaker notes',
       ]),
     );
-    expect(metadata['readinessSignalCount'], 11);
+    expect(metadata['readinessSignalCount'], 12);
     expect(metadata['hasAgenda'], isTrue);
     expect(metadata['hasPresenterTalkTrack'], isTrue);
     expect(metadata['presenterTalkTrackSlideCount'], 1);
+    expect(metadata['hasDeliveryBrief'], isTrue);
+    expect(metadata['deliveryBriefSlideCount'], 1);
     expect(metadata['presenterBrief'], isA<String>());
     expect(metadata['hasDecisionSnapshot'], isTrue);
     expect(metadata['hasDecisionMatrix'], isTrue);
@@ -258,6 +286,12 @@ void main() {
         'No supporting data tables',
       ]),
     );
+    expect(metadata['deliveryReadinessScore'], lessThan(90));
+    expect(metadata['deliveryReadinessLevel'], isNot('Customer handoff ready'));
+    expect(
+      metadata['deckReviewPriority'],
+      isNot('Low - ready for stakeholder review'),
+    );
     expect(metadata['hasCustomerReadyDeck'], isFalse);
   });
 
@@ -293,6 +327,7 @@ void main() {
     expect(inspection.hasEnterpriseStyling, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
+    expect(inspection.hasDeliveryBrief, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
@@ -328,6 +363,7 @@ void main() {
     expect(inspection.hasExpectedDeckStructure, isFalse);
     expect(inspection.usesLightTheme, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasDeliveryBrief, isTrue);
     expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);

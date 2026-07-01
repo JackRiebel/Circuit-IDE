@@ -3802,6 +3802,18 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Audience', _metadataString(artifact, 'audience')),
         if (_metadataString(artifact, 'deckPurpose').isNotEmpty)
           ('Purpose', _metadataString(artifact, 'deckPurpose')),
+        if (_metadataString(artifact, 'deliveryReadinessLevel').isNotEmpty)
+          (
+            'Delivery readiness',
+            _metadataString(artifact, 'deliveryReadinessLevel'),
+          ),
+        if (_metadataInt(artifact, 'deliveryReadinessScore') > 0)
+          (
+            'Delivery score',
+            '${_metadataInt(artifact, 'deliveryReadinessScore')}/100',
+          ),
+        if (_metadataString(artifact, 'deckReviewPriority').isNotEmpty)
+          ('Review priority', _metadataString(artifact, 'deckReviewPriority')),
         if (_metadataString(artifact, 'decisionAsk').isNotEmpty)
           ('Ask', _metadataString(artifact, 'decisionAsk')),
         if (_metadataString(artifact, 'narrativeArc').isNotEmpty)
@@ -3826,6 +3838,23 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Readiness',
             _compactSignalList(
               _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'deliveryReadinessDrivers',
+        ).isNotEmpty)
+          (
+            'Readiness drivers',
+            _compactSignalList(
+              _metadataStringList(artifact, 'deliveryReadinessDrivers'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'audienceHandoffNotes').isNotEmpty)
+          (
+            'Audience handoff',
+            _compactSignalList(
+              _metadataStringList(artifact, 'audienceHandoffNotes'),
             ),
           ),
         if (_metadataString(artifact, 'tableCoverage').isNotEmpty)
@@ -3867,6 +3896,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
         if (_metadataInt(artifact, 'sectionDividerCount') > 0)
           ('Dividers', '${_metadataInt(artifact, 'sectionDividerCount')}'),
+        if (_metadataInt(artifact, 'deliveryBriefSlideCount') > 0)
+          (
+            'Delivery brief',
+            '${_metadataInt(artifact, 'deliveryBriefSlideCount')} slide',
+          ),
         if (_metadataInt(artifact, 'tableCount') > 0)
           ('Tables', '${_metadataInt(artifact, 'tableCount')}'),
         if (_metadataInt(artifact, 'tableSlideCount') > 0)

@@ -55,6 +55,19 @@ class PowerPointArtifactRenderer {
     );
     final handoffActions = _handoffActionsFor(document, sections);
     final evidenceConfidence = _evidenceConfidenceFor(document);
+    final deliveryReadinessScore = _deliveryReadinessScore(
+      document,
+      slideTypeCounts,
+      validationGaps,
+    );
+    final deliveryReadinessLevel = _deliveryReadinessLevel(
+      deliveryReadinessScore,
+    );
+    final deliveryReadinessDrivers = _deliveryReadinessDrivers(
+      document,
+      slideTypeCounts,
+      validationGaps,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -67,6 +80,19 @@ class PowerPointArtifactRenderer {
       'deckPurpose': _deckPurposeFor(document),
       'narrativeArc': _narrativeArcFor(document, sections),
       'communicationJob': _communicationJobFor(document, sections),
+      'deliveryReadinessScore': deliveryReadinessScore,
+      'deliveryReadinessLevel': deliveryReadinessLevel,
+      'deliveryReadinessDrivers': deliveryReadinessDrivers,
+      'deliveryReadinessDriverCount': deliveryReadinessDrivers.length,
+      'deckReviewPriority': _deckReviewPriorityFor(
+        deliveryReadinessScore,
+        validationGaps,
+      ),
+      'audienceHandoffNotes': _audienceHandoffNotesFor(document, sections),
+      'audienceHandoffNoteCount': _audienceHandoffNotesFor(
+        document,
+        sections,
+      ).length,
       'agendaItems': agendaItems,
       'agendaItemCount': agendaItems.length,
       'slideFamilies': slideFamilies,
@@ -79,6 +105,7 @@ class PowerPointArtifactRenderer {
         'Branded title slide',
         'Numbered agenda',
         'Presenter talk track',
+        'Executive delivery brief',
         'Decision snapshot tiles',
         'Decision matrix',
         'Stakeholder alignment lanes',
@@ -115,6 +142,8 @@ class PowerPointArtifactRenderer {
           slideTypeCounts[_DeckSlideKind.sectionDivider.label] ?? 0,
       'presenterTalkTrackSlideCount':
           slideTypeCounts[_DeckSlideKind.talkTrack.label] ?? 0,
+      'deliveryBriefSlideCount':
+          slideTypeCounts[_DeckSlideKind.deliveryBrief.label] ?? 0,
       'tableCount': document.tables.length,
       'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
       'decisionMatrixSlideCount':
@@ -132,6 +161,9 @@ class PowerPointArtifactRenderer {
       'hasAgenda': slideTypeCounts.containsKey(_DeckSlideKind.agenda.label),
       'hasPresenterTalkTrack': slideTypeCounts.containsKey(
         _DeckSlideKind.talkTrack.label,
+      ),
+      'hasDeliveryBrief': slideTypeCounts.containsKey(
+        _DeckSlideKind.deliveryBrief.label,
       ),
       'presenterBrief': _communicationJobFor(document, sections),
       'hasDecisionSnapshot': slideTypeCounts.containsKey(
@@ -267,6 +299,7 @@ class PowerPointArtifactRenderer {
       ),
       _presenterTalkTrack(document, sections),
       _decisionSnapshot(document, sections),
+      _deliveryBrief(document, sections),
       _executiveRecommendation(document, sections),
       _decisionMatrix(document, sections),
       _stakeholderAlignment(document, sections),
@@ -350,6 +383,85 @@ class PowerPointArtifactRenderer {
         next == null
             ? 'Next action: Assign owners, confirm timeline, and approve the first implementation batch.'
             : 'Next action: $next',
+      ],
+    );
+  }
+
+  _DeckSlide _deliveryBrief(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final recommendation = _firstMatchingBullet(sections, [
+      'recommend',
+      'solution',
+      'architecture',
+      'proposal',
+      'decision',
+    ]);
+    final evidence = _firstMatchingBullet(sections, [
+      'evidence',
+      'source',
+      'validate',
+      'data',
+    ]);
+    final risk = _firstMatchingBullet(sections, ['risk', 'caveat', 'concern']);
+    final next = _firstMatchingBullet(sections, [
+      'next',
+      'phase',
+      'action',
+      'owner',
+      'approve',
+    ]);
+    return _DeckSlide(
+      title: 'Executive Delivery Brief',
+      eyebrow: 'Customer handoff',
+      kind: _DeckSlideKind.deliveryBrief,
+      bullets: const [
+        'Delivery brief frames the deck as an executive handoff: outcome, proof, open decision, and next owner.',
+      ],
+      tableRows: [
+        const ['Handoff area', 'Current signal', 'Action'],
+        [
+          'Outcome',
+          _truncate(
+            recommendation ??
+                (document.summary.isEmpty
+                    ? 'Align stakeholders on the proposed direction.'
+                    : document.summary),
+            72,
+          ),
+          'Confirm this is the customer-facing outcome.',
+        ],
+        [
+          'Proof',
+          _truncate(
+            evidence ??
+                (document.tables.isEmpty
+                    ? 'Attach supporting data or source evidence.'
+                    : '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} included.'),
+            72,
+          ),
+          'Validate sources, assumptions, and dates.',
+        ],
+        [
+          'Open risk',
+          _truncate(
+            risk ??
+                (document.assumptions.isEmpty
+                    ? 'Assumptions and constraints need owner confirmation.'
+                    : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} documented.'),
+            72,
+          ),
+          'Resolve or explicitly accept before external handoff.',
+        ],
+        [
+          'Next owner',
+          _truncate(
+            next ?? 'Assign owner, due date, and success criteria.',
+            72,
+          ),
+          'Turn approval into a tracked next step.',
+        ],
       ],
     );
   }
@@ -840,6 +952,8 @@ class PowerPointArtifactRenderer {
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
       if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
         'Presenter talk track',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
+        'Delivery brief',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -881,6 +995,8 @@ class PowerPointArtifactRenderer {
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
       if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
         'Presenter talk track',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
+        'Executive delivery brief',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -914,6 +1030,7 @@ class PowerPointArtifactRenderer {
       _DeckSlideKind.title => 'Open with audience, purpose, and evidence count',
       _DeckSlideKind.agenda => 'Set the decision path',
       _DeckSlideKind.talkTrack => 'Guide presenter framing',
+      _DeckSlideKind.deliveryBrief => 'Frame outcome, proof, risk, and owner',
       _DeckSlideKind.snapshot =>
         'Summarize recommendation, risk, and next step',
       _DeckSlideKind.decisionMatrix => 'Compare decision signals and actions',
@@ -940,6 +1057,8 @@ class PowerPointArtifactRenderer {
         'Agenda slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
         'Presenter talk track missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
+        'Executive delivery brief missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
         'Decision snapshot missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -1015,6 +1134,10 @@ class PowerPointArtifactRenderer {
         'Review presenter talk track for account-specific phrasing.'
       else
         'Add presenter talk track before stakeholder readout.',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
+        'Confirm executive delivery brief matches the actual customer outcome and owner.'
+      else
+        'Add executive delivery brief before stakeholder readout.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
         'Validate decision matrix signals, risk posture, and next actions.'
       else
@@ -1063,6 +1186,100 @@ class PowerPointArtifactRenderer {
       return 'Medium - assumptions captured, sources need validation';
     }
     return 'Low - sources and assumptions need validation';
+  }
+
+  int _deliveryReadinessScore(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+    List<String> validationGaps,
+  ) {
+    var score = 30;
+    if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) score += 8;
+    if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label)) score += 8;
+    if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label)) {
+      score += 10;
+    }
+    if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label)) score += 8;
+    if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label)) {
+      score += 8;
+    }
+    if (slideTypeCounts.containsKey(
+      _DeckSlideKind.stakeholderAlignment.label,
+    )) {
+      score += 8;
+    }
+    if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) score += 8;
+    if (slideTypeCounts.containsKey(_DeckSlideKind.closing.label)) score += 6;
+    if (document.tables.isNotEmpty) score += 4;
+    if (document.assumptions.isNotEmpty) score += 4;
+    if (document.citations.isNotEmpty) score += 6;
+    score -= validationGaps.length * 5;
+    return score.clamp(0, 100);
+  }
+
+  String _deliveryReadinessLevel(int score) {
+    if (score >= 90) return 'Customer handoff ready';
+    if (score >= 75) return 'Stakeholder review ready';
+    if (score >= 60) return 'Internal review required';
+    return 'Draft - needs evidence and owner review';
+  }
+
+  List<String> _deliveryReadinessDrivers(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+    List<String> validationGaps,
+  ) {
+    final drivers = <String>[
+      if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
+        'Executive delivery brief included'
+      else
+        'Executive delivery brief missing',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.decisionMatrix.label))
+        'Decision matrix included',
+      if (slideTypeCounts.containsKey(
+        _DeckSlideKind.stakeholderAlignment.label,
+      ))
+        'Stakeholder ownership lanes included',
+      if (document.tables.isNotEmpty)
+        '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} included'
+      else
+        'Supporting data missing',
+      if (document.assumptions.isNotEmpty)
+        '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'
+      else
+        'Assumptions missing',
+      if (document.citations.isNotEmpty)
+        '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured'
+      else
+        'Sources missing',
+      for (final gap in validationGaps.take(3)) 'Gap: $gap',
+    ];
+    return drivers.toSet().take(8).toList(growable: false);
+  }
+
+  String _deckReviewPriorityFor(int score, List<String> validationGaps) {
+    if (score >= 90 && validationGaps.isEmpty) {
+      return 'Low - ready for stakeholder review';
+    }
+    if (score >= 75) return 'Medium - internal review before handoff';
+    return 'High - resolve evidence and structure gaps before handoff';
+  }
+
+  List<String> _audienceHandoffNotesFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final audience = _audienceFor(document);
+    final ask = _decisionAskFor(document, sections);
+    return [
+      'Audience: $audience.',
+      'Lead with: ${_communicationJobFor(document, sections)}',
+      'Decision ask: $ask',
+      if (document.citations.isEmpty)
+        'Before external sharing: attach cited evidence or mark the deck as draft.',
+      if (document.assumptions.isEmpty)
+        'Before external sharing: capture accountable owners for assumptions.',
+    ].take(6).toList(growable: false);
   }
 
   List<String> _presentationRiskFlagsFor(
@@ -2049,6 +2266,7 @@ enum _DeckSlideKind {
   title,
   agenda,
   talkTrack,
+  deliveryBrief,
   snapshot,
   decisionMatrix,
   stakeholderAlignment,
@@ -2068,6 +2286,7 @@ enum _DeckSlideKind {
       _DeckSlideKind.title => 'Title',
       _DeckSlideKind.agenda => 'Agenda',
       _DeckSlideKind.talkTrack => 'Talk Track',
+      _DeckSlideKind.deliveryBrief => 'Delivery Brief',
       _DeckSlideKind.snapshot => 'Decision',
       _DeckSlideKind.decisionMatrix => 'Decision Matrix',
       _DeckSlideKind.stakeholderAlignment => 'Stakeholders',
@@ -2143,6 +2362,7 @@ class _DeckTheme {
       _DeckSlideKind.title => '7FB7B2',
       _DeckSlideKind.agenda => '7A9CC6',
       _DeckSlideKind.talkTrack => '7FB7B2',
+      _DeckSlideKind.deliveryBrief => 'C7A77B',
       _DeckSlideKind.snapshot => '78AAA5',
       _DeckSlideKind.dataSnapshot => 'B48EAD',
       _DeckSlideKind.takeaways => '7FB7B2',
@@ -2165,6 +2385,7 @@ class _DeckTheme {
         _DeckSlideKind.title || _DeckSlideKind.sectionDivider => 'F8FAFC',
         _DeckSlideKind.snapshot ||
         _DeckSlideKind.talkTrack ||
+        _DeckSlideKind.deliveryBrief ||
         _DeckSlideKind.takeaways ||
         _DeckSlideKind.decisionMatrix ||
         _DeckSlideKind.stakeholderAlignment ||
@@ -2176,6 +2397,7 @@ class _DeckTheme {
       _DeckSlideKind.title || _DeckSlideKind.sectionDivider => '111111',
       _DeckSlideKind.snapshot ||
       _DeckSlideKind.talkTrack ||
+      _DeckSlideKind.deliveryBrief ||
       _DeckSlideKind.takeaways ||
       _DeckSlideKind.decisionMatrix ||
       _DeckSlideKind.stakeholderAlignment ||
