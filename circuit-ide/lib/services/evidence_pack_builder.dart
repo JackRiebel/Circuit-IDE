@@ -22,6 +22,22 @@ class EvidencePackBuilder {
     final sections = <ArtifactSection>[
       _section(
         document,
+        title: 'Executive Evidence Decision',
+        patterns: const [
+          'executive evidence decision',
+          'decision',
+          'handoff decision',
+        ],
+        fallbackBody:
+            'Use this pack to decide which claims are customer-ready, which claims need qualification, and which claims must be removed or refreshed before handoff.',
+        fallbackBullets: _executiveDecisionBullets(
+          sourceBullets: sourceBullets,
+          unsupportedBullets: unsupportedBullets,
+          assumptions: document.assumptions,
+        ),
+      ),
+      _section(
+        document,
         title: 'Evidence Summary',
         patterns: const ['evidence summary', 'summary', 'overview'],
         fallbackBody: document.summary,
@@ -45,6 +61,22 @@ class EvidencePackBuilder {
         fallbackBody:
             'Authoritative sources, URLs, checked dates, and source notes used for this output.',
         fallbackBullets: sourceBullets,
+      ),
+      _section(
+        document,
+        title: 'Citation Quality Rules',
+        patterns: const [
+          'citation quality',
+          'source quality',
+          'evidence rules',
+        ],
+        fallbackBody:
+            'Classify each citation by authority, freshness, scope fit, and whether the claim wording is directly supported or only inferred.',
+        fallbackBullets: const [
+          'Official/vendor/customer sources should be preferred for lifecycle, capability, pricing, and recommendation claims.',
+          'Checked dates are required for lifecycle, support, product capability, regulatory, pricing, and market-timing claims.',
+          'Indirect or inferred evidence must be labeled before customer-facing use.',
+        ],
       ),
       _section(
         document,
@@ -80,6 +112,41 @@ class EvidencePackBuilder {
         fallbackBody:
             'Claims without enough support should be verified or removed before final handoff.',
         fallbackBullets: unsupportedBullets,
+      ),
+      _section(
+        document,
+        title: 'Customer-Ready Claim Gates',
+        patterns: const [
+          'customer-ready claim gates',
+          'customer ready claim gates',
+          'claim gates',
+        ],
+        fallbackBody:
+            'A claim is customer-ready only when source authority, checked date, unsupported-claim disposition, and assumption separation gates are satisfied.',
+        fallbackBullets:
+            _customerReadyGateRows(
+                  sourceBullets: sourceBullets,
+                  unsupportedBullets: unsupportedBullets,
+                  assumptions: document.assumptions,
+                )
+                .skip(1)
+                .map((row) => '${row[0]}: ${row[2]}. ${row[3]}')
+                .toList(growable: false),
+      ),
+      _section(
+        document,
+        title: 'Customer Follow-Up Checklist',
+        patterns: const [
+          'customer follow-up',
+          'follow-up checklist',
+          'follow up checklist',
+        ],
+        fallbackBody:
+            'Use these questions to close evidence gaps, confirm assumptions, and decide which claims can be used in the final customer artifact.',
+        fallbackBullets: _followUpRows(unsupportedBullets, document.assumptions)
+            .skip(1)
+            .map((row) => '${row[0]} Owner: ${row[1]}.')
+            .toList(growable: false),
       ),
     ];
     final tables = [
@@ -233,6 +300,22 @@ class EvidencePackBuilder {
   }) {
     return [
       ArtifactTable(
+        title: 'Executive Evidence Decision',
+        rows: [
+          const [
+            'Decision Area',
+            'Status',
+            'Why it matters',
+            'Required action',
+          ],
+          ..._executiveEvidenceDecisionRows(
+            sourceBullets: sourceBullets,
+            unsupportedBullets: unsupportedBullets,
+            assumptions: document.assumptions,
+          ),
+        ],
+      ),
+      ArtifactTable(
         title: 'Claim To Source Matrix',
         rows: [
           const [
@@ -243,6 +326,19 @@ class EvidencePackBuilder {
             'Caveat / validation need',
           ],
           ..._claimRows(sourceBullets, sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Citation Authority Register',
+        rows: [
+          const [
+            'Source',
+            'Authority tier',
+            'Scope fit',
+            'Customer-ready use',
+            'Caveat',
+          ],
+          ..._citationAuthorityRows(sourceBullets),
         ],
       ),
       ArtifactTable(
@@ -277,12 +373,80 @@ class EvidencePackBuilder {
         ],
       ),
       ArtifactTable(
+        title: 'Customer-Ready Claim Gates',
+        rows: [
+          const ['Gate', 'Pass condition', 'Current status', 'Failure action'],
+          ..._customerReadyGateRows(
+            sourceBullets: sourceBullets,
+            unsupportedBullets: unsupportedBullets,
+            assumptions: document.assumptions,
+          ),
+        ],
+      ),
+      ArtifactTable(
         title: 'Customer Follow-Up Checklist',
         rows: [
           const ['Question', 'Owner', 'Needed before final?'],
           ..._followUpRows(unsupportedBullets, document.assumptions),
         ],
       ),
+    ];
+  }
+
+  List<String> _executiveDecisionBullets({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required List<String> assumptions,
+  }) {
+    return [
+      sourceBullets.isEmpty
+          ? 'Not customer-ready: no cited sources are attached.'
+          : 'Evidence coverage is available, but source authority and checked dates still need final review.',
+      unsupportedBullets.isEmpty
+          ? 'No unsupported claims were explicitly flagged.'
+          : '${unsupportedBullets.length} unsupported claim${unsupportedBullets.length == 1 ? '' : 's'} require verification, qualification, or removal.',
+      assumptions.isEmpty
+          ? 'No assumptions were captured; add explicit assumptions if the output relies on inferred context.'
+          : '${assumptions.length} assumption${assumptions.length == 1 ? '' : 's'} must be confirmed by the customer or account team.',
+    ];
+  }
+
+  List<List<String>> _executiveEvidenceDecisionRows({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required List<String> assumptions,
+  }) {
+    return [
+      [
+        'Source coverage',
+        sourceBullets.isEmpty ? 'Blocked' : 'Review ready',
+        'Claims need traceable support before customer handoff.',
+        sourceBullets.isEmpty
+            ? 'Add authoritative citations and checked dates.'
+            : 'Review authority tier and freshness before final use.',
+      ],
+      [
+        'Unsupported claims',
+        unsupportedBullets.isEmpty ? 'No explicit gaps' : 'Action required',
+        'Unsupported claims create customer trust and recommendation risk.',
+        unsupportedBullets.isEmpty
+            ? 'Continue screening for implicit unsupported claims.'
+            : 'Verify, qualify, rewrite, or remove each unsupported claim.',
+      ],
+      [
+        'Assumptions',
+        assumptions.isEmpty ? 'Missing / implicit' : 'Captured',
+        'Assumptions must be separated from sourced facts.',
+        assumptions.isEmpty
+            ? 'Add assumptions and owner confirmation path.'
+            : 'Confirm assumptions with customer or account team.',
+      ],
+      const [
+        'Customer handoff',
+        'Conditional',
+        'Final artifacts should not overstate evidence.',
+        'Use qualified language until all gates pass.',
+      ],
     ];
   }
 
@@ -337,6 +501,32 @@ class EvidencePackBuilder {
             _checkedDate(source),
             _freshnessRisk(source),
             _ownerAction(source),
+          ];
+        })
+        .toList(growable: false);
+  }
+
+  List<List<String>> _citationAuthorityRows(List<String> sourceBullets) {
+    if (sourceBullets.isEmpty) {
+      return const [
+        [
+          'No source supplied',
+          'Missing',
+          'No evidence scope',
+          'Do not use externally',
+          'Attach source before making the claim.',
+        ],
+      ];
+    }
+    return sourceBullets
+        .take(20)
+        .map((source) {
+          return [
+            _sourceLabel(source),
+            _authorityTier(source),
+            _scopeFit(source),
+            _customerReadyUse(source),
+            _authorityCaveat(source),
           ];
         })
         .toList(growable: false);
@@ -439,6 +629,48 @@ class EvidencePackBuilder {
     return rows;
   }
 
+  List<List<String>> _customerReadyGateRows({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required List<String> assumptions,
+  }) {
+    return [
+      [
+        'Source authority',
+        'Official, customer-provided, or clearly reliable source attached.',
+        sourceBullets.any((source) => _authorityTier(source) == 'Official')
+            ? 'Pass with final refresh'
+            : sourceBullets.isEmpty
+            ? 'Blocked'
+            : 'Review required',
+        'Replace weak sources or label the claim as inferred.',
+      ],
+      [
+        'Checked date',
+        'Every time-sensitive source includes a checked date.',
+        sourceBullets.isNotEmpty &&
+                sourceBullets.every(
+                  (source) => _checkedDate(source) != 'Not provided',
+                )
+            ? 'Pass'
+            : 'Needs dates',
+        'Add checked date before final recommendation.',
+      ],
+      [
+        'Unsupported claims',
+        'No material unsupported claim remains unhandled.',
+        unsupportedBullets.isEmpty ? 'Pass' : 'Blocked',
+        'Verify, qualify, rewrite, or remove flagged claims.',
+      ],
+      [
+        'Assumption separation',
+        'Assumptions are explicit and not phrased as sourced facts.',
+        assumptions.isEmpty ? 'Review required' : 'Pass with confirmation',
+        'Add or confirm assumptions with the customer/account team.',
+      ],
+    ];
+  }
+
   List<String> _bulletsFor(List<ArtifactSection> sections, List<String> terms) {
     final normalizedTerms = terms.map((term) => term.toLowerCase()).toList();
     final values = <String>[];
@@ -502,6 +734,81 @@ class EvidencePackBuilder {
       return 'Low if rechecked before handoff';
     }
     return 'Medium - verify source freshness';
+  }
+
+  String _authorityTier(String source) {
+    final lower = source.toLowerCase();
+    if (lower.contains('official') ||
+        lower.contains('api') ||
+        lower.contains('cisco.com') ||
+        lower.contains('datasheet') ||
+        lower.contains('eox')) {
+      return 'Official';
+    }
+    if (lower.contains('customer') ||
+        lower.contains('workshop') ||
+        lower.contains('inventory') ||
+        lower.contains('account team')) {
+      return 'Customer-provided';
+    }
+    if (lower.contains('analyst') ||
+        lower.contains('industry') ||
+        lower.contains('report')) {
+      return 'Third-party';
+    }
+    return 'Unclassified';
+  }
+
+  String _scopeFit(String source) {
+    final lower = source.toLowerCase();
+    if (lower.contains('lifecycle') ||
+        lower.contains('eox') ||
+        lower.contains('ldos') ||
+        lower.contains('eol')) {
+      return 'Lifecycle timing';
+    }
+    if (lower.contains('datasheet') ||
+        lower.contains('capability') ||
+        lower.contains('model') ||
+        lower.contains('product')) {
+      return 'Product capability';
+    }
+    if (lower.contains('customer') ||
+        lower.contains('workshop') ||
+        lower.contains('inventory')) {
+      return 'Customer context';
+    }
+    if (lower.contains('market') || lower.contains('industry')) {
+      return 'Market context';
+    }
+    return 'General support';
+  }
+
+  String _customerReadyUse(String source) {
+    final tier = _authorityTier(source);
+    final hasCheckedDate = _checkedDate(source) != 'Not provided';
+    if (tier == 'Official' && hasCheckedDate) {
+      return 'Use with checked-date citation';
+    }
+    if (tier == 'Official') return 'Use only after checked date is added';
+    if (tier == 'Customer-provided') {
+      return 'Use after sponsor confirmation';
+    }
+    if (tier == 'Third-party') return 'Use as context, not final proof';
+    return 'Do not use until classified';
+  }
+
+  String _authorityCaveat(String source) {
+    final tier = _authorityTier(source);
+    if (_checkedDate(source) == 'Not provided') {
+      return 'Missing checked date.';
+    }
+    return switch (tier) {
+      'Official' => 'Refresh before final handoff if time-sensitive.',
+      'Customer-provided' => 'Confirm owner, date, and inventory freshness.',
+      'Third-party' => 'Use for context; pair with official/customer evidence.',
+      _ => 'Validate authority and relevance.',
+    };
   }
 
   String _ownerAction(String source) {

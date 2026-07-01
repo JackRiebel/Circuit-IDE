@@ -662,6 +662,7 @@ Evidence supporting the lifecycle and replacement recommendation.
 ## Sources
 - Cisco EoX API — checked 2026-06-30 — https://www.cisco.com/c/en/us/products/eos-eol-listing.html
 - Cisco Catalyst datasheet — checked 2026-06-30 — https://www.cisco.com/
+- Industry analyst report — checked 2026-06-30 — https://example.com/report
 
 ## Assumptions
 - EoX replacement PID is a migration clue, not the final recommendation.
@@ -692,24 +693,33 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('word/document.xml'));
     expect(packageText, contains('Cisco Lifecycle Evidence Pack'));
     expect(packageText, contains('Executive Decision Brief'));
+    expect(packageText, contains('Executive Evidence Decision'));
     expect(packageText, contains('Evidence Summary'));
     expect(packageText, contains('Claim Register'));
     expect(packageText, contains('Source Inventory'));
+    expect(packageText, contains('Citation Quality Rules'));
     expect(packageText, contains('Checked Dates'));
     expect(packageText, contains('Confidence And Risk'));
     expect(packageText, contains('Unsupported Claims / Follow-Up'));
     expect(packageText, contains('Claim To Source Matrix'));
+    expect(packageText, contains('Citation Authority Register'));
     expect(packageText, contains('Source Freshness Register'));
     expect(packageText, contains('Unsupported Claim Triage'));
     expect(packageText, contains('Evidence Confidence Scorecard'));
+    expect(packageText, contains('Customer-Ready Claim Gates'));
     expect(packageText, contains('Customer Follow-Up Checklist'));
     expect(packageText, contains('Stakeholder Readout'));
     expect(packageText, contains('Evidence Confidence Matrix'));
     expect(packageText, contains('Approval Gates'));
+    expect(packageText, contains('Authority tier'));
+    expect(packageText, contains('Customer-ready use'));
+    expect(packageText, contains('Use with checked-date citation'));
+    expect(packageText, contains('Use as context, not final proof'));
     expect(packageText, contains('Supporting source'));
     expect(packageText, contains('Freshness risk'));
     expect(packageText, contains('Required evidence'));
     expect(packageText, contains('Validate current portfolio fit'));
+    expect(packageText, contains('Verify, qualify, rewrite, or remove'));
     expect(packageText, contains('Exact replacement model needs validation'));
     expect(packageText, contains('Validation Checklist'));
     expect(packageText, contains('https://www.cisco.com/'));
@@ -752,8 +762,11 @@ Evidence supporting the lifecycle and replacement recommendation.
       expect(jsonText, contains('"artifactTemplate": "evidence_pack"'));
       expect(jsonText, contains('"sourceCount"'));
       expect(jsonText, contains('"Claim To Source Matrix"'));
+      expect(jsonText, contains('"Citation Authority Register"'));
       expect(jsonText, contains('"Source Freshness Register"'));
+      expect(jsonText, contains('"Customer-Ready Claim Gates"'));
       expect(jsonText, contains('"Evidence Confidence Scorecard"'));
+      expect(jsonText, contains('"Executive Evidence Decision"'));
       expect(jsonText, contains('"Source Inventory"'));
       expect(jsonText, contains('https://www.cisco.com/'));
     },
