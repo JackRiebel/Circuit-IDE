@@ -14,6 +14,9 @@ class PdfArtifactInspection {
   final bool hasAccentBar;
   final bool hasTableGrid;
   final bool hasExecutiveDecisionBrief;
+  final bool hasRecommendationSummary;
+  final bool hasRiskRegister;
+  final bool hasNextStepActionPlan;
   final bool hasValidationChecklist;
   final bool hasInfoKeywords;
   final String? title;
@@ -32,6 +35,9 @@ class PdfArtifactInspection {
     required this.hasAccentBar,
     required this.hasTableGrid,
     required this.hasExecutiveDecisionBrief,
+    required this.hasRecommendationSummary,
+    required this.hasRiskRegister,
+    required this.hasNextStepActionPlan,
     required this.hasValidationChecklist,
     required this.hasInfoKeywords,
     required this.title,
@@ -52,6 +58,9 @@ class PdfArtifactInspection {
       hasPageNumberFooter &&
       hasAccentBar &&
       hasExecutiveDecisionBrief &&
+      hasRecommendationSummary &&
+      hasRiskRegister &&
+      hasNextStepActionPlan &&
       hasValidationChecklist &&
       hasInfoKeywords;
 
@@ -81,6 +90,9 @@ class PdfArtifactInspector {
       hasAccentBar: text.contains('0 0 8 792 re f'),
       hasTableGrid: text.contains(' re S'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
+      hasRecommendationSummary: text.contains('Recommendation Summary'),
+      hasRiskRegister: text.contains('Risk & Assumption Register'),
+      hasNextStepActionPlan: text.contains('Next-Step Action Plan'),
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasInfoKeywords:
           text.contains('/Keywords') &&
