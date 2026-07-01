@@ -9,12 +9,14 @@ class ChartRenderResult {
   final int chartCount;
   final List<String> signals;
   final List<List<String>> previewRows;
+  final Map<String, Object?> metadata;
 
   const ChartRenderResult({
     required this.bytes,
     required this.chartCount,
     required this.signals,
     required this.previewRows,
+    required this.metadata,
   });
 }
 
@@ -30,7 +32,37 @@ class ChartArtifactRenderer {
       chartCount: charts.length,
       signals: profile.signals,
       previewRows: _previewRows(charts),
+      metadata: _metadataFor(charts, profile),
     );
+  }
+
+  Map<String, Object?> _metadataFor(
+    List<_ChartData> charts,
+    _ChartPackProfile profile,
+  ) {
+    final insights = _executiveInsights(profile);
+    final gates = _validationGates(profile);
+    final actions = _recommendedActions(profile);
+    return {
+      'generator': 'CircuitCode',
+      'artifact': 'chart_pack',
+      'chartCount': charts.length,
+      'pointCount': profile.pointCount,
+      'highRiskCount': profile.highRiskCount,
+      'mediumRiskCount': profile.mediumRiskCount,
+      'lowRiskCount': profile.lowRiskCount,
+      'hasPoe': profile.hasPoe,
+      'hasWan': profile.hasWan,
+      'hasLifecycle': profile.hasLifecycle,
+      'hasComparison': profile.hasComparison,
+      'hasCost': profile.hasCost,
+      'hasRoadmap': profile.hasRoadmap,
+      'signals': profile.signals,
+      'kinds': charts.map((chart) => chart.kind.name).toList(growable: false),
+      'insightCount': insights.length,
+      'validationGateCount': gates.length,
+      'recommendedActionCount': actions.length,
+    };
   }
 
   List<List<String>> _previewRows(List<_ChartData> charts) {

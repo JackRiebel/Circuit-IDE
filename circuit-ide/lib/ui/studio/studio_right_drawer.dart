@@ -3148,6 +3148,16 @@ class _ArtifactDrawerCard extends ConsumerWidget {
         parts.add('$edgeCount links');
       }
     }
+    if (artifact.kind == GeneratedArtifactKind.chart) {
+      final pointCount = _metadataInt(artifact, 'pointCount');
+      final highRiskCount = _metadataInt(artifact, 'highRiskCount');
+      final signals = _metadataStringList(artifact, 'signals');
+      if (pointCount > 0) parts.add('$pointCount points');
+      if (highRiskCount > 0) {
+        parts.add('$highRiskCount high risk');
+      }
+      if (signals.isNotEmpty) parts.add(_compactSignalList(signals));
+    }
     if (artifact.kind == GeneratedArtifactKind.powerPoint) {
       final theme = _metadataString(artifact, 'theme');
       if (theme.isNotEmpty) parts.add('$theme theme');
@@ -3244,6 +3254,33 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           (
             'AP power',
             '${_metadataInt(artifact, 'estimatedApPowerWatts')}W est.',
+          ),
+      ],
+      if (artifact.kind == GeneratedArtifactKind.chart) ...[
+        if (_metadataInt(artifact, 'chartCount') > 0)
+          ('Charts', '${_metadataInt(artifact, 'chartCount')}'),
+        if (_metadataInt(artifact, 'pointCount') > 0)
+          ('Data points', '${_metadataInt(artifact, 'pointCount')}'),
+        if (_metadataInt(artifact, 'highRiskCount') > 0)
+          ('High risk', '${_metadataInt(artifact, 'highRiskCount')}'),
+        if (_metadataInt(artifact, 'mediumRiskCount') > 0)
+          ('Review', '${_metadataInt(artifact, 'mediumRiskCount')}'),
+        if (_metadataInt(artifact, 'lowRiskCount') > 0)
+          ('Low/active', '${_metadataInt(artifact, 'lowRiskCount')}'),
+        if (_metadataStringList(artifact, 'signals').isNotEmpty)
+          (
+            'Signals',
+            _compactSignalList(_metadataStringList(artifact, 'signals')),
+          ),
+        if (_metadataInt(artifact, 'validationGateCount') > 0)
+          (
+            'Validation',
+            '${_metadataInt(artifact, 'validationGateCount')} gates',
+          ),
+        if (_metadataInt(artifact, 'recommendedActionCount') > 0)
+          (
+            'Actions',
+            '${_metadataInt(artifact, 'recommendedActionCount')} recommended',
           ),
       ],
       if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
@@ -3545,6 +3582,28 @@ int _metadataInt(GeneratedArtifact artifact, String key) {
 String _metadataString(GeneratedArtifact artifact, String key) {
   final value = artifact.metadata[key]?.toString().trim() ?? '';
   return value;
+}
+
+List<String> _metadataStringList(GeneratedArtifact artifact, String key) {
+  final value = artifact.metadata[key];
+  if (value is Iterable) {
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+  final text = value?.toString().trim() ?? '';
+  if (text.isEmpty) return const [];
+  return text
+      .split(',')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
+}
+
+String _compactSignalList(List<String> signals) {
+  if (signals.length <= 2) return signals.join(', ');
+  return '${signals.take(2).join(', ')} +${signals.length - 2}';
 }
 
 class _BinaryArtifactPreview extends ConsumerWidget {

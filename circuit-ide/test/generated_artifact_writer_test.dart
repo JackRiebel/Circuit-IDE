@@ -1195,6 +1195,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(artifact.summary, contains('SVG chart'));
       expect(artifact.previewRows.first, ['Metric', 'Watts Required']);
       expect(artifact.sheetCount, 1);
+      expect(artifact.metadata['artifact'], 'chart_pack');
+      expect(artifact.metadata['chartCount'], 1);
+      expect(artifact.metadata['pointCount'], 4);
+      expect(artifact.metadata['hasPoe'], isTrue);
+      expect(artifact.metadata['validationGateCount'], 4);
+      expect(
+        artifact.metadata['recommendedActionCount'],
+        greaterThanOrEqualTo(1),
+      );
       expect(File(artifact.filePath).existsSync(), isTrue);
       final svg = File(artifact.filePath).readAsStringSync();
       expect(svg, startsWith('<svg'));
@@ -1275,6 +1284,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.summary, contains('Cost/TCO'));
     expect(artifact.summary, contains('Roadmap'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(6));
+    expect(artifact.metadata['artifact'], 'chart_pack');
+    expect(artifact.metadata['chartCount'], 6);
+    expect(artifact.metadata['pointCount'], 17);
+    expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(1));
+    expect(artifact.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
+    expect(artifact.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
+    expect(artifact.metadata['hasPoe'], isTrue);
+    expect(artifact.metadata['hasWan'], isTrue);
+    expect(artifact.metadata['hasLifecycle'], isTrue);
+    expect(artifact.metadata['hasComparison'], isTrue);
+    expect(artifact.metadata['hasCost'], isTrue);
+    expect(artifact.metadata['hasRoadmap'], isTrue);
+    expect(
+      artifact.metadata['signals'],
+      containsAll(['PoE/UPOE', 'WAN capacity', 'Lifecycle']),
+    );
     expect(artifact.previewRows.first, ['Chart', 'Signal', 'Data points']);
     expect(
       artifact.previewRows.any(

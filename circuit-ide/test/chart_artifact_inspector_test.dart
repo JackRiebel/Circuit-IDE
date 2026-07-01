@@ -39,6 +39,12 @@ void main() {
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(1));
+    expect(result.metadata['artifact'], 'chart_pack');
+    expect(result.metadata['chartCount'], 1);
+    expect(result.metadata['pointCount'], 3);
+    expect(result.metadata['hasPoe'], isTrue);
+    expect(result.metadata['validationGateCount'], 4);
+    expect(result.metadata['recommendedActionCount'], greaterThanOrEqualTo(1));
   });
 
   test('chart inspector verifies enterprise multi-panel chart packs', () {
@@ -137,6 +143,21 @@ void main() {
         'Cost Plan',
         'Deployment Roadmap',
       ]),
+    );
+    expect(result.metadata['chartCount'], 6);
+    expect(result.metadata['pointCount'], 13);
+    expect(result.metadata['highRiskCount'], greaterThanOrEqualTo(1));
+    expect(result.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
+    expect(result.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
+    expect(result.metadata['hasPoe'], isTrue);
+    expect(result.metadata['hasWan'], isTrue);
+    expect(result.metadata['hasLifecycle'], isTrue);
+    expect(result.metadata['hasComparison'], isTrue);
+    expect(result.metadata['hasCost'], isTrue);
+    expect(result.metadata['hasRoadmap'], isTrue);
+    expect(
+      result.metadata['signals'],
+      containsAll(['PoE/UPOE', 'WAN capacity', 'Lifecycle']),
     );
   });
 }

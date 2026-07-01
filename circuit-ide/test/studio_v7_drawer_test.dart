@@ -1191,6 +1191,77 @@ void main() {
     expect(find.text('AP power'), findsAtLeastNWidgets(1));
   });
 
+  testWidgets('Artifacts drawer shows chart pack metadata', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'chart-1',
+      kind: GeneratedArtifactKind.chart,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'enterprise-chart-pack.svg',
+      filePath: '/tmp/enterprise-chart-pack.svg',
+      summary: 'Created an SVG chart pack with 4 charts.',
+      byteSize: 7168,
+      previewRows: const [
+        ['Chart', 'Signal', 'Data points'],
+        ['PoE Budget', 'PoE/UPOE', '4'],
+        ['WAN Capacity', 'WAN Capacity', '3'],
+        ['Lifecycle Risk', 'Lifecycle', '3'],
+      ],
+      sheetCount: 4,
+      metadata: const {
+        'artifact': 'chart_pack',
+        'chartCount': 4,
+        'pointCount': 18,
+        'highRiskCount': 2,
+        'mediumRiskCount': 3,
+        'lowRiskCount': 6,
+        'signals': ['PoE/UPOE', 'WAN Capacity', 'Lifecycle'],
+        'validationGateCount': 4,
+        'recommendedActionCount': 3,
+      },
+      createdAt: DateTime(2026, 7, 1, 11),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('enterprise-chart-pack.svg'), findsOneWidget);
+    expect(
+      find.textContaining('Chart • 18 points • 2 high risk'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('PoE/UPOE, WAN Capacity +1'), findsOneWidget);
+    expect(find.text('Chart summary'), findsOneWidget);
+    expect(find.text('Lifecycle Risk'), findsOneWidget);
+
+    await tester.tap(find.text('enterprise-chart-pack.svg'));
+    await tester.pump();
+
+    expect(find.text('Charts'), findsAtLeastNWidgets(1));
+    expect(find.text('Data points'), findsAtLeastNWidgets(1));
+    expect(find.text('High risk'), findsOneWidget);
+    expect(find.text('Review'), findsAtLeastNWidgets(1));
+    expect(find.text('Low/active'), findsOneWidget);
+    expect(find.text('Signals'), findsOneWidget);
+    expect(find.text('Validation'), findsOneWidget);
+    expect(find.text('Actions'), findsOneWidget);
+    expect(find.text('18'), findsOneWidget);
+    expect(find.text('4 gates'), findsOneWidget);
+    expect(find.text('3 recommended'), findsOneWidget);
+  });
+
   testWidgets('Artifacts drawer Review opens text artifacts in code mode', (
     tester,
   ) async {

@@ -331,6 +331,7 @@ class GeneratedArtifactWriter {
             : 'Created an SVG chart pack with ${chart.chartCount} charts$signalSummary.',
         previewRows: chart.previewRows,
         sheetCount: chart.chartCount,
+        metadata: chart.metadata,
       );
     }
 
