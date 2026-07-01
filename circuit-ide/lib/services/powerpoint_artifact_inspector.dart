@@ -15,6 +15,7 @@ class PowerPointArtifactInspection {
   final int declaredSlideCount;
   final String? title;
   final List<String> slideTypes;
+  final bool hasReadinessStatusStrip;
   final bool hasCircuitFooter;
   final bool hasAgenda;
   final bool hasAgendaLayout;
@@ -58,6 +59,7 @@ class PowerPointArtifactInspection {
     required this.declaredSlideCount,
     required this.title,
     required this.slideTypes,
+    required this.hasReadinessStatusStrip,
     required this.hasCircuitFooter,
     required this.hasAgenda,
     required this.hasAgendaLayout,
@@ -123,6 +125,7 @@ class PowerPointArtifactInspection {
       hasAppendix &&
       hasSourcesSlide &&
       hasAssumptionsSourcesSlide &&
+      hasReadinessStatusStrip &&
       hasCircuitFooter &&
       hasEnterpriseStyling &&
       hasSpeakerNotes &&
@@ -193,6 +196,13 @@ class PowerPointArtifactInspector {
       declaredSlideCount: _declaredSlideCount(text),
       title: _firstElementText(text, 'dc:title'),
       slideTypes: slideTypes,
+      hasReadinessStatusStrip:
+          text.contains('Circuit readiness strip') &&
+          text.contains('Circuit readiness pill') &&
+          text.contains('Circuit readiness label') &&
+          text.contains('Readiness:') &&
+          text.contains('Evidence:') &&
+          text.contains('Gate:'),
       hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
       hasAgenda: text.contains('Agenda'),
       hasAgendaLayout:

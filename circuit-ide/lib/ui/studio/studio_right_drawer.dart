@@ -4582,6 +4582,13 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Delivery score',
             '${_metadataInt(artifact, 'deliveryReadinessScore')}/100',
           ),
+        if (_metadataStringList(artifact, 'deckStatusStrip').isNotEmpty)
+          (
+            'Deck status',
+            _compactSignalList(
+              _metadataStringList(artifact, 'deckStatusStrip'),
+            ),
+          ),
         if (_metadataString(artifact, 'deckReviewPriority').isNotEmpty)
           ('Review priority', _metadataString(artifact, 'deckReviewPriority')),
         if (_metadataString(artifact, 'decisionAsk').isNotEmpty)

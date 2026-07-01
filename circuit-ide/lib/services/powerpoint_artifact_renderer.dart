@@ -80,6 +80,14 @@ class PowerPointArtifactRenderer {
       validationGaps: validationGaps,
       evidenceConfidence: evidenceConfidence,
     );
+    final statusStrip = _deckStatusStripFor(
+      document,
+      slides: slides,
+      deliveryReadinessScore: deliveryReadinessScore,
+      deliveryReadinessLevel: deliveryReadinessLevel,
+      validationGaps: validationGaps,
+      evidenceConfidence: evidenceConfidence,
+    );
     final externalHandoffManifest = _externalHandoffManifestFor(
       document,
       sections,
@@ -131,6 +139,7 @@ class PowerPointArtifactRenderer {
         'Recommendation cards',
         'Roadmap timeline',
         'Publishing gate slide',
+        'Visible readiness/evidence status strip',
         'Closing decision ask',
         if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
           'Section divider slides',
@@ -154,6 +163,9 @@ class PowerPointArtifactRenderer {
       'deckEvidencePolicyCount': evidencePolicy.length,
       'deckPublishingMetadata': publishingMetadata,
       'deckPublishingMetadataCount': publishingMetadata.length,
+      'deckStatusStrip': statusStrip.labels,
+      'deckStatusStripCount': statusStrip.labels.length,
+      'hasDeckStatusStrip': statusStrip.labels.isNotEmpty,
       'externalHandoffManifest': externalHandoffManifest,
       'externalHandoffManifestCount': externalHandoffManifest.length,
       'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
@@ -259,6 +271,7 @@ class PowerPointArtifactRenderer {
       document,
     ).take(_maxSlides).toList(growable: false);
     final theme = _DeckTheme.forDocument(document);
+    final statusStrip = _deckStatusStripFor(document, slides: slides);
     final files = <_PptxFile>[
       _PptxFile('[Content_Types].xml', _bytes(_contentTypes(slides.length))),
       _PptxFile('_rels/.rels', _bytes(_rootRels())),
@@ -296,6 +309,7 @@ class PowerPointArtifactRenderer {
             _slide(
               slides[i],
               theme: theme,
+              statusStrip: statusStrip,
               slideNumber: i + 1,
               totalSlides: slides.length,
             ),
@@ -1352,6 +1366,42 @@ class PowerPointArtifactRenderer {
     ];
   }
 
+  _DeckStatusStrip _deckStatusStripFor(
+    ArtifactDocument document, {
+    required List<_DeckSlide> slides,
+    int? deliveryReadinessScore,
+    String? deliveryReadinessLevel,
+    List<String>? validationGaps,
+    String? evidenceConfidence,
+  }) {
+    final slideTypeCounts = {
+      for (final slide in slides)
+        slide.kind.label: slides
+            .where((candidate) => candidate.kind == slide.kind)
+            .length,
+    };
+    final gaps =
+        validationGaps ?? _validationGapsFor(document, slideTypeCounts);
+    final score =
+        deliveryReadinessScore ??
+        _deliveryReadinessScore(document, slideTypeCounts, gaps);
+    final readiness = deliveryReadinessLevel ?? _deliveryReadinessLevel(score);
+    final evidence = evidenceConfidence ?? _evidenceConfidenceFor(document);
+    final gate = gaps.isEmpty
+        ? 'Gate: reviewer approval ready'
+        : 'Gate: ${gaps.length} gap${gaps.length == 1 ? '' : 's'} to resolve';
+    final accent = score >= 90
+        ? '7FB7B2'
+        : score >= 70
+        ? 'C7A77B'
+        : 'D08770';
+    return _DeckStatusStrip(
+      labels: ['Readiness: $readiness', 'Evidence: $evidence', gate],
+      accent: accent,
+      foreground: score >= 90 ? '111111' : '111111',
+    );
+  }
+
   List<String> _externalHandoffManifestFor(
     ArtifactDocument document,
     List<ArtifactSection> sections, {
@@ -1752,6 +1802,7 @@ class PowerPointArtifactRenderer {
   String _slide(
     _DeckSlide slide, {
     required _DeckTheme theme,
+    required _DeckStatusStrip statusStrip,
     required int slideNumber,
     required int totalSlides,
   }) {
@@ -1781,9 +1832,63 @@ class PowerPointArtifactRenderer {
         '${_textBox(id: 7, name: 'Slide type', x: 9700000, y: 340000, w: 1700000, h: 280000, text: _xml(slide.kind.label), size: 1000, bold: true, color: theme.mutedText)}'
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
         '$body'
+        '${_deckStatusStrip(statusStrip, theme: theme)}'
         '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact - ${theme.label} theme', size: 1000, bold: false, color: theme.mutedText)}'
         '${_textBox(id: 91, name: 'Slide number', x: 10450000, y: 6420000, w: 1200000, h: 260000, text: 'Slide $slideNumber of $totalSlides', size: 1000, bold: false, color: theme.mutedText)}'
         '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
+  }
+
+  String _deckStatusStrip(
+    _DeckStatusStrip status, {
+    required _DeckTheme theme,
+  }) {
+    final parts = <String>[
+      _shape(
+        id: 80,
+        name: 'Circuit readiness strip',
+        x: 600000,
+        y: 6120000,
+        w: 10980000,
+        h: 240000,
+        color: theme.statusRail,
+      ),
+    ];
+    const startX = 790000;
+    const gap = 190000;
+    const widths = [2680000, 3260000, 2860000];
+    var x = startX;
+    for (var i = 0; i < status.labels.take(3).length; i++) {
+      final label = status.labels[i];
+      final width = widths[i];
+      parts
+        ..add(
+          _shape(
+            id: 81 + (i * 3),
+            name: 'Circuit readiness pill',
+            x: x,
+            y: 6160000,
+            w: width,
+            h: 160000,
+            color: i == 0 ? status.accent : theme.statusPill,
+          ),
+        )
+        ..add(
+          _textBox(
+            id: 82 + (i * 3),
+            name: 'Circuit readiness label',
+            x: x + 100000,
+            y: 6180000,
+            w: width - 200000,
+            h: 105000,
+            text: _xml(label),
+            size: 760,
+            bold: true,
+            color: i == 0 ? status.foreground : theme.secondaryText,
+          ),
+        );
+      x += width + gap;
+    }
+    return parts.join();
   }
 
   String _bulletSlideBody(
@@ -2522,6 +2627,18 @@ class _DeckSlide {
   });
 }
 
+class _DeckStatusStrip {
+  final List<String> labels;
+  final String accent;
+  final String foreground;
+
+  const _DeckStatusStrip({
+    required this.labels,
+    required this.accent,
+    required this.foreground,
+  });
+}
+
 enum _DeckSlideKind {
   title,
   agenda,
@@ -2571,6 +2688,8 @@ class _DeckTheme {
   final String canvas;
   final String panel;
   final String tile;
+  final String statusRail;
+  final String statusPill;
   final String bodyText;
   final String secondaryText;
   final String mutedText;
@@ -2581,6 +2700,8 @@ class _DeckTheme {
     required this.canvas,
     required this.panel,
     required this.tile,
+    required this.statusRail,
+    required this.statusPill,
     required this.bodyText,
     required this.secondaryText,
     required this.mutedText,
@@ -2601,6 +2722,8 @@ class _DeckTheme {
         canvas: 'F8FAFC',
         panel: 'FFFFFF',
         tile: 'EEF2F7',
+        statusRail: 'E5E7EB',
+        statusPill: 'F1F5F9',
         bodyText: '111827',
         secondaryText: '475569',
         mutedText: '64748B',
@@ -2612,6 +2735,8 @@ class _DeckTheme {
       canvas: '161616',
       panel: '202020',
       tile: '242424',
+      statusRail: '181818',
+      statusPill: '25282C',
       bodyText: 'F4F4F5',
       secondaryText: 'C4C7CC',
       mutedText: '8A8F98',

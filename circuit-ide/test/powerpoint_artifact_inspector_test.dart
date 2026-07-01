@@ -85,6 +85,7 @@ void main() {
     expect(inspection.hasCustomProperties, isTrue);
     expect(inspection.hasNarrativeManifest, isTrue);
     expect(inspection.hasExternalHandoffManifest, isTrue);
+    expect(inspection.hasReadinessStatusStrip, isTrue);
     expect(inspection.notesSlideCount, inspection.slideCount);
     expect(inspection.usesDarkTheme, isTrue);
 
@@ -183,6 +184,16 @@ void main() {
     expect(metadata['hasDeckVisualVerificationChecklist'], isTrue);
     expect(metadata['hasDeckEvidencePolicy'], isTrue);
     expect(metadata['hasDeckPublishingMetadata'], isTrue);
+    expect(metadata['hasDeckStatusStrip'], isTrue);
+    expect(metadata['deckStatusStripCount'], 3);
+    expect(
+      metadata['deckStatusStrip'],
+      containsAll([
+        'Readiness: Customer handoff ready',
+        'Evidence: High - sources and assumptions captured',
+        'Gate: reviewer approval ready',
+      ]),
+    );
     expect(metadata['hasExternalHandoffManifest'], isTrue);
     expect(metadata['externalHandoffManifestCount'], 7);
     expect(
@@ -250,6 +261,7 @@ void main() {
         'Recommendation cards',
         'Roadmap timeline',
         'Publishing gate slide',
+        'Visible readiness/evidence status strip',
         'Closing decision ask',
         'Speaker notes',
       ]),
@@ -388,6 +400,7 @@ void main() {
     expect(inspection.declaredSlideCount, renderer.slideCountFor(document));
     expect(inspection.slideCount, inspection.declaredSlideCount);
     expect(inspection.hasEnterpriseStyling, isTrue);
+    expect(inspection.hasReadinessStatusStrip, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasDeliveryBrief, isTrue);
@@ -431,6 +444,7 @@ void main() {
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasEnterpriseBrandPill, isTrue);
+    expect(inspection.hasReadinessStatusStrip, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);

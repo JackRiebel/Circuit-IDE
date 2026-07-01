@@ -1856,6 +1856,13 @@ void main() {
             'deckPurpose': 'Support a decision',
             'deliveryReadinessScore': 94,
             'deliveryReadinessLevel': 'Customer handoff ready',
+            'deckStatusStrip': [
+              'Readiness: Customer handoff ready',
+              'Evidence: High - sources and assumptions captured',
+              'Gate: reviewer approval ready',
+            ],
+            'deckStatusStripCount': 3,
+            'hasDeckStatusStrip': true,
             'deckReviewPriority': 'Low - ready for stakeholder review',
             'deliveryReadinessDrivers': [
               'Executive delivery brief included',
@@ -2119,6 +2126,17 @@ void main() {
     expect(find.text('Customer handoff ready'), findsOneWidget);
     expect(find.text('Delivery score'), findsOneWidget);
     expect(find.text('94/100'), findsOneWidget);
+    expect(find.text('Deck status'), findsOneWidget);
+    expect(
+      find.textContaining('Readiness: Customer handoff ready'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'Evidence: High - sources and assumptions captured +1',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Review priority'), findsOneWidget);
     expect(find.text('Low - ready for stakeholder review'), findsOneWidget);
     expect(find.text('Ask'), findsOneWidget);
