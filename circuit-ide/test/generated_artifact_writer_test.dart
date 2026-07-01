@@ -985,6 +985,10 @@ Executive-ready summary for a final customer handoff.
     );
     expect(
       artifact.previewRows.map((row) => row.join(' / ')),
+      contains(contains('PDF Bookmarks')),
+    );
+    expect(
+      artifact.previewRows.map((row) => row.join(' / ')),
       contains(contains('Recommendations')),
     );
     expect(File(artifact.filePath).existsSync(), isTrue);
@@ -992,6 +996,11 @@ Executive-ready summary for a final customer handoff.
     expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));
     final pdfText = String.fromCharCodes(bytes);
     expect(pdfText, contains('/Type /Catalog'));
+    expect(pdfText, contains('/PageMode /UseOutlines'));
+    expect(pdfText, contains('/Type /Outlines'));
+    expect(pdfText, contains('/Title (Report Overview)'));
+    expect(pdfText, contains('/Title (Executive Decision Brief)'));
+    expect(pdfText, contains('/Title (Validation Checklist)'));
     expect(pdfText, contains('/Type /Page'));
     expect(pdfText, contains('/Info 6 0 R'));
     expect(pdfText, contains('/Title (Campus Refresh Handoff)'));

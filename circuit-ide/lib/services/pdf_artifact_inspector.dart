@@ -13,6 +13,11 @@ class PdfArtifactInspection {
   final bool hasPageNumberFooter;
   final bool hasAccentBar;
   final bool hasTableGrid;
+  final bool hasOutlineCatalog;
+  final bool hasOutlineTree;
+  final bool hasReportOverviewBookmark;
+  final bool hasExecutiveDecisionBookmark;
+  final bool hasValidationBookmark;
   final bool hasExecutiveDecisionBrief;
   final bool hasRecommendationSummary;
   final bool hasRiskRegister;
@@ -37,6 +42,11 @@ class PdfArtifactInspection {
     required this.hasPageNumberFooter,
     required this.hasAccentBar,
     required this.hasTableGrid,
+    required this.hasOutlineCatalog,
+    required this.hasOutlineTree,
+    required this.hasReportOverviewBookmark,
+    required this.hasExecutiveDecisionBookmark,
+    required this.hasValidationBookmark,
     required this.hasExecutiveDecisionBrief,
     required this.hasRecommendationSummary,
     required this.hasRiskRegister,
@@ -63,6 +73,11 @@ class PdfArtifactInspection {
       hasCircuitFooter &&
       hasPageNumberFooter &&
       hasAccentBar &&
+      hasOutlineCatalog &&
+      hasOutlineTree &&
+      hasReportOverviewBookmark &&
+      hasExecutiveDecisionBookmark &&
+      hasValidationBookmark &&
       hasExecutiveDecisionBrief &&
       hasRecommendationSummary &&
       hasRiskRegister &&
@@ -98,6 +113,18 @@ class PdfArtifactInspector {
       hasPageNumberFooter: RegExp(r'Page \d+ of \d+').hasMatch(text),
       hasAccentBar: text.contains('0 0 8 792 re f'),
       hasTableGrid: text.contains(' re S'),
+      hasOutlineCatalog:
+          text.contains('/Outlines') && text.contains('/PageMode /UseOutlines'),
+      hasOutlineTree:
+          text.contains('/Type /Outlines') &&
+          RegExp(r'/Count\s+\d+').hasMatch(text) &&
+          text.contains('/Dest ['),
+      hasReportOverviewBookmark: _hasBookmark(text, 'Report Overview'),
+      hasExecutiveDecisionBookmark: _hasBookmark(
+        text,
+        'Executive Decision Brief',
+      ),
+      hasValidationBookmark: _hasBookmark(text, 'Validation Checklist'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
       hasRecommendationSummary: text.contains('Recommendation Summary'),
       hasRiskRegister: text.contains('Risk & Assumption Register'),
@@ -122,5 +149,22 @@ class PdfArtifactInspector {
         .replaceAll(r'\(', '(')
         .replaceAll(r'\)', ')')
         .replaceAll('\\\\', '\\');
+  }
+
+  static bool _hasBookmark(String text, String title) {
+    final titleIndex = text.indexOf('/Title (${_pdfText(title)})');
+    if (titleIndex == -1) return false;
+    final nextTitleIndex = text.indexOf('/Title (', titleIndex + 1);
+    final endIndex = nextTitleIndex == -1 ? text.length : nextTitleIndex;
+    return text.substring(titleIndex, endIndex).contains('/Dest [');
+  }
+
+  static String _pdfText(String value) {
+    return value
+        .replaceAll('\\', r'\\')
+        .replaceAll('(', r'\(')
+        .replaceAll(')', r'\)')
+        .replaceAll('\r', ' ')
+        .replaceAll('\n', ' ');
   }
 }

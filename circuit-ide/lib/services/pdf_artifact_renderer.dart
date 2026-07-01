@@ -11,9 +11,11 @@ class PdfArtifactRenderer {
     ArtifactDocument document, {
     int pageCount = 0,
   }) {
+    final outlineEntries = _outlineEntries(document);
     return [
       ['Section', 'Type', 'Items'],
       if (pageCount > 0) ['0', 'Pages', '$pageCount'],
+      ['0', 'PDF Bookmarks', '${outlineEntries.length}'],
       ['1', 'Executive Decision Brief', '5'],
       ['2', 'Recommendation Summary', '4'],
       [
@@ -60,9 +62,9 @@ class PdfArtifactRenderer {
 
   Uint8List render(ArtifactDocument document) {
     final pages = _paginate(_itemsFor(document));
+    final outlineEntries = _outlineEntries(document);
     final objects = <int, List<int>>{};
     final pageIds = <int>[];
-    objects[1] = _bytes('<< /Type /Catalog /Pages 2 0 R >>');
     objects[3] = _bytes(
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     );
@@ -96,9 +98,35 @@ class PdfArtifactRenderer {
         '/Contents $contentId 0 R >>',
       );
     }
+    final outlineRootId = 7 + (pages.length * 2);
+    final firstOutlineItemId = outlineRootId + 1;
+    final outlineIds = <int>[];
+    for (var i = 0; i < outlineEntries.length; i++) {
+      outlineIds.add(firstOutlineItemId + i);
+    }
+    objects[1] = _bytes(
+      '<< /Type /Catalog /Pages 2 0 R /Outlines $outlineRootId 0 R /PageMode /UseOutlines >>',
+    );
     objects[2] = _bytes(
       '<< /Type /Pages /Kids [${pageIds.map((id) => '$id 0 R').join(' ')}] /Count ${pageIds.length} >>',
     );
+    objects[outlineRootId] = _bytes(
+      outlineIds.isEmpty
+          ? '<< /Type /Outlines /Count 0 >>'
+          : '<< /Type /Outlines /First ${outlineIds.first} 0 R /Last ${outlineIds.last} 0 R /Count ${outlineIds.length} >>',
+    );
+    for (var i = 0; i < outlineEntries.length; i++) {
+      final entry = outlineEntries[i];
+      final id = outlineIds[i];
+      final previous = i == 0 ? '' : ' /Prev ${outlineIds[i - 1]} 0 R';
+      final next = i == outlineIds.length - 1
+          ? ''
+          : ' /Next ${outlineIds[i + 1]} 0 R';
+      final pageId = _pageIdForOutlineEntry(entry.title, pages, pageIds);
+      objects[id] = _bytes(
+        '<< /Title (${_pdfText(entry.title)}) /Parent $outlineRootId 0 R$previous$next /Dest [$pageId 0 R /FitH 744] >>',
+      );
+    }
 
     final output = BytesBuilder(copy: false);
     output.add(_bytes('%PDF-1.4\n%\u00e2\u00e3\u00cf\u00d3\n'));
@@ -301,6 +329,49 @@ class PdfArtifactRenderer {
       }
     }
     return items;
+  }
+
+  List<_PdfOutlineEntry> _outlineEntries(ArtifactDocument document) {
+    final entries = <_PdfOutlineEntry>[
+      const _PdfOutlineEntry('Report Overview'),
+      const _PdfOutlineEntry('Executive Decision Brief'),
+      const _PdfOutlineEntry('Recommendation Summary'),
+      const _PdfOutlineEntry('Risk & Assumption Register'),
+      const _PdfOutlineEntry('Next-Step Action Plan'),
+      const _PdfOutlineEntry('Executive Summary'),
+      for (final section in document.sections.take(8))
+        _PdfOutlineEntry(section.title),
+      if (document.tables.isNotEmpty) const _PdfOutlineEntry('Data Tables'),
+      const _PdfOutlineEntry('Stakeholder Readout'),
+      const _PdfOutlineEntry('Evidence Confidence Matrix'),
+      const _PdfOutlineEntry('Approval Gates'),
+      const _PdfOutlineEntry('Validation Checklist'),
+      if (document.assumptions.isNotEmpty)
+        const _PdfOutlineEntry('Assumptions'),
+      if (document.citations.isNotEmpty)
+        const _PdfOutlineEntry('Sources / Evidence'),
+    ];
+    final seen = <String>{};
+    return [
+      for (final entry in entries)
+        if (seen.add(entry.title.toLowerCase())) entry,
+    ];
+  }
+
+  int _pageIdForOutlineEntry(
+    String title,
+    List<List<_PlacedPdfItem>> pages,
+    List<int> pageIds,
+  ) {
+    for (var pageIndex = 0; pageIndex < pages.length; pageIndex++) {
+      final page = pages[pageIndex];
+      final hasTitle = page.any((placed) {
+        final item = placed.item;
+        return item is _PdfText && item.text.trim() == title;
+      });
+      if (hasTitle) return pageIds[pageIndex];
+    }
+    return pageIds.first;
   }
 
   List<String> _documentMap(ArtifactDocument document) {
@@ -1007,4 +1078,10 @@ class _PlacedPdfItem {
   final double y;
 
   const _PlacedPdfItem(this.item, this.y);
+}
+
+class _PdfOutlineEntry {
+  final String title;
+
+  const _PdfOutlineEntry(this.title);
 }

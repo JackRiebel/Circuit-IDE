@@ -48,6 +48,11 @@ void main() {
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportChrome, isTrue);
     expect(inspection.hasTableGrid, isTrue);
+    expect(inspection.hasOutlineCatalog, isTrue);
+    expect(inspection.hasOutlineTree, isTrue);
+    expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasExecutiveDecisionBookmark, isTrue);
+    expect(inspection.hasValidationBookmark, isTrue);
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
@@ -61,6 +66,11 @@ void main() {
     expect(inspection.objectCount, greaterThanOrEqualTo(8));
     expect(inspection.title, 'Campus Refresh Handoff (Draft)');
     expect(text, contains('Report Overview'));
+    expect(text, contains('/PageMode /UseOutlines'));
+    expect(text, contains('/Type /Outlines'));
+    expect(text, contains('/Title (Report Overview)'));
+    expect(text, contains('/Title (Executive Decision Brief)'));
+    expect(text, contains('/Title (Validation Checklist)'));
     expect(text, contains('Executive Decision Brief'));
     expect(text, contains('Recommendation Summary'));
     expect(text, contains('Risk & Assumption Register'));
@@ -112,6 +122,11 @@ void main() {
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportChrome, isTrue);
+    expect(inspection.hasOutlineCatalog, isTrue);
+    expect(inspection.hasOutlineTree, isTrue);
+    expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasExecutiveDecisionBookmark, isTrue);
+    expect(inspection.hasValidationBookmark, isTrue);
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
