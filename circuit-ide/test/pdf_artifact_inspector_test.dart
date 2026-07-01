@@ -52,6 +52,9 @@ void main() {
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(inspection.hasStakeholderReadout, isTrue);
+    expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
+    expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
@@ -62,6 +65,9 @@ void main() {
     expect(text, contains('Recommendation Summary'));
     expect(text, contains('Risk & Assumption Register'));
     expect(text, contains('Next-Step Action Plan'));
+    expect(text, contains('Stakeholder Readout'));
+    expect(text, contains('Evidence Confidence Matrix'));
+    expect(text, contains('Approval Gates'));
     expect(text, contains('Document Map'));
     expect(text, contains('Validation Checklist'));
     expect(text, contains('Sizing Inputs'));
@@ -110,6 +116,9 @@ void main() {
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(inspection.hasStakeholderReadout, isTrue);
+    expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
+    expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));

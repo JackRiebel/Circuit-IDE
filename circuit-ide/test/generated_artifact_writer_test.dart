@@ -765,6 +765,9 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('Report Overview'));
     expect(pdfText, contains('Executive Decision Brief'));
     expect(pdfText, contains('Document Map'));
+    expect(pdfText, contains('Stakeholder Readout'));
+    expect(pdfText, contains('Evidence Confidence Matrix'));
+    expect(pdfText, contains('Approval Gates'));
     expect(pdfText, contains('Validation Checklist'));
     expect(pdfText, contains('/Keywords'));
     expect(pdfText, contains('Access layer needs multigig validation'));

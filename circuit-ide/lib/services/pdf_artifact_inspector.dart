@@ -17,6 +17,9 @@ class PdfArtifactInspection {
   final bool hasRecommendationSummary;
   final bool hasRiskRegister;
   final bool hasNextStepActionPlan;
+  final bool hasStakeholderReadout;
+  final bool hasEvidenceConfidenceMatrix;
+  final bool hasApprovalGates;
   final bool hasValidationChecklist;
   final bool hasInfoKeywords;
   final String? title;
@@ -38,6 +41,9 @@ class PdfArtifactInspection {
     required this.hasRecommendationSummary,
     required this.hasRiskRegister,
     required this.hasNextStepActionPlan,
+    required this.hasStakeholderReadout,
+    required this.hasEvidenceConfidenceMatrix,
+    required this.hasApprovalGates,
     required this.hasValidationChecklist,
     required this.hasInfoKeywords,
     required this.title,
@@ -61,6 +67,9 @@ class PdfArtifactInspection {
       hasRecommendationSummary &&
       hasRiskRegister &&
       hasNextStepActionPlan &&
+      hasStakeholderReadout &&
+      hasEvidenceConfidenceMatrix &&
+      hasApprovalGates &&
       hasValidationChecklist &&
       hasInfoKeywords;
 
@@ -93,6 +102,9 @@ class PdfArtifactInspector {
       hasRecommendationSummary: text.contains('Recommendation Summary'),
       hasRiskRegister: text.contains('Risk & Assumption Register'),
       hasNextStepActionPlan: text.contains('Next-Step Action Plan'),
+      hasStakeholderReadout: text.contains('Stakeholder Readout'),
+      hasEvidenceConfidenceMatrix: text.contains('Evidence Confidence Matrix'),
+      hasApprovalGates: text.contains('Approval Gates'),
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasInfoKeywords:
           text.contains('/Keywords') &&
