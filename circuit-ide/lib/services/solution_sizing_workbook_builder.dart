@@ -275,6 +275,28 @@ class SolutionSizingWorkbookBuilder {
       return row[2].toLowerCase().contains('ready') ||
           row[2].toLowerCase().contains('captured');
     }).length;
+    final hardGateRows = _hardGateRows(
+      gateRows: gateRows,
+      candidateRows: candidateRows,
+      validationRows: validationRows,
+    );
+    final customerQuestions = _customerQuestionRows(
+      requirementRows: requirementRows,
+      gateRows: gateRows,
+      riskRows: riskRows,
+      assumptionRows: assumptionRows,
+    );
+    final validationRoadmap = _validationRoadmapRows(
+      auditRows: sizingAuditRows,
+      riskRows: riskRows,
+      candidateRows: candidateRows,
+    );
+    final sizingReadinessLevel = _sizingReadinessLevel(
+      sizingAuditScore: sizingAuditScore,
+      hardGateCount: hardGateRows.length,
+      highRiskCount: _severityCount(riskRows, 'High'),
+      sourceSheetCount: sourceSheetCount,
+    );
 
     return {
       'artifact': 'solution_sizing_workbook',
@@ -294,6 +316,19 @@ class SolutionSizingWorkbookBuilder {
       'sizingAuditCount': sizingAuditRows.length,
       'sizingAuditScore': sizingAuditScore,
       'sizingAuditReadyCount': sizingAuditReadyCount,
+      'sizingReadinessLevel': sizingReadinessLevel,
+      'sizingHandoffStatus': _sizingHandoffStatus(sizingReadinessLevel),
+      'hardGateFailures': hardGateRows,
+      'hardGateFailureCount': hardGateRows.length,
+      'customerFollowUpQuestions': customerQuestions,
+      'customerFollowUpQuestionCount': customerQuestions.length,
+      'validationRoadmap': validationRoadmap,
+      'validationRoadmapCount': validationRoadmap.length,
+      'sizingDecisionPosture': _sizingDecisionPosture(
+        hardGateRows.length,
+        _severityCount(riskRows, 'High'),
+        sourceSheetCount,
+      ),
       'hasSizingAudit': _hasSheet(tables, 'Sizing Audit'),
       'hasSourceEvidence': sourceSheetCount > 0,
       'hasAssumptionCoverage': assumptionRows.isNotEmpty,
@@ -357,6 +392,148 @@ class SolutionSizingWorkbookBuilder {
     if (scores.isEmpty) return 0;
     final total = scores.fold<int>(0, (sum, value) => sum + value);
     return (total / scores.length).round();
+  }
+
+  List<String> _hardGateRows({
+    required List<List<String>> gateRows,
+    required List<List<String>> candidateRows,
+    required List<List<String>> validationRows,
+  }) {
+    final failures = <String>[];
+    for (final row in gateRows) {
+      if (row.length < 4) continue;
+      final gate = row[0];
+      final status = row[3];
+      final normalized = status.toLowerCase();
+      if (normalized.contains('needs') ||
+          normalized.contains('required') ||
+          normalized.contains('validation')) {
+        failures.add('$gate: $status');
+      }
+    }
+    if (candidateRows.any((row) {
+      if (row.length < 5) return false;
+      final status = row[4].toLowerCase();
+      return status.contains('unverified') ||
+          status.contains('needs') ||
+          status.contains('review');
+    })) {
+      failures.add(
+        'Candidate facts: unverified product capability or lifecycle fit',
+      );
+    }
+    if (validationRows.any(
+      (row) =>
+          row.any((cell) => cell.toLowerCase().contains('needs validation')),
+    )) {
+      failures.add('Validation checks: open workbook validation items remain');
+    }
+    return failures.toSet().take(8).toList(growable: false);
+  }
+
+  List<String> _customerQuestionRows({
+    required List<List<String>> requirementRows,
+    required List<List<String>> gateRows,
+    required List<List<String>> riskRows,
+    required List<List<String>> assumptionRows,
+  }) {
+    String value(String metric) => _requirementValue(requirementRows, metric);
+    final questions = <String>[
+      if (value('Users').isEmpty || value('Users') == 'TBD')
+        'What are the current and projected user/client counts by site?',
+      if (value('Access points').isEmpty || value('Access points') == 'TBD')
+        'How many APs are planned by site/closet, and what Wi-Fi generation/power class?',
+      if (value('WAN speed').isEmpty || value('WAN speed') == 'TBD')
+        'What are primary/secondary WAN speeds, service mix, and inspected-throughput requirements?',
+      if (value('Growth').isEmpty || value('Growth') == 'TBD')
+        'What growth horizon and headroom target should drive ports, power, WAN, and licensing?',
+      if (gateRows.any(
+        (row) => row.join(' ').toLowerCase().contains('lifecycle'),
+      ))
+        'Which lifecycle/support sources and checked dates should govern final model selection?',
+      if (riskRows.any(
+        (row) => row.join(' ').toLowerCase().contains('wi-fi 7'),
+      ))
+        'For Wi-Fi 7/high-power APs, what UPOE/UPOE+ and mGig requirements are mandatory?',
+      if (assumptionRows.isEmpty)
+        'Which assumptions should be accepted, revised, or removed before customer handoff?',
+    ];
+    if (questions.isEmpty) {
+      questions.add(
+        'Which open gates must be closed before turning this sizing workbook into a BOM recommendation?',
+      );
+    }
+    return questions.toSet().take(7).toList(growable: false);
+  }
+
+  List<String> _validationRoadmapRows({
+    required List<List<String>> auditRows,
+    required List<List<String>> riskRows,
+    required List<List<String>> candidateRows,
+  }) {
+    final roadmap = <String>[];
+    for (final row in auditRows) {
+      if (row.length < 5) continue;
+      final readiness = row[2].toLowerCase();
+      if (readiness.contains('needs')) {
+        roadmap.add('${row[0]}: ${row[4]}');
+      }
+    }
+    for (final row in riskRows.where(
+      (row) => row.length >= 5 && row[3].toLowerCase().contains('high'),
+    )) {
+      roadmap.add('${row[0]}: ${row[2]}');
+    }
+    if (candidateRows.isNotEmpty) {
+      roadmap.add(
+        'Candidate validation: close datasheet, lifecycle, licensing, PoE, mGig, uplink, and HA fit checks.',
+      );
+    }
+    return roadmap.toSet().take(8).toList(growable: false);
+  }
+
+  String _sizingReadinessLevel({
+    required int sizingAuditScore,
+    required int hardGateCount,
+    required int highRiskCount,
+    required int sourceSheetCount,
+  }) {
+    if (hardGateCount == 0 && highRiskCount == 0 && sourceSheetCount > 0) {
+      return sizingAuditScore >= 85
+          ? 'Customer handoff ready'
+          : 'Ready for stakeholder review';
+    }
+    if (sizingAuditScore >= 70 && sourceSheetCount > 0) {
+      return 'Ready for requirements review';
+    }
+    if (sizingAuditScore >= 50) {
+      return 'Needs validation before recommendation';
+    }
+    return 'Discovery inputs required';
+  }
+
+  String _sizingHandoffStatus(String readinessLevel) {
+    return switch (readinessLevel) {
+      'Customer handoff ready' => 'Customer-ready sizing workbook',
+      'Ready for stakeholder review' => 'Stakeholder review candidate',
+      'Ready for requirements review' => 'Requirements review workbook',
+      'Needs validation before recommendation' => 'Validation required',
+      _ => 'Discovery required',
+    };
+  }
+
+  String _sizingDecisionPosture(
+    int hardGateCount,
+    int highRiskCount,
+    int sourceSheetCount,
+  ) {
+    if (hardGateCount > 0 || highRiskCount > 0) {
+      return 'Advisory only - close hard gates before BOM recommendation';
+    }
+    if (sourceSheetCount == 0) {
+      return 'Advisory only - source evidence missing';
+    }
+    return 'Decision-ready after stakeholder review';
   }
 
   bool _hasSheet(List<WorkbookTable> tables, String name) {

@@ -3635,6 +3635,18 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       ],
       if (artifact.kind == GeneratedArtifactKind.excel &&
           _metadataString(artifact, 'workbookKind') == 'solution_sizing') ...[
+        if (_metadataString(artifact, 'sizingReadinessLevel').isNotEmpty)
+          (
+            'Sizing readiness',
+            _metadataString(artifact, 'sizingReadinessLevel'),
+          ),
+        if (_metadataString(artifact, 'sizingHandoffStatus').isNotEmpty)
+          ('Sizing handoff', _metadataString(artifact, 'sizingHandoffStatus')),
+        if (_metadataString(artifact, 'sizingDecisionPosture').isNotEmpty)
+          (
+            'Decision posture',
+            _metadataString(artifact, 'sizingDecisionPosture'),
+          ),
         if (_metadataString(artifact, 'users').isNotEmpty)
           ('Users', _metadataString(artifact, 'users')),
         if (_metadataString(artifact, 'accessPoints').isNotEmpty)
@@ -3672,6 +3684,30 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Access speed', 'mGig validation signal'),
         if (_metadataBool(artifact, 'hasLifecycleValidation'))
           ('Lifecycle', 'Validation included'),
+        if (_metadataStringList(artifact, 'hardGateFailures').isNotEmpty)
+          (
+            'Hard gates',
+            _compactSignalList(
+              _metadataStringList(artifact, 'hardGateFailures'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'customerFollowUpQuestions',
+        ).isNotEmpty)
+          (
+            'Customer questions',
+            _compactSignalList(
+              _metadataStringList(artifact, 'customerFollowUpQuestions'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'validationRoadmap').isNotEmpty)
+          (
+            'Validation roadmap',
+            _compactSignalList(
+              _metadataStringList(artifact, 'validationRoadmap'),
+            ),
+          ),
       ],
       if (artifact.kind == GeneratedArtifactKind.chart) ...[
         if (_metadataString(artifact, 'chartPackType').isNotEmpty)

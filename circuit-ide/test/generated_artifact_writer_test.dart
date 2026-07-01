@@ -215,6 +215,51 @@ Here is the data.
     expect(artifact.metadata['sizingAuditCount'], 8);
     expect(artifact.metadata['sizingAuditScore'], greaterThanOrEqualTo(60));
     expect(artifact.metadata['sizingAuditReadyCount'], greaterThanOrEqualTo(4));
+    expect(
+      artifact.metadata['sizingReadinessLevel'],
+      anyOf(
+        'Ready for requirements review',
+        'Needs validation before recommendation',
+      ),
+    );
+    expect(artifact.metadata['sizingHandoffStatus'], isNotEmpty);
+    expect(
+      artifact.metadata['sizingDecisionPosture'],
+      contains('Advisory only'),
+    );
+    expect(artifact.metadata['hardGateFailureCount'], greaterThanOrEqualTo(4));
+    expect(
+      artifact.metadata['hardGateFailures'],
+      anyElement(contains('Power budget')),
+    );
+    expect(
+      artifact.metadata['hardGateFailures'],
+      anyElement(contains('WAN and security throughput')),
+    );
+    expect(
+      artifact.metadata['hardGateFailures'],
+      anyElement(contains('Candidate facts')),
+    );
+    expect(
+      artifact.metadata['hardGateFailures'],
+      anyElement(contains('Validation checks')),
+    );
+    expect(
+      artifact.metadata['customerFollowUpQuestionCount'],
+      greaterThanOrEqualTo(2),
+    );
+    expect(
+      artifact.metadata['customerFollowUpQuestions'],
+      anyElement(contains('Wi-Fi 7/high-power APs')),
+    );
+    expect(
+      artifact.metadata['validationRoadmapCount'],
+      greaterThanOrEqualTo(4),
+    );
+    expect(
+      artifact.metadata['validationRoadmap'],
+      anyElement(contains('Candidate validation')),
+    );
     expect(artifact.metadata['hasSourceEvidence'], isTrue);
     expect(artifact.metadata['hasAssumptionCoverage'], isTrue);
     expect(artifact.metadata['users'], '500');

@@ -1174,6 +1174,26 @@ void main() {
         'hasHighPowerApSignal': true,
         'hasMultigigSignal': true,
         'hasLifecycleValidation': true,
+        'sizingReadinessLevel': 'Ready for requirements review',
+        'sizingHandoffStatus': 'Requirements review workbook',
+        'sizingDecisionPosture':
+            'Advisory only - close hard gates before BOM recommendation',
+        'hardGateFailures': [
+          'Power budget: Needs datasheet validation',
+          'WAN and security throughput: Needs platform validation',
+          'Candidate facts: unverified product capability or lifecycle fit',
+        ],
+        'hardGateFailureCount': 3,
+        'customerFollowUpQuestions': [
+          'For Wi-Fi 7/high-power APs, what UPOE/UPOE+ and mGig requirements are mandatory?',
+          'Which lifecycle/support sources and checked dates should govern final model selection?',
+        ],
+        'customerFollowUpQuestionCount': 2,
+        'validationRoadmap': [
+          'Lifecycle / support: Use official lifecycle sources; treat EoX replacement PID as a migration hint only.',
+          'Candidate validation: close datasheet, lifecycle, licensing, PoE, mGig, uplink, and HA fit checks.',
+        ],
+        'validationRoadmapCount': 2,
         'qualityStatus': 'Customer ready',
         'qualityScore': 96,
         'qualityGates': [
@@ -1229,6 +1249,15 @@ void main() {
     expect(find.text('Ready for customer handoff.'), findsOneWidget);
     expect(find.text('Ready'), findsAtLeastNWidgets(1));
     expect(find.text('Customer handoff candidate'), findsOneWidget);
+    expect(find.text('Sizing readiness'), findsOneWidget);
+    expect(find.text('Ready for requirements review'), findsOneWidget);
+    expect(find.text('Sizing handoff'), findsOneWidget);
+    expect(find.text('Requirements review workbook'), findsOneWidget);
+    expect(find.text('Decision posture'), findsOneWidget);
+    expect(
+      find.text('Advisory only - close hard gates before BOM recommendation'),
+      findsOneWidget,
+    );
     expect(find.text('APs'), findsOneWidget);
     expect(find.text('Switches'), findsOneWidget);
     expect(find.text('WAN'), findsOneWidget);
@@ -1242,6 +1271,12 @@ void main() {
     expect(find.text('Power'), findsOneWidget);
     expect(find.text('Access speed'), findsOneWidget);
     expect(find.text('Lifecycle'), findsOneWidget);
+    expect(find.text('Hard gates'), findsOneWidget);
+    expect(find.textContaining('Power budget'), findsOneWidget);
+    expect(find.text('Customer questions'), findsOneWidget);
+    expect(find.textContaining('Wi-Fi 7/high-power APs'), findsOneWidget);
+    expect(find.text('Validation roadmap'), findsOneWidget);
+    expect(find.textContaining('Lifecycle / support'), findsOneWidget);
     expect(find.text('High-power AP/UPOE signal'), findsOneWidget);
     expect(find.text('mGig validation signal'), findsOneWidget);
     expect(find.text('Validation included'), findsOneWidget);
