@@ -127,6 +127,18 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(result.metadata['hasLifecycleReplacementCaveat'], isTrue);
       expect(result.metadata['hasWifi7PowerAdvisory'], isTrue);
       expect(result.metadata['advisoryCount'], greaterThanOrEqualTo(3));
+      expect(result.metadata['topologyReviewChecklistCount'], greaterThan(4));
+      expect(result.metadata['topologyHandoffActionCount'], greaterThan(2));
+      expect(result.metadata['topologyRiskFlagCount'], greaterThan(3));
+      expect(result.metadata['topologyReadinessScore'], lessThan(100));
+      expect(
+        result.metadata['topologyReadinessLevel'],
+        'Needs validation before handoff',
+      );
+      expect(
+        result.metadata['topologyRiskFlags'],
+        contains('Wi-Fi 7 APs need explicit mGig access validation'),
+      );
       expect(
         result.previewRows.expand((row) => row),
         contains('Wi-Fi 7 / PoE'),

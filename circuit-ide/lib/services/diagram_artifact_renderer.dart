@@ -108,6 +108,31 @@ class DiagramArtifactRenderer {
       failureDomains,
     );
     final designZoneLabels = _designZoneLabels(tiers);
+    final topologyRiskFlags = _topologyRiskFlagsFor(
+      profile: profile,
+      graph: graph,
+      assumptions: assumptions,
+      validationGaps: validationGapLabels,
+      failureDomains: failureDomains,
+    );
+    final topologyReviewChecklist = _topologyReviewChecklistFor(
+      profile: profile,
+      validationGaps: validationGapLabels,
+      failureDomains: failureDomains,
+    );
+    final topologyHandoffActions = _topologyHandoffActionsFor(
+      profile: profile,
+      validationGaps: validationGapLabels,
+      topologyRiskFlags: topologyRiskFlags,
+    );
+    final topologyReadinessScore = _topologyReadinessScoreFor(
+      readinessItems: readinessItems,
+      validationGaps: validationGapLabels,
+      topologyRiskFlags: topologyRiskFlags,
+      failureDomains: failureDomains,
+      graph: graph,
+      assumptions: assumptions,
+    );
     final customerReady =
         validationGapLabels.isEmpty &&
         graph.nodes.isNotEmpty &&
@@ -148,6 +173,17 @@ class DiagramArtifactRenderer {
       'readinessItemCount': readinessItems.length,
       'validationGaps': validationGapLabels,
       'validationGapCount': validationGapLabels.length,
+      'topologyReviewChecklist': topologyReviewChecklist,
+      'topologyReviewChecklistCount': topologyReviewChecklist.length,
+      'topologyHandoffActions': topologyHandoffActions,
+      'topologyHandoffActionCount': topologyHandoffActions.length,
+      'topologyRiskFlags': topologyRiskFlags,
+      'topologyRiskFlagCount': topologyRiskFlags.length,
+      'topologyReadinessScore': topologyReadinessScore,
+      'topologyReadinessLevel': _topologyReadinessLevelFor(
+        topologyReadinessScore,
+        topologyRiskFlags,
+      ),
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
       'advisoryCount': advisories.length,
@@ -1146,6 +1182,146 @@ class DiagramArtifactRenderer {
       if (assumptions.isEmpty) 'Assumptions',
     ];
     return gaps.toSet().toList(growable: false);
+  }
+
+  List<String> _topologyReviewChecklistFor({
+    required _TopologyProfile profile,
+    required List<String> validationGaps,
+    required List<_FailureDomainRow> failureDomains,
+  }) {
+    final items = <String>[
+      'Confirm topology scope, site count, MDF/IDF boundaries, and ownership.',
+      'Validate WAN handoffs, uplink speeds, routing preference, and failover test plan.',
+      'Review HA, warm spare, and failure-domain impact for WAN, security, core, access, and wireless.',
+    ];
+    if (profile.apCount > 0 || profile.hasWifi7 || profile.hasPoe) {
+      items.add(
+        'Validate AP count, PoE/UPOE budget, mGig need, spare ports, and IDF-level power headroom.',
+      );
+    }
+    if (profile.switchCount > 0 ||
+        profile.firewallCount > 0 ||
+        profile.apCount > 0) {
+      items.add(
+        'Confirm device inventory, model assumptions, licensing, software train, and lifecycle posture.',
+      );
+    }
+    if (validationGaps.isNotEmpty) {
+      items.add(
+        'Resolve or explicitly accept validation gaps before customer handoff: ${validationGaps.take(3).join(', ')}.',
+      );
+    }
+    if (failureDomains.any((domain) => !domain.ready)) {
+      items.add(
+        'Document outage impact and mitigation owner for each unresolved failure domain.',
+      );
+    }
+    return items.toSet().toList(growable: false);
+  }
+
+  List<String> _topologyHandoffActionsFor({
+    required _TopologyProfile profile,
+    required List<String> validationGaps,
+    required List<String> topologyRiskFlags,
+  }) {
+    final actions = <String>[
+      'Package diagram with inventory, link schedule, assumptions, and validation gaps.',
+      'Walk stakeholders through resiliency model, failover path, and outage domains.',
+    ];
+    if (validationGaps.isNotEmpty) {
+      actions.add(
+        'Assign owner, due date, and evidence source for each validation gap.',
+      );
+    }
+    if (profile.hasWifi7 || profile.hasUpoe || profile.apCount > 0) {
+      actions.add(
+        'Confirm Wi-Fi/AP power, UPOE/UPOE+, mGig ports, and switch power supplies before model selection.',
+      );
+    }
+    if (topologyRiskFlags.any((flag) => flag.contains('Lifecycle'))) {
+      actions.add(
+        'Treat EoX replacement PIDs as migration hints and validate current portfolio fit.',
+      );
+    }
+    return actions.toSet().toList(growable: false);
+  }
+
+  List<String> _topologyRiskFlagsFor({
+    required _TopologyProfile profile,
+    required _DiagramGraph graph,
+    required List<String> assumptions,
+    required List<String> validationGaps,
+    required List<_FailureDomainRow> failureDomains,
+  }) {
+    final flags = <String>[
+      for (final gap in validationGaps.take(6)) 'Validation gap: $gap',
+      for (final domain in failureDomains.where((domain) => !domain.ready))
+        'Failure domain: ${domain.domain}',
+      if (graph.nodes.isEmpty) 'No device inventory captured',
+      if (graph.edges.isEmpty) 'No link schedule captured',
+      if (assumptions.isEmpty) 'No assumptions captured',
+      if (profile.hasWifi7 && !profile.hasUpoe)
+        'Wi-Fi 7 APs need explicit UPOE/UPOE+ validation',
+      if (profile.hasWifi7 && !profile.hasMultigig)
+        'Wi-Fi 7 APs need explicit mGig access validation',
+      if (profile.hasDualWan == false && profile.siteCount > 1)
+        'Multi-site topology lacks dual-WAN signal',
+      if (profile.hasWarmSpare == false && profile.firewallCount > 0)
+        'Security edge lacks warm-spare/HA signal',
+      'Lifecycle replacements require current-portfolio validation',
+    ];
+    return flags.toSet().toList(growable: false);
+  }
+
+  int _topologyReadinessScoreFor({
+    required List<({String check, String state, bool ready})> readinessItems,
+    required List<String> validationGaps,
+    required List<String> topologyRiskFlags,
+    required List<_FailureDomainRow> failureDomains,
+    required _DiagramGraph graph,
+    required List<String> assumptions,
+  }) {
+    var score = 60;
+    score += readinessItems.where((item) => item.ready).length * 8;
+    if (graph.nodes.isNotEmpty) score += 8;
+    if (graph.edges.isNotEmpty) score += 8;
+    if (assumptions.isNotEmpty) score += 6;
+    score -= validationGaps.length * 6;
+    score -= failureDomains.where((domain) => !domain.ready).length * 5;
+    score -=
+        topologyRiskFlags
+            .where(
+              (flag) =>
+                  flag.contains('Wi-Fi 7') ||
+                  flag.contains('No ') ||
+                  flag.contains('lacks'),
+            )
+            .length *
+        5;
+    return math.max(0, math.min(100, score));
+  }
+
+  String _topologyReadinessLevelFor(int score, List<String> riskFlags) {
+    if (riskFlags.any(
+      (flag) =>
+          flag.contains('Wi-Fi 7') ||
+          flag.contains('Failure domain') ||
+          flag.contains('No '),
+    )) {
+      return score >= 50
+          ? 'Needs validation before handoff'
+          : 'Discovery inputs required';
+    }
+    if (score >= 88 && riskFlags.length <= 2) {
+      return 'Customer handoff ready';
+    }
+    if (score >= 72) {
+      return 'Ready for architecture review';
+    }
+    if (score >= 50) {
+      return 'Needs validation before handoff';
+    }
+    return 'Discovery inputs required';
   }
 
   List<String> _designZoneLabels(

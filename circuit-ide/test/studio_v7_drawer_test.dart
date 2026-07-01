@@ -1666,6 +1666,23 @@ void main() {
         'readinessSignals': ['Redundancy', 'Power', 'Evidence'],
         'validationGaps': ['Uplinks'],
         'validationGapCount': 1,
+        'topologyReadinessScore': 68,
+        'topologyReadinessLevel': 'Needs validation before handoff',
+        'topologyReviewChecklist': [
+          'Confirm topology scope, site count, MDF/IDF boundaries, and ownership.',
+          'Validate WAN handoffs, uplink speeds, routing preference, and failover test plan.',
+          'Validate AP count, PoE/UPOE budget, mGig need, spare ports, and IDF-level power headroom.',
+        ],
+        'topologyHandoffActions': [
+          'Package diagram with inventory, link schedule, assumptions, and validation gaps.',
+          'Walk stakeholders through resiliency model, failover path, and outage domains.',
+          'Confirm Wi-Fi/AP power, UPOE/UPOE+, mGig ports, and switch power supplies before model selection.',
+        ],
+        'topologyRiskFlags': [
+          'Validation gap: Uplinks',
+          'Failure domain: MDF / Core',
+          'Wi-Fi 7 APs need explicit mGig access validation',
+        ],
         'hasCustomerReadyTopology': false,
       },
       createdAt: DateTime(2026, 7, 1, 10),
@@ -1705,6 +1722,10 @@ void main() {
     expect(find.text('Multi-site topology'), findsOneWidget);
     expect(find.text('Handoff'), findsOneWidget);
     expect(find.text('Draft - validate topology inputs'), findsOneWidget);
+    expect(find.text('Readiness level'), findsOneWidget);
+    expect(find.text('Needs validation before handoff'), findsOneWidget);
+    expect(find.text('Readiness score'), findsOneWidget);
+    expect(find.text('68/100'), findsOneWidget);
     expect(find.text('Resiliency'), findsOneWidget);
     expect(find.text('Dual WAN + HA'), findsOneWidget);
     expect(find.text('Zones'), findsOneWidget);
@@ -1720,6 +1741,18 @@ void main() {
     expect(find.text('Redundancy, Power +1'), findsOneWidget);
     expect(find.text('Validation gaps'), findsOneWidget);
     expect(find.text('Uplinks'), findsOneWidget);
+    expect(find.text('Topology review'), findsOneWidget);
+    expect(
+      find.textContaining('Confirm topology scope, site count'),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff actions'), findsOneWidget);
+    expect(
+      find.textContaining('Package diagram with inventory'),
+      findsOneWidget,
+    );
+    expect(find.text('Topology risks'), findsOneWidget);
+    expect(find.textContaining('Validation gap: Uplinks'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer shows chart pack metadata', (tester) async {

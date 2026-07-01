@@ -1410,6 +1410,47 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       artifact.metadata['validationGaps'],
       contains('Failure domain: MDF / Core'),
     );
+    final topologyReviewChecklist =
+        artifact.metadata['topologyReviewChecklist'] as List<Object?>;
+    expect(
+      topologyReviewChecklist,
+      anyElement(contains('Validate WAN handoffs')),
+    );
+    expect(topologyReviewChecklist, anyElement(contains('PoE/UPOE budget')));
+    expect(
+      topologyReviewChecklist,
+      anyElement(contains('failure-domain impact')),
+    );
+    final topologyHandoffActions =
+        artifact.metadata['topologyHandoffActions'] as List<Object?>;
+    expect(
+      topologyHandoffActions,
+      anyElement(contains('Package diagram with inventory')),
+    );
+    expect(
+      topologyHandoffActions,
+      anyElement(contains('Walk stakeholders through resiliency model')),
+    );
+    expect(
+      topologyHandoffActions,
+      anyElement(contains('Confirm Wi-Fi/AP power')),
+    );
+    expect(
+      artifact.metadata['topologyRiskFlags'],
+      containsAll([
+        'Validation gap: Uplinks',
+        'Failure domain: MDF / Core',
+        'Wi-Fi 7 APs need explicit mGig access validation',
+      ]),
+    );
+    expect(artifact.metadata['topologyReviewChecklistCount'], greaterThan(4));
+    expect(artifact.metadata['topologyHandoffActionCount'], greaterThan(2));
+    expect(artifact.metadata['topologyRiskFlagCount'], greaterThan(3));
+    expect(artifact.metadata['topologyReadinessScore'], lessThan(100));
+    expect(
+      artifact.metadata['topologyReadinessLevel'],
+      'Needs validation before handoff',
+    );
     expect(artifact.metadata['hasCustomerReadyTopology'], isFalse);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();

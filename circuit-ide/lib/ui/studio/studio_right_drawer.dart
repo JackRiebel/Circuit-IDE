@@ -3563,6 +3563,16 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Topology', _metadataString(artifact, 'topologyType')),
         if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
           ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataString(artifact, 'topologyReadinessLevel').isNotEmpty)
+          (
+            'Readiness level',
+            _metadataString(artifact, 'topologyReadinessLevel'),
+          ),
+        if (_metadataInt(artifact, 'topologyReadinessScore') > 0)
+          (
+            'Readiness score',
+            '${_metadataInt(artifact, 'topologyReadinessScore')}/100',
+          ),
         if (_metadataString(artifact, 'resiliencyModel').isNotEmpty)
           ('Resiliency', _metadataString(artifact, 'resiliencyModel')),
         if (_metadataStringList(artifact, 'designZones').isNotEmpty)
@@ -3598,6 +3608,27 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           (
             'Validation gaps',
             _compactSignalList(_metadataStringList(artifact, 'validationGaps')),
+          ),
+        if (_metadataStringList(artifact, 'topologyReviewChecklist').isNotEmpty)
+          (
+            'Topology review',
+            _compactSignalList(
+              _metadataStringList(artifact, 'topologyReviewChecklist'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'topologyHandoffActions').isNotEmpty)
+          (
+            'Handoff actions',
+            _compactSignalList(
+              _metadataStringList(artifact, 'topologyHandoffActions'),
+            ),
+          ),
+        if (_metadataStringList(artifact, 'topologyRiskFlags').isNotEmpty)
+          (
+            'Topology risks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'topologyRiskFlags'),
+            ),
           ),
         if (_metadataBool(artifact, 'hasCustomerReadyTopology'))
           ('Package', 'Architecture-review topology'),
