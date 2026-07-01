@@ -52,7 +52,7 @@ void main() {
       containsAll([
         'Title',
         'Agenda',
-        'Talk Track',
+        'Readout',
         'Delivery Brief',
         'Decision',
         'Decision Matrix',
@@ -79,6 +79,8 @@ void main() {
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
     expect(inspection.hasSpeakerNotes, isTrue);
+    expect(inspection.hasCustomProperties, isTrue);
+    expect(inspection.hasNarrativeManifest, isTrue);
     expect(inspection.notesSlideCount, inspection.slideCount);
     expect(inspection.usesDarkTheme, isTrue);
 
@@ -136,7 +138,7 @@ void main() {
       metadata['deckReviewChecklist'],
       containsAll([
         'Confirm deck title, audience, and decision ask match the customer conversation.',
-        'Review presenter talk track for account-specific phrasing.',
+        'Review readout framing for account-specific phrasing.',
         'Validate decision matrix signals, risk posture, and next actions.',
         'Review table slides for sensitive data, stale values, and column readability.',
         'Confirm assumptions with the accountable owner.',
@@ -159,7 +161,7 @@ void main() {
       containsAll([
         'Opening',
         'Agenda',
-        'Presenter talk track',
+        'Readout framing',
         'Executive delivery brief',
         'Decision snapshot',
         'Decision matrix',
@@ -175,7 +177,7 @@ void main() {
       metadata['slidePreview'],
       containsAll([
         contains('1. Title: Customer Architecture Proposal'),
-        contains('2. Agenda: Agenda'),
+        contains('2. Agenda: Decision Flow'),
         contains('Decision Snapshot'),
       ]),
     );
@@ -188,7 +190,7 @@ void main() {
       containsAll([
         'Branded title slide',
         'Numbered agenda',
-        'Presenter talk track',
+        'Audience-facing readout framing',
         'Executive delivery brief',
         'Section divider slides',
         'Decision matrix',
@@ -209,7 +211,7 @@ void main() {
       metadata['readinessSignals'],
       containsAll([
         'Agenda',
-        'Presenter talk track',
+        'Readout framing',
         'Delivery brief',
         'Decision snapshot',
         'Decision matrix',
@@ -244,6 +246,12 @@ void main() {
     expect(metadata['hasAppendixHandoff'], isTrue);
     expect(metadata['hasSpeakerNotes'], isTrue);
     expect(metadata['speakerNoteCount'], inspection.slideCount);
+    expect(metadata['hasNarrativeManifest'], isTrue);
+    expect(metadata['hasCustomerFacingVisibleSlides'], isTrue);
+    expect(
+      metadata['presenterGuidanceLocation'],
+      'Speaker notes and readout framing metadata',
+    );
     expect(metadata['hasCustomerReadyStructure'], isTrue);
     expect(metadata['hasCustomerReadyDeck'], isTrue);
   });

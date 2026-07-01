@@ -1364,7 +1364,7 @@ void main() {
             'evidenceConfidence': 'High - sources and assumptions captured',
             'deckReviewChecklist': [
               'Confirm deck title, audience, and decision ask match the customer conversation.',
-              'Review presenter talk track for account-specific phrasing.',
+              'Review readout framing for account-specific phrasing.',
               'Validate decision matrix signals, risk posture, and next actions.',
             ],
             'deckHandoffActions': [

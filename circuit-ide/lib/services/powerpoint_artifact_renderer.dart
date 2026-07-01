@@ -104,7 +104,7 @@ class PowerPointArtifactRenderer {
       'layoutFeatures': [
         'Branded title slide',
         'Numbered agenda',
-        'Presenter talk track',
+        'Audience-facing readout framing',
         'Executive delivery brief',
         'Decision snapshot tiles',
         'Decision matrix',
@@ -140,6 +140,12 @@ class PowerPointArtifactRenderer {
       'sectionCount': document.sections.length,
       'sectionDividerCount':
           slideTypeCounts[_DeckSlideKind.sectionDivider.label] ?? 0,
+      'qualityManifestVersion': '1.0',
+      'hasNarrativeManifest': true,
+      'hasCustomerFacingVisibleSlides': true,
+      'presenterGuidanceLocation': 'Speaker notes and readout framing metadata',
+      'slideCopyPolicy':
+          'Visible slides use audience-facing copy; presenter support belongs in notes and metadata.',
       'presenterTalkTrackSlideCount':
           slideTypeCounts[_DeckSlideKind.talkTrack.label] ?? 0,
       'deliveryBriefSlideCount':
@@ -218,6 +224,10 @@ class PowerPointArtifactRenderer {
       _PptxFile('_rels/.rels', _bytes(_rootRels())),
       _PptxFile('docProps/app.xml', _bytes(_appXml(slides.length))),
       _PptxFile('docProps/core.xml', _bytes(_coreXml(document.title))),
+      _PptxFile(
+        'docProps/custom.xml',
+        _bytes(_customXml(document, slides: slides, theme: theme)),
+      ),
       _PptxFile('ppt/presentation.xml', _bytes(_presentation(slides.length))),
       _PptxFile(
         'ppt/_rels/presentation.xml.rels',
@@ -279,6 +289,8 @@ class PowerPointArtifactRenderer {
         kind: _DeckSlideKind.title,
         bullets: [
           if (document.summary.isNotEmpty) document.summary,
+          'Purpose: ${_deckPurposeFor(document)}.',
+          'Decision ask: ${_decisionAskFor(document, sections)}',
           if (document.tables.isNotEmpty)
             '${document.tables.length} table artifact${document.tables.length == 1 ? '' : 's'} included',
           if (document.citations.isNotEmpty)
@@ -286,15 +298,16 @@ class PowerPointArtifactRenderer {
         ],
       ),
       _DeckSlide(
-        title: 'Agenda',
-        eyebrow: 'Deck structure',
+        title: 'Decision Flow',
+        eyebrow: 'Agenda',
         kind: _DeckSlideKind.agenda,
         bullets: [
-          if (document.summary.isNotEmpty) 'Executive summary',
-          for (final section in sections.take(7)) section.title,
+          'Orient on the customer context and decision.',
+          'Review evidence, implications, and open risks.',
+          'Align on the recommended path and owners.',
+          'Confirm handoff actions, validation, and next step.',
+          for (final section in sections.take(3)) section.title,
           if (document.tables.isNotEmpty) 'Data tables and supporting detail',
-          if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
-            'Assumptions and sources',
         ],
       ),
       _presenterTalkTrack(document, sections),
@@ -482,18 +495,18 @@ class PowerPointArtifactRenderer {
       'source',
     ]);
     return _DeckSlide(
-      title: 'Presenter Talk Track',
-      eyebrow: 'How to use this deck',
+      title: 'Readout Framing',
+      eyebrow: 'Audience narrative',
       kind: _DeckSlideKind.talkTrack,
       bullets: [
         'Audience: $audience',
         'Purpose: $purpose',
-        'Narrative: $narrative',
+        'Narrative path: $narrative',
         'Decision ask: $decisionAsk',
         validation == null
-            ? 'Validation cue: Call out assumptions, source data, and open evidence gaps before asking for approval.'
-            : 'Validation cue: $validation',
-        'Presenter cue: $job',
+            ? 'Evidence check: Confirm assumptions, source data, and open evidence gaps before asking for approval.'
+            : 'Evidence check: $validation',
+        'Outcome: $job',
       ],
     );
   }
@@ -951,7 +964,7 @@ class PowerPointArtifactRenderer {
     final signals = <String>[
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
       if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
-        'Presenter talk track',
+        'Readout framing',
       if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
         'Delivery brief',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
@@ -994,7 +1007,7 @@ class PowerPointArtifactRenderer {
       if (slideTypeCounts.containsKey(_DeckSlideKind.title.label)) 'Opening',
       if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
       if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
-        'Presenter talk track',
+        'Readout framing',
       if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
         'Executive delivery brief',
       if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
@@ -1056,7 +1069,7 @@ class PowerPointArtifactRenderer {
       if (!slideTypeCounts.containsKey(_DeckSlideKind.agenda.label))
         'Agenda slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
-        'Presenter talk track missing',
+        'Readout framing missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
         'Executive delivery brief missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
@@ -1131,9 +1144,9 @@ class PowerPointArtifactRenderer {
     return [
       'Confirm deck title, audience, and decision ask match the customer conversation.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.talkTrack.label))
-        'Review presenter talk track for account-specific phrasing.'
+        'Review readout framing for account-specific phrasing.'
       else
-        'Add presenter talk track before stakeholder readout.',
+        'Add readout framing before stakeholder review.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.deliveryBrief.label))
         'Confirm executive delivery brief matches the actual customer outcome and owner.'
       else
@@ -1418,6 +1431,7 @@ class PowerPointArtifactRenderer {
         '<Default Extension="xml" ContentType="application/xml"/>'
         '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+        '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>'
         '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
         '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
         '<Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>'
@@ -1433,6 +1447,7 @@ class PowerPointArtifactRenderer {
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>'
         '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
         '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+        '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>'
         '</Relationships>';
   }
 
@@ -1459,6 +1474,42 @@ class PowerPointArtifactRenderer {
         '<dcterms:created xsi:type="dcterms:W3CDTF">$now</dcterms:created>'
         '<dcterms:modified xsi:type="dcterms:W3CDTF">$now</dcterms:modified>'
         '</cp:coreProperties>';
+  }
+
+  String _customXml(
+    ArtifactDocument document, {
+    required List<_DeckSlide> slides,
+    required _DeckTheme theme,
+  }) {
+    final sections = document.sections.take(10).toList(growable: false);
+    final slideFamilies = _slideFamiliesFor({
+      for (final slide in slides)
+        slide.kind.label: slides
+            .where((candidate) => candidate.kind == slide.kind)
+            .length,
+    }).join(', ');
+    final values = <String, String>{
+      'CircuitDeckQualityManifest':
+          'Narrative arc, audience, decision ask, agenda, readout framing, decision support, validation, handoff.',
+      'CircuitCommunicationJob': _communicationJobFor(document, sections),
+      'CircuitNarrativeArc': _narrativeArcFor(document, sections),
+      'CircuitDecisionAsk': _decisionAskFor(document, sections),
+      'CircuitDeckTheme': theme.label,
+      'CircuitSlideFamilies': slideFamilies,
+      'CircuitVisibleCopyPolicy':
+          'Audience-facing slide copy; presenter guidance lives in speaker notes.',
+    };
+    var pid = 2;
+    final properties = values.entries
+        .map(
+          (entry) =>
+              '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="${pid++}" name="${_xml(entry.key)}"><vt:lpwstr>${_xml(entry.value)}</vt:lpwstr></property>',
+        )
+        .join();
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" '
+        'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+        '$properties</Properties>';
   }
 
   String _presentation(int count) {
@@ -2285,7 +2336,7 @@ enum _DeckSlideKind {
     return switch (this) {
       _DeckSlideKind.title => 'Title',
       _DeckSlideKind.agenda => 'Agenda',
-      _DeckSlideKind.talkTrack => 'Talk Track',
+      _DeckSlideKind.talkTrack => 'Readout',
       _DeckSlideKind.deliveryBrief => 'Delivery Brief',
       _DeckSlideKind.snapshot => 'Decision',
       _DeckSlideKind.decisionMatrix => 'Decision Matrix',
