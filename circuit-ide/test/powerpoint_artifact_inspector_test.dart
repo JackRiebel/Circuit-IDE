@@ -64,6 +64,8 @@ void main() {
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
+    expect(inspection.hasEnterpriseBrandPill, isTrue);
+    expect(inspection.hasSectionDividerLayout, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
@@ -81,6 +83,8 @@ void main() {
       'Review the recommendation, confirm assumptions, and approve the next implementation step.',
     );
     expect(metadata['theme'], 'Dark');
+    expect(metadata['presentationQuality'], 'Enterprise structured deck');
+    expect(metadata['visualSystem'], 'Dark enterprise presentation system');
     expect(metadata['audience'], 'Customer stakeholders');
     expect(metadata['deckPurpose'], 'Support a decision');
     expect(
@@ -111,6 +115,17 @@ void main() {
     expect(metadata['validationGapCount'], 0);
     expect(metadata['tableSlideCount'], 1);
     expect(metadata['sectionDividerCount'], 2);
+    expect(
+      metadata['layoutFeatures'],
+      containsAll([
+        'Branded title slide',
+        'Numbered agenda',
+        'Section divider slides',
+        'Recommendation cards',
+        'Roadmap timeline',
+        'Speaker notes',
+      ]),
+    );
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
     expect(metadata['assumptionCount'], 1);
     expect(metadata['citationCount'], 1);
@@ -130,10 +145,14 @@ void main() {
     expect(metadata['hasAgenda'], isTrue);
     expect(metadata['hasDecisionSnapshot'], isTrue);
     expect(metadata['hasSectionDividers'], isTrue);
+    expect(metadata['hasSectionDividerLayout'], isTrue);
+    expect(metadata['hasEnterpriseBrandPill'], isTrue);
     expect(metadata['hasRecommendation'], isTrue);
     expect(metadata['hasRoadmap'], isTrue);
     expect(metadata['hasTableSlides'], isTrue);
     expect(metadata['hasSourcesSlide'], isTrue);
+    expect(metadata['hasDataSnapshot'], isTrue);
+    expect(metadata['hasAppendixHandoff'], isTrue);
     expect(metadata['hasSpeakerNotes'], isTrue);
     expect(metadata['hasCustomerReadyStructure'], isTrue);
     expect(metadata['hasCustomerReadyDeck'], isTrue);
@@ -173,6 +192,7 @@ void main() {
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
+    expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasKeyTakeaways, isTrue);
     expect(inspection.hasImplementationRoadmap, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
@@ -205,6 +225,7 @@ void main() {
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasRecommendationCards, isTrue);
+    expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasSpeakerNotes, isTrue);

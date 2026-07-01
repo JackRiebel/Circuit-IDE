@@ -20,6 +20,8 @@ class PowerPointArtifactInspection {
   final bool hasRecommendationCards;
   final bool hasKeyTakeaways;
   final bool hasSectionDivider;
+  final bool hasSectionDividerLayout;
+  final bool hasEnterpriseBrandPill;
   final bool hasImplementationRoadmap;
   final bool hasRoadmapTimeline;
   final bool hasTableSlide;
@@ -53,6 +55,8 @@ class PowerPointArtifactInspection {
     required this.hasRecommendationCards,
     required this.hasKeyTakeaways,
     required this.hasSectionDivider,
+    required this.hasSectionDividerLayout,
+    required this.hasEnterpriseBrandPill,
     required this.hasImplementationRoadmap,
     required this.hasRoadmapTimeline,
     required this.hasTableSlide,
@@ -87,6 +91,8 @@ class PowerPointArtifactInspection {
       hasRecommendationCards &&
       hasKeyTakeaways &&
       hasSectionDivider &&
+      hasSectionDividerLayout &&
+      hasEnterpriseBrandPill &&
       hasImplementationRoadmap &&
       hasRoadmapTimeline &&
       hasTableSlide &&
@@ -164,6 +170,14 @@ class PowerPointArtifactInspector {
       hasKeyTakeaways:
           text.contains('Key Takeaways') || slideTypes.contains('Takeaways'),
       hasSectionDivider: slideTypes.contains('Section'),
+      hasSectionDividerLayout:
+          text.contains('Section divider rail') &&
+          text.contains('Section objective') &&
+          text.contains('Section preview card') &&
+          text.contains('Section progress marker'),
+      hasEnterpriseBrandPill:
+          text.contains('Enterprise brand pill') &&
+          text.contains('CircuitCode enterprise artifact'),
       hasImplementationRoadmap:
           text.contains('Implementation Roadmap') ||
           slideTypes.contains('Roadmap'),

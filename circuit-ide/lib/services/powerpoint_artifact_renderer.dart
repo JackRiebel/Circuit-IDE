@@ -52,6 +52,20 @@ class PowerPointArtifactRenderer {
       'agendaItemCount': agendaItems.length,
       'slideFamilies': slideFamilies,
       'slideFamilyCount': slideFamilies.length,
+      'presentationQuality': 'Enterprise structured deck',
+      'visualSystem': '${theme.label} enterprise presentation system',
+      'layoutFeatures': [
+        'Branded title slide',
+        'Numbered agenda',
+        'Decision snapshot tiles',
+        'Recommendation cards',
+        'Roadmap timeline',
+        if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
+          'Section divider slides',
+        if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
+          'Table slides',
+        'Speaker notes',
+      ],
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
@@ -80,6 +94,10 @@ class PowerPointArtifactRenderer {
       'hasSectionDividers': slideTypeCounts.containsKey(
         _DeckSlideKind.sectionDivider.label,
       ),
+      'hasSectionDividerLayout': slideTypeCounts.containsKey(
+        _DeckSlideKind.sectionDivider.label,
+      ),
+      'hasEnterpriseBrandPill': true,
       'hasRecommendation': slideTypeCounts.containsKey(
         _DeckSlideKind.recommendation.label,
       ),
@@ -87,6 +105,12 @@ class PowerPointArtifactRenderer {
       'hasTableSlides': slideTypeCounts.containsKey(_DeckSlideKind.table.label),
       'hasSourcesSlide': slideTypeCounts.containsKey(
         _DeckSlideKind.sources.label,
+      ),
+      'hasDataSnapshot': slideTypeCounts.containsKey(
+        _DeckSlideKind.dataSnapshot.label,
+      ),
+      'hasAppendixHandoff': slideTypeCounts.containsKey(
+        _DeckSlideKind.appendix.label,
       ),
       'hasSpeakerNotes': true,
       'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
@@ -835,6 +859,7 @@ class PowerPointArtifactRenderer {
         '${_shape(id: 3, name: 'Accent', x: 0, y: 0, w: 145000, h: 6858000, color: accent)}'
         '${_shape(id: 8, name: 'Content panel', x: 540000, y: 1640000, w: 11100000, h: 4550000, color: panelColor)}'
         '${_shape(id: 9, name: 'Header rule', x: 600000, y: 1510000, w: 2600000, h: 28000, color: accent)}'
+        '${slide.kind == _DeckSlideKind.title ? _brandPill(theme: theme, accent: accent) : ''}'
         '${_textBox(id: 4, name: 'Eyebrow', x: 600000, y: 320000, w: 6500000, h: 320000, text: _xml(slide.eyebrow), size: 1200, bold: true, color: accent)}'
         '${_textBox(id: 7, name: 'Slide type', x: 9700000, y: 340000, w: 1700000, h: 280000, text: _xml(slide.kind.label), size: 1000, bold: true, color: theme.mutedText)}'
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
@@ -886,6 +911,14 @@ class PowerPointArtifactRenderer {
         theme: theme,
       );
     }
+    if (slide.kind == _DeckSlideKind.sectionDivider) {
+      return _sectionDividerSlideBody(
+        slide,
+        bullets: bullets,
+        bodyY: bodyY,
+        theme: theme,
+      );
+    }
     final body = bullets
         .map(
           (bullet) =>
@@ -895,6 +928,41 @@ class PowerPointArtifactRenderer {
     return '<p:sp><p:nvSpPr><p:cNvPr id="6" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
         '<p:spPr><a:xfrm><a:off x="760000" y="$bodyY"/><a:ext cx="10680000" cy="4300000"/></a:xfrm></p:spPr>'
         '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>$body</p:txBody></p:sp>';
+  }
+
+  String _brandPill({required _DeckTheme theme, required String accent}) {
+    return [
+      _shape(
+        id: 92,
+        name: 'Enterprise brand pill',
+        x: 8280000,
+        y: 640000,
+        w: 2860000,
+        h: 420000,
+        color: theme.tile,
+      ),
+      _shape(
+        id: 93,
+        name: 'Enterprise brand pill accent',
+        x: 8280000,
+        y: 640000,
+        w: 90000,
+        h: 420000,
+        color: accent,
+      ),
+      _textBox(
+        id: 94,
+        name: 'Enterprise brand pill label',
+        x: 8460000,
+        y: 748000,
+        w: 2440000,
+        h: 180000,
+        text: 'CircuitCode enterprise artifact',
+        size: 1050,
+        bold: true,
+        color: theme.bodyText,
+      ),
+    ].join();
   }
 
   String _tileSlideBody(
@@ -1101,6 +1169,128 @@ class PowerPointArtifactRenderer {
         );
     }
     return parts.join();
+  }
+
+  String _sectionDividerSlideBody(
+    _DeckSlide slide, {
+    required List<String> bullets,
+    required int bodyY,
+    required _DeckTheme theme,
+  }) {
+    final accent = theme.accentFor(slide.kind);
+    final primary = bullets.isNotEmpty
+        ? _truncate(bullets.first, 130)
+        : 'Review this section with the stakeholder team before moving forward.';
+    final secondary = bullets.length > 1
+        ? _truncate(bullets[1], 130)
+        : 'Confirm assumptions, evidence, and owners for the workstream.';
+    return [
+      _shape(
+        id: 245,
+        name: 'Section divider rail',
+        x: 760000,
+        y: bodyY + 120000,
+        w: 1750000,
+        h: 2550000,
+        color: accent,
+      ),
+      _textBox(
+        id: 246,
+        name: 'Section divider label',
+        x: 1010000,
+        y: bodyY + 420000,
+        w: 1260000,
+        h: 330000,
+        text: 'SECTION',
+        size: 1250,
+        bold: true,
+        color: theme.headerText,
+      ),
+      _textBox(
+        id: 247,
+        name: 'Section objective',
+        x: 2850000,
+        y: bodyY + 300000,
+        w: 7600000,
+        h: 420000,
+        text: 'Section objective',
+        size: 1550,
+        bold: true,
+        color: accent,
+      ),
+      _textBox(
+        id: 248,
+        name: 'Section objective text',
+        x: 2850000,
+        y: bodyY + 820000,
+        w: 7600000,
+        h: 520000,
+        text: _xml(primary),
+        size: 1700,
+        bold: true,
+        color: theme.bodyText,
+      ),
+      _shape(
+        id: 249,
+        name: 'Section preview card',
+        x: 2850000,
+        y: bodyY + 1620000,
+        w: 7600000,
+        h: 900000,
+        color: theme.tile,
+      ),
+      _textBox(
+        id: 250,
+        name: 'Section preview label',
+        x: 3090000,
+        y: bodyY + 1780000,
+        w: 7000000,
+        h: 220000,
+        text: 'What to validate',
+        size: 1200,
+        bold: true,
+        color: accent,
+      ),
+      _textBox(
+        id: 251,
+        name: 'Section preview text',
+        x: 3090000,
+        y: bodyY + 2100000,
+        w: 7000000,
+        h: 260000,
+        text: _xml(secondary),
+        size: 1350,
+        bold: false,
+        color: theme.bodyText,
+      ),
+      _shape(
+        id: 252,
+        name: 'Section progress marker',
+        x: 2850000,
+        y: bodyY + 2840000,
+        w: 1300000,
+        h: 32000,
+        color: accent,
+      ),
+      _shape(
+        id: 253,
+        name: 'Section progress marker',
+        x: 4260000,
+        y: bodyY + 2840000,
+        w: 1300000,
+        h: 32000,
+        color: theme.mutedText,
+      ),
+      _shape(
+        id: 254,
+        name: 'Section progress marker',
+        x: 5670000,
+        y: bodyY + 2840000,
+        w: 1300000,
+        h: 32000,
+        color: theme.mutedText,
+      ),
+    ].join();
   }
 
   String _roadmapSlideBody(
