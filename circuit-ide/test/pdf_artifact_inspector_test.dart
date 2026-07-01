@@ -63,6 +63,8 @@ void main() {
     expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
     expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
@@ -88,6 +90,8 @@ void main() {
     expect(text, contains('Approval Gates'));
     expect(text, contains('Document Map'));
     expect(text, contains('Validation Checklist'));
+    expect(text, contains('Customer Handoff Scorecard'));
+    expect(text, contains('Decision Log'));
     expect(text, contains('Sizing Inputs'));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
 
@@ -127,6 +131,8 @@ void main() {
         'Evidence confidence matrix',
         'Approval gates',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
@@ -144,12 +150,18 @@ void main() {
         'Evidence confidence matrix',
         'Approval gates',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
       ]),
     );
     expect(metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(metadata['handoffScore'], 100);
+    expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
+    expect(metadata['handoffScorecardItemCount'], 5);
+    expect(metadata['decisionLogCount'], 4);
     expect(metadata['tableCoverage'], '1 table packaged');
     expect(metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -177,6 +189,8 @@ void main() {
         'Risk register',
         'Next steps',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         'Data tables',
         'Assumptions',
         'Sources',
@@ -190,6 +204,8 @@ void main() {
     expect(metadata['hasEvidenceConfidenceMatrix'], isTrue);
     expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(metadata['hasDecisionLog'], isTrue);
     expect(metadata['hasFooterPageNumbers'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
@@ -251,6 +267,8 @@ void main() {
     expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
     expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));

@@ -1152,12 +1152,21 @@ Executive-ready summary for a final customer handoff.
         'Evidence confidence matrix',
         'Approval gates',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         'Data tables',
         'Assumptions appendix',
         'Sources appendix',
       ]),
     );
     expect(artifact.metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(artifact.metadata['handoffScore'], 100);
+    expect(
+      artifact.metadata['handoffReadinessLevel'],
+      'Customer handoff ready',
+    );
+    expect(artifact.metadata['handoffScorecardItemCount'], 5);
+    expect(artifact.metadata['decisionLogCount'], 4);
     expect(artifact.metadata['tableCoverage'], '1 table packaged');
     expect(artifact.metadata['evidenceCoverage'], '1 source item captured');
     expect(
@@ -1181,6 +1190,8 @@ Executive-ready summary for a final customer handoff.
         'Risk register',
         'Next steps',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         'Data tables',
         'Assumptions',
         'Sources',
@@ -1191,6 +1202,8 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['hasEvidenceConfidenceMatrix'], isTrue);
     expect(artifact.metadata['hasApprovalGates'], isTrue);
     expect(artifact.metadata['hasValidationChecklist'], isTrue);
+    expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(artifact.metadata['hasDecisionLog'], isTrue);
     expect(artifact.metadata['hasSourcesAppendix'], isTrue);
     expect(artifact.metadata['hasCustomerReadyPackage'], isTrue);
     expect(artifact.metadata['hasCustomerReadyPdf'], isTrue);
@@ -1216,6 +1229,8 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('Evidence Confidence Matrix'));
     expect(pdfText, contains('Approval Gates'));
     expect(pdfText, contains('Validation Checklist'));
+    expect(pdfText, contains('Customer Handoff Scorecard'));
+    expect(pdfText, contains('Decision Log'));
     expect(pdfText, contains('/Keywords'));
     expect(pdfText, contains('Access layer needs multigig validation'));
     expect(pdfText, contains('Sources / Evidence'));
