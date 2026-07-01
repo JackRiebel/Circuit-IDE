@@ -62,6 +62,9 @@ void main() {
       ]),
     );
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasAgendaLayout, isTrue);
+    expect(inspection.hasRecommendationCards, isTrue);
+    expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
@@ -101,9 +104,12 @@ void main() {
     expect(inspection.slideCount, inspection.declaredSlideCount);
     expect(inspection.hasEnterpriseStyling, isTrue);
     expect(inspection.hasCircuitFooter, isTrue);
+    expect(inspection.hasAgendaLayout, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasRecommendationCards, isTrue);
     expect(inspection.hasKeyTakeaways, isTrue);
     expect(inspection.hasImplementationRoadmap, isTrue);
+    expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
@@ -131,6 +137,9 @@ void main() {
     expect(inspection.hasExpectedDeckStructure, isFalse);
     expect(inspection.usesLightTheme, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
+    expect(inspection.hasAgendaLayout, isTrue);
+    expect(inspection.hasRecommendationCards, isTrue);
+    expect(inspection.hasRoadmapTimeline, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasSpeakerNotes, isTrue);
   });

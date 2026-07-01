@@ -117,6 +117,7 @@ class PowerPointArtifactRenderer {
           bullets: _sentences(document.summary).take(5).toList(growable: false),
         ),
       _keyTakeaways(document, sections),
+      _implementationRoadmap(document, sections),
     ];
     for (final section in sections) {
       final bullets = [
@@ -149,7 +150,6 @@ class PowerPointArtifactRenderer {
         );
       }
     }
-    slides.add(_implementationRoadmap(document, sections));
     slides.add(_assumptionsAndSources(document));
     slides.add(_appendixHandoff(document));
     return slides;
@@ -531,7 +531,7 @@ class PowerPointArtifactRenderer {
     required int slideNumber,
     required int totalSlides,
   }) {
-    final titleSize = slide.kind == _DeckSlideKind.title ? 4200 : 3200;
+    final titleSize = slide.kind == _DeckSlideKind.title ? 5000 : 3500;
     final bodyY = slide.kind == _DeckSlideKind.title ? 2050000 : 1720000;
     final accent = theme.accentFor(slide.kind);
     final background = theme.backgroundFor(slide.kind);
@@ -579,10 +579,34 @@ class PowerPointArtifactRenderer {
         theme: theme,
       );
     }
+    if (slide.kind == _DeckSlideKind.agenda) {
+      return _agendaSlideBody(
+        slide,
+        bullets: bullets,
+        bodyY: bodyY,
+        theme: theme,
+      );
+    }
+    if (slide.kind == _DeckSlideKind.recommendation) {
+      return _recommendationSlideBody(
+        slide,
+        bullets: bullets,
+        bodyY: bodyY,
+        theme: theme,
+      );
+    }
+    if (slide.kind == _DeckSlideKind.roadmap) {
+      return _roadmapSlideBody(
+        slide,
+        bullets: bullets,
+        bodyY: bodyY,
+        theme: theme,
+      );
+    }
     final body = bullets
         .map(
           (bullet) =>
-              '<a:p><a:r><a:rPr lang="en-US" sz="${slide.kind == _DeckSlideKind.title ? 2300 : 2050}"><a:solidFill><a:srgbClr val="${theme.bodyText}"/></a:solidFill></a:rPr><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
+              '<a:p><a:r><a:rPr lang="en-US" sz="${slide.kind == _DeckSlideKind.title ? 2400 : 2050}"><a:solidFill><a:srgbClr val="${theme.bodyText}"/></a:solidFill></a:rPr><a:t>${_xml(bullet)}</a:t></a:r></a:p>',
         )
         .join();
     return '<p:sp><p:nvSpPr><p:cNvPr id="6" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
@@ -653,6 +677,219 @@ class PowerPointArtifactRenderer {
             color: theme.bodyText,
           ),
         );
+    }
+    return parts.join();
+  }
+
+  String _agendaSlideBody(
+    _DeckSlide slide, {
+    required List<String> bullets,
+    required int bodyY,
+    required _DeckTheme theme,
+  }) {
+    final parts = <String>[];
+    const x = 760000;
+    const rowWidth = 10380000;
+    const rowHeight = 430000;
+    var id = 170;
+    for (var i = 0; i < bullets.take(7).length; i++) {
+      final y = bodyY + (i * 520000);
+      final number = '${i + 1}'.padLeft(2, '0');
+      parts
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Agenda step',
+            x: x,
+            y: y,
+            w: rowWidth,
+            h: rowHeight,
+            color: i.isEven ? theme.tile : theme.panel,
+          ),
+        )
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Agenda number rail',
+            x: x,
+            y: y,
+            w: 520000,
+            h: rowHeight,
+            color: theme.accentFor(slide.kind),
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Agenda number',
+            x: x + 130000,
+            y: y + 94000,
+            w: 320000,
+            h: 220000,
+            text: number,
+            size: 1400,
+            bold: true,
+            color: theme.headerText,
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Agenda item',
+            x: x + 700000,
+            y: y + 90000,
+            w: rowWidth - 900000,
+            h: 260000,
+            text: _xml(_truncate(bullets[i], 95)),
+            size: 1550,
+            bold: true,
+            color: theme.bodyText,
+          ),
+        );
+    }
+    return parts.join();
+  }
+
+  String _recommendationSlideBody(
+    _DeckSlide slide, {
+    required List<String> bullets,
+    required int bodyY,
+    required _DeckTheme theme,
+  }) {
+    final labels = ['Decision', 'Rationale', 'Validation', 'Next action'];
+    final parts = <String>[];
+    const x = 760000;
+    const cardWidth = 5000000;
+    const cardHeight = 1100000;
+    var id = 220;
+    for (var i = 0; i < bullets.take(4).length; i++) {
+      final cardX = x + ((i % 2) * 5360000);
+      final cardY = bodyY + ((i ~/ 2) * 1360000);
+      parts
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Recommendation card',
+            x: cardX,
+            y: cardY,
+            w: cardWidth,
+            h: cardHeight,
+            color: theme.tile,
+          ),
+        )
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Recommendation card accent',
+            x: cardX,
+            y: cardY,
+            w: 90000,
+            h: cardHeight,
+            color: theme.accentFor(slide.kind),
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Recommendation label',
+            x: cardX + 210000,
+            y: cardY + 130000,
+            w: cardWidth - 420000,
+            h: 220000,
+            text: labels[i],
+            size: 1250,
+            bold: true,
+            color: theme.accentFor(slide.kind),
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Recommendation text',
+            x: cardX + 210000,
+            y: cardY + 420000,
+            w: cardWidth - 460000,
+            h: 520000,
+            text: _xml(_truncate(_stripLeadLabel(bullets[i]), 150)),
+            size: 1350,
+            bold: false,
+            color: theme.bodyText,
+          ),
+        );
+    }
+    return parts.join();
+  }
+
+  String _roadmapSlideBody(
+    _DeckSlide slide, {
+    required List<String> bullets,
+    required int bodyY,
+    required _DeckTheme theme,
+  }) {
+    final steps = bullets.take(5).toList(growable: false);
+    final parts = <String>[];
+    const x = 860000;
+    const y = 2850000;
+    const stepWidth = 1900000;
+    var id = 270;
+    if (steps.length > 1) {
+      parts.add(
+        _shape(
+          id: id++,
+          name: 'Roadmap timeline',
+          x: x + 420000,
+          y: y + 280000,
+          w: ((steps.length - 1) * stepWidth),
+          h: 28000,
+          color: theme.accentFor(slide.kind),
+        ),
+      );
+    }
+    for (var i = 0; i < steps.length; i++) {
+      final stepX = x + (i * stepWidth);
+      parts
+        ..add(
+          _shape(
+            id: id++,
+            name: 'Roadmap phase marker',
+            x: stepX + 300000,
+            y: y + 120000,
+            w: 370000,
+            h: 370000,
+            color: theme.accentFor(slide.kind),
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Roadmap phase number',
+            x: stepX + 390000,
+            y: y + 218000,
+            w: 190000,
+            h: 160000,
+            text: '${i + 1}',
+            size: 1200,
+            bold: true,
+            color: theme.headerText,
+          ),
+        )
+        ..add(
+          _textBox(
+            id: id++,
+            name: 'Roadmap phase text',
+            x: stepX,
+            y: y + 700000,
+            w: stepWidth - 140000,
+            h: 920000,
+            text: _xml(_truncate(steps[i], 95)),
+            size: 1250,
+            bold: false,
+            color: theme.bodyText,
+          ),
+        );
+    }
+    if (steps.isEmpty) {
+      return _bulletSlideBody(slide, bodyY: bodyY, theme: theme);
     }
     return parts.join();
   }
@@ -735,6 +972,16 @@ class PowerPointArtifactRenderer {
     final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= max) return normalized;
     return '${normalized.substring(0, max - 3)}...';
+  }
+
+  String _stripLeadLabel(String value) {
+    return value.replaceFirst(
+      RegExp(
+        r'^\s*(recommendation|validation|next action|next step|risk):\s*',
+        caseSensitive: false,
+      ),
+      '',
+    );
   }
 
   String _shape({

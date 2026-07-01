@@ -69,6 +69,7 @@ Short executive summary for the customer.
       expect(packageText, contains('ppt/presentation.xml'));
       expect(packageText, contains('ppt/slides/slide1.xml'));
       expect(packageText, contains('Agenda'));
+      expect(packageText, contains('Agenda step'));
       expect(packageText, contains('Decision Snapshot'));
       expect(packageText, contains('Key Takeaways'));
       expect(packageText, contains('Executive Summary'));
@@ -80,6 +81,8 @@ Short executive summary for the customer.
       expect(packageText, contains('Data table'));
       expect(packageText, contains('Dual 2 Gbps'));
       expect(packageText, contains('Executive Recommendation'));
+      expect(packageText, contains('Recommendation card'));
+      expect(packageText, contains('Roadmap timeline'));
       expect(packageText, contains('Assumptions &amp; Sources'));
       expect(packageText, contains('Appendix: Handoff Checklist'));
       expect(packageText, contains('Slide 1 of'));
@@ -695,7 +698,9 @@ Implementation plan for a customer-ready artifact workspace.
       expect(deckText, contains('Implementation Phases'));
       expect(deckText, contains('Scope And Success Criteria'));
       expect(deckText, contains('Approval And Handoff Gates'));
-      expect(deckText, contains('Approval And Handoff Gates'));
+      expect(deckText, contains('Agenda step'));
+      expect(deckText, contains('Recommendation card'));
+      expect(deckText, contains('Roadmap timeline'));
 
       expect(pdf, isNotNull);
       expect(pdf!.kind, GeneratedArtifactKind.pdf);

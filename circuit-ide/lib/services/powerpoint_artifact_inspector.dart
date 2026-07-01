@@ -14,11 +14,14 @@ class PowerPointArtifactInspection {
   final List<String> slideTypes;
   final bool hasCircuitFooter;
   final bool hasAgenda;
+  final bool hasAgendaLayout;
   final bool hasDecisionSnapshot;
   final bool hasExecutiveRecommendation;
+  final bool hasRecommendationCards;
   final bool hasKeyTakeaways;
   final bool hasSectionDivider;
   final bool hasImplementationRoadmap;
+  final bool hasRoadmapTimeline;
   final bool hasTableSlide;
   final bool hasAppendix;
   final bool hasSourcesSlide;
@@ -44,11 +47,14 @@ class PowerPointArtifactInspection {
     required this.slideTypes,
     required this.hasCircuitFooter,
     required this.hasAgenda,
+    required this.hasAgendaLayout,
     required this.hasDecisionSnapshot,
     required this.hasExecutiveRecommendation,
+    required this.hasRecommendationCards,
     required this.hasKeyTakeaways,
     required this.hasSectionDivider,
     required this.hasImplementationRoadmap,
+    required this.hasRoadmapTimeline,
     required this.hasTableSlide,
     required this.hasAppendix,
     required this.hasSourcesSlide,
@@ -75,11 +81,14 @@ class PowerPointArtifactInspection {
   bool get hasExpectedDeckStructure =>
       isStructurallyValid &&
       hasAgenda &&
+      hasAgendaLayout &&
       hasDecisionSnapshot &&
       hasExecutiveRecommendation &&
+      hasRecommendationCards &&
       hasKeyTakeaways &&
       hasSectionDivider &&
       hasImplementationRoadmap &&
+      hasRoadmapTimeline &&
       hasTableSlide &&
       hasAppendix &&
       hasSourcesSlide &&
@@ -142,17 +151,25 @@ class PowerPointArtifactInspector {
       slideTypes: slideTypes,
       hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
       hasAgenda: text.contains('Agenda'),
+      hasAgendaLayout:
+          text.contains('Agenda step') && text.contains('Agenda number rail'),
       hasDecisionSnapshot:
           text.contains('Decision Snapshot') || slideTypes.contains('Decision'),
       hasExecutiveRecommendation:
           text.contains('Executive Recommendation') ||
           slideTypes.contains('Recommendation'),
+      hasRecommendationCards:
+          text.contains('Recommendation card') &&
+          text.contains('Recommendation card accent'),
       hasKeyTakeaways:
           text.contains('Key Takeaways') || slideTypes.contains('Takeaways'),
       hasSectionDivider: slideTypes.contains('Section'),
       hasImplementationRoadmap:
           text.contains('Implementation Roadmap') ||
           slideTypes.contains('Roadmap'),
+      hasRoadmapTimeline:
+          text.contains('Roadmap timeline') &&
+          text.contains('Roadmap phase marker'),
       hasTableSlide: slideTypes.contains('Table'),
       hasAppendix: slideTypes.contains('Appendix'),
       hasSourcesSlide: slideTypes.contains('Sources'),
