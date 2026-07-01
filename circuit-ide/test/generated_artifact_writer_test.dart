@@ -1009,12 +1009,14 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Executive Evidence Decision'));
     expect(packageText, contains('Evidence Summary'));
     expect(packageText, contains('Claim Register'));
+    expect(packageText, contains('Claim Disposition Workflow'));
     expect(packageText, contains('Source Inventory'));
     expect(packageText, contains('Citation Quality Rules'));
     expect(packageText, contains('Checked Dates'));
     expect(packageText, contains('Confidence And Risk'));
     expect(packageText, contains('Unsupported Claims / Follow-Up'));
     expect(packageText, contains('Claim To Source Matrix'));
+    expect(packageText, contains('Claim Disposition Register'));
     expect(packageText, contains('Citation Authority Register'));
     expect(packageText, contains('Source Freshness Register'));
     expect(packageText, contains('Unsupported Claim Triage'));
@@ -1031,6 +1033,10 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Supporting source'));
     expect(packageText, contains('Freshness risk'));
     expect(packageText, contains('Required evidence'));
+    expect(packageText, contains('Customer-safe wording'));
+    expect(packageText, contains('Use with capability validation'));
+    expect(packageText, contains('Remove or qualify before handoff'));
+    expect(packageText, contains('Solution architect'));
     expect(packageText, contains('Validate current portfolio fit'));
     expect(packageText, contains('Verify, qualify, rewrite, or remove'));
     expect(packageText, contains('Exact replacement model needs validation'));
@@ -1075,12 +1081,14 @@ Evidence supporting the lifecycle and replacement recommendation.
       expect(jsonText, contains('"artifactTemplate": "evidence_pack"'));
       expect(jsonText, contains('"sourceCount"'));
       expect(jsonText, contains('"Claim To Source Matrix"'));
+      expect(jsonText, contains('"Claim Disposition Register"'));
       expect(jsonText, contains('"Citation Authority Register"'));
       expect(jsonText, contains('"Source Freshness Register"'));
       expect(jsonText, contains('"Customer-Ready Claim Gates"'));
       expect(jsonText, contains('"Evidence Confidence Scorecard"'));
       expect(jsonText, contains('"Executive Evidence Decision"'));
       expect(jsonText, contains('"Source Inventory"'));
+      expect(jsonText, contains('"hasClaimDispositionRegister": true'));
       expect(jsonText, contains('https://www.cisco.com/'));
     },
   );

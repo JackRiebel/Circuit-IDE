@@ -51,6 +51,17 @@ class EvidencePackBuilder {
       ),
       _section(
         document,
+        title: 'Claim Disposition Workflow',
+        patterns: const [
+          'claim disposition',
+          'disposition workflow',
+          'customer-safe wording',
+        ],
+        fallbackBody:
+            'Classify each claim before customer handoff so unsupported, inferred, stale, or source-light statements are rewritten, qualified, or removed.',
+      ),
+      _section(
+        document,
         title: 'Source Inventory',
         patterns: const [
           'source inventory',
@@ -173,6 +184,12 @@ class EvidencePackBuilder {
         'sourceCount': sourceBullets.length,
         'unsupportedClaimCount': unsupportedBullets.length,
         'evidencePackTables': tables.length,
+        'hasClaimDispositionRegister': true,
+        'claimDispositionCount': _claimDispositionRows(
+          sourceBullets,
+          unsupportedBullets,
+          sections,
+        ).length,
       },
     );
   }
@@ -329,6 +346,19 @@ class EvidencePackBuilder {
         ],
       ),
       ArtifactTable(
+        title: 'Claim Disposition Register',
+        rows: [
+          const [
+            'Claim',
+            'Disposition',
+            'Customer-safe wording',
+            'Owner',
+            'Next action',
+          ],
+          ..._claimDispositionRows(sourceBullets, unsupportedBullets, sections),
+        ],
+      ),
+      ArtifactTable(
         title: 'Citation Authority Register',
         rows: [
           const [
@@ -474,6 +504,42 @@ class EvidencePackBuilder {
         _checkedDate(source),
         _confidenceFor(claim, source),
         _caveatFor(claim, source),
+      ]);
+      index++;
+    }
+    return rows;
+  }
+
+  List<List<String>> _claimDispositionRows(
+    List<String> sourceBullets,
+    List<String> unsupportedBullets,
+    List<ArtifactSection> sections,
+  ) {
+    final claims = _bulletsFor(sections, const [
+      'claim register',
+      'claims',
+      'validated claims',
+    ]);
+    final candidates = claims.isEmpty
+        ? const ['Material claim requires source mapping.']
+        : claims.take(12);
+    final rows = <List<String>>[];
+    var index = 0;
+    for (final claim in candidates) {
+      final source = sourceBullets.isEmpty
+          ? 'Missing cited source'
+          : sourceBullets[index % sourceBullets.length];
+      final disposition = _claimDisposition(
+        claim: claim,
+        source: source,
+        unsupportedBullets: unsupportedBullets,
+      );
+      rows.add([
+        claim,
+        disposition,
+        _customerSafeWording(claim, disposition),
+        _claimOwner(claim, source, disposition),
+        _claimNextAction(claim, source, disposition),
       ]);
       index++;
     }
@@ -830,6 +896,128 @@ class EvidencePackBuilder {
       return 'Low';
     }
     return 'Medium';
+  }
+
+  String _claimDisposition({
+    required String claim,
+    required String source,
+    required List<String> unsupportedBullets,
+  }) {
+    final lower = '$claim $source'.toLowerCase();
+    if (_matchesUnsupportedClaim(claim, unsupportedBullets)) {
+      return 'Remove or qualify before handoff';
+    }
+    if (source.contains('Missing cited source')) {
+      return 'Do not use externally';
+    }
+    if (_checkedDate(source) == 'Not provided') {
+      return 'Use only after checked date is added';
+    }
+    if (lower.contains('replacement') ||
+        lower.contains('recommendation') ||
+        lower.contains('best model') ||
+        lower.contains('current portfolio')) {
+      return 'Use with capability validation';
+    }
+    return switch (_authorityTier(source)) {
+      'Official' => 'Ready after final freshness check',
+      'Customer-provided' => 'Use after sponsor confirmation',
+      'Third-party' => 'Context only',
+      _ => 'Internal review only',
+    };
+  }
+
+  bool _matchesUnsupportedClaim(String claim, List<String> unsupportedBullets) {
+    final normalizedClaim = _cleanBullet(claim).toLowerCase();
+    if (normalizedClaim.contains('unsupported') ||
+        normalizedClaim.contains('unknown') ||
+        normalizedClaim.contains('needs validation')) {
+      return true;
+    }
+    for (final unsupported in unsupportedBullets) {
+      final normalizedUnsupported = _cleanBullet(unsupported).toLowerCase();
+      if (normalizedUnsupported.isEmpty) continue;
+      if (normalizedClaim.contains(normalizedUnsupported) ||
+          normalizedUnsupported.contains(normalizedClaim)) {
+        return true;
+      }
+      final claimTerms = normalizedClaim
+          .split(RegExp(r'[^a-z0-9]+'))
+          .where((term) => term.length > 4)
+          .toSet();
+      final unsupportedTerms = normalizedUnsupported
+          .split(RegExp(r'[^a-z0-9]+'))
+          .where((term) => term.length > 4)
+          .toSet();
+      if (claimTerms.intersection(unsupportedTerms).length >= 3) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _customerSafeWording(String claim, String disposition) {
+    final clean = _shorten(_cleanBullet(claim), 110);
+    return switch (disposition) {
+      'Ready after final freshness check' =>
+        'Use as stated after refreshing the checked date: "$clean"',
+      'Use with capability validation' =>
+        'Qualify as requirement-dependent until capability and current-portfolio fit are sourced.',
+      'Use after sponsor confirmation' =>
+        'Phrase as customer-provided context until the sponsor confirms owner and date.',
+      'Context only' =>
+        'Use only as background context; do not present as final proof.',
+      'Use only after checked date is added' =>
+        'Add checked date before using this claim externally.',
+      'Remove or qualify before handoff' =>
+        'Rewrite with caveats or remove until direct evidence is attached.',
+      _ =>
+        'Keep internal until authority, date, and source scope are validated.',
+    };
+  }
+
+  String _claimOwner(String claim, String source, String disposition) {
+    final lower = '$claim $source $disposition'.toLowerCase();
+    if (lower.contains('lifecycle') ||
+        lower.contains('eox') ||
+        lower.contains('eol') ||
+        lower.contains('ldos')) {
+      return 'Lifecycle reviewer';
+    }
+    if (lower.contains('replacement') ||
+        lower.contains('recommendation') ||
+        lower.contains('model') ||
+        lower.contains('portfolio')) {
+      return 'Solution architect';
+    }
+    if (lower.contains('customer-provided') ||
+        lower.contains('sponsor') ||
+        lower.contains('inventory')) {
+      return 'Account team';
+    }
+    if (lower.contains('third-party') || lower.contains('context only')) {
+      return 'Evidence reviewer';
+    }
+    return 'Evidence owner';
+  }
+
+  String _claimNextAction(String claim, String source, String disposition) {
+    if (disposition == 'Do not use externally') {
+      return 'Attach an authoritative source before customer use.';
+    }
+    if (disposition == 'Remove or qualify before handoff') {
+      return 'Find direct evidence, rewrite with caveats, or remove the claim.';
+    }
+    if (disposition == 'Use with capability validation') {
+      return 'Validate current capability, requirements fit, and lifecycle before recommending.';
+    }
+    if (_checkedDate(source) == 'Not provided') {
+      return 'Add checked date and source freshness note.';
+    }
+    if (disposition == 'Context only') {
+      return 'Pair with official or customer-provided evidence before final handoff.';
+    }
+    return 'Refresh source, confirm wording, and mark ready for review.';
   }
 
   String _caveatFor(String claim, String source) {
