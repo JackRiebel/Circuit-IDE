@@ -477,6 +477,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       ContextAttachmentType.diagnostics => Icons.error_outline,
       ContextAttachmentType.symbols => Icons.data_object,
       ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.image => Icons.image_outlined,
       ContextAttachmentType.note => Icons.notes,
     };
   }
@@ -969,6 +970,7 @@ class _SlashPopup extends ConsumerWidget {
       ContextAttachmentType.diagnostics => Icons.error_outline,
       ContextAttachmentType.symbols => Icons.data_object,
       ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.image => Icons.image_outlined,
       ContextAttachmentType.note => Icons.notes,
     };
   }

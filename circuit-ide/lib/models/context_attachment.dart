@@ -7,6 +7,7 @@ enum ContextAttachmentType {
   diagnostics,
   symbols,
   url,
+  image,
   note,
 }
 
@@ -80,6 +81,7 @@ class ContextAttachment {
       ContextAttachmentType.diagnostics => '[Context diagnostics: $label]',
       ContextAttachmentType.symbols => '[Context symbols: $label$source]',
       ContextAttachmentType.url => '[Context URL: $label$source]',
+      ContextAttachmentType.image => '[Context image: $label$source]',
       ContextAttachmentType.note => '[Context note: $label]',
     };
   }
