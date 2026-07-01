@@ -1013,8 +1013,14 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('Cost/TCO'));
     expect(svg, contains('Roadmap'));
     expect(svg, contains('id="chart-summary"'));
+    expect(svg, contains('id="chart-executive-insights"'));
+    expect(svg, contains('id="chart-validation-gates"'));
+    expect(svg, contains('id="chart-recommended-actions"'));
     expect(svg, contains('id="chart-risk-legend"'));
     expect(svg, contains('&quot;highRiskCount&quot;'));
+    expect(svg, contains('&quot;insightCount&quot;'));
+    expect(svg, contains('&quot;validationGateCount&quot;'));
+    expect(svg, contains('&quot;recommendedActionCount&quot;'));
     expect(svg, contains('&quot;hasPoe&quot;'));
     expect(svg, contains('&quot;hasWan&quot;'));
     expect(svg, contains('&quot;hasLifecycle&quot;'));

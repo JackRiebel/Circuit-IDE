@@ -10,9 +10,15 @@ class ChartArtifactInspection {
   final bool hasChartPackGroup;
   final bool hasChartSummaryPanel;
   final bool hasRiskLegend;
+  final bool hasExecutiveInsights;
+  final bool hasValidationGates;
+  final bool hasRecommendedActions;
   final int chartCount;
   final int pointCount;
   final int noteCount;
+  final int insightCount;
+  final int validationGateCount;
+  final int recommendedActionCount;
   final int highRiskCount;
   final int mediumRiskCount;
   final int lowRiskCount;
@@ -36,9 +42,15 @@ class ChartArtifactInspection {
     required this.hasChartPackGroup,
     required this.hasChartSummaryPanel,
     required this.hasRiskLegend,
+    required this.hasExecutiveInsights,
+    required this.hasValidationGates,
+    required this.hasRecommendedActions,
     required this.chartCount,
     required this.pointCount,
     required this.noteCount,
+    required this.insightCount,
+    required this.validationGateCount,
+    required this.recommendedActionCount,
     required this.highRiskCount,
     required this.mediumRiskCount,
     required this.lowRiskCount,
@@ -62,12 +74,18 @@ class ChartArtifactInspection {
       hasCircuitMetadata &&
       hasChartPackGroup &&
       hasChartSummaryPanel &&
+      hasExecutiveInsights &&
+      hasValidationGates &&
+      hasRecommendedActions &&
       chartCount > 0 &&
       pointCount > 0;
 
   bool get hasEnterpriseChartPackStructure =>
       isStructurallyValid &&
       hasRiskLegend &&
+      hasExecutiveInsights &&
+      hasValidationGates &&
+      hasRecommendedActions &&
       chartKinds.toSet().length >= 2 &&
       noteCount > 0;
 
@@ -98,6 +116,17 @@ class ChartArtifactInspector {
     final highRiskCount = _metadataInt(metadata, 'highRiskCount') ?? 0;
     final mediumRiskCount = _metadataInt(metadata, 'mediumRiskCount') ?? 0;
     final lowRiskCount = _metadataInt(metadata, 'lowRiskCount') ?? 0;
+    final insightCount =
+        _metadataInt(metadata, 'insightCount') ??
+        RegExp(r'class="chart-insight"').allMatches(svg).length;
+    final validationGateCount =
+        _metadataInt(metadata, 'validationGateCount') ??
+        _dataInt(svg, 'data-validation-gate-count') ??
+        0;
+    final recommendedActionCount =
+        _metadataInt(metadata, 'recommendedActionCount') ??
+        _dataInt(svg, 'data-recommended-action-count') ??
+        0;
 
     return ChartArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -111,9 +140,15 @@ class ChartArtifactInspector {
       hasChartPackGroup: svg.contains('id="chart-pack"'),
       hasChartSummaryPanel: svg.contains('id="chart-summary"'),
       hasRiskLegend: svg.contains('id="chart-risk-legend"'),
+      hasExecutiveInsights: svg.contains('id="chart-executive-insights"'),
+      hasValidationGates: svg.contains('id="chart-validation-gates"'),
+      hasRecommendedActions: svg.contains('id="chart-recommended-actions"'),
       chartCount: chartCount,
       pointCount: pointCount,
       noteCount: RegExp(r'class="chart-note"').allMatches(svg).length,
+      insightCount: insightCount,
+      validationGateCount: validationGateCount,
+      recommendedActionCount: recommendedActionCount,
       highRiskCount: highRiskCount,
       mediumRiskCount: mediumRiskCount,
       lowRiskCount: lowRiskCount,
@@ -143,6 +178,11 @@ class ChartArtifactInspector {
   static int? _metadataInt(Map<String, Object?> metadata, String key) {
     final value = metadata[key];
     return value is int ? value : int.tryParse(value?.toString() ?? '');
+  }
+
+  static int? _dataInt(String svg, String attribute) {
+    final match = RegExp('$attribute="(\\d+)"').firstMatch(svg);
+    return int.tryParse(match?.group(1) ?? '');
   }
 
   static String? _firstElementText(String svg, String element) {

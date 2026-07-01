@@ -31,8 +31,14 @@ void main() {
     expect(inspection.containsKind('poe'), isTrue);
     expect(inspection.chartTitles, contains('PoE Budget'));
     expect(inspection.hasChartSummaryPanel, isTrue);
+    expect(inspection.hasExecutiveInsights, isTrue);
+    expect(inspection.hasValidationGates, isTrue);
+    expect(inspection.hasRecommendedActions, isTrue);
     expect(inspection.hasPoeSignal, isTrue);
     expect(inspection.noteCount, greaterThanOrEqualTo(1));
+    expect(inspection.insightCount, greaterThanOrEqualTo(3));
+    expect(inspection.validationGateCount, 4);
+    expect(inspection.recommendedActionCount, greaterThanOrEqualTo(1));
   });
 
   test('chart inspector verifies enterprise multi-panel chart packs', () {
@@ -102,6 +108,12 @@ void main() {
     expect(inspection.pointCount, 13);
     expect(inspection.hasChartSummaryPanel, isTrue);
     expect(inspection.hasRiskLegend, isTrue);
+    expect(inspection.hasExecutiveInsights, isTrue);
+    expect(inspection.hasValidationGates, isTrue);
+    expect(inspection.hasRecommendedActions, isTrue);
+    expect(inspection.insightCount, greaterThanOrEqualTo(3));
+    expect(inspection.validationGateCount, 4);
+    expect(inspection.recommendedActionCount, greaterThanOrEqualTo(4));
     expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
     expect(inspection.mediumRiskCount, greaterThanOrEqualTo(2));
     expect(inspection.lowRiskCount, greaterThanOrEqualTo(2));
