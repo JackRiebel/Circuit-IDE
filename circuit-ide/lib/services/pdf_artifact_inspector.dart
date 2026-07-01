@@ -16,8 +16,10 @@ class PdfArtifactInspection {
   final bool hasOutlineCatalog;
   final bool hasOutlineTree;
   final bool hasReportOverviewBookmark;
+  final bool hasLeadDecisionBookmark;
   final bool hasExecutiveDecisionBookmark;
   final bool hasValidationBookmark;
+  final bool hasLeadDecisionCallout;
   final bool hasExecutiveDecisionBrief;
   final bool hasRecommendationSummary;
   final bool hasRiskRegister;
@@ -26,6 +28,7 @@ class PdfArtifactInspection {
   final bool hasEvidenceConfidenceMatrix;
   final bool hasApprovalGates;
   final bool hasValidationChecklist;
+  final bool hasExplicitTableGeometry;
   final bool hasInfoKeywords;
   final String? title;
 
@@ -45,8 +48,10 @@ class PdfArtifactInspection {
     required this.hasOutlineCatalog,
     required this.hasOutlineTree,
     required this.hasReportOverviewBookmark,
+    required this.hasLeadDecisionBookmark,
     required this.hasExecutiveDecisionBookmark,
     required this.hasValidationBookmark,
+    required this.hasLeadDecisionCallout,
     required this.hasExecutiveDecisionBrief,
     required this.hasRecommendationSummary,
     required this.hasRiskRegister,
@@ -55,6 +60,7 @@ class PdfArtifactInspection {
     required this.hasEvidenceConfidenceMatrix,
     required this.hasApprovalGates,
     required this.hasValidationChecklist,
+    required this.hasExplicitTableGeometry,
     required this.hasInfoKeywords,
     required this.title,
   });
@@ -76,8 +82,10 @@ class PdfArtifactInspection {
       hasOutlineCatalog &&
       hasOutlineTree &&
       hasReportOverviewBookmark &&
+      hasLeadDecisionBookmark &&
       hasExecutiveDecisionBookmark &&
       hasValidationBookmark &&
+      hasLeadDecisionCallout &&
       hasExecutiveDecisionBrief &&
       hasRecommendationSummary &&
       hasRiskRegister &&
@@ -86,6 +94,7 @@ class PdfArtifactInspection {
       hasEvidenceConfidenceMatrix &&
       hasApprovalGates &&
       hasValidationChecklist &&
+      hasExplicitTableGeometry &&
       hasInfoKeywords;
 
   bool containsText(String text) =>
@@ -120,11 +129,17 @@ class PdfArtifactInspector {
           RegExp(r'/Count\s+\d+').hasMatch(text) &&
           text.contains('/Dest ['),
       hasReportOverviewBookmark: _hasBookmark(text, 'Report Overview'),
+      hasLeadDecisionBookmark: _hasBookmark(text, 'Lead Decision Callout'),
       hasExecutiveDecisionBookmark: _hasBookmark(
         text,
         'Executive Decision Brief',
       ),
       hasValidationBookmark: _hasBookmark(text, 'Validation Checklist'),
+      hasLeadDecisionCallout:
+          text.contains('Lead Decision Callout') &&
+          text.contains('Decision ask') &&
+          text.contains('Handoff status') &&
+          text.contains('Review path'),
       hasExecutiveDecisionBrief: text.contains('Executive Decision Brief'),
       hasRecommendationSummary: text.contains('Recommendation Summary'),
       hasRiskRegister: text.contains('Risk & Assumption Register'),
@@ -133,6 +148,10 @@ class PdfArtifactInspector {
       hasEvidenceConfidenceMatrix: text.contains('Evidence Confidence Matrix'),
       hasApprovalGates: text.contains('Approval Gates'),
       hasValidationChecklist: text.contains('Validation Checklist'),
+      hasExplicitTableGeometry:
+          text.contains(' re f') &&
+          text.contains(' re S') &&
+          text.contains('0.78 0.81 0.84 RG'),
       hasInfoKeywords:
           text.contains('/Keywords') &&
           text.contains('enterprise') &&

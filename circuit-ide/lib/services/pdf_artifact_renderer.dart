@@ -16,44 +16,45 @@ class PdfArtifactRenderer {
       ['Section', 'Type', 'Items'],
       if (pageCount > 0) ['0', 'Pages', '$pageCount'],
       ['0', 'PDF Bookmarks', '${outlineEntries.length}'],
-      ['1', 'Executive Decision Brief', '5'],
-      ['2', 'Recommendation Summary', '4'],
+      ['1', 'Lead Decision Callout', '4'],
+      ['2', 'Executive Decision Brief', '5'],
+      ['3', 'Recommendation Summary', '4'],
       [
-        '3',
+        '4',
         'Risk & Assumption Register',
         '${_riskRegisterRows(document).length}',
       ],
-      ['4', 'Next-Step Action Plan', '${_nextStepRows(document).length}'],
-      ['5', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
+      ['5', 'Next-Step Action Plan', '${_nextStepRows(document).length}'],
+      ['6', 'Executive Summary', document.summary.trim().isEmpty ? '0' : '1'],
       for (var i = 0; i < document.sections.length; i++)
         [
-          '${i + 6}',
+          '${i + 7}',
           document.sections[i].title,
           '${document.sections[i].bullets.length + (document.sections[i].body.trim().isEmpty ? 0 : 1)}',
         ],
       if (document.tables.isNotEmpty)
         [
-          '${document.sections.length + 6}',
+          '${document.sections.length + 7}',
           'Data Tables',
           '${document.tables.length}',
         ],
-      ['${document.sections.length + 7}', 'Stakeholder Readout', '4'],
+      ['${document.sections.length + 8}', 'Stakeholder Readout', '4'],
       [
-        '${document.sections.length + 8}',
+        '${document.sections.length + 9}',
         'Evidence Confidence Matrix',
         '${_evidenceConfidenceRows(document).length}',
       ],
-      ['${document.sections.length + 9}', 'Approval Gates', '4'],
-      ['${document.sections.length + 10}', 'Validation Checklist', '6'],
+      ['${document.sections.length + 10}', 'Approval Gates', '4'],
+      ['${document.sections.length + 11}', 'Validation Checklist', '6'],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 11}',
+          '${document.sections.length + 12}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 12}',
+          '${document.sections.length + 13}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -79,6 +80,24 @@ class PdfArtifactRenderer {
       'reviewPath': _reviewPathFor(document),
       'documentParts': documentParts,
       'documentPartCount': documentParts.length,
+      'documentQuality': 'Enterprise PDF handoff report',
+      'designPreset': 'customer_handoff_report',
+      'layoutSystem':
+          'US Letter, 0.75 inch content frame, Helvetica type scale',
+      'formFactors': [
+        'Lead decision callout',
+        'PDF bookmark outline',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        if (document.tables.isNotEmpty) 'Data tables',
+        if (document.assumptions.isNotEmpty) 'Assumptions appendix',
+        if (document.citations.isNotEmpty) 'Sources appendix',
+      ],
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
@@ -103,6 +122,7 @@ class PdfArtifactRenderer {
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
       'hasOutline': outlineEntries.isNotEmpty,
+      'hasLeadDecisionCallout': true,
       'hasExecutiveDecisionBrief': true,
       'hasRecommendationSummary': true,
       'hasRiskRegister': true,
@@ -111,6 +131,8 @@ class PdfArtifactRenderer {
       'hasEvidenceConfidenceMatrix': true,
       'hasApprovalGates': true,
       'hasValidationChecklist': true,
+      'hasFooterPageNumbers': true,
+      'hasExplicitTableGeometry': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -237,6 +259,14 @@ class PdfArtifactRenderer {
         color: _PdfColor.muted,
         gapAfter: 8,
       ),
+      const _PdfText(
+        'Lead Decision Callout',
+        size: 15,
+        bold: true,
+        gapBefore: 8,
+        gapAfter: 6,
+      ),
+      _PdfTable(_leadDecisionCalloutRows(document)),
       const _PdfText(
         'Executive Decision Brief',
         size: 15,
@@ -393,6 +423,7 @@ class PdfArtifactRenderer {
   List<_PdfOutlineEntry> _outlineEntries(ArtifactDocument document) {
     final entries = <_PdfOutlineEntry>[
       const _PdfOutlineEntry('Report Overview'),
+      const _PdfOutlineEntry('Lead Decision Callout'),
       const _PdfOutlineEntry('Executive Decision Brief'),
       const _PdfOutlineEntry('Recommendation Summary'),
       const _PdfOutlineEntry('Risk & Assumption Register'),
@@ -492,6 +523,16 @@ class PdfArtifactRenderer {
                 : document.assumptions.first),
       ],
       ['Required follow-up', _followUpGuidance(document)],
+    ];
+  }
+
+  List<List<String>> _leadDecisionCalloutRows(ArtifactDocument document) {
+    return [
+      ['Decision Field', 'Customer Handoff Detail'],
+      ['Decision ask', _decisionAskFor(document)],
+      ['Owner', _decisionOwner(document)],
+      ['Handoff status', _handoffStatus(document)],
+      ['Review path', _reviewPathFor(document)],
     ];
   }
 
@@ -953,6 +994,7 @@ class PdfArtifactRenderer {
   List<String> _documentPartsFor(ArtifactDocument document) {
     return [
       'Executive decision brief',
+      'Lead decision callout',
       'Recommendation summary',
       'Risk register',
       'Next-step action plan',

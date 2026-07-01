@@ -51,8 +51,10 @@ void main() {
     expect(inspection.hasOutlineCatalog, isTrue);
     expect(inspection.hasOutlineTree, isTrue);
     expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasLeadDecisionBookmark, isTrue);
     expect(inspection.hasExecutiveDecisionBookmark, isTrue);
     expect(inspection.hasValidationBookmark, isTrue);
+    expect(inspection.hasLeadDecisionCallout, isTrue);
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
@@ -61,6 +63,7 @@ void main() {
     expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
     expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.pageCount, greaterThanOrEqualTo(1));
     expect(inspection.objectCount, greaterThanOrEqualTo(8));
@@ -69,8 +72,13 @@ void main() {
     expect(text, contains('/PageMode /UseOutlines'));
     expect(text, contains('/Type /Outlines'));
     expect(text, contains('/Title (Report Overview)'));
+    expect(text, contains('/Title (Lead Decision Callout)'));
     expect(text, contains('/Title (Executive Decision Brief)'));
     expect(text, contains('/Title (Validation Checklist)'));
+    expect(text, contains('Lead Decision Callout'));
+    expect(text, contains('Decision ask'));
+    expect(text, contains('Handoff status'));
+    expect(text, contains('Review path'));
     expect(text, contains('Executive Decision Brief'));
     expect(text, contains('Recommendation Summary'));
     expect(text, contains('Risk & Assumption Register'));
@@ -101,10 +109,34 @@ void main() {
       metadata['reviewPath'],
       'Architecture review -> risk validation -> implementation decision',
     );
+    expect(metadata['documentQuality'], 'Enterprise PDF handoff report');
+    expect(metadata['designPreset'], 'customer_handoff_report');
+    expect(
+      metadata['layoutSystem'],
+      'US Letter, 0.75 inch content frame, Helvetica type scale',
+    );
+    expect(
+      metadata['formFactors'],
+      containsAll([
+        'Lead decision callout',
+        'PDF bookmark outline',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
     expect(
       metadata['documentParts'],
       containsAll([
         'Executive decision brief',
+        'Lead decision callout',
         'Recommendation summary',
         'Risk register',
         'Next-step action plan',
@@ -151,12 +183,15 @@ void main() {
       ]),
     );
     expect(metadata['hasOutline'], isTrue);
+    expect(metadata['hasLeadDecisionCallout'], isTrue);
     expect(metadata['hasExecutiveDecisionBrief'], isTrue);
     expect(metadata['hasRiskRegister'], isTrue);
     expect(metadata['hasDocumentMap'], isTrue);
     expect(metadata['hasEvidenceConfidenceMatrix'], isTrue);
     expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasFooterPageNumbers'], isTrue);
+    expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
@@ -204,8 +239,10 @@ void main() {
     expect(inspection.hasOutlineCatalog, isTrue);
     expect(inspection.hasOutlineTree, isTrue);
     expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasLeadDecisionBookmark, isTrue);
     expect(inspection.hasExecutiveDecisionBookmark, isTrue);
     expect(inspection.hasValidationBookmark, isTrue);
+    expect(inspection.hasLeadDecisionCallout, isTrue);
     expect(inspection.hasExecutiveDecisionBrief, isTrue);
     expect(inspection.hasRecommendationSummary, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
@@ -214,6 +251,7 @@ void main() {
     expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
     expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.pageCount, greaterThan(1));
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
     expect(
