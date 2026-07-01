@@ -1440,6 +1440,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.previewRows.expand((row) => row), contains('AP power'));
     expect(artifact.previewRows.expand((row) => row), contains('2700W est.'));
     expect(artifact.metadata['topologyType'], 'Multi-site topology');
+    expect(artifact.metadata['topologySpecVersion'], '1.0');
     expect(
       artifact.metadata['handoffStatus'],
       'Draft - validate topology inputs',
@@ -1520,6 +1521,58 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       artifact.metadata['topologyReadinessLevel'],
       'Needs validation before handoff',
     );
+    final topologySpec =
+        artifact.metadata['topologySpec'] as Map<String, Object?>;
+    expect(topologySpec['schema'], 'circuit.networkTopologySpec');
+    expect(topologySpec['version'], '1.0');
+    final topologySummary = topologySpec['summary'] as Map<String, Object?>;
+    expect(topologySummary['type'], 'Multi-site topology');
+    expect(topologySummary['resiliencyModel'], 'Dual WAN + HA');
+    expect(topologySummary['siteCount'], 4);
+    final topologyInventory = topologySpec['inventory'] as Map<String, Object?>;
+    expect(topologyInventory['idfCount'], 3);
+    expect(topologyInventory['accessPortCount'], 144);
+    final topologyCapabilities =
+        topologySpec['capabilities'] as Map<String, Object?>;
+    expect(topologyCapabilities['wifi7'], isTrue);
+    expect(topologyCapabilities['estimatedApPowerWatts'], 2700);
+    final topologyNodes = (topologySpec['nodes'] as List).cast<Map>();
+    expect(
+      topologyNodes.any((node) => node['label'].toString().contains('MX250')),
+      isTrue,
+    );
+    expect(
+      topologyNodes.any((node) => node['tierLabel'] == 'MDF / Core'),
+      isTrue,
+    );
+    final topologyLinks = (topologySpec['links'] as List).cast<Map>();
+    expect(
+      topologyLinks.any(
+        (link) => link['validation'].toString().contains('PoE/UPOE'),
+      ),
+      isTrue,
+    );
+    final capacityChecks = (topologySpec['capacityChecks'] as List).cast<Map>();
+    expect(
+      capacityChecks.any(
+        (check) =>
+            check['metric'] == 'AP power' &&
+            check['value'].toString().contains('2700W'),
+      ),
+      isTrue,
+    );
+    final failureDomains = (topologySpec['failureDomains'] as List).cast<Map>();
+    expect(
+      failureDomains.any(
+        (domain) =>
+            domain['domain'] == 'MDF / Core' && domain['ready'] == false,
+      ),
+      isTrue,
+    );
+    expect(
+      topologySpec['validationGaps'],
+      contains('Failure domain: MDF / Core'),
+    );
     expect(artifact.metadata['hasCustomerReadyTopology'], isFalse);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
@@ -1558,6 +1611,13 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('&quot;accessPortCount&quot;:144'));
     expect(svg, contains('&quot;estimatedApPowerWatts&quot;:2700'));
     expect(svg, contains('&quot;failureDomainCount&quot;:5'));
+    expect(svg, contains('&quot;topologySpecVersion&quot;:&quot;1.0&quot;'));
+    expect(
+      svg,
+      contains('&quot;schema&quot;:&quot;circuit.networkTopologySpec&quot;'),
+    );
+    expect(svg, contains('&quot;capacityChecks&quot;:'));
+    expect(svg, contains('&quot;failureDomains&quot;:'));
     expect(
       svg,
       contains('&quot;topologyType&quot;:&quot;Multi-site topology&quot;'),

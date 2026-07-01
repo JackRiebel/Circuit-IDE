@@ -36,9 +36,10 @@ class DiagramArtifactRenderer {
     required String content,
   }) {
     final graph = _graphFromMermaid(content);
-    final networkGraph = graph.nodes.isEmpty
+    final proseGraph = graph.nodes.isEmpty || graph.edges.isEmpty
         ? _graphFromNetworkText(content)
-        : graph;
+        : const _DiagramGraph(nodes: {}, edges: []);
+    final networkGraph = proseGraph.nodes.isEmpty ? graph : proseGraph;
     final resolvedGraph = networkGraph.nodes.isEmpty
         ? _graphFromDocument(document)
         : networkGraph;
@@ -141,6 +142,7 @@ class DiagramArtifactRenderer {
     return {
       'generator': 'CircuitCode',
       'artifact': 'network_topology_diagram',
+      'topologySpecVersion': '1.0',
       'topologyType': _topologyTypeFor(profile),
       'handoffStatus': customerReady
           ? 'Ready for architecture review'
@@ -205,6 +207,142 @@ class DiagramArtifactRenderer {
       'hasWifi7PowerAdvisory': advisories.any(
         (item) => item.topic == 'Wi-Fi 7 / PoE',
       ),
+      'topologySpec': _topologySpecFor(
+        graph: graph,
+        tiers: tiers,
+        assumptions: assumptions,
+        profile: profile,
+        readinessItems: readinessItems,
+        capacityItems: capacityItems,
+        linkSchedule: linkSchedule,
+        advisories: advisories,
+        failureDomains: failureDomains,
+        validationGaps: validationGapLabels,
+        topologyRiskFlags: topologyRiskFlags,
+      ),
+    };
+  }
+
+  Map<String, Object?> _topologySpecFor({
+    required _DiagramGraph graph,
+    required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
+    required List<String> assumptions,
+    required _TopologyProfile profile,
+    required List<({String check, String state, bool ready})> readinessItems,
+    required List<({String metric, String value, String guidance, bool ready})>
+    capacityItems,
+    required List<({String from, String to, String link, String validation})>
+    linkSchedule,
+    required List<({String topic, String guidance, bool critical})> advisories,
+    required List<_FailureDomainRow> failureDomains,
+    required List<String> validationGaps,
+    required List<String> topologyRiskFlags,
+  }) {
+    return {
+      'schema': 'circuit.networkTopologySpec',
+      'version': '1.0',
+      'summary': {
+        'type': _topologyTypeFor(profile),
+        'resiliencyModel': profile.resiliencyLabel,
+        'siteCount': profile.siteCount,
+        'nodeCount': graph.nodes.length,
+        'edgeCount': graph.edges.length,
+        'handoffStatus': validationGaps.isEmpty && assumptions.isNotEmpty
+            ? 'Ready for architecture review'
+            : 'Draft - validate topology inputs',
+      },
+      'inventory': {
+        'mdfCount': profile.mdfCount,
+        'idfCount': profile.idfCount,
+        'firewallCount': profile.firewallCount,
+        'coreSwitchCount': profile.coreSwitchCount,
+        'accessSwitchCount': profile.accessSwitchCount,
+        'switchCount': profile.switchCount,
+        'apCount': profile.apCount,
+        'accessPortCount': profile.accessPortCount,
+      },
+      'capabilities': {
+        'dualWan': profile.hasDualWan,
+        'warmSpare': profile.hasWarmSpare,
+        'poe': profile.hasPoe,
+        'upoe': profile.hasUpoe,
+        'multigig': profile.hasMultigig,
+        'wifi7': profile.hasWifi7,
+        'estimatedApPowerWatts': profile.estimatedApPowerWatts,
+        'apPortLoadPercent': profile.apPortLoadPercent,
+      },
+      'designZones': [
+        for (final entry in tiers.entries)
+          {
+            'id': entry.key.name,
+            'label': _tierLabel(entry.key),
+            'nodeIds': [for (final node in entry.value) node.id],
+          },
+      ],
+      'nodes': [
+        for (final node in graph.nodes.values)
+          {
+            'id': node.id,
+            'label': node.label,
+            'role': node.role.name,
+            'roleLabel': _roleLabel(node.role),
+            'tierLabel': _tierLabel(node.role),
+          },
+      ],
+      'links': [
+        for (final link in linkSchedule)
+          {
+            'from': link.from,
+            'fromLabel': graph.nodes[link.from]?.label ?? link.from,
+            'to': link.to,
+            'toLabel': graph.nodes[link.to]?.label ?? link.to,
+            'label': link.link,
+            'validation': link.validation,
+          },
+      ],
+      'linkSchedule': [
+        for (final link in linkSchedule)
+          {
+            'from': link.from,
+            'to': link.to,
+            'link': link.link,
+            'validation': link.validation,
+          },
+      ],
+      'capacityChecks': [
+        for (final item in capacityItems)
+          {
+            'metric': item.metric,
+            'value': item.value,
+            'guidance': item.guidance,
+            'ready': item.ready,
+          },
+      ],
+      'readinessChecks': [
+        for (final item in readinessItems)
+          {'check': item.check, 'state': item.state, 'ready': item.ready},
+      ],
+      'failureDomains': [
+        for (final domain in failureDomains)
+          {
+            'domain': domain.domain,
+            'redundancy': domain.redundancy,
+            'impact': domain.impact,
+            'validation': domain.validation,
+            'ready': domain.ready,
+          },
+      ],
+      'advisories': [
+        for (final item in advisories)
+          {
+            'topic': item.topic,
+            'guidance': item.guidance,
+            'critical': item.critical,
+          },
+      ],
+      'validationGaps': validationGaps,
+      'riskFlags': topologyRiskFlags,
+      'assumptions': assumptions,
     };
   }
 
@@ -795,14 +933,20 @@ class DiagramArtifactRenderer {
 
   String _linkValidation(String label, _TopologyProfile profile) {
     final normalized = label.toLowerCase();
-    if (normalized.contains('wan') || profile.hasDualWan) {
-      return 'Validate ISP handoffs, routing, failover, and SLA ownership.';
-    }
-    if (normalized.contains('poe') || profile.hasPoe || profile.hasWifi7) {
+    if (normalized.contains('poe') || normalized.contains('mgig')) {
       return 'Validate PoE/UPOE budget, mGig need, and AP draw.';
     }
     if (normalized.contains('distribution') || normalized.contains('routed')) {
       return 'Validate uplink speed, L3 boundary, and redundancy pairings.';
+    }
+    if (normalized.contains('wan') || normalized.contains('primary')) {
+      return 'Validate ISP handoffs, routing, failover, and SLA ownership.';
+    }
+    if (profile.hasWifi7 || profile.hasPoe) {
+      return 'Validate PoE/UPOE budget, mGig need, and AP draw.';
+    }
+    if (profile.hasDualWan) {
+      return 'Validate ISP handoffs, routing, failover, and SLA ownership.';
     }
     return 'Confirm cabling, ownership, and operational monitoring.';
   }
