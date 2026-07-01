@@ -55,6 +55,11 @@ void main() {
         path: '/tmp/screen.png',
         content:
             'Image attachment for visual review.\nDimensions: 1440 x 900px',
+        metadata: const {
+          'artifactRole': 'visual_evidence',
+          'width': 1440,
+          'height': 900,
+        },
         createdAt: DateTime(2026, 7, 1),
       );
 
@@ -64,6 +69,8 @@ void main() {
       expect(restored!.type, ContextAttachmentType.image);
       expect(restored.promptHeader, contains('[Context image: screen.png'));
       expect(restored.toPromptBlock(), contains('Dimensions: 1440 x 900px'));
+      expect(restored.metadata['artifactRole'], 'visual_evidence');
+      expect(restored.metadata['width'], 1440);
     },
   );
 
@@ -87,8 +94,15 @@ void main() {
     expect(attachment.content, contains('Dimensions: 1440 x 900px'));
     expect(
       attachment.content,
-      contains('OCR and visual reasoning are not yet completed'),
+      contains('Visual evidence status: screenshot/image file is attached'),
     );
+    expect(attachment.metadata['artifactRole'], 'visual_evidence');
+    expect(attachment.metadata['mimeType'], 'image/png');
+    expect(attachment.metadata['width'], 1440);
+    expect(attachment.metadata['height'], 900);
+    expect(attachment.metadata['ocrStatus'], 'not_extracted');
+    expect(attachment.metadata['visionInputStatus'], 'metadata_only');
+    expect(attachment.metadata['providerPixelInputSupported'], isFalse);
   });
 
   test('ScreenshotContextAttachmentBuilder skips unsupported files', () async {

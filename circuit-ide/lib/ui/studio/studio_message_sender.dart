@@ -32,6 +32,7 @@ import '../../state/studio_thread_provider.dart';
 import '../../state/studio_turn_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/workspace_session_provider.dart';
+import '../../services/screenshot_context_attachment_builder.dart';
 import '../../core/config/studio_feature_flags.dart';
 import 'studio_plan_prompts.dart';
 
@@ -138,7 +139,7 @@ Future<StudioSendResult> sendStudioMessage(
   String? outboundTextOverride,
   bool userMessageTranscriptVisible = true,
 }) async {
-  final visibleText = (displayText?.trim().isNotEmpty ?? false)
+  var visibleText = (displayText?.trim().isNotEmpty ?? false)
       ? displayText!.trim()
       : text;
   final runtime = ref.read(agentTurnRuntimeProvider.notifier);
@@ -182,8 +183,19 @@ Future<StudioSendResult> sendStudioMessage(
   if (planContinuation != null) return planContinuation;
   ref.read(workspaceSessionProvider.notifier).syncFromCurrentWorkspace();
   final studio = ref.read(studioShellProvider);
-  final classifiedIntent = IntentClassifier.classify(
+  var rootPath = ref.read(fileTreeProvider).rootPath;
+  final directives = await _extractStudioContextDirectives(
     text,
+    rootPath: rootPath,
+  );
+  final requestText = directives.message.trim().isEmpty
+      ? 'Review the attached screenshot/image context and summarize relevant findings.'
+      : directives.message;
+  if (!(displayText?.trim().isNotEmpty ?? false)) {
+    visibleText = requestText;
+  }
+  final classifiedIntent = IntentClassifier.classify(
+    requestText,
     promptMode: studio.promptMode,
     planModeEnabled: studio.planModeEnabled,
   );
@@ -199,13 +211,12 @@ Future<StudioSendResult> sendStudioMessage(
       : studio.promptMode;
   final planModeEnabled = intent == TurnIntent.plan;
   final model = ref.read(settingsProvider).ciscoModel;
-  var rootPath = ref.read(fileTreeProvider).rootPath;
   var workspace = ref.read(workspaceSessionProvider);
   if ((rootPath == null || !workspace.canCode) &&
       promptMode.agentProfile != null &&
       intentContract.mayCreateWorkspace) {
     final path = await StudioProjectCreator.createProject(
-      name: StudioProjectCreator.projectNameFromPrompt(text),
+      name: StudioProjectCreator.projectNameFromPrompt(requestText),
     );
     final openResult = await ref
         .read(workspaceSessionProvider.notifier)
@@ -218,9 +229,10 @@ Future<StudioSendResult> sendStudioMessage(
     }
   }
   final patchRevisionContext = acceptedPlan == null
-      ? _activePatchRevisionContext(ref, text)
+      ? _activePatchRevisionContext(ref, requestText)
       : null;
   final extraContextAttachments = [
+    ...directives.attachments,
     if (patchRevisionContext != null) patchRevisionContext.attachment,
   ];
   final extraAllowedFileContextPaths = {
@@ -231,7 +243,7 @@ Future<StudioSendResult> sendStudioMessage(
       ? buildConversationalContextPayload(ref)
       : await buildStudioContextPayloadWithFreshIndex(
           ref,
-          text,
+          requestText,
           allowedFileContextPaths: extraAllowedFileContextPaths,
           extraAttachments: extraContextAttachments,
         );
@@ -239,11 +251,11 @@ Future<StudioSendResult> sendStudioMessage(
       outboundTextOverride ??
       (patchRevisionContext == null
           ? _studioOutboundPromptWithArtifactContract(
-              text: text,
+              text: requestText,
               intent: intent,
               planModeEnabled: planModeEnabled,
             )
-          : _patchRevisionOutboundPrompt(text, patchRevisionContext));
+          : _patchRevisionOutboundPrompt(requestText, patchRevisionContext));
   final thread = ref
       .read(studioThreadProvider.notifier)
       .ensureThread(
@@ -1405,6 +1417,98 @@ class StudioContextPayload {
     required this.specialistSelection,
     this.contextRetrieval,
   });
+}
+
+class _StudioContextDirectiveResult {
+  final String message;
+  final List<ContextAttachment> attachments;
+
+  const _StudioContextDirectiveResult({
+    required this.message,
+    required this.attachments,
+  });
+}
+
+Future<_StudioContextDirectiveResult> _extractStudioContextDirectives(
+  String text, {
+  required String? rootPath,
+}) async {
+  final messageLines = <String>[];
+  final attachments = <ContextAttachment>[];
+  for (final rawLine in text.split('\n')) {
+    final line = rawLine.trim();
+    if (!line.startsWith('/')) {
+      messageLines.add(rawLine);
+      continue;
+    }
+    final parts = line.split(RegExp(r'\s+'));
+    final command = parts.first.toLowerCase();
+    final arg = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    switch (command) {
+      case '/image':
+      case '/screenshot':
+        final attachment = await _buildStudioImageAttachment(rootPath, arg);
+        if (attachment != null) attachments.add(attachment);
+        break;
+      default:
+        messageLines.add(rawLine);
+    }
+  }
+  return _StudioContextDirectiveResult(
+    message: messageLines.join('\n').trim(),
+    attachments: attachments,
+  );
+}
+
+Future<ContextAttachment?> _buildStudioImageAttachment(
+  String? rootPath,
+  String rawPath,
+) async {
+  final trimmed = rawPath.trim();
+  if (trimmed.isEmpty) {
+    return ContextAttachment(
+      id: _uuid.v4(),
+      type: ContextAttachmentType.image,
+      label: 'Missing image path',
+      content:
+          'The /image command needs a PNG, JPG, GIF, or WebP path. Example: /image screenshots/home.png',
+      resolutionStatus: ContextAttachmentResolutionStatus.missing,
+      estimatedTokens: 24,
+      metadata: const {
+        'artifactRole': 'visual_evidence',
+        'visionInputStatus': 'missing_path',
+      },
+      createdAt: DateTime.now(),
+    );
+  }
+  final imagePath = p.isAbsolute(trimmed)
+      ? p.normalize(trimmed)
+      : rootPath == null
+      ? p.normalize(trimmed)
+      : p.normalize(p.join(rootPath, trimmed));
+  return const ScreenshotContextAttachmentBuilder().build(imagePath);
+}
+
+Future<List<ContextAttachment>> debugStudioImageDirectiveAttachments(
+  String text, {
+  String? rootPath,
+}) async {
+  final result = await _extractStudioContextDirectives(
+    text,
+    rootPath: rootPath,
+  );
+  return result.attachments;
+}
+
+Future<String> debugStudioImageDirectiveMessage(
+  String text, {
+  String? rootPath,
+}) async {
+  final result = await _extractStudioContextDirectives(
+    text,
+    rootPath: rootPath,
+  );
+  return result.message;
 }
 
 StudioContextPayload buildStudioContextPayload(

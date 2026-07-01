@@ -34,6 +34,7 @@ class ScreenshotContextAttachmentBuilder {
     final bytes = await file.readAsBytes();
     final dimensions = _dimensionsFor(bytes);
     final extension = p.extension(path).replaceFirst('.', '').toUpperCase();
+    final mimeType = _mimeTypeForExtension(p.extension(path));
     final facts = [
       'Image attachment for visual review.',
       'File: ${p.basename(path)}',
@@ -43,7 +44,10 @@ class ScreenshotContextAttachmentBuilder {
         'Dimensions: ${dimensions.width} x ${dimensions.height}px'
       else
         'Dimensions: not detected',
-      'Vision extraction status: screenshot/image context is attached, but OCR and visual reasoning are not yet completed by CircuitCode.',
+      'Visual evidence status: screenshot/image file is attached as context metadata.',
+      'OCR status: not extracted locally.',
+      'Vision model status: not sent as pixel input by the current Circuit connector.',
+      'Use this attachment as visual evidence metadata only unless the user also describes the screenshot contents.',
     ];
 
     return ContextAttachment(
@@ -54,6 +58,19 @@ class ScreenshotContextAttachmentBuilder {
       content: facts.join('\n'),
       resolutionStatus: ContextAttachmentResolutionStatus.resolved,
       estimatedTokens: 48,
+      metadata: {
+        'artifactRole': 'visual_evidence',
+        'format': extension.isEmpty ? 'unknown' : extension,
+        'mimeType': mimeType,
+        'byteSize': bytes.length,
+        if (dimensions != null) 'width': dimensions.width,
+        if (dimensions != null) 'height': dimensions.height,
+        'ocrStatus': 'not_extracted',
+        'visionInputStatus': 'metadata_only',
+        'providerPixelInputSupported': false,
+        'handoffUse':
+            'Attach as visual evidence metadata; request OCR/vision integration before relying on unseen pixels.',
+      },
       createdAt: DateTime.now(),
     );
   }
@@ -123,6 +140,16 @@ class ScreenshotContextAttachmentBuilder {
     if (kb < 1024) return '${kb.toStringAsFixed(kb >= 10 ? 0 : 1)} KB';
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1)} MB';
+  }
+
+  String _mimeTypeForExtension(String extension) {
+    return switch (extension.toLowerCase()) {
+      '.png' => 'image/png',
+      '.jpg' || '.jpeg' => 'image/jpeg',
+      '.gif' => 'image/gif',
+      '.webp' => 'image/webp',
+      _ => 'application/octet-stream',
+    };
   }
 }
 

@@ -718,6 +718,20 @@ final _slashCommands = <_SlashCommand>[
         .read(studioRightDrawerProvider.notifier)
         .openMode(StudioDrawerMode.terminal),
   ),
+  const _SlashCommand(
+    name: 'image',
+    title: 'Image',
+    detail: 'Attach image path',
+    prompt: '/image ',
+    icon: Icons.image_outlined,
+  ),
+  const _SlashCommand(
+    name: 'screenshot',
+    title: 'Screenshot',
+    detail: 'Attach screenshot path',
+    prompt: '/screenshot ',
+    icon: Icons.screenshot_monitor_outlined,
+  ),
 ];
 
 class _ComposerPill extends ConsumerWidget {
