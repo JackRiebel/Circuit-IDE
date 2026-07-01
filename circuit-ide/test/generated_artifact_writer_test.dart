@@ -1109,6 +1109,38 @@ Executive-ready summary for a final customer handoff.
       artifact.metadata['decisionOwner'],
       'Architecture owner / customer sponsor',
     );
+    expect(
+      artifact.metadata['decisionAsk'],
+      'Review findings, confirm assumptions, and approve the recommended architecture path.',
+    );
+    expect(
+      artifact.metadata['reviewPath'],
+      'Architecture review -> risk validation -> implementation decision',
+    );
+    expect(
+      artifact.metadata['documentParts'],
+      containsAll([
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Document map',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
+    expect(artifact.metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(artifact.metadata['tableCoverage'], '1 table packaged');
+    expect(artifact.metadata['evidenceCoverage'], '1 source item captured');
+    expect(
+      artifact.metadata['appendixCoverage'],
+      '1 assumption, 1 source item in appendices',
+    );
+    expect(artifact.metadata['validationGapCount'], 0);
     expect(artifact.metadata['pageCount'], artifact.sheetCount);
     expect(artifact.metadata['bookmarkCount'], greaterThanOrEqualTo(3));
     expect(artifact.metadata['reportSectionCount'], greaterThanOrEqualTo(12));
@@ -1137,6 +1169,7 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['hasValidationChecklist'], isTrue);
     expect(artifact.metadata['hasSourcesAppendix'], isTrue);
     expect(artifact.metadata['hasCustomerReadyPackage'], isTrue);
+    expect(artifact.metadata['hasCustomerReadyPdf'], isTrue);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));

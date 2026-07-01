@@ -65,6 +65,8 @@ class PdfArtifactRenderer {
     final outlineEntries = _outlineEntries(document);
     final previewRows = previewRowsFor(document, pageCount: pages.length);
     final readinessSignals = _readinessSignals(document);
+    final validationGaps = _validationGapsFor(document);
+    final documentParts = _documentPartsFor(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'pdf_report',
@@ -73,6 +75,19 @@ class PdfArtifactRenderer {
       'reportPurpose': _reportPurposeFor(document),
       'handoffStatus': _handoffStatus(document),
       'decisionOwner': _decisionOwner(document),
+      'decisionAsk': _decisionAskFor(document),
+      'reviewPath': _reviewPathFor(document),
+      'documentParts': documentParts,
+      'documentPartCount': documentParts.length,
+      'tableCoverage': document.tables.isEmpty
+          ? 'No supporting tables'
+          : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
+      'evidenceCoverage': document.citations.isEmpty
+          ? 'No citations attached'
+          : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
+      'appendixCoverage': _appendixCoverageFor(document),
+      'validationGaps': validationGaps,
+      'validationGapCount': validationGaps.length,
       'pageCount': pages.length,
       'bookmarkCount': outlineEntries.length,
       'sectionCount': document.sections.length,
@@ -99,6 +114,8 @@ class PdfArtifactRenderer {
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
+      'hasCustomerReadyPdf':
+          _hasCustomerReadyPackage(document) && validationGaps.isEmpty,
     };
   }
 
@@ -933,6 +950,42 @@ class PdfArtifactRenderer {
     ];
   }
 
+  List<String> _documentPartsFor(ArtifactDocument document) {
+    return [
+      'Executive decision brief',
+      'Recommendation summary',
+      'Risk register',
+      'Next-step action plan',
+      'Document map',
+      'Evidence confidence matrix',
+      'Approval gates',
+      'Validation checklist',
+      if (document.tables.isNotEmpty) 'Data tables',
+      if (document.assumptions.isNotEmpty) 'Assumptions appendix',
+      if (document.citations.isNotEmpty) 'Sources appendix',
+    ];
+  }
+
+  List<String> _validationGapsFor(ArtifactDocument document) {
+    return [
+      if (document.summary.trim().isEmpty) 'Executive summary missing',
+      if (document.sections.isEmpty) 'Report sections missing',
+      if (document.assumptions.isEmpty) 'Assumptions need confirmation',
+      if (document.citations.isEmpty) 'Sources need validation',
+    ];
+  }
+
+  String _appendixCoverageFor(ArtifactDocument document) {
+    final parts = [
+      if (document.assumptions.isNotEmpty)
+        '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'}',
+      if (document.citations.isNotEmpty)
+        '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'}',
+    ];
+    if (parts.isEmpty) return 'No appendices attached';
+    return '${parts.join(', ')} in appendices';
+  }
+
   int _evidenceGapCount(ArtifactDocument document) {
     var gaps = 0;
     if (document.summary.trim().isEmpty) gaps++;
@@ -947,6 +1000,46 @@ class PdfArtifactRenderer {
         document.sections.isNotEmpty &&
         document.assumptions.isNotEmpty &&
         document.citations.isNotEmpty;
+  }
+
+  String _decisionAskFor(ArtifactDocument document) {
+    final explicit = _firstMatchingBullet(document, [
+      'approve',
+      'decision',
+      'next',
+      'action',
+    ]);
+    if (explicit != null) return _truncate(explicit, 140);
+    return switch (_reportTypeFor(document)) {
+      'Business use case brief' =>
+        'Confirm priority use cases, expected value, and account-team next steps.',
+      'Evidence pack' =>
+        'Review source authority, freshness, confidence, and unsupported claims.',
+      'Implementation plan' =>
+        'Approve scope, owners, verification gates, and the next implementation step.',
+      'Architecture report' =>
+        'Review findings, confirm assumptions, and approve the recommended architecture path.',
+      'Change summary report' =>
+        'Review changed files, verification evidence, and any remaining follow-up.',
+      _ =>
+        'Review the PDF, confirm assumptions, and approve the next stakeholder action.',
+    };
+  }
+
+  String _reviewPathFor(ArtifactDocument document) {
+    return switch (_reportTypeFor(document)) {
+      'Business use case brief' =>
+        'Executive sponsor review -> account-team discovery -> value validation',
+      'Evidence pack' =>
+        'Claim review -> source freshness check -> confidence sign-off',
+      'Implementation plan' =>
+        'Scope review -> owner assignment -> verification approval',
+      'Architecture report' =>
+        'Architecture review -> risk validation -> implementation decision',
+      'Change summary report' =>
+        'Diff review -> verification evidence -> closeout approval',
+      _ => 'Stakeholder review -> evidence validation -> final handoff',
+    };
   }
 
   String _handoffStatus(ArtifactDocument document) {

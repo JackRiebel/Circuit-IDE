@@ -3556,6 +3556,8 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Package', 'Customer-ready report flow'),
         if (_metadataBool(artifact, 'hasCustomerReadyReport'))
           ('Handoff package', 'Stakeholder-ready Word report'),
+        if (_metadataBool(artifact, 'hasCustomerReadyPdf'))
+          ('Handoff package', 'Final customer PDF'),
       ],
       if (artifact.requestId != null && artifact.requestId!.trim().isNotEmpty)
         ('Request', artifact.requestId!),

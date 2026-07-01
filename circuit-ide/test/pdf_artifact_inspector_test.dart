@@ -93,6 +93,39 @@ void main() {
     );
     expect(metadata['handoffStatus'], 'Ready for stakeholder review');
     expect(metadata['decisionOwner'], 'Architecture owner / customer sponsor');
+    expect(
+      metadata['decisionAsk'],
+      'Review findings, confirm assumptions, and approve the recommended architecture path.',
+    );
+    expect(
+      metadata['reviewPath'],
+      'Architecture review -> risk validation -> implementation decision',
+    );
+    expect(
+      metadata['documentParts'],
+      containsAll([
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Document map',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
+    expect(metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(metadata['tableCoverage'], '1 table packaged');
+    expect(metadata['evidenceCoverage'], '1 source item captured');
+    expect(
+      metadata['appendixCoverage'],
+      '1 assumption, 1 source item in appendices',
+    );
+    expect(metadata['validationGaps'], isEmpty);
+    expect(metadata['validationGapCount'], 0);
     expect(metadata['pageCount'], inspection.pageCount);
     expect(metadata['bookmarkCount'], greaterThanOrEqualTo(3));
     expect(metadata['sectionCount'], 2);
@@ -127,6 +160,7 @@ void main() {
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
+    expect(metadata['hasCustomerReadyPdf'], isTrue);
   });
 
   test('PDF inspector catches multi-page customer handoff reports', () {
