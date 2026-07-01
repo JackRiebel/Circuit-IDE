@@ -205,19 +205,37 @@ void main() {
     expect(inspection.hasEnterpriseWorkbookStructure, isTrue);
     expect(
       inspection.hasSheets(const [
+        'Executive Decision',
         'Comparison Matrix',
         'Decision Summary',
         'Fit Scoring',
         'Requirements',
         'Requirement Gates',
         'Hard Gate Evaluation',
+        'Source Confidence',
         'Scored Shortlist',
+        'Migration Suitability',
+        'Lifecycle Runway',
         'Alternatives',
         'Replacement Cautions',
+        'Implementation Impact',
+        'Customer Talking Points',
         'Validation Checklist',
         'Sources Needed',
         'Assumptions',
+        'Source 1',
       ]),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Executive Decision',
+        'Recommended primary candidate',
+      ),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Executive Decision', 'Hard-gate pressure'),
       isTrue,
     );
     expect(inspection.sheetContains('Comparison Matrix', 'C9300-48P'), isTrue);
@@ -249,10 +267,25 @@ void main() {
       isTrue,
     );
     expect(
+      inspection.sheetContains('Source Confidence', 'Capability Evidence'),
+      isTrue,
+    );
+    expect(
       inspection.sheetContains('Hard Gate Evaluation', 'Multigig access'),
       isTrue,
     );
     expect(inspection.sheetContains('Scored Shortlist', 'C9300-48P'), isTrue);
+    expect(
+      inspection.sheetContains(
+        'Migration Suitability',
+        'Current candidate or suggestedMigrationPid comparator',
+      ),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Lifecycle Runway', 'Support Runway Question'),
+      isTrue,
+    );
     expect(
       inspection.sheetContains(
         'Alternatives',
@@ -262,6 +295,17 @@ void main() {
     );
     expect(
       inspection.sheetContains('Replacement Cautions', 'suggestedMigrationPid'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Implementation Impact', 'Operational Impact'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Customer Talking Points',
+        'Do not treat EoX replacement PID as the final best model',
+      ),
       isTrue,
     );
     expect(

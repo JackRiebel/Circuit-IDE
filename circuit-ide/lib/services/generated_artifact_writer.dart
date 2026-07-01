@@ -319,7 +319,7 @@ class GeneratedArtifactWriter {
           summary: lifecycleEox
               ? 'Created a Lifecycle / EoX workbook with lifecycle status, official date evidence, migration hints, replacement suitability, risks, assumptions, and source sheets.'
               : productComparison
-              ? 'Created a product comparison matrix with fit scoring, requirements, alternatives, assumptions, and source sheets.'
+              ? 'Created a product comparison matrix with executive decision, hard gates, source confidence, migration suitability, lifecycle runway, implementation impact, and source sheets.'
               : sizingWorkbook
               ? 'Created a solution sizing workbook with executive summary, site distribution, PoE/closet power, WAN, licensing, risks, recommendations, validation, and source sheets.'
               : tables.length == 1

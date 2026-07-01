@@ -24,8 +24,26 @@ class ProductComparisonWorkbookBuilder {
     final candidates = comparisonRows
         .map(_ComparisonCandidate.fromRow)
         .toList(growable: false);
-    final requirementRows = _requirementRows('$prompt\n$content');
+    final fullContent = '$prompt\n$content';
+    final requirementRows = _requirementRows(fullContent);
+    final profile = _ComparisonProfile.from(
+      candidates: candidates,
+      requirements: requirementRows,
+      content: fullContent,
+    );
     return [
+      WorkbookTable(
+        name: 'Executive Decision',
+        rows: [
+          const [
+            'Decision Signal',
+            'Current Answer',
+            'Why It Matters',
+            'Next Action',
+          ],
+          ..._executiveDecisionRows(profile),
+        ],
+      ),
       WorkbookTable(
         name: 'Comparison Matrix',
         rows: [
@@ -50,7 +68,7 @@ class ProductComparisonWorkbookBuilder {
             'Evidence needed before customer handoff',
             'Confidence',
           ],
-          ..._decisionRows(candidates),
+          ..._decisionRows(profile),
         ],
       ),
       const WorkbookTable(
@@ -111,7 +129,7 @@ class ProductComparisonWorkbookBuilder {
             'Pass criteria',
             'Failure impact',
           ],
-          ..._gateRows(requirementRows),
+          ..._gateRows(profile),
         ],
       ),
       WorkbookTable(
@@ -124,7 +142,20 @@ class ProductComparisonWorkbookBuilder {
             'Gate status',
             'Evidence / rejection rule',
           ],
-          ..._hardGateRows(candidates, '$prompt\n$content'),
+          ..._hardGateRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Source Confidence',
+        rows: [
+          const [
+            'Product / Model',
+            'Capability Evidence',
+            'Lifecycle Evidence',
+            'Commercial Evidence',
+            'Confidence',
+          ],
+          ..._sourceConfidenceRows(profile),
         ],
       ),
       WorkbookTable(
@@ -138,6 +169,32 @@ class ProductComparisonWorkbookBuilder {
             'Primary caution',
           ],
           ..._shortlistRows(candidates),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Migration Suitability',
+        rows: [
+          const [
+            'Product / Model',
+            'Role in Migration',
+            'Accept If',
+            'Reject If',
+            'Current Suitability',
+          ],
+          ..._migrationSuitabilityRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Lifecycle Runway',
+        rows: [
+          const [
+            'Product / Model',
+            'Lifecycle Signal',
+            'Support Runway Question',
+            'Customer Risk',
+            'Validation Owner',
+          ],
+          ..._lifecycleRunwayRows(profile),
         ],
       ),
       WorkbookTable(
@@ -157,7 +214,26 @@ class ProductComparisonWorkbookBuilder {
         name: 'Replacement Cautions',
         rows: [
           const ['Topic', 'Rule', 'Why it matters', 'Required validation'],
-          ..._replacementCautionRows('$prompt\n$content'),
+          ..._replacementCautionRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Implementation Impact',
+        rows: [
+          const [
+            'Decision Area',
+            'Operational Impact',
+            'Deployment Dependency',
+            'Risk If Wrong',
+          ],
+          ..._implementationImpactRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Customer Talking Points',
+        rows: [
+          const ['Topic', 'Customer-facing language', 'Do not overclaim'],
+          ..._talkingPointRows(profile),
         ],
       ),
       const WorkbookTable(
@@ -421,10 +497,54 @@ class ProductComparisonWorkbookBuilder {
     return rows;
   }
 
-  List<List<String>> _decisionRows(List<_ComparisonCandidate> candidates) {
-    final ranked = [...candidates]
-      ..sort((a, b) => b.numericFit.compareTo(a.numericFit));
-    final best = ranked.isEmpty ? null : ranked.first;
+  List<List<String>> _executiveDecisionRows(_ComparisonProfile profile) {
+    final best = profile.best;
+    final runnerUp = profile.runnerUp;
+    return [
+      [
+        'Recommended primary candidate',
+        best == null
+            ? 'No candidate with enough structured facts yet'
+            : best.product,
+        'The top candidate anchors the shortlist, but still needs source-backed hard-gate validation.',
+        best == null
+            ? 'Add candidate products and capability facts.'
+            : 'Validate ${best.product} against hard gates, lifecycle, licensing, and customer constraints.',
+      ],
+      [
+        'Runner-up / fallback',
+        runnerUp == null ? 'No structured runner-up yet' : runnerUp.product,
+        'Fallback path protects the recommendation if the top candidate fails power, port, lifecycle, or commercial gates.',
+        runnerUp == null
+            ? 'Add at least one credible alternative.'
+            : 'Document why ${runnerUp.product} is lower-ranked or when it should supersede the primary choice.',
+      ],
+      [
+        'Hard-gate pressure',
+        profile.requirementPressure,
+        'Wi-Fi 7, UPOE, mGig, HA, and lifecycle signals can disqualify products even when fit score looks good.',
+        'Close every hard-gate row before presenting a final customer recommendation.',
+      ],
+      [
+        'Evidence quality',
+        profile.evidenceQuality,
+        'Enterprise recommendations need official/current capability and lifecycle evidence.',
+        'Attach datasheets, lifecycle source, checked date, and customer requirement evidence.',
+      ],
+      [
+        'Replacement caveat',
+        profile.hasMigrationSignal
+            ? 'Migration/replacement language detected'
+            : 'No explicit migration PID signal',
+        'EoX replacement PID is a migration clue, not final product selection.',
+        'Compare hinted models against current portfolio candidates and current requirements.',
+      ],
+    ];
+  }
+
+  List<List<String>> _decisionRows(_ComparisonProfile profile) {
+    final ranked = profile.ranked;
+    final best = profile.best;
     final rejected = ranked
         .skip(1)
         .take(3)
@@ -453,12 +573,18 @@ class ProductComparisonWorkbookBuilder {
         'Validate newest current portfolio candidates against Wi-Fi 7, UPOE, mGig, uplinks, licensing, and lifecycle',
         'High',
       ],
+      [
+        'Source confidence',
+        profile.evidenceQuality,
+        'Capability, lifecycle, and commercial facts should be source-backed before customer handoff',
+        profile.hasSourceEvidence ? 'Medium' : 'Low',
+      ],
     ];
   }
 
-  List<List<String>> _gateRows(List<List<String>> requirements) {
+  List<List<String>> _gateRows(_ComparisonProfile profile) {
     String detected(String requirement) {
-      for (final row in requirements) {
+      for (final row in profile.requirements) {
         if (row.isNotEmpty &&
             row.first.toLowerCase().contains(requirement.toLowerCase())) {
           return row.length > 1 ? row[1] : 'Detected';
@@ -492,27 +618,20 @@ class ProductComparisonWorkbookBuilder {
         'Current lifecycle and support runway are acceptable for the customer horizon',
         'Reject stale migration hints when newer current models better fit requirements',
       ],
+      [
+        'Licensing / operations',
+        profile.hasOperationalSignal
+            ? 'Operational model signal detected'
+            : 'TBD',
+        'Management model, licensing, support, and operating standard fit the customer',
+        'Reject candidates that require an operating model or licensing tier the customer will not adopt',
+      ],
     ];
   }
 
-  List<List<String>> _hardGateRows(
-    List<_ComparisonCandidate> candidates,
-    String content,
-  ) {
-    final requiresHighPower = RegExp(
-      r'\b(wi[- ]?fi\s*7|upoe\+?|802\.3bt|class\s*[68]|60w|90w)\b',
-      caseSensitive: false,
-    ).hasMatch(content);
-    final requiresMultiGig = RegExp(
-      r'\b(multigig|mGig|2\.5g|5g|10g(?:base)?(?: access)?|10gig|wi[- ]?fi\s*7)\b',
-      caseSensitive: false,
-    ).hasMatch(content);
-    final hasLifecycleConcern = RegExp(
-      r'\b(eox|eol|eos|ldos|lifecycle|migration|replacement pid|verify ldos)\b',
-      caseSensitive: false,
-    ).hasMatch(content);
+  List<List<String>> _hardGateRows(_ComparisonProfile profile) {
     final rows = <List<String>>[];
-    final targetCandidates = candidates.isEmpty
+    final targetCandidates = profile.candidates.isEmpty
         ? const [
             _ComparisonCandidate(
               product: 'TBD',
@@ -523,47 +642,90 @@ class ProductComparisonWorkbookBuilder {
               recommendation: 'Review',
             ),
           ]
-        : candidates.take(12);
+        : profile.candidates.take(12);
     for (final candidate in targetCandidates) {
       rows.addAll([
         [
           candidate.product,
           'Power / UPOE',
-          requiresHighPower ? 'Wi-Fi 7 / UPOE / 802.3bt signal' : 'TBD',
-          requiresHighPower
+          profile.requiresHighPower ? 'Wi-Fi 7 / UPOE / 802.3bt signal' : 'TBD',
+          profile.requiresHighPower
               ? candidate.supportsHighPower
                     ? 'Review pass'
                     : 'At risk'
               : 'Needs input',
-          requiresHighPower
+          profile.requiresHighPower
               ? 'Reject if sourced data does not prove required UPOE/UPOE+ power budget.'
               : 'Collect AP power class before final recommendation.',
         ],
         [
           candidate.product,
           'Multigig access',
-          requiresMultiGig ? 'mGig / high-speed access signal' : 'TBD',
-          requiresMultiGig
+          profile.requiresMultiGig ? 'mGig / high-speed access signal' : 'TBD',
+          profile.requiresMultiGig
               ? candidate.supportsMultiGig
                     ? 'Review pass'
                     : 'At risk'
               : 'Needs input',
-          requiresMultiGig
+          profile.requiresMultiGig
               ? 'Reject if AP/client access speed requires 2.5/5/10G and candidate lacks it.'
               : 'Collect AP access speed before final recommendation.',
         ],
         [
           candidate.product,
           'Lifecycle runway',
-          hasLifecycleConcern ? 'Lifecycle/EoX concern detected' : 'TBD',
+          profile.hasLifecycleConcern
+              ? 'Lifecycle/EoX concern detected'
+              : 'TBD',
           candidate.lifecycleNeedsValidation
               ? 'Needs validation'
               : 'Review pass',
           'Reject stale suggestedMigrationPid or migration candidates when newer current models better fit requirements.',
         ],
+        [
+          candidate.product,
+          'Operational / licensing fit',
+          profile.hasOperationalSignal
+              ? 'Management/licensing/support signal'
+              : 'TBD',
+          candidate.hasOperationalEvidence ? 'Review pass' : 'Needs validation',
+          'Reject if required license, support tier, or operating model conflicts with customer standards.',
+        ],
       ]);
     }
     return rows;
+  }
+
+  List<List<String>> _sourceConfidenceRows(_ComparisonProfile profile) {
+    final candidates = profile.candidates.isEmpty
+        ? const [
+            _ComparisonCandidate(
+              product: 'TBD',
+              capabilities: 'Add sourced capability facts.',
+              constraints: 'Validate hard requirements.',
+              lifecycle: 'Needs lifecycle validation',
+              fitScore: 'TBD',
+              recommendation: 'Review',
+            ),
+          ]
+        : profile.candidates.take(24);
+    return candidates
+        .map(
+          (candidate) => [
+            candidate.product,
+            candidate.hasCapabilityEvidence
+                ? 'Capability facts present, still verify source'
+                : 'Needs official datasheet / portfolio facts',
+            candidate.lifecycleNeedsValidation
+                ? 'Needs official lifecycle source'
+                : 'Lifecycle signal present, verify checked date',
+            candidate.hasCommercialEvidence
+                ? 'Commercial/availability signal present'
+                : 'Needs pricing, availability, licensing, support validation',
+            candidate.sourceConfidence,
+          ],
+        )
+        .toList(growable: false);
   }
 
   List<List<String>> _shortlistRows(List<_ComparisonCandidate> candidates) {
@@ -592,11 +754,65 @@ class ProductComparisonWorkbookBuilder {
     ];
   }
 
-  List<List<String>> _replacementCautionRows(String content) {
-    final mentionsEox = RegExp(
-      r'\b(eox|eol|eos|ldos|replacement pid|migration)\b',
-      caseSensitive: false,
-    ).hasMatch(content);
+  List<List<String>> _migrationSuitabilityRows(_ComparisonProfile profile) {
+    final candidates = profile.candidates.isEmpty
+        ? const [
+            _ComparisonCandidate(
+              product: 'TBD',
+              capabilities: 'Add sourced capability facts.',
+              constraints: 'Validate hard requirements.',
+              lifecycle: 'Needs lifecycle validation',
+              fitScore: 'TBD',
+              recommendation: 'Review',
+            ),
+          ]
+        : profile.candidates.take(24);
+    return candidates
+        .map(
+          (candidate) => [
+            candidate.product,
+            profile.hasMigrationSignal
+                ? 'Current candidate or suggestedMigrationPid comparator'
+                : 'Current portfolio candidate',
+            'All hard gates pass with sourced capability, lifecycle, licensing, and customer requirement evidence.',
+            profile.requiresHighPower
+                ? 'Fails UPOE/UPOE+, mGig, power budget, lifecycle runway, or operational fit.'
+                : 'Fails sourced capability, lifecycle runway, support, or customer operating model.',
+            candidate.migrationSuitability(profile),
+          ],
+        )
+        .toList(growable: false);
+  }
+
+  List<List<String>> _lifecycleRunwayRows(_ComparisonProfile profile) {
+    final candidates = profile.candidates.isEmpty
+        ? const [
+            _ComparisonCandidate(
+              product: 'TBD',
+              capabilities: 'Add sourced capability facts.',
+              constraints: 'Validate hard requirements.',
+              lifecycle: 'Needs lifecycle validation',
+              fitScore: 'TBD',
+              recommendation: 'Review',
+            ),
+          ]
+        : profile.candidates.take(24);
+    return candidates
+        .map(
+          (candidate) => [
+            candidate.product,
+            candidate.lifecycle,
+            'Does official lifecycle/support runway meet the customer planning horizon?',
+            candidate.lifecycleNeedsValidation
+                ? 'Could recommend stale or unsupported platform'
+                : 'Validate runway and current portfolio anyway',
+            'Account team / architecture reviewer',
+          ],
+        )
+        .toList(growable: false);
+  }
+
+  List<List<String>> _replacementCautionRows(_ComparisonProfile profile) {
     return [
       [
         'EoX replacement PID',
@@ -612,11 +828,78 @@ class ProductComparisonWorkbookBuilder {
       ],
       [
         'Current portfolio',
-        mentionsEox
+        profile.hasMigrationSignal
             ? 'EoX language detected; superseding current models must be considered'
             : 'Always compare against current available model families',
         'Portfolio drift can make older migration guidance stale',
         'Use current datasheets/catalog facts and checked date',
+      ],
+    ];
+  }
+
+  List<List<String>> _implementationImpactRows(_ComparisonProfile profile) {
+    return [
+      [
+        'Access layer',
+        profile.requiresHighPower
+            ? 'May require UPOE/UPOE+, mGig access, higher PoE budgets, and uplink review.'
+            : 'Depends on AP/client density, PoE class, access speed, and closet distribution.',
+        'AP model, per-closet counts, power budget, and access port requirements.',
+        'Access switch is selected by port count only and fails AP requirements.',
+      ],
+      [
+        'WAN / security',
+        profile.requiresThroughput
+            ? 'Throughput and security services can change platform family or license tier.'
+            : 'WAN/security sizing remains dependent on service mix and HA mode.',
+        'Enabled services, inspected throughput, circuit mix, failover behavior.',
+        'Platform meets carrier rate but fails with inspection or HA enabled.',
+      ],
+      [
+        'Operations',
+        profile.hasOperationalSignal
+            ? 'Operating model is part of the comparison.'
+            : 'Operating model still needs to be captured.',
+        'Cloud/controller/DNA operations, licensing, support, and customer standards.',
+        'Recommendation is technically valid but operationally rejected.',
+      ],
+      [
+        'Lifecycle / migration',
+        profile.hasMigrationSignal
+            ? 'Migration hints must be compared against current portfolio candidates.'
+            : 'Lifecycle still needs official checked-date validation.',
+        'Official lifecycle source, current catalog, support runway, customer timeline.',
+        'Customer receives a stale recommendation or short support runway.',
+      ],
+    ];
+  }
+
+  List<List<String>> _talkingPointRows(_ComparisonProfile profile) {
+    final best = profile.best;
+    return [
+      [
+        'Recommendation framing',
+        best == null
+            ? 'We need source-backed candidate facts before naming a primary recommendation.'
+            : '${best.product} is the current shortlist leader, pending sourced hard-gate validation.',
+        'Do not present fit score as final approval without datasheet, lifecycle, and customer requirement evidence.',
+      ],
+      [
+        'Replacement PID caveat',
+        'Lifecycle replacement PIDs are migration hints; final choice must satisfy current requirements.',
+        'Do not treat EoX replacement PID as the final best model.',
+      ],
+      [
+        'Wi-Fi 7 / UPOE caveat',
+        profile.requiresHighPower
+            ? 'Because Wi-Fi 7/UPOE is in scope, power budget and mGig access are hard gates.'
+            : 'AP model and power draw still need validation before final access switching selection.',
+        'Do not recommend access switching without AP power and port-speed facts.',
+      ],
+      [
+        'Customer ask',
+        'Ask the customer to confirm must-have constraints, operating model, lifecycle horizon, and commercial limits.',
+        'Do not assume budget, licensing, or operational preferences from product tables alone.',
       ],
     ];
   }
@@ -779,6 +1062,122 @@ class ProductComparisonWorkbookBuilder {
   }
 }
 
+class _ComparisonProfile {
+  final List<_ComparisonCandidate> candidates;
+  final List<List<String>> requirements;
+  final String content;
+  final bool requiresHighPower;
+  final bool requiresMultiGig;
+  final bool requiresThroughput;
+  final bool hasLifecycleConcern;
+  final bool hasMigrationSignal;
+  final bool hasOperationalSignal;
+  final bool hasSourceEvidence;
+
+  const _ComparisonProfile({
+    required this.candidates,
+    required this.requirements,
+    required this.content,
+    required this.requiresHighPower,
+    required this.requiresMultiGig,
+    required this.requiresThroughput,
+    required this.hasLifecycleConcern,
+    required this.hasMigrationSignal,
+    required this.hasOperationalSignal,
+    required this.hasSourceEvidence,
+  });
+
+  factory _ComparisonProfile.from({
+    required List<_ComparisonCandidate> candidates,
+    required List<List<String>> requirements,
+    required String content,
+  }) {
+    bool has(RegExp pattern) => pattern.hasMatch(content);
+    return _ComparisonProfile(
+      candidates: candidates,
+      requirements: requirements,
+      content: content,
+      requiresHighPower: has(
+        RegExp(
+          r'\b(wi[- ]?fi\s*7|upoe\+?|802\.3bt|class\s*[68]|60w|90w)\b',
+          caseSensitive: false,
+        ),
+      ),
+      requiresMultiGig: has(
+        RegExp(
+          r'\b(multigig|mGig|2\.5g|5g|10g(?:base)?(?: access)?|10gig|wi[- ]?fi\s*7)\b',
+          caseSensitive: false,
+        ),
+      ),
+      requiresThroughput: has(
+        RegExp(
+          r'\b(throughput|wan|sd-?wan|inspection|gbps|mbps|firewall|security services?)\b',
+          caseSensitive: false,
+        ),
+      ),
+      hasLifecycleConcern: has(
+        RegExp(
+          r'\b(eox|eol|eos|ldos|lifecycle|migration|replacement pid|verify ldos)\b',
+          caseSensitive: false,
+        ),
+      ),
+      hasMigrationSignal: has(
+        RegExp(
+          r'\b(eox|replacement pid|migration pid|migration|suggestedmigrationpid)\b',
+          caseSensitive: false,
+        ),
+      ),
+      hasOperationalSignal: has(
+        RegExp(
+          r'\b(license|licensing|support|cloud-managed|controller|dna|dashboard|operations?|standardization)\b',
+          caseSensitive: false,
+        ),
+      ),
+      hasSourceEvidence: has(
+        RegExp(
+          r'\b(datasheet|source|official|cisco|portfolio|catalog|checked|eox/api)\b',
+          caseSensitive: false,
+        ),
+      ),
+    );
+  }
+
+  List<_ComparisonCandidate> get ranked {
+    return [...candidates]
+      ..sort((a, b) => b.numericFit.compareTo(a.numericFit));
+  }
+
+  _ComparisonCandidate? get best => ranked.isEmpty ? null : ranked.first;
+
+  _ComparisonCandidate? get runnerUp {
+    final values = ranked;
+    return values.length < 2 ? null : values[1];
+  }
+
+  String get requirementPressure {
+    final signals = <String>[
+      if (requiresHighPower) 'UPOE/high-power AP',
+      if (requiresMultiGig) 'mGig access',
+      if (requiresThroughput) 'throughput/WAN',
+      if (hasLifecycleConcern) 'lifecycle runway',
+      if (hasOperationalSignal) 'operations/licensing',
+    ];
+    if (signals.isEmpty) return 'Low - requirements still need discovery';
+    return signals.join(', ');
+  }
+
+  String get evidenceQuality {
+    if (hasSourceEvidence &&
+        candidates.any((candidate) => candidate.hasCapabilityEvidence)) {
+      return 'Medium - source signals present, still needs checked-date validation';
+    }
+    if (hasSourceEvidence) {
+      return 'Low/Medium - source language present but capability rows need validation';
+    }
+    return 'Low - official source evidence still required';
+  }
+}
+
 class _ComparisonCandidate {
   final String product;
   final String capabilities;
@@ -854,5 +1253,51 @@ class _ComparisonCandidate {
     return RegExp(
       r'\b(verify|ldos|eol|eos|eox|lifecycle|support|migration|stale)\b',
     ).hasMatch(text);
+  }
+
+  bool get hasCapabilityEvidence {
+    final text = '$capabilities $constraints'.toLowerCase();
+    return RegExp(
+      r'\b(upoe|poe|mgig|multigig|uplink|throughput|ports?|stack|ha|10g|25g|40g|100g|license|licensing)\b',
+    ).hasMatch(text);
+  }
+
+  bool get hasOperationalEvidence {
+    final text = '$capabilities $constraints $recommendation'.toLowerCase();
+    return RegExp(
+      r'\b(license|licensing|cloud|dashboard|controller|dna|support|operations?|standard)\b',
+    ).hasMatch(text);
+  }
+
+  bool get hasCommercialEvidence {
+    final text = '$constraints $recommendation'.toLowerCase();
+    return RegExp(
+      r'\b(price|pricing|cost|commercial|availability|lead[- ]?time|licens|support)\b',
+    ).hasMatch(text);
+  }
+
+  String get sourceConfidence {
+    var score = 0;
+    if (hasCapabilityEvidence) score++;
+    if (!lifecycleNeedsValidation) score++;
+    if (hasOperationalEvidence || hasCommercialEvidence) score++;
+    return switch (score) {
+      >= 3 => 'Medium',
+      2 => 'Low/Medium',
+      _ => 'Low',
+    };
+  }
+
+  String migrationSuitability(_ComparisonProfile profile) {
+    if (profile.requiresHighPower && !supportsHighPower) {
+      return 'At risk - high-power AP gate not proven';
+    }
+    if (profile.requiresMultiGig && !supportsMultiGig) {
+      return 'At risk - mGig gate not proven';
+    }
+    if (lifecycleNeedsValidation) {
+      return 'Conditional - lifecycle/source validation required';
+    }
+    return 'Candidate for shortlist, pending official source validation';
   }
 }

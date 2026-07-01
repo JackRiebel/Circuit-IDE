@@ -235,31 +235,36 @@ Here is the data.
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(artifact.fileName, endsWith('.xlsx'));
       expect(artifact.summary, contains('product comparison matrix'));
-      expect(artifact.sheetCount, greaterThanOrEqualTo(5));
+      expect(artifact.summary, contains('executive decision'));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(18));
       expect(artifact.previewRows.first, [
-        'Product / Model',
-        'Positioning',
-        'Key capabilities',
-        'Constraints / caveats',
-        'Lifecycle / risk',
-        'Fit score',
-        'Recommendation',
+        'Decision Signal',
+        'Current Answer',
+        'Why It Matters',
+        'Next Action',
       ]);
       final bytes = File(artifact.filePath).readAsBytesSync();
       expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
       final packageText = String.fromCharCodes(bytes);
+      expect(packageText, contains('Executive Decision'));
       expect(packageText, contains('Comparison Matrix'));
       expect(packageText, contains('Decision Summary'));
       expect(packageText, contains('Fit Scoring'));
       expect(packageText, contains('Requirements'));
       expect(packageText, contains('Requirement Gates'));
       expect(packageText, contains('Hard Gate Evaluation'));
+      expect(packageText, contains('Source Confidence'));
       expect(packageText, contains('Scored Shortlist'));
+      expect(packageText, contains('Migration Suitability'));
+      expect(packageText, contains('Lifecycle Runway'));
       expect(packageText, contains('Alternatives'));
       expect(packageText, contains('Replacement Cautions'));
+      expect(packageText, contains('Implementation Impact'));
+      expect(packageText, contains('Customer Talking Points'));
       expect(packageText, contains('Validation Checklist'));
       expect(packageText, contains('Sources Needed'));
       expect(packageText, contains('Assumptions'));
+      expect(packageText, contains('Source 1'));
       expect(packageText, contains('C9300-48P'));
       expect(packageText, contains('Meraki MS355'));
       expect(packageText, contains('Wi-Fi 7'));
@@ -269,6 +274,14 @@ Here is the data.
       expect(packageText, contains('Multigig access'));
       expect(packageText, contains('hard-gate compliance'));
       expect(packageText, contains('Official datasheet'));
+      expect(
+        packageText,
+        contains('Current candidate or suggestedMigrationPid comparator'),
+      );
+      expect(
+        packageText,
+        contains('Do not treat EoX replacement PID as the final best model'),
+      );
     },
   );
 
