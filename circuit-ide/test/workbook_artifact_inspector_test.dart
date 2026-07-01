@@ -58,6 +58,7 @@ void main() {
           'WAN Throughput',
           'HA Growth',
           'Licensing Support',
+          'Sizing Audit',
           'Requirement Gates',
           'Candidate Validation',
           'Recommendations',
@@ -108,6 +109,18 @@ void main() {
           'Licensing Support',
           'Licensing / Support Check',
         ),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Sizing Audit', 'Decision readiness'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Sizing Audit', 'Source evidence'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Sizing Audit', 'migration hint only'),
         isTrue,
       );
       expect(

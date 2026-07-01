@@ -202,6 +202,12 @@ Here is the data.
     expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(2));
     expect(artifact.metadata['validationCheckCount'], 5);
     expect(artifact.metadata['assumptionCount'], 2);
+    expect(artifact.metadata['hasSizingAudit'], isTrue);
+    expect(artifact.metadata['sizingAuditCount'], 8);
+    expect(artifact.metadata['sizingAuditScore'], greaterThanOrEqualTo(60));
+    expect(artifact.metadata['sizingAuditReadyCount'], greaterThanOrEqualTo(4));
+    expect(artifact.metadata['hasSourceEvidence'], isTrue);
+    expect(artifact.metadata['hasAssumptionCoverage'], isTrue);
     expect(artifact.metadata['users'], '500');
     expect(artifact.metadata['accessPoints'], '90');
     expect(artifact.metadata['switches'], '6');
@@ -246,6 +252,7 @@ Here is the data.
     expect(packageText, contains('WAN Throughput'));
     expect(packageText, contains('HA Growth'));
     expect(packageText, contains('Licensing Support'));
+    expect(packageText, contains('Sizing Audit'));
     expect(packageText, contains('Requirement Gates'));
     expect(packageText, contains('Candidate Validation'));
     expect(packageText, contains('Recommendations'));
@@ -263,6 +270,9 @@ Here is the data.
     expect(packageText, contains('Access switch shortlist'));
     expect(packageText, contains('Per access switch'));
     expect(packageText, contains('Licensing / Support Check'));
+    expect(packageText, contains('Source evidence'));
+    expect(packageText, contains('Decision readiness'));
+    expect(packageText, contains('migration hint only'));
     expect(
       packageText,
       contains('False precision from incomplete customer data'),

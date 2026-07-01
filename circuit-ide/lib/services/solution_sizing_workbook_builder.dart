@@ -137,6 +137,24 @@ class SolutionSizingWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Sizing Audit',
+        rows: [
+          const [
+            'Audit Area',
+            'Evidence Signal',
+            'Readiness',
+            'Score',
+            'Required Follow-Up',
+          ],
+          ..._sizingAuditRows(
+            profile: profile,
+            requirementRows: requirements,
+            assumptionRows: assumptions,
+            sourceSheetCount: sourceTables.length,
+          ),
+        ],
+      ),
+      WorkbookTable(
         name: 'Requirement Gates',
         rows: [
           const [
@@ -247,9 +265,16 @@ class SolutionSizingWorkbookBuilder {
     final validationRows = _rowsFor(tables, 'Validation').skip(1).toList();
     final assumptionRows = _rowsFor(tables, 'Assumptions').skip(1).toList();
     final decisionRows = _rowsFor(tables, 'Decision Summary').skip(1).toList();
+    final sizingAuditRows = _rowsFor(tables, 'Sizing Audit').skip(1).toList();
     final sourceSheetCount = tables
         .where((table) => table.name.toLowerCase().startsWith('source '))
         .length;
+    final sizingAuditScore = _averageAuditScore(sizingAuditRows);
+    final sizingAuditReadyCount = sizingAuditRows.where((row) {
+      if (row.length < 3) return false;
+      return row[2].toLowerCase().contains('ready') ||
+          row[2].toLowerCase().contains('captured');
+    }).length;
 
     return {
       'artifact': 'solution_sizing_workbook',
@@ -266,6 +291,12 @@ class SolutionSizingWorkbookBuilder {
       'validationCheckCount': validationRows.length,
       'assumptionCount': assumptionRows.length,
       'decisionCount': decisionRows.length,
+      'sizingAuditCount': sizingAuditRows.length,
+      'sizingAuditScore': sizingAuditScore,
+      'sizingAuditReadyCount': sizingAuditReadyCount,
+      'hasSizingAudit': _hasSheet(tables, 'Sizing Audit'),
+      'hasSourceEvidence': sourceSheetCount > 0,
+      'hasAssumptionCoverage': assumptionRows.isNotEmpty,
       'users': _requirementValue(requirementRows, 'Users'),
       'accessPoints': _requirementValue(requirementRows, 'Access points'),
       'switches': _requirementValue(requirementRows, 'Switches'),
@@ -315,6 +346,17 @@ class SolutionSizingWorkbookBuilder {
       if (row.length < 4) return false;
       return row[3].toLowerCase().contains(needle);
     }).length;
+  }
+
+  int _averageAuditScore(List<List<String>> rows) {
+    final scores = rows
+        .where((row) => row.length >= 4)
+        .map((row) => int.tryParse(row[3]))
+        .whereType<int>()
+        .toList(growable: false);
+    if (scores.isEmpty) return 0;
+    final total = scores.fold<int>(0, (sum, value) => sum + value);
+    return (total / scores.length).round();
   }
 
   bool _hasSheet(List<WorkbookTable> tables, String name) {
@@ -772,6 +814,131 @@ class SolutionSizingWorkbookBuilder {
         'Customer cannot operate the recommended architecture.',
         'Customer decision',
       ],
+    ];
+  }
+
+  List<List<String>> _sizingAuditRows({
+    required _SizingProfile profile,
+    required List<List<String>> requirementRows,
+    required List<List<String>> assumptionRows,
+    required int sourceSheetCount,
+  }) {
+    List<String> row({
+      required String area,
+      required String signal,
+      required bool ready,
+      required int score,
+      required String action,
+    }) {
+      return [
+        area,
+        signal,
+        ready ? 'Ready' : 'Needs validation',
+        '$score',
+        action,
+      ];
+    }
+
+    final hasCoreDemand =
+        profile.users != null &&
+        profile.accessPoints != null &&
+        profile.switches != null;
+    final hasWan = profile.wanMbps != null;
+    final hasGrowth = profile.growthPercent != null;
+    final hasPowerSignal =
+        profile.requiresHighPowerAp ||
+        _requirementValue(requirementRows, 'PoE').isNotEmpty;
+    final hasSourceEvidence = sourceSheetCount > 0;
+    return [
+      row(
+        area: 'Core demand',
+        signal:
+            '${profile.usersText} users / ${profile.accessPointsText} APs / ${profile.switchesText} switches',
+        ready: hasCoreDemand,
+        score: hasCoreDemand ? 100 : 45,
+        action: hasCoreDemand
+            ? 'Validate counts by site and closet.'
+            : 'Capture users, APs, and switch counts before sizing.',
+      ),
+      row(
+        area: 'Power and access',
+        signal: profile.requiresHighPowerAp
+            ? '${profile.wifiGenerationText}; UPOE/mGig hard gate'
+            : profile.wifiGenerationText,
+        ready: hasPowerSignal,
+        score: profile.requiresHighPowerAp
+            ? 90
+            : hasPowerSignal
+            ? 75
+            : 35,
+        action: profile.requiresHighPowerAp
+            ? 'Validate per-switch UPOE budget, AP draw, mGig ports, and uplinks.'
+            : 'Confirm AP generation, PoE class, and access speed requirements.',
+      ),
+      row(
+        area: 'WAN / security',
+        signal: profile.wanText,
+        ready: hasWan,
+        score: hasWan ? 80 : 30,
+        action: hasWan
+            ? 'Confirm inspected throughput with enabled security services.'
+            : 'Capture WAN bandwidth, security services, and failover behavior.',
+      ),
+      row(
+        area: 'Growth and HA',
+        signal:
+            '${profile.growthText}; ${profile.requiresHighAvailability ? 'HA signal captured' : 'HA decision missing'}',
+        ready: hasGrowth && profile.requiresHighAvailability,
+        score: hasGrowth && profile.requiresHighAvailability
+            ? 90
+            : hasGrowth || profile.requiresHighAvailability
+            ? 65
+            : 35,
+        action:
+            'Confirm growth horizon, redundancy tier, power redundancy, and outage tolerance.',
+      ),
+      row(
+        area: 'Lifecycle / support',
+        signal: 'LDOS/EoX/current portfolio validation required',
+        ready: false,
+        score: 45,
+        action:
+            'Use official lifecycle sources; treat EoX replacement PID as a migration hint only.',
+      ),
+      row(
+        area: 'Assumptions',
+        signal: assumptionRows.isEmpty
+            ? 'No explicit assumptions'
+            : '${assumptionRows.length} assumption${assumptionRows.length == 1 ? '' : 's'} listed',
+        ready: assumptionRows.isNotEmpty,
+        score: assumptionRows.isNotEmpty ? 85 : 35,
+        action: assumptionRows.isNotEmpty
+            ? 'Review each assumption with the customer owner.'
+            : 'Document scope, units, source freshness, and unknowns.',
+      ),
+      row(
+        area: 'Source evidence',
+        signal: hasSourceEvidence
+            ? '$sourceSheetCount source sheet${sourceSheetCount == 1 ? '' : 's'} attached'
+            : 'No source sheets attached',
+        ready: hasSourceEvidence,
+        score: hasSourceEvidence ? 80 : 25,
+        action: hasSourceEvidence
+            ? 'Confirm source freshness and authority before final recommendation.'
+            : 'Attach inventory, datasheets, lifecycle, and customer source data.',
+      ),
+      row(
+        area: 'Decision readiness',
+        signal: profile.decisionReadiness,
+        ready: profile.decisionReadiness.startsWith('High'),
+        score: profile.decisionReadiness.startsWith('High')
+            ? 90
+            : profile.decisionReadiness.startsWith('Medium')
+            ? 65
+            : 35,
+        action:
+            'Do not produce final BOM until hard gates and source evidence are closed.',
+      ),
     ];
   }
 
