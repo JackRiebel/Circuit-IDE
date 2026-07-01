@@ -405,6 +405,94 @@ Executive summary for a customer handoff.
     },
   );
 
+  test(
+    'architecture review prompt creates a shaped DOCX review pack',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create an architecture review pack for this campus design',
+            content: '''
+# Campus Architecture Review
+
+Architecture review for a campus refresh with WAN, access, wireless, and security scope.
+
+## Current State
+- Dual WAN exists but failover evidence is incomplete.
+- Access switching needs PoE and uplink validation.
+
+## Design Objectives
+- Improve resiliency across WAN and campus access.
+- Support Wi-Fi 7 growth with validated power and uplink budgets.
+
+## Findings
+- WAN failover has not been tested with business-critical applications.
+- PoE budget could constrain Wi-Fi 7 AP deployment.
+- Security segmentation needs confirmation before rollout.
+
+## Risks
+- Unknown PoE headroom can delay access-layer readiness.
+- Missing failover validation creates availability risk.
+
+## Recommendations
+- Run WAN failover testing and capture results.
+- Validate PoE, multigig, and uplink capacity before final model choice.
+- Confirm segmentation and logging requirements with security owner.
+
+## Validation
+- Test WAN failover during a maintenance window.
+- Review switch power budgets against AP inventory.
+- Confirm security policy and audit evidence.
+
+## Decisions
+- Use phased rollout with MDF first, then IDFs.
+
+## Assumptions
+- Customer AP count is current.
+
+## Sources
+- Workshop notes
+''',
+            turnId: 'turn-architecture-review',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.docx);
+      expect(artifact.status, GeneratedArtifactStatus.ready);
+      expect(artifact.fileName, endsWith('.docx'));
+      expect(artifact.summary, contains('architecture review pack'));
+      expect(artifact.summary, contains('findings matrix'));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(10));
+      expect(File(artifact.filePath).existsSync(), isTrue);
+      final bytes = File(artifact.filePath).readAsBytesSync();
+      expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+      final packageText = String.fromCharCodes(bytes);
+      expect(packageText, contains('word/document.xml'));
+      expect(packageText, contains('Campus Architecture Review'));
+      expect(packageText, contains('Architecture Review Summary'));
+      expect(packageText, contains('Current Architecture Snapshot'));
+      expect(packageText, contains('Design Objectives'));
+      expect(packageText, contains('Key Findings'));
+      expect(packageText, contains('Risk Register'));
+      expect(packageText, contains('Recommendations'));
+      expect(packageText, contains('Validation Plan'));
+      expect(packageText, contains('Decision Log'));
+      expect(packageText, contains('Architecture Findings Matrix'));
+      expect(packageText, contains('Risk And Mitigation Register'));
+      expect(packageText, contains('Recommendation Roadmap'));
+      expect(packageText, contains('Decision And Assumption Log'));
+      expect(packageText, contains('WAN failover has not been tested'));
+      expect(packageText, contains('Unknown PoE headroom'));
+      expect(packageText, contains('Validate PoE, multigig, and uplink'));
+      expect(packageText, contains('Business / technical owner'));
+      expect(packageText, contains('Workshop notes'));
+    },
+  );
+
   test('business case brief prompt creates a shaped DOCX artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));

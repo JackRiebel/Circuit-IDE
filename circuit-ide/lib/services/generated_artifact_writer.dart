@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'architecture_review_pack_builder.dart';
 import 'business_use_case_brief_builder.dart';
 import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
@@ -27,6 +28,7 @@ class GeneratedArtifactWriter {
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
   final SolutionSizingWorkbookBuilder solutionSizingBuilder;
+  final ArchitectureReviewPackBuilder architectureReviewBuilder;
   final BusinessUseCaseBriefBuilder businessUseCaseBuilder;
   final EvidencePackBuilder evidencePackBuilder;
 
@@ -40,6 +42,7 @@ class GeneratedArtifactWriter {
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
     this.solutionSizingBuilder = const SolutionSizingWorkbookBuilder(),
+    this.architectureReviewBuilder = const ArchitectureReviewPackBuilder(),
     this.businessUseCaseBuilder = const BusinessUseCaseBriefBuilder(),
     this.evidencePackBuilder = const EvidencePackBuilder(),
   });
@@ -164,6 +167,16 @@ class GeneratedArtifactWriter {
         document: documentForOutput,
       );
     }
+    if (architectureReviewBuilder.matches(prompt) &&
+        (requestedKind == GeneratedArtifactKind.docx ||
+            requestedKind == GeneratedArtifactKind.pdf ||
+            requestedKind == GeneratedArtifactKind.powerPoint)) {
+      documentForOutput = architectureReviewBuilder.build(
+        prompt: prompt,
+        content: content,
+        document: documentForOutput,
+      );
+    }
     if (evidencePackBuilder.matches(prompt) &&
         (requestedKind == GeneratedArtifactKind.docx ||
             requestedKind == GeneratedArtifactKind.pdf ||
@@ -179,13 +192,15 @@ class GeneratedArtifactWriter {
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
       final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
       final bytes = powerPointRenderer.render(documentForOutput);
+      final architectureReview = architectureReviewBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
         status: GeneratedArtifactStatus.ready,
         extension: 'pptx',
         bytes: bytes,
-        summary:
-            'Created a PowerPoint deck with $slideCount slides from the response structure.',
+        summary: architectureReview
+            ? 'Created an architecture review PowerPoint deck with $slideCount slides, findings, risks, recommendations, validation, assumptions, and sources.'
+            : 'Created a PowerPoint deck with $slideCount slides from the response structure.',
         previewRows: powerPointRenderer.previewRowsFor(documentForOutput),
         sheetCount: slideCount,
       );
@@ -194,6 +209,7 @@ class GeneratedArtifactWriter {
     if (requestedKind == GeneratedArtifactKind.docx) {
       final bytes = docxRenderer.render(documentForOutput);
       final businessUseCase = businessUseCaseBuilder.matches(prompt);
+      final architectureReview = architectureReviewBuilder.matches(prompt);
       final evidencePack = evidencePackBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.docx,
@@ -202,6 +218,8 @@ class GeneratedArtifactWriter {
         bytes: bytes,
         summary: businessUseCase
             ? 'Created a business use case brief with executive summary, prioritized use cases, solution mapping, stakeholder discovery, value metrics, next steps, assumptions, and sources.'
+            : architectureReview
+            ? 'Created an architecture review pack with findings matrix, risk register, recommendation roadmap, validation checklist, decisions, assumptions, and sources.'
             : evidencePack
             ? 'Created an evidence pack with claim-to-source matrix, source freshness register, unsupported-claim triage, confidence scorecard, assumptions, and follow-up checklist.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
@@ -213,13 +231,15 @@ class GeneratedArtifactWriter {
     if (requestedKind == GeneratedArtifactKind.pdf) {
       final bytes = pdfRenderer.render(documentForOutput);
       final pageCount = _pdfPageCount(bytes);
+      final architectureReview = architectureReviewBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.pdf,
         status: GeneratedArtifactStatus.ready,
         extension: 'pdf',
         bytes: bytes,
-        summary:
-            'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
+        summary: architectureReview
+            ? 'Created an architecture review PDF with findings, risks, recommendations, validation, assumptions, and sources.'
+            : 'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
         previewRows: pdfRenderer.previewRowsFor(
           documentForOutput,
           pageCount: pageCount,
