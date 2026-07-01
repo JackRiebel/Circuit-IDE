@@ -876,6 +876,44 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       registry.descriptorForPrompt('create an LDOS lifecycle report')?.id,
       'lifecycle_eox_report',
     );
+    expect(
+      registry.descriptorForPrompt('create a customer proposal report')?.id,
+      'docx_report',
+    );
+    expect(
+      registry.descriptorForPrompt('create an architecture review pack')?.id,
+      'architecture_review_pack',
+    );
+    expect(
+      registry.descriptorForPrompt('create an implementation plan')?.id,
+      'implementation_plan',
+    );
+    expect(
+      registry.descriptorForPrompt('create a post-work change summary')?.id,
+      'change_summary_diff_report',
+    );
+    expect(
+      registry
+          .descriptorForPrompt('create a final customer handoff report')
+          ?.id,
+      'pdf_report',
+    );
+    expect(
+      detectGeneratedArtifactKind('create a customer proposal report'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create an architecture review pack'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create an implementation plan'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create a markdown report'),
+      GeneratedArtifactKind.markdown,
+    );
   });
 
   test('CSV artifacts can export to a real XLSX workbook', () async {

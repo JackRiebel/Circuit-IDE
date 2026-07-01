@@ -70,7 +70,8 @@ class ArtifactTypeRegistry {
       id: 'architecture_review_pack',
       label: 'Architecture Review Pack',
       supportedKinds: [
-        GeneratedArtifactKind.report,
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.pdf,
         GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['findings', 'risks', 'recommendations'],
@@ -101,7 +102,8 @@ class ArtifactTypeRegistry {
       id: 'business_use_case_brief',
       label: 'Business Use Case Brief',
       supportedKinds: [
-        GeneratedArtifactKind.report,
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.pdf,
         GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['company research', 'use cases'],
@@ -110,8 +112,9 @@ class ArtifactTypeRegistry {
       id: 'implementation_plan',
       label: 'Implementation Plan',
       supportedKinds: [
+        GeneratedArtifactKind.docx,
         GeneratedArtifactKind.markdown,
-        GeneratedArtifactKind.report,
+        GeneratedArtifactKind.pdf,
       ],
       useCases: ['plan mode', 'approval review'],
     ),
@@ -119,8 +122,9 @@ class ArtifactTypeRegistry {
       id: 'change_summary_diff_report',
       label: 'Change Summary / Diff Report',
       supportedKinds: [
-        GeneratedArtifactKind.report,
+        GeneratedArtifactKind.docx,
         GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.pdf,
       ],
       useCases: ['post-work summary', 'verification'],
     ),
@@ -163,6 +167,13 @@ class ArtifactTypeRegistry {
         (descriptor) => descriptor.id == 'powerpoint_deck',
       );
     }
+    if (RegExp(
+      r'\b(pdf|final handoff|customer handoff)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'pdf_report',
+      );
+    }
     if (RegExp(r'\b(sizing workbook|size|sizing)\b').hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'solution_sizing_workbook',
@@ -193,6 +204,32 @@ class ArtifactTypeRegistry {
     if (RegExp(r'\b(evidence|citations?|sources?)\b').hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'evidence_pack',
+      );
+    }
+    if (RegExp(
+      r'\b(architecture review|design review|review pack|risk review|findings and recommendations)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'architecture_review_pack',
+      );
+    }
+    if (RegExp(
+      r'\b(implementation plan|deployment plan|migration plan|project plan)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'implementation_plan',
+      );
+    }
+    if (RegExp(
+      r'\b(change summary|diff report|verification summary|post[- ]work summary)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'change_summary_diff_report',
+      );
+    }
+    if (RegExp(r'\b(proposal|report|brief|document)\b').hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'docx_report',
       );
     }
     return null;

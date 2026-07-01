@@ -207,10 +207,13 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
-  if (RegExp(
-    r'\b(markdown|md|readme|report|brief|document)\b',
-  ).hasMatch(normalized)) {
+  if (RegExp(r'\b(markdown|md|readme)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.markdown;
+  }
+  if (RegExp(
+    r'\b(proposal|report|brief|document|architecture review|design review|review pack|implementation plan|deployment plan|migration plan|customer handoff|handoff report|findings report|recommendation report)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
   }
   return null;
 }
