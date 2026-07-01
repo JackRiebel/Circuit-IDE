@@ -1609,6 +1609,21 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['decisionSignOffGateCount'], 4);
     expect(artifact.metadata['tableCoverage'], '1 table packaged');
     expect(artifact.metadata['evidenceCoverage'], '1 source item captured');
+    expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
+    expect(artifact.metadata['externalHandoffManifestCount'], 9);
+    expect(
+      artifact.metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Architecture owner / customer sponsor',
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence status: High - sources and assumptions captured',
+        'Publishing gate: ready for stakeholder approval',
+        'Source package: 1 source item attached',
+        'Assumption package: 1 assumption captured',
+      ]),
+    );
     expect(
       artifact.metadata['appendixCoverage'],
       '1 assumption, 1 source item in appendices',
@@ -1677,6 +1692,19 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('Signature / Date'));
     expect(pdfText, contains('Handoff approval'));
     expect(pdfText, contains('/Keywords'));
+    expect(pdfText, contains('/CircuitExternalHandoffManifest'));
+    expect(
+      pdfText,
+      contains('Review owner: Architecture owner / customer sponsor'),
+    );
+    expect(
+      pdfText,
+      contains('Publishing gate: ready for stakeholder approval'),
+    );
+    expect(
+      pdfText,
+      contains('Evidence status: High - sources and assumptions captured'),
+    );
     expect(pdfText, contains('Access layer needs multigig validation'));
     expect(pdfText, contains('Sources / Evidence'));
     expect(pdfText, contains('Workshop notes'));

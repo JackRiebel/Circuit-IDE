@@ -35,6 +35,7 @@ class PdfArtifactInspection {
   final bool hasInfoKeywords;
   final bool hasCustomQualityInfo;
   final bool hasVisualVerificationManifest;
+  final bool hasExternalHandoffManifest;
   final bool hasRenderSafeTextFrame;
   final bool hasPageCountConsistency;
   final bool hasResolvableBookmarkDestinations;
@@ -75,6 +76,7 @@ class PdfArtifactInspection {
     required this.hasInfoKeywords,
     required this.hasCustomQualityInfo,
     required this.hasVisualVerificationManifest,
+    required this.hasExternalHandoffManifest,
     required this.hasRenderSafeTextFrame,
     required this.hasPageCountConsistency,
     required this.hasResolvableBookmarkDestinations,
@@ -118,6 +120,7 @@ class PdfArtifactInspection {
       hasInfoKeywords &&
       hasCustomQualityInfo &&
       hasVisualVerificationManifest &&
+      hasExternalHandoffManifest &&
       hasRenderSafeTextFrame &&
       hasResolvableBookmarkDestinations;
 
@@ -194,6 +197,11 @@ class PdfArtifactInspector {
           text.contains('/CircuitVisualVerification') &&
           text.contains('Render-safe text frame') &&
           text.contains('Bookmark destinations resolve'),
+      hasExternalHandoffManifest:
+          text.contains('/CircuitExternalHandoffManifest') &&
+          text.contains('Review owner:') &&
+          text.contains('Publishing gate:') &&
+          text.contains('Source package:'),
       hasRenderSafeTextFrame: _hasRenderSafeTextFrame(text),
       hasPageCountConsistency: _hasPageCountConsistency(text),
       hasResolvableBookmarkDestinations: _hasResolvableBookmarkDestinations(

@@ -70,6 +70,7 @@ void main() {
     expect(inspection.hasInfoKeywords, isTrue);
     expect(inspection.hasCustomQualityInfo, isTrue);
     expect(inspection.hasVisualVerificationManifest, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(inspection.hasRenderSafeTextFrame, isTrue);
     expect(inspection.hasPageCountConsistency, isTrue);
     expect(inspection.hasResolvableBookmarkDestinations, isTrue);
@@ -108,6 +109,16 @@ void main() {
     expect(text, contains('/CircuitAccessibilityPolicy'));
     expect(text, contains('/CircuitPublishingStatus'));
     expect(text, contains('/CircuitReviewPath'));
+    expect(text, contains('/CircuitExternalHandoffManifest'));
+    expect(
+      text,
+      contains('Review owner: Architecture owner / customer sponsor'),
+    );
+    expect(text, contains('Publishing gate: ready for stakeholder approval'));
+    expect(
+      text,
+      contains('Evidence status: High - sources and assumptions captured'),
+    );
     expect(text, contains('Page 1 of ${inspection.pageCount}'));
 
     final metadata = const PdfArtifactRenderer().metadataFor(document);
@@ -235,6 +246,21 @@ void main() {
       ]),
     );
     expect(metadata['publishingMetadataCount'], 6);
+    expect(metadata['hasExternalHandoffManifest'], isTrue);
+    expect(metadata['externalHandoffManifestCount'], 9);
+    expect(
+      metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Architecture owner / customer sponsor',
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence status: High - sources and assumptions captured',
+        'Publishing gate: ready for stakeholder approval',
+        'Source package: 1 source item attached',
+        'Assumption package: 1 assumption captured',
+      ]),
+    );
     expect(
       metadata['reportHandoffActions'],
       containsAll([

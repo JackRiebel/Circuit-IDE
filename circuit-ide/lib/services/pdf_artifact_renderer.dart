@@ -92,6 +92,11 @@ class PdfArtifactRenderer {
     );
     final reportEvidencePolicy = _reportEvidencePolicyFor(document);
     final publishingMetadata = _publishingMetadataFor(document);
+    final externalHandoffManifest = _externalHandoffManifestFor(
+      document,
+      handoffScore: handoffScore,
+      validationGaps: validationGaps,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'pdf_report',
@@ -145,6 +150,9 @@ class PdfArtifactRenderer {
       'reportEvidencePolicyCount': reportEvidencePolicy.length,
       'publishingMetadata': publishingMetadata,
       'publishingMetadataCount': publishingMetadata.length,
+      'externalHandoffManifest': externalHandoffManifest,
+      'externalHandoffManifestCount': externalHandoffManifest.length,
+      'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
       'appendixCoverage': _appendixCoverageFor(document),
       'validationGaps': validationGaps,
@@ -197,6 +205,10 @@ class PdfArtifactRenderer {
   Uint8List render(ArtifactDocument document) {
     final pages = _paginate(_itemsFor(document));
     final outlineEntries = _outlineEntries(document);
+    final validationGaps = _validationGapsFor(document);
+    final handoffScore = _handoffScoreFor(
+      _handoffScorecardRows(document).skip(1).toList(),
+    );
     final objects = <int, List<int>>{};
     final pageIds = <int>[];
     objects[3] = _bytes(
@@ -216,7 +228,8 @@ class PdfArtifactRenderer {
       '/CircuitReportEvidencePolicy (${_pdfText(_reportEvidencePolicyFor(document).join('; '))}) '
       '/CircuitAccessibilityPolicy (${_pdfText('Readable type scale, explicit table grid, bookmark outline, page footer, source appendix support.')}) '
       '/CircuitPublishingStatus (${_pdfText(_handoffStatus(document))}) '
-      '/CircuitReviewPath (${_pdfText(_reviewPathFor(document))}) >>',
+      '/CircuitReviewPath (${_pdfText(_reviewPathFor(document))}) '
+      '/CircuitExternalHandoffManifest (${_pdfText(_externalHandoffManifestFor(document, handoffScore: handoffScore, validationGaps: validationGaps).join('; '))}) >>',
     );
 
     for (var i = 0; i < pages.length; i++) {
@@ -1394,6 +1407,27 @@ class PdfArtifactRenderer {
       'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
       'Evidence confidence: ${_evidenceConfidenceFor(document)}',
       'Publishing status: ${_handoffStatus(document)}',
+    ];
+  }
+
+  List<String> _externalHandoffManifestFor(
+    ArtifactDocument document, {
+    required int handoffScore,
+    required List<String> validationGaps,
+  }) {
+    final publishingGate = validationGaps.isEmpty
+        ? 'ready for stakeholder approval'
+        : 'resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'}';
+    return [
+      'Review owner: ${_decisionOwner(document)}',
+      'Report type: ${_reportTypeFor(document)}',
+      'Review path: ${_reviewPathFor(document)}',
+      'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
+      'Evidence status: ${_evidenceConfidenceFor(document)}',
+      'Publishing gate: $publishingGate',
+      'Decision ask: ${_decisionAskFor(document)}',
+      'Source package: ${document.citations.isEmpty ? 'sources missing' : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached'}',
+      'Assumption package: ${document.assumptions.isEmpty ? 'assumptions missing' : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'}',
     ];
   }
 
