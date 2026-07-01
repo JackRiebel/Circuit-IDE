@@ -98,7 +98,12 @@ Short executive summary for the customer.
       expect(artifact.metadata['agendaItems'], contains('Current State'));
       expect(
         artifact.metadata['slideFamilies'],
-        containsAll(['Opening', 'Agenda', 'Decision snapshot']),
+        containsAll([
+          'Opening',
+          'Agenda',
+          'Decision snapshot',
+          'Publishing gate',
+        ]),
       );
       expect(
         artifact.metadata['slidePreview'],
@@ -123,6 +128,8 @@ Short executive summary for the customer.
       expect(artifact.metadata['hasDecisionSnapshot'], isTrue);
       expect(artifact.metadata['hasStakeholderAlignment'], isTrue);
       expect(artifact.metadata['hasRoadmap'], isTrue);
+      expect(artifact.metadata['hasPublishingGateSlide'], isTrue);
+      expect(artifact.metadata['publishingGateSlideCount'], 1);
       expect(artifact.metadata['hasTableSlides'], isTrue);
       expect(artifact.metadata['hasSourcesSlide'], isTrue);
       expect(artifact.metadata['hasCustomerReadyDeck'], isTrue);
@@ -160,6 +167,9 @@ Short executive summary for the customer.
       expect(packageText, contains('Recommendation card'));
       expect(packageText, contains('Roadmap timeline'));
       expect(packageText, contains('Assumptions &amp; Sources'));
+      expect(packageText, contains('Review &amp; Publishing Gate'));
+      expect(packageText, contains('Customer-ready checkpoint'));
+      expect(packageText, contains('CircuitPublishingGate'));
       expect(packageText, contains('Appendix: Handoff Checklist'));
       expect(packageText, contains('Slide 1 of'));
       expect(packageText, contains('Customer workshop notes'));

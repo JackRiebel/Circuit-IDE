@@ -29,6 +29,8 @@ class PowerPointArtifactInspection {
   final bool hasEnterpriseBrandPill;
   final bool hasImplementationRoadmap;
   final bool hasRoadmapTimeline;
+  final bool hasPublishingGate;
+  final bool hasPublishingGateLayout;
   final bool hasClosingDecisionAsk;
   final bool hasTableSlide;
   final bool hasAppendix;
@@ -70,6 +72,8 @@ class PowerPointArtifactInspection {
     required this.hasEnterpriseBrandPill,
     required this.hasImplementationRoadmap,
     required this.hasRoadmapTimeline,
+    required this.hasPublishingGate,
+    required this.hasPublishingGateLayout,
     required this.hasClosingDecisionAsk,
     required this.hasTableSlide,
     required this.hasAppendix,
@@ -112,6 +116,8 @@ class PowerPointArtifactInspection {
       hasEnterpriseBrandPill &&
       hasImplementationRoadmap &&
       hasRoadmapTimeline &&
+      hasPublishingGate &&
+      hasPublishingGateLayout &&
       hasClosingDecisionAsk &&
       hasTableSlide &&
       hasAppendix &&
@@ -222,6 +228,14 @@ class PowerPointArtifactInspector {
       hasRoadmapTimeline:
           text.contains('Roadmap timeline') &&
           text.contains('Roadmap phase marker'),
+      hasPublishingGate:
+          text.contains('Review &amp; Publishing Gate') ||
+          slideTypes.contains('Publishing Gate'),
+      hasPublishingGateLayout:
+          text.contains('Customer-ready checkpoint') &&
+          text.contains('CircuitPublishingGate') &&
+          text.contains('Visual QA') &&
+          text.contains('External handoff'),
       hasClosingDecisionAsk:
           text.contains('Decision Ask &amp; Next Steps') ||
           slideTypes.contains('Close'),

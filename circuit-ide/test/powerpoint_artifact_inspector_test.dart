@@ -60,6 +60,7 @@ void main() {
         'Takeaways',
         'Section',
         'Roadmap',
+        'Publishing Gate',
         'Close',
         'Table',
         'Appendix',
@@ -74,6 +75,8 @@ void main() {
     expect(inspection.hasEnterpriseBrandPill, isTrue);
     expect(inspection.hasSectionDividerLayout, isTrue);
     expect(inspection.hasRoadmapTimeline, isTrue);
+    expect(inspection.hasPublishingGate, isTrue);
+    expect(inspection.hasPublishingGateLayout, isTrue);
     expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
@@ -216,6 +219,7 @@ void main() {
         'Stakeholder alignment',
         'Recommendations',
         'Roadmap',
+        'Publishing gate',
         'Data tables',
         'Assumptions/sources',
         'Appendix',
@@ -245,6 +249,7 @@ void main() {
         'Stakeholder alignment lanes',
         'Recommendation cards',
         'Roadmap timeline',
+        'Publishing gate slide',
         'Closing decision ask',
         'Speaker notes',
       ]),
@@ -252,6 +257,8 @@ void main() {
     expect(metadata['decisionMatrixSlideCount'], 1);
     expect(metadata['stakeholderAlignmentSlideCount'], 1);
     expect(metadata['closingDecisionSlideCount'], 1);
+    expect(metadata['publishingGateSlideCount'], 1);
+    expect(metadata['hasPublishingGateSlide'], isTrue);
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
     expect(metadata['assumptionCount'], 1);
     expect(metadata['citationCount'], 1);
