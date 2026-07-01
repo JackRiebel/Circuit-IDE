@@ -981,9 +981,12 @@ class _GeneratedArtifactCard extends ConsumerWidget {
                 ),
                 _ArtifactCardAction(
                   label: 'Review',
-                  onPressed: () => ref
-                      .read(studioRightDrawerProvider.notifier)
-                      .openArtifact(sourceArtifact),
+                  onPressed: () => _reviewArtifact(
+                    ref,
+                    artifact: artifact,
+                    sourceArtifact: sourceArtifact,
+                    filePath: filePath,
+                  ),
                 ),
               ],
             ),
@@ -1065,6 +1068,37 @@ class _GeneratedArtifactCard extends ConsumerWidget {
     if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
     final mb = kb / 1024;
     return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
+  }
+
+  static void _reviewArtifact(
+    WidgetRef ref, {
+    required GeneratedArtifact? artifact,
+    required StudioSourceArtifact sourceArtifact,
+    required String filePath,
+  }) {
+    final drawer = ref.read(studioRightDrawerProvider.notifier);
+    if (artifact != null &&
+        filePath.trim().isNotEmpty &&
+        _artifactOpensInCodeReview(artifact.kind)) {
+      drawer.openFile(filePath);
+      return;
+    }
+    drawer.openArtifact(sourceArtifact);
+  }
+
+  static bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.csv ||
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.json ||
+      GeneratedArtifactKind.diagram ||
+      GeneratedArtifactKind.chart ||
+      GeneratedArtifactKind.report => true,
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.pdf ||
+      GeneratedArtifactKind.powerPoint ||
+      GeneratedArtifactKind.docx => false,
+    };
   }
 
   static Future<void> _launchArtifactPath(

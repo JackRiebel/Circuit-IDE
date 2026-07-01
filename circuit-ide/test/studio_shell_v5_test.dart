@@ -10,6 +10,7 @@ import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/chat_message.dart';
 import 'package:circuit_ide/models/command_run.dart';
 import 'package:circuit_ide/models/confirmation_request.dart';
+import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_right_drawer.dart';
@@ -3061,6 +3062,80 @@ void main() {
     expect(find.text('Still waiting'), findsNothing);
     expect(find.text('read_file'), findsNothing);
     expect(find.text('Ready for next prompt'), findsOneWidget);
+  });
+
+  testWidgets('Inline artifact card Review opens text artifacts in code mode', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync(
+      'studio-inline-artifact-review-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/report.md')..writeAsStringSync('# Report');
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final threadController = container.read(studioThreadProvider.notifier);
+    final thread = threadController.createBlankThread(title: 'Artifact review');
+    const turnId = 'turn-inline-artifact-review';
+    const requestId = 'request-inline-artifact-review';
+    final artifact = GeneratedArtifact(
+      id: 'inline-markdown',
+      kind: GeneratedArtifactKind.markdown,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'report.md',
+      filePath: file.path,
+      summary: 'Created a Markdown report.',
+      byteSize: file.lengthSync(),
+      threadId: thread.id,
+      requestId: requestId,
+      createdAt: DateTime(2026),
+    );
+    final sourceArtifact = artifact.toSourceArtifact();
+    final turn = StudioTurn(
+      id: turnId,
+      threadId: thread.id,
+      requestId: requestId,
+      userMessageId: 'message-inline-artifact-review',
+      prompt: 'create a markdown report',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: turnId,
+          requestId: requestId,
+          threadId: thread.id,
+          content: 'Created the report artifact.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    threadController.upsertTurn(thread.id, turn, select: true);
+    threadController.upsertSourceArtifact(thread.id, sourceArtifact);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('report.md'), findsOneWidget);
+    expect(find.text('Review'), findsOneWidget);
+
+    await tester.tap(find.text('Review'));
+    await tester.pump();
+
+    final drawer = container.read(studioRightDrawerProvider);
+    expect(drawer.mode, StudioDrawerMode.code);
+    expect(drawer.filePath, file.path);
   });
 
   testWidgets('Studio transcript renders meaningful completion summaries', (
