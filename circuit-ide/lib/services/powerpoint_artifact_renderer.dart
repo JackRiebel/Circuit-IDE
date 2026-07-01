@@ -38,6 +38,11 @@ class PowerPointArtifactRenderer {
         'ppt/slideMasters/_rels/slideMaster1.xml.rels',
         _bytes(_slideMasterRels()),
       ),
+      _PptxFile('ppt/notesMasters/notesMaster1.xml', _bytes(_notesMaster())),
+      _PptxFile(
+        'ppt/notesMasters/_rels/notesMaster1.xml.rels',
+        _bytes(_notesMasterRels()),
+      ),
       _PptxFile('ppt/slideLayouts/slideLayout1.xml', _bytes(_slideLayout())),
       _PptxFile(
         'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
@@ -59,7 +64,17 @@ class PowerPointArtifactRenderer {
       for (var i = 0; i < slides.length; i++)
         _PptxFile(
           'ppt/slides/_rels/slide${i + 1}.xml.rels',
-          _bytes(_slideRels()),
+          _bytes(_slideRels(i + 1)),
+        ),
+      for (var i = 0; i < slides.length; i++)
+        _PptxFile(
+          'ppt/notesSlides/notesSlide${i + 1}.xml',
+          _bytes(_notesSlide(slides[i], slideNumber: i + 1)),
+        ),
+      for (var i = 0; i < slides.length; i++)
+        _PptxFile(
+          'ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels',
+          _bytes(_notesSlideRels(i + 1)),
         ),
     ];
     return _zip(files);
@@ -441,8 +456,10 @@ class PowerPointArtifactRenderer {
         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
         '<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>'
         '<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>'
+        '<Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>'
         '<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>'
         '<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+        '${List.generate(count, (i) => '<Override PartName="/ppt/notesSlides/notesSlide${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>').join()}'
         '$slides</Types>';
   }
 
@@ -483,13 +500,14 @@ class PowerPointArtifactRenderer {
   String _presentation(int count) {
     final ids = List.generate(
       count,
-      (i) => '<p:sldId id="${256 + i}" r:id="rId${i + 2}"/>',
+      (i) => '<p:sldId id="${256 + i}" r:id="rId${i + 3}"/>',
     ).join();
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
         'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
         '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>'
+        '<p:notesMasterIdLst><p:notesMasterId r:id="rId2"/></p:notesMasterIdLst>'
         '<p:sldIdLst>$ids</p:sldIdLst><p:sldSz cx="12192000" cy="6858000" type="screen16x9"/>'
         '<p:notesSz cx="6858000" cy="9144000"/></p:presentation>';
   }
@@ -498,11 +516,12 @@ class PowerPointArtifactRenderer {
     final slides = List.generate(
       count,
       (i) =>
-          '<Relationship Id="rId${i + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>',
+          '<Relationship Id="rId${i + 3}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${i + 1}.xml"/>',
     ).join();
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" Target="slideMasters/slideMaster1.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="notesMasters/notesMaster1.xml"/>'
         '$slides</Relationships>';
   }
 
@@ -749,10 +768,38 @@ class PowerPointArtifactRenderer {
         '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="$size"${bold ? ' b="1"' : ''}><a:solidFill><a:srgbClr val="$color"/></a:solidFill></a:rPr><a:t>$text</a:t></a:r></a:p></p:txBody></p:sp>';
   }
 
-  String _slideRels() {
+  String _slideRels(int slideNumber) {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="../notesSlides/notesSlide$slideNumber.xml"/>'
+        '</Relationships>';
+  }
+
+  String _notesSlide(_DeckSlide slide, {required int slideNumber}) {
+    final notes = [
+      'Presenter notes for ${slide.title}.',
+      if (slide.eyebrow.isNotEmpty) 'Context: ${slide.eyebrow}.',
+      for (final bullet in slide.bullets.take(5)) 'Talking point: $bullet',
+      if (slide.tableRows.isNotEmpty)
+        'Data note: This slide includes ${math.max(0, slide.tableRows.length - 1)} supporting row${slide.tableRows.length == 2 ? '' : 's'}.',
+    ].join(' ');
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<p:notes xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+        '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Notes Placeholder $slideNumber"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="685800" y="914400"/><a:ext cx="5486400" cy="6858000"/></a:xfrm></p:spPr>'
+        '<p:txBody><a:bodyPr wrap="square"/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="1200"><a:solidFill><a:srgbClr val="111111"/></a:solidFill></a:rPr><a:t>${_xml(_truncate(notes, 900))}</a:t></a:r></a:p></p:txBody></p:sp>'
+        '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>';
+  }
+
+  String _notesSlideRels(int slideNumber) {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="../slides/slide$slideNumber.xml"/>'
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster" Target="../notesMasters/notesMaster1.xml"/>'
         '</Relationships>';
   }
 
@@ -771,6 +818,25 @@ class PowerPointArtifactRenderer {
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>'
         '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>'
+        '</Relationships>';
+  }
+
+  String _notesMaster() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<p:notesMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">'
+        '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>'
+        '<p:sp><p:nvSpPr><p:cNvPr id="2" name="CircuitCode Notes Master"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="457200" y="457200"/><a:ext cx="5943600" cy="365760"/></a:xfrm></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="en-US" sz="1100"><a:t>CircuitCode speaker notes</a:t></a:r></a:p></p:txBody></p:sp>'
+        '</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/></p:notesMaster>';
+  }
+
+  String _notesMasterRels() {
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" Target="../theme/theme1.xml"/>'
         '</Relationships>';
   }
 

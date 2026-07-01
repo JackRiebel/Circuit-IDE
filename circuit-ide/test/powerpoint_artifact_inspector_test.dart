@@ -65,6 +65,8 @@ void main() {
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
+    expect(inspection.hasSpeakerNotes, isTrue);
+    expect(inspection.notesSlideCount, inspection.slideCount);
     expect(inspection.usesDarkTheme, isTrue);
   });
 
@@ -105,6 +107,8 @@ void main() {
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasAppendix, isTrue);
     expect(inspection.hasSlideNumbers, isTrue);
+    expect(inspection.hasSpeakerNotes, isTrue);
+    expect(inspection.notesSlideCount, inspection.slideCount);
   });
 
   test('PowerPoint renderer supports customer-facing light theme metadata', () {
@@ -128,5 +132,6 @@ void main() {
     expect(inspection.usesLightTheme, isTrue);
     expect(inspection.hasExecutiveRecommendation, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
+    expect(inspection.hasSpeakerNotes, isTrue);
   });
 }

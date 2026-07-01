@@ -25,6 +25,8 @@ class PowerPointArtifactInspection {
   final bool hasAssumptionsSourcesSlide;
   final bool hasEnterpriseStyling;
   final bool hasSlideNumbers;
+  final bool hasSpeakerNotes;
+  final int notesSlideCount;
   final bool usesLightTheme;
   final bool usesDarkTheme;
 
@@ -53,6 +55,8 @@ class PowerPointArtifactInspection {
     required this.hasAssumptionsSourcesSlide,
     required this.hasEnterpriseStyling,
     required this.hasSlideNumbers,
+    required this.hasSpeakerNotes,
+    required this.notesSlideCount,
     required this.usesLightTheme,
     required this.usesDarkTheme,
   });
@@ -82,6 +86,7 @@ class PowerPointArtifactInspection {
       hasAssumptionsSourcesSlide &&
       hasCircuitFooter &&
       hasEnterpriseStyling &&
+      hasSpeakerNotes &&
       hasSlideNumbers;
 }
 
@@ -103,6 +108,14 @@ class PowerPointArtifactInspector {
             .allMatches(text)
             .map((match) => _xmlDecode(match.group(1) ?? ''))
             .toList(growable: false);
+    final notesSlideFiles =
+        RegExp(r'ppt/notesSlides/notesSlide(\d+)\.xml')
+            .allMatches(text)
+            .map((match) => int.tryParse(match.group(1) ?? ''))
+            .whereType<int>()
+            .toSet()
+            .toList(growable: false)
+          ..sort();
     return PowerPointArtifactInspection(
       hasZipHeader:
           bytes.length >= 4 &&
@@ -150,6 +163,12 @@ class PowerPointArtifactInspector {
           text.contains('Accent') &&
           text.contains('PresentationFormat'),
       hasSlideNumbers: RegExp(r'Slide \d+ of \d+').hasMatch(text),
+      hasSpeakerNotes:
+          text.contains('ppt/notesMasters/notesMaster1.xml') &&
+          text.contains('CircuitCode speaker notes') &&
+          text.contains('Presenter notes for') &&
+          notesSlideFiles.length == slideFiles.length,
+      notesSlideCount: notesSlideFiles.length,
       usesLightTheme: text.contains('Generated artifact - Light theme'),
       usesDarkTheme: text.contains('Generated artifact - Dark theme'),
     );
