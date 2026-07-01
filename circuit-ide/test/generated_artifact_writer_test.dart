@@ -81,6 +81,8 @@ Short executive summary for the customer.
       expect(packageText, contains('Dual 2 Gbps'));
       expect(packageText, contains('Executive Recommendation'));
       expect(packageText, contains('Assumptions &amp; Sources'));
+      expect(packageText, contains('Appendix: Handoff Checklist'));
+      expect(packageText, contains('Slide 1 of'));
       expect(packageText, contains('Customer workshop notes'));
       expect(packageText, contains('CircuitCode - Generated artifact'));
     },

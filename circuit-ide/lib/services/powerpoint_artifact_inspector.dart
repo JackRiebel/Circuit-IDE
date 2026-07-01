@@ -24,6 +24,7 @@ class PowerPointArtifactInspection {
   final bool hasSourcesSlide;
   final bool hasAssumptionsSourcesSlide;
   final bool hasEnterpriseStyling;
+  final bool hasSlideNumbers;
   final bool usesLightTheme;
   final bool usesDarkTheme;
 
@@ -51,6 +52,7 @@ class PowerPointArtifactInspection {
     required this.hasSourcesSlide,
     required this.hasAssumptionsSourcesSlide,
     required this.hasEnterpriseStyling,
+    required this.hasSlideNumbers,
     required this.usesLightTheme,
     required this.usesDarkTheme,
   });
@@ -75,10 +77,12 @@ class PowerPointArtifactInspection {
       hasSectionDivider &&
       hasImplementationRoadmap &&
       hasTableSlide &&
+      hasAppendix &&
       hasSourcesSlide &&
       hasAssumptionsSourcesSlide &&
       hasCircuitFooter &&
-      hasEnterpriseStyling;
+      hasEnterpriseStyling &&
+      hasSlideNumbers;
 }
 
 class PowerPointArtifactInspector {
@@ -145,6 +149,7 @@ class PowerPointArtifactInspector {
           text.contains('Header rule') &&
           text.contains('Accent') &&
           text.contains('PresentationFormat'),
+      hasSlideNumbers: RegExp(r'Slide \d+ of \d+').hasMatch(text),
       usesLightTheme: text.contains('Generated artifact - Light theme'),
       usesDarkTheme: text.contains('Generated artifact - Dark theme'),
     );

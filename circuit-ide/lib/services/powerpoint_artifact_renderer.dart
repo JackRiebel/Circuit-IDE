@@ -47,7 +47,14 @@ class PowerPointArtifactRenderer {
       for (var i = 0; i < slides.length; i++)
         _PptxFile(
           'ppt/slides/slide${i + 1}.xml',
-          _bytes(_slide(slides[i], theme: theme)),
+          _bytes(
+            _slide(
+              slides[i],
+              theme: theme,
+              slideNumber: i + 1,
+              totalSlides: slides.length,
+            ),
+          ),
         ),
       for (var i = 0; i < slides.length; i++)
         _PptxFile(
@@ -129,6 +136,7 @@ class PowerPointArtifactRenderer {
     }
     slides.add(_implementationRoadmap(document, sections));
     slides.add(_assumptionsAndSources(document));
+    slides.add(_appendixHandoff(document));
     return slides;
   }
 
@@ -292,6 +300,31 @@ class PowerPointArtifactRenderer {
       eyebrow: 'Evidence handoff',
       kind: _DeckSlideKind.sources,
       bullets: bullets,
+    );
+  }
+
+  _DeckSlide _appendixHandoff(ArtifactDocument document) {
+    final artifactTypes = <String>[
+      if (document.tables.isNotEmpty)
+        '${document.tables.length} data table${document.tables.length == 1 ? '' : 's'}',
+      if (document.assumptions.isNotEmpty)
+        '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'}',
+      if (document.citations.isNotEmpty)
+        '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'}',
+    ];
+    return _DeckSlide(
+      title: 'Appendix: Handoff Checklist',
+      eyebrow: 'Review package',
+      kind: _DeckSlideKind.appendix,
+      bullets: [
+        'Review scope: Confirm title, executive summary, recommendations, risks, and next actions with the account team.',
+        if (artifactTypes.isEmpty)
+          'Supporting material: Attach source data, citations, and customer assumptions before final delivery.'
+        else
+          'Supporting material: ${artifactTypes.join(', ')} included in this generated artifact.',
+        'Customer readiness: Validate terminology, product names, dates, and stakeholder-specific language.',
+        'Approval path: Capture owner, due date, and success criteria before converting this into an implementation packet.',
+      ],
     );
   }
 
@@ -473,7 +506,12 @@ class PowerPointArtifactRenderer {
         '$slides</Relationships>';
   }
 
-  String _slide(_DeckSlide slide, {required _DeckTheme theme}) {
+  String _slide(
+    _DeckSlide slide, {
+    required _DeckTheme theme,
+    required int slideNumber,
+    required int totalSlides,
+  }) {
     final titleSize = slide.kind == _DeckSlideKind.title ? 4200 : 3200;
     final bodyY = slide.kind == _DeckSlideKind.title ? 2050000 : 1720000;
     final accent = theme.accentFor(slide.kind);
@@ -500,6 +538,7 @@ class PowerPointArtifactRenderer {
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
         '$body'
         '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact - ${theme.label} theme', size: 1000, bold: false, color: theme.mutedText)}'
+        '${_textBox(id: 91, name: 'Slide number', x: 10450000, y: 6420000, w: 1200000, h: 260000, text: 'Slide $slideNumber of $totalSlides', size: 1000, bold: false, color: theme.mutedText)}'
         '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
   }
 
