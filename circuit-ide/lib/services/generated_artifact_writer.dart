@@ -420,8 +420,13 @@ class GeneratedArtifactWriter {
             .map((table) => _TableData(name: table.name, rows: table.rows))
             .toList(growable: false);
       } else if (productComparison) {
-        tables = productComparisonBuilder
-            .build(prompt: prompt, content: content, document: document)
+        final workbookTables = productComparisonBuilder.build(
+          prompt: prompt,
+          content: content,
+          document: document,
+        );
+        workbookMetadata = productComparisonBuilder.metadataFor(workbookTables);
+        tables = workbookTables
             .map((table) => _TableData(name: table.name, rows: table.rows))
             .toList(growable: false);
       } else if (sizingWorkbook) {

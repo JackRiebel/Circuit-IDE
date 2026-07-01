@@ -427,7 +427,51 @@ Here is the data.
       expect(artifact.fileName, endsWith('.xlsx'));
       expect(artifact.summary, contains('product comparison matrix'));
       expect(artifact.summary, contains('executive decision'));
-      expect(artifact.sheetCount, greaterThanOrEqualTo(18));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(21));
+      expect(artifact.metadata['workbookKind'], 'product_comparison');
+      expect(artifact.metadata['comparisonQualityManifestVersion'], '1.0');
+      expect(artifact.metadata['candidateCount'], 3);
+      expect(artifact.metadata['requirementCount'], greaterThanOrEqualTo(2));
+      expect(artifact.metadata['comparisonReadinessLevel'], isA<String>());
+      expect(artifact.metadata['comparisonHandoffStatus'], isA<String>());
+      expect(
+        artifact.metadata['comparisonDecisionPosture'],
+        contains('Advisory only'),
+      );
+      expect(artifact.metadata['recommendedCandidate'], isNotEmpty);
+      expect(
+        artifact.metadata['requirementPressure'],
+        contains('UPOE/high-power AP'),
+      );
+      expect(artifact.metadata['comparisonEvidencePolicyCount'], 4);
+      expect(
+        artifact.metadata['comparisonEvidencePolicy'],
+        anyElement(contains('Comparison matrix is advisory')),
+      );
+      expect(
+        artifact.metadata['comparisonEvidencePolicy'],
+        anyElement(contains('EoX replacement PIDs')),
+      );
+      expect(
+        artifact.metadata['comparisonVisualVerificationChecklistCount'],
+        5,
+      );
+      expect(
+        artifact.metadata['comparisonVisualVerificationChecklist'],
+        anyElement(contains('Open workbook and confirm all comparison sheets')),
+      );
+      expect(artifact.metadata['comparisonPublishingMetadataCount'], 5);
+      expect(
+        artifact.metadata['comparisonPublishingMetadata'],
+        anyElement(contains('External handoff')),
+      );
+      expect(artifact.metadata['hasComparisonQualityManifest'], isTrue);
+      expect(artifact.metadata['hasComparisonEvidencePolicy'], isTrue);
+      expect(
+        artifact.metadata['hasComparisonVisualVerificationChecklist'],
+        isTrue,
+      );
+      expect(artifact.metadata['hasComparisonPublishingMetadata'], isTrue);
       expect(artifact.previewRows.first, [
         'Decision Signal',
         'Current Answer',
@@ -454,6 +498,9 @@ Here is the data.
       expect(packageText, contains('Customer Talking Points'));
       expect(packageText, contains('Validation Checklist'));
       expect(packageText, contains('Sources Needed'));
+      expect(packageText, contains('Evidence Policy'));
+      expect(packageText, contains('Visual QA'));
+      expect(packageText, contains('Publishing Readiness'));
       expect(packageText, contains('Assumptions'));
       expect(packageText, contains('Source 1'));
       expect(packageText, contains('C9300-48P'));
@@ -473,6 +520,13 @@ Here is the data.
         packageText,
         contains('Do not treat EoX replacement PID as the final best model'),
       );
+      expect(packageText, contains('Comparison matrix is advisory'));
+      expect(packageText, contains('Hard gates override fit score'));
+      expect(
+        packageText,
+        contains('Open workbook and confirm all comparison sheets'),
+      );
+      expect(packageText, contains('Primary candidate'));
     },
   );
 

@@ -4131,6 +4131,85 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             ),
           ),
       ],
+      if (artifact.kind == GeneratedArtifactKind.excel &&
+          _metadataString(artifact, 'workbookKind') ==
+              'product_comparison') ...[
+        if (_metadataString(artifact, 'comparisonReadinessLevel').isNotEmpty)
+          (
+            'Comparison readiness',
+            _metadataString(artifact, 'comparisonReadinessLevel'),
+          ),
+        if (_metadataString(artifact, 'comparisonHandoffStatus').isNotEmpty)
+          (
+            'Comparison handoff',
+            _metadataString(artifact, 'comparisonHandoffStatus'),
+          ),
+        if (_metadataString(artifact, 'comparisonDecisionPosture').isNotEmpty)
+          (
+            'Decision posture',
+            _metadataString(artifact, 'comparisonDecisionPosture'),
+          ),
+        if (_metadataBool(artifact, 'hasComparisonQualityManifest'))
+          (
+            'Comparison manifest',
+            _metadataString(
+                  artifact,
+                  'comparisonQualityManifestVersion',
+                ).isEmpty
+                ? 'Embedded'
+                : 'Manifest v${_metadataString(artifact, 'comparisonQualityManifestVersion')}',
+          ),
+        if (_metadataString(artifact, 'recommendedCandidate').isNotEmpty)
+          ('Primary', _metadataString(artifact, 'recommendedCandidate')),
+        if (_metadataString(artifact, 'runnerUpCandidate').isNotEmpty)
+          ('Runner-up', _metadataString(artifact, 'runnerUpCandidate')),
+        if (_metadataString(artifact, 'requirementPressure').isNotEmpty)
+          ('Hard gates', _metadataString(artifact, 'requirementPressure')),
+        if (_metadataString(artifact, 'evidenceQuality').isNotEmpty)
+          ('Evidence', _metadataString(artifact, 'evidenceQuality')),
+        if (_metadataStringList(
+          artifact,
+          'comparisonEvidencePolicy',
+        ).isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'comparisonEvidencePolicy'),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'comparisonVisualVerificationChecklist',
+        ).isNotEmpty)
+          (
+            'Visual checks',
+            _compactSignalList(
+              _metadataStringList(
+                artifact,
+                'comparisonVisualVerificationChecklist',
+              ),
+            ),
+          ),
+        if (_metadataStringList(
+          artifact,
+          'comparisonPublishingMetadata',
+        ).isNotEmpty)
+          (
+            'Publishing',
+            _compactSignalList(
+              _metadataStringList(artifact, 'comparisonPublishingMetadata'),
+            ),
+          ),
+        if (_metadataInt(artifact, 'candidateCount') > 0)
+          ('Candidates', '${_metadataInt(artifact, 'candidateCount')}'),
+        if (_metadataInt(artifact, 'atRiskGateCount') > 0)
+          ('At-risk gates', '${_metadataInt(artifact, 'atRiskGateCount')}'),
+        if (_metadataInt(artifact, 'needsValidationGateCount') > 0)
+          (
+            'Needs validation',
+            '${_metadataInt(artifact, 'needsValidationGateCount')}',
+          ),
+      ],
       if (artifact.kind == GeneratedArtifactKind.chart) ...[
         if (_metadataString(artifact, 'chartPackType').isNotEmpty)
           ('Pack', _metadataString(artifact, 'chartPackType')),

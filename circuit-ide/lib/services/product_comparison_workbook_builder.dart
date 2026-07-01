@@ -294,6 +294,27 @@ class ProductComparisonWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Evidence Policy',
+        rows: [
+          const ['Policy', 'Current Signal', 'Owner Action'],
+          ..._comparisonEvidencePolicyRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Visual QA',
+        rows: [
+          const ['Check', 'Why It Matters', 'Status'],
+          ..._comparisonVisualVerificationRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Publishing Readiness',
+        rows: [
+          const ['Gate', 'Requirement', 'Status'],
+          ..._comparisonPublishingRows(profile),
+        ],
+      ),
+      WorkbookTable(
         name: 'Assumptions',
         rows: [
           const ['Assumption', 'Impact'],
@@ -302,6 +323,115 @@ class ProductComparisonWorkbookBuilder {
       ),
       ..._sourceTables(document),
     ];
+  }
+
+  Map<String, Object?> metadataFor(List<WorkbookTable> tables) {
+    final executiveRows = _rowsFor(
+      tables,
+      'Executive Decision',
+    ).skip(1).toList(growable: false);
+    final comparisonRows = _rowsFor(
+      tables,
+      'Comparison Matrix',
+    ).skip(1).toList(growable: false);
+    final requirementRows = _rowsFor(
+      tables,
+      'Requirements',
+    ).skip(1).toList(growable: false);
+    final hardGateRows = _rowsFor(
+      tables,
+      'Hard Gate Evaluation',
+    ).skip(1).toList(growable: false);
+    final sourceConfidenceRows = _rowsFor(
+      tables,
+      'Source Confidence',
+    ).skip(1).toList(growable: false);
+    final shortlistRows = _rowsFor(
+      tables,
+      'Scored Shortlist',
+    ).skip(1).toList(growable: false);
+    final validationRows = _rowsFor(
+      tables,
+      'Validation Checklist',
+    ).skip(1).toList(growable: false);
+    final evidencePolicyRows = _rowsFor(
+      tables,
+      'Evidence Policy',
+    ).skip(1).toList(growable: false);
+    final visualQaRows = _rowsFor(
+      tables,
+      'Visual QA',
+    ).skip(1).toList(growable: false);
+    final publishingRows = _rowsFor(
+      tables,
+      'Publishing Readiness',
+    ).skip(1).toList(growable: false);
+    final sourceSheetCount = tables
+        .where((table) => table.name.toLowerCase().startsWith('source '))
+        .length;
+    final atRiskGateCount = hardGateRows.where((row) {
+      return row.any((cell) => cell.toLowerCase().contains('at risk'));
+    }).length;
+    final needsValidationGateCount = hardGateRows.where((row) {
+      return row.any((cell) => cell.toLowerCase().contains('needs validation'));
+    }).length;
+    final hasSourceEvidence =
+        sourceSheetCount > 0 ||
+        sourceConfidenceRows.any((row) {
+          return row.any((cell) {
+            final normalized = cell.toLowerCase();
+            return normalized.contains('source') ||
+                normalized.contains('datasheet') ||
+                normalized.contains('portfolio');
+          });
+        });
+    final readinessLevel = _comparisonReadinessLevel(
+      candidateCount: comparisonRows.length,
+      atRiskGateCount: atRiskGateCount,
+      needsValidationGateCount: needsValidationGateCount,
+      hasSourceEvidence: hasSourceEvidence,
+    );
+    return {
+      'artifact': 'product_comparison_matrix',
+      'workbookKind': 'product_comparison',
+      'sheetCount': tables.length,
+      'sourceSheetCount': sourceSheetCount,
+      'candidateCount': comparisonRows.length,
+      'requirementCount': requirementRows.length,
+      'hardGateEvaluationCount': hardGateRows.length,
+      'atRiskGateCount': atRiskGateCount,
+      'needsValidationGateCount': needsValidationGateCount,
+      'sourceConfidenceCount': sourceConfidenceRows.length,
+      'shortlistCount': shortlistRows.length,
+      'validationCheckCount': validationRows.length,
+      'comparisonReadinessLevel': readinessLevel,
+      'comparisonHandoffStatus': _comparisonHandoffStatus(readinessLevel),
+      'comparisonDecisionPosture':
+          'Advisory only - validate hard gates and source evidence before final recommendation',
+      'recommendedCandidate': _executiveValue(
+        executiveRows,
+        'Recommended primary candidate',
+      ),
+      'runnerUpCandidate': _executiveValue(executiveRows, 'Runner-up'),
+      'requirementPressure': _executiveValue(
+        executiveRows,
+        'Hard-gate pressure',
+      ),
+      'evidenceQuality': _executiveValue(executiveRows, 'Evidence quality'),
+      'replacementCaveat': _executiveValue(executiveRows, 'Replacement caveat'),
+      'comparisonQualityManifestVersion': '1.0',
+      'comparisonEvidencePolicy': _stringRows(evidencePolicyRows),
+      'comparisonEvidencePolicyCount': evidencePolicyRows.length,
+      'comparisonVisualVerificationChecklist': _stringRows(visualQaRows),
+      'comparisonVisualVerificationChecklistCount': visualQaRows.length,
+      'comparisonPublishingMetadata': _stringRows(publishingRows),
+      'comparisonPublishingMetadataCount': publishingRows.length,
+      'hasComparisonQualityManifest': true,
+      'hasComparisonEvidencePolicy': evidencePolicyRows.isNotEmpty,
+      'hasComparisonVisualVerificationChecklist': visualQaRows.isNotEmpty,
+      'hasComparisonPublishingMetadata': publishingRows.isNotEmpty,
+      'hasSourceEvidence': hasSourceEvidence,
+    };
   }
 
   List<List<String>> _comparisonRows({
@@ -904,6 +1034,107 @@ class ProductComparisonWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _comparisonEvidencePolicyRows(_ComparisonProfile profile) {
+    return [
+      [
+        'Comparison matrix is advisory until source evidence is attached.',
+        profile.hasSourceEvidence
+            ? 'Source evidence signal detected'
+            : 'Official sources still required',
+        'Attach current datasheets, lifecycle evidence, checked dates, and customer requirements before final recommendation.',
+      ],
+      [
+        'Do not treat EoX replacement PIDs as final model choice.',
+        profile.hasMigrationSignal
+            ? 'Migration or replacement signal detected'
+            : 'No replacement signal detected',
+        'Use replacement PIDs as suggestedMigrationPid clues only, then compare against current portfolio candidates.',
+      ],
+      [
+        'Hard gates override fit score.',
+        profile.requirementPressure,
+        'Reject candidates that fail UPOE, mGig, WAN/security throughput, lifecycle, or operational requirements even if the score looks high.',
+      ],
+      [
+        'Rejected alternatives need explicit reasons.',
+        profile.ranked.length > 1
+            ? '${profile.ranked.length - 1} alternative candidate${profile.ranked.length == 2 ? '' : 's'} available'
+            : 'Alternatives need capture',
+        'Document why each lower-fit or stale migration candidate fails or when it should supersede the primary choice.',
+      ],
+    ];
+  }
+
+  List<List<String>> _comparisonVisualVerificationRows(
+    _ComparisonProfile profile,
+  ) {
+    return [
+      [
+        'Open workbook and confirm all comparison sheets are visible.',
+        'Reviewers need the executive decision, matrix, hard gates, source confidence, alternatives, and assumptions.',
+        'Required',
+      ],
+      [
+        'Verify header rows are frozen/readable and columns fit product names.',
+        'Model names, constraints, lifecycle notes, and recommendation text are easy to clip.',
+        'Required',
+      ],
+      [
+        'Review Hard Gate Evaluation for At risk and Needs validation rows.',
+        'The workbook should prevent fit-score-only recommendations.',
+        profile.requiresHighPower || profile.requiresMultiGig
+            ? 'High priority'
+            : 'Required',
+      ],
+      [
+        'Check Replacement Cautions before external handoff.',
+        'Migration hints and EoX replacement PIDs can be stale or electrically wrong for newer requirements.',
+        profile.hasMigrationSignal ? 'High priority' : 'Required',
+      ],
+      [
+        'Confirm Sources Needed and Evidence Policy before sharing.',
+        'Product recommendations need current capability, lifecycle, commercial, and customer requirement evidence.',
+        'Required',
+      ],
+    ];
+  }
+
+  List<List<String>> _comparisonPublishingRows(_ComparisonProfile profile) {
+    return [
+      [
+        'External handoff',
+        'Primary candidate, rejected alternatives, hard gates, and source gaps are reviewed.',
+        'Owner approval required',
+      ],
+      [
+        'Decision posture',
+        profile.evidenceQuality,
+        profile.hasSourceEvidence
+            ? 'Validate checked dates'
+            : 'Source evidence required',
+      ],
+      [
+        'Hard gates',
+        profile.requirementPressure,
+        'Close before BOM or customer recommendation',
+      ],
+      [
+        'Lifecycle caveat',
+        profile.hasLifecycleConcern
+            ? 'Lifecycle/EoX signal detected'
+            : 'Lifecycle source still required',
+        'Official lifecycle validation required',
+      ],
+      [
+        'Alternatives',
+        profile.runnerUp == null
+            ? 'Runner-up and reject reasons need capture'
+            : '${profile.runnerUp!.product} captured as comparison alternative',
+        'Document supersession conditions',
+      ],
+    ];
+  }
+
   List<List<String>> _alternativeRows(
     ArtifactDocument document,
     String content,
@@ -1004,6 +1235,61 @@ class ProductComparisonWorkbookBuilder {
       tables.add(WorkbookTable(name: 'Source ${i + 1}', rows: table.rows));
     }
     return tables;
+  }
+
+  List<List<String>> _rowsFor(List<WorkbookTable> tables, String name) {
+    for (final table in tables) {
+      if (table.name == name) return table.rows;
+    }
+    return const [];
+  }
+
+  List<String> _stringRows(List<List<String>> rows) {
+    return rows
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .map((row) => row.where((cell) => cell.trim().isNotEmpty).join(': '))
+        .toList(growable: false);
+  }
+
+  String _executiveValue(List<List<String>> rows, String signal) {
+    final normalizedSignal = signal.toLowerCase();
+    for (final row in rows) {
+      if (row.isEmpty) continue;
+      if (!row.first.toLowerCase().contains(normalizedSignal)) continue;
+      if (row.length < 2) return '';
+      return row[1];
+    }
+    return '';
+  }
+
+  String _comparisonReadinessLevel({
+    required int candidateCount,
+    required int atRiskGateCount,
+    required int needsValidationGateCount,
+    required bool hasSourceEvidence,
+  }) {
+    if (candidateCount == 0) return 'Draft - candidate facts required';
+    if (!hasSourceEvidence) return 'Draft - source evidence required';
+    if (atRiskGateCount > 0) {
+      return 'Requirements review required';
+    }
+    if (needsValidationGateCount > 0) {
+      return 'Internal review required';
+    }
+    return 'Stakeholder review ready';
+  }
+
+  String _comparisonHandoffStatus(String readinessLevel) {
+    if (readinessLevel.startsWith('Stakeholder')) {
+      return 'Comparison package ready for reviewer approval';
+    }
+    if (readinessLevel.startsWith('Internal')) {
+      return 'Comparison package needs validation review';
+    }
+    if (readinessLevel.startsWith('Requirements')) {
+      return 'Comparison package has hard-gate risk';
+    }
+    return 'Comparison package needs source-backed candidate data';
   }
 
   int? _firstHeaderIndex(List<String> header, List<String> terms) {

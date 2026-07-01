@@ -1354,6 +1354,166 @@ void main() {
     expect(find.text('Validation included'), findsOneWidget);
   });
 
+  testWidgets('Artifacts drawer shows product comparison workbook metadata', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'comparison-1',
+      kind: GeneratedArtifactKind.excel,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'access-comparison.xlsx',
+      filePath: '/tmp/access-comparison.xlsx',
+      summary:
+          'Created a product comparison matrix with candidates, hard gates, evidence policy, and publishing readiness.',
+      byteSize: 24576,
+      previewRows: const [
+        ['Decision Signal', 'Current Answer', 'Why It Matters', 'Next Action'],
+        [
+          'Recommended primary candidate',
+          'C9300-48P',
+          'Best balanced fit',
+          'Validate datasheet and lifecycle source',
+        ],
+      ],
+      sheetCount: 21,
+      metadata: const {
+        'artifact': 'product_comparison_matrix',
+        'workbookKind': 'product_comparison',
+        'sheetCount': 21,
+        'candidateCount': 3,
+        'requirementCount': 4,
+        'hardGateEvaluationCount': 5,
+        'atRiskGateCount': 2,
+        'needsValidationGateCount': 3,
+        'sourceConfidenceCount': 3,
+        'shortlistCount': 3,
+        'validationCheckCount': 5,
+        'comparisonReadinessLevel': 'Medium - evidence review required',
+        'comparisonHandoffStatus': 'Comparison review workbook',
+        'comparisonDecisionPosture':
+            'Advisory only - validate hard gates and source evidence before final recommendation',
+        'recommendedCandidate': 'C9300-48P',
+        'runnerUpCandidate': 'Meraki MS355',
+        'requirementPressure':
+            'UPOE/high-power AP; multigig access; lifecycle validation',
+        'evidenceQuality': 'Needs source validation',
+        'replacementCaveat': 'EoX replacement PID is migration hint only',
+        'comparisonQualityManifestVersion': '1.0',
+        'comparisonEvidencePolicy': [
+          'Comparison matrix is advisory until source evidence is attached.: Source sheets are missing: Attach official datasheets, lifecycle records, and portfolio facts.',
+          'Do not treat EoX replacement PIDs as final model choice.: Migration hints require current portfolio validation: Compare against current capabilities and requirements.',
+          'Hard gates override fit score.: Power, mGig, uplink, lifecycle, and licensing constraints can reject a high-scoring candidate.',
+          'Rejected alternatives need explicit reasons.: Every rejected candidate should state the failed requirement or missing evidence.',
+        ],
+        'comparisonEvidencePolicyCount': 4,
+        'comparisonVisualVerificationChecklist': [
+          'Open workbook and confirm all comparison sheets are visible.: Required',
+          'Verify header rows are frozen/readable and columns fit product names.: Required',
+          'Review Hard Gate Evaluation for At risk and Needs validation rows.: High priority',
+          'Check Replacement Cautions before external handoff.: Required',
+          'Confirm Sources Needed and Evidence Policy before sharing.: Required',
+        ],
+        'comparisonVisualVerificationChecklistCount': 5,
+        'comparisonPublishingMetadata': [
+          'External handoff: Hard gates, replacement cautions, and source gaps are reviewed.: Owner approval required',
+          'Decision posture: Advisory until source evidence closes.: Review required',
+          'Hard gates: At-risk and needs-validation rows are visible.: Required',
+          'Lifecycle caveat: EoX replacement PID is treated as migration hint only.: Required',
+          'Alternatives: Rejected candidates include explicit reasons.: Required',
+        ],
+        'comparisonPublishingMetadataCount': 5,
+        'hasComparisonQualityManifest': true,
+        'hasComparisonEvidencePolicy': true,
+        'hasComparisonVisualVerificationChecklist': true,
+        'hasComparisonPublishingMetadata': true,
+        'qualityStatus': 'Needs evidence review',
+        'qualityScore': 82,
+        'qualityGates': [
+          'Native format ready',
+          'Comparison sheets packaged',
+          'Evidence policy embedded',
+          'Publishing readiness embedded',
+        ],
+        'qualityGaps': [
+          'Attach official datasheets',
+          'Attach lifecycle source dates',
+        ],
+        'qualityNextAction':
+            'Validate official sources before customer handoff.',
+        'hasCustomerReadyArtifact': false,
+      },
+      createdAt: DateTime(2026, 7, 1, 12),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('access-comparison.xlsx'), findsOneWidget);
+    expect(
+      find.textContaining('Excel • Needs evidence review'),
+      findsOneWidget,
+    );
+    expect(find.text('Workbook preview'), findsOneWidget);
+    expect(find.text('Recommended primary candidate'), findsOneWidget);
+
+    await tester.tap(find.text('access-comparison.xlsx'));
+    await tester.pump();
+
+    expect(find.text('Quality'), findsOneWidget);
+    expect(find.text('82/100'), findsOneWidget);
+    expect(find.text('Needs evidence review'), findsAtLeastNWidgets(1));
+    expect(find.text('Comparison readiness'), findsOneWidget);
+    expect(find.text('Medium - evidence review required'), findsOneWidget);
+    expect(find.text('Comparison handoff'), findsOneWidget);
+    expect(find.text('Comparison review workbook'), findsOneWidget);
+    expect(find.text('Decision posture'), findsOneWidget);
+    expect(find.textContaining('Advisory only'), findsOneWidget);
+    expect(find.text('Comparison manifest'), findsOneWidget);
+    expect(find.text('Manifest v1.0'), findsOneWidget);
+    expect(find.text('Primary'), findsOneWidget);
+    expect(find.text('C9300-48P'), findsAtLeastNWidgets(1));
+    expect(find.text('Runner-up'), findsOneWidget);
+    expect(find.text('Meraki MS355'), findsOneWidget);
+    expect(find.text('Hard gates'), findsAtLeastNWidgets(1));
+    expect(find.textContaining('UPOE/high-power AP'), findsOneWidget);
+    expect(find.text('Evidence'), findsOneWidget);
+    expect(find.text('Needs source validation'), findsOneWidget);
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(
+      find.textContaining('Comparison matrix is advisory'),
+      findsOneWidget,
+    );
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.textContaining('Open workbook and confirm all comparison sheets'),
+      findsOneWidget,
+    );
+    expect(find.text('Publishing'), findsOneWidget);
+    expect(find.textContaining('External handoff'), findsOneWidget);
+    expect(find.text('Candidates'), findsOneWidget);
+    expect(find.text('3'), findsAtLeastNWidgets(1));
+    expect(find.text('At-risk gates'), findsOneWidget);
+    expect(find.text('Needs validation'), findsOneWidget);
+    expect(find.text('Next'), findsOneWidget);
+    expect(
+      find.text('Validate official sources before customer handoff.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('Artifacts drawer explains deck and document artifacts', (
     tester,
   ) async {
