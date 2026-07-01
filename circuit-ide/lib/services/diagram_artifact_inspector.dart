@@ -8,11 +8,22 @@ class DiagramArtifactInspection {
   final bool hasDescription;
   final bool hasCircuitMetadata;
   final bool hasLogicalTopologyGuidance;
+  final bool hasTopologySummaryPanel;
+  final bool hasValidationChecklist;
   final bool hasAssumptionsPanel;
   final int nodeCount;
   final int edgeCount;
   final int tierCount;
   final int assumptionCount;
+  final int siteCount;
+  final int firewallCount;
+  final int switchCount;
+  final int apCount;
+  final bool hasDualWan;
+  final bool hasWarmSpare;
+  final bool hasPoe;
+  final bool hasMultigig;
+  final bool hasWifi7;
   final String? title;
   final List<String> tierLabels;
   final List<String> deviceTokens;
@@ -25,11 +36,22 @@ class DiagramArtifactInspection {
     required this.hasDescription,
     required this.hasCircuitMetadata,
     required this.hasLogicalTopologyGuidance,
+    required this.hasTopologySummaryPanel,
+    required this.hasValidationChecklist,
     required this.hasAssumptionsPanel,
     required this.nodeCount,
     required this.edgeCount,
     required this.tierCount,
     required this.assumptionCount,
+    required this.siteCount,
+    required this.firewallCount,
+    required this.switchCount,
+    required this.apCount,
+    required this.hasDualWan,
+    required this.hasWarmSpare,
+    required this.hasPoe,
+    required this.hasMultigig,
+    required this.hasWifi7,
     required this.title,
     required this.tierLabels,
     required this.deviceTokens,
@@ -49,6 +71,8 @@ class DiagramArtifactInspection {
       edgeCount > 0 &&
       tierCount >= 3 &&
       hasLogicalTopologyGuidance &&
+      hasTopologySummaryPanel &&
+      hasValidationChecklist &&
       hasAssumptionsPanel;
 
   bool containsDeviceToken(String value) => deviceTokens.any((token) {
@@ -105,6 +129,8 @@ class DiagramArtifactInspector {
           metadata['generator'] == 'CircuitCode' &&
           metadata['artifact'] == 'network_topology_diagram',
       hasLogicalTopologyGuidance: svg.contains('Logical topology'),
+      hasTopologySummaryPanel: svg.contains('id="topology-summary"'),
+      hasValidationChecklist: svg.contains('id="topology-validation"'),
       hasAssumptionsPanel:
           svg.contains('id="topology-assumptions"') ||
           svg.contains('Assumptions'),
@@ -112,6 +138,15 @@ class DiagramArtifactInspector {
       edgeCount: edgeCount,
       tierCount: tierCount,
       assumptionCount: assumptionCount,
+      siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
+      firewallCount: _metadataInt(metadata, 'firewallCount') ?? 0,
+      switchCount: _metadataInt(metadata, 'switchCount') ?? 0,
+      apCount: _metadataInt(metadata, 'apCount') ?? 0,
+      hasDualWan: metadata['hasDualWan'] == true,
+      hasWarmSpare: metadata['hasWarmSpare'] == true,
+      hasPoe: metadata['hasPoe'] == true,
+      hasMultigig: metadata['hasMultigig'] == true,
+      hasWifi7: metadata['hasWifi7'] == true,
       title: title,
       tierLabels: tierLabels,
       deviceTokens: deviceTokens,

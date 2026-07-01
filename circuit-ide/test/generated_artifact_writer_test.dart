@@ -672,6 +672,8 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(File(artifact.filePath).existsSync(), isTrue);
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('Logical topology'));
+    expect(svg, contains('id="topology-summary"'));
+    expect(svg, contains('id="topology-validation"'));
     expect(svg, contains('WAN / Cloud'));
     expect(svg, contains('Security Edge'));
     expect(svg, contains('MDF / Core'));
@@ -681,6 +683,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('C9500'));
     expect(svg, contains('C9300'));
     expect(svg, contains('CW9176'));
+    expect(svg, contains('Dual WAN + HA'));
+    expect(svg, contains('PoE/UPOE'));
+    expect(svg, contains('Wi-Fi 7'));
+    expect(svg, contains('&quot;siteCount&quot;:4'));
+    expect(svg, contains('&quot;apCount&quot;:90'));
     expect(svg, contains('Assumptions'));
     expect(svg, contains('Validate PoE budget'));
   });

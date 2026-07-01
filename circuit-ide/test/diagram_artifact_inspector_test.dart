@@ -30,6 +30,8 @@ graph LR
     expect(inspection.tierCount, greaterThanOrEqualTo(1));
     expect(inspection.assumptionCount, 1);
     expect(inspection.hasLogicalTopologyGuidance, isTrue);
+    expect(inspection.hasTopologySummaryPanel, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
   });
 
   test(
@@ -73,6 +75,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.containsDeviceToken('C9300'), isTrue);
       expect(inspection.containsDeviceToken('CW9176'), isTrue);
       expect(inspection.assumptionCount, 2);
+      expect(inspection.siteCount, 4);
+      expect(inspection.firewallCount, 2);
+      expect(inspection.switchCount, greaterThanOrEqualTo(4));
+      expect(inspection.apCount, 90);
+      expect(inspection.hasDualWan, isTrue);
+      expect(inspection.hasWarmSpare, isTrue);
+      expect(inspection.hasPoe, isTrue);
+      expect(inspection.hasMultigig, isFalse);
+      expect(inspection.hasWifi7, isTrue);
     },
   );
 }
