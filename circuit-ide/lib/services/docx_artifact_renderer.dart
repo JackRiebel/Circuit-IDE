@@ -38,15 +38,25 @@ class DocxArtifactRenderer {
       ],
       ['${document.sections.length + 9}', 'Approval Gates', '4'],
       ['${document.sections.length + 10}', 'Validation Checklist', '5'],
+      [
+        '${document.sections.length + 11}',
+        'Customer Handoff Scorecard',
+        '${_handoffScorecardRows(document).length}',
+      ],
+      [
+        '${document.sections.length + 12}',
+        'Decision Log',
+        '${_decisionLogRows(document).length}',
+      ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 11}',
+          '${document.sections.length + 13}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 12}',
+          '${document.sections.length + 14}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -58,6 +68,8 @@ class DocxArtifactRenderer {
     final readinessSignals = _readinessSignals(document);
     final validationGaps = _validationGapsFor(document);
     final documentParts = _documentPartsFor(document);
+    final scorecardRows = _handoffScorecardRows(document).skip(1).toList();
+    final handoffScore = _handoffScoreFor(scorecardRows);
     return {
       'generator': 'CircuitCode',
       'artifact': 'word_report',
@@ -65,6 +77,8 @@ class DocxArtifactRenderer {
       'audience': _audienceFor(document),
       'reportPurpose': _reportPurposeFor(document),
       'handoffStatus': _handoffStatus(document),
+      'handoffScore': handoffScore,
+      'handoffReadinessLevel': _handoffReadinessLevelFor(handoffScore),
       'decisionOwner': _decisionOwner(document),
       'decisionAsk': _decisionAskFor(document),
       'reviewPath': _reviewPathFor(document),
@@ -83,6 +97,8 @@ class DocxArtifactRenderer {
         'Evidence confidence matrix',
         'Approval gates',
         'Validation checklist',
+        'Customer handoff scorecard',
+        'Decision log',
         if (document.tables.isNotEmpty) 'Data tables',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
@@ -107,6 +123,8 @@ class DocxArtifactRenderer {
       'nextStepCount': _nextStepRows(document).length,
       'evidenceItemCount': _evidenceConfidenceRows(document).length,
       'evidenceGapCount': _evidenceGapCount(document),
+      'handoffScorecardItemCount': scorecardRows.length,
+      'decisionLogCount': _decisionLogRows(document).length - 1,
       'approvalGateCount': 4,
       'readinessSignals': readinessSignals,
       'readinessSignalCount': readinessSignals.length,
@@ -120,6 +138,8 @@ class DocxArtifactRenderer {
       'hasEvidenceConfidenceMatrix': true,
       'hasApprovalGates': true,
       'hasValidationChecklist': true,
+      'hasCustomerHandoffScorecard': true,
+      'hasDecisionLog': true,
       'hasExplicitTableGeometry': true,
       'hasRepeatingTableHeaders': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
@@ -296,7 +316,11 @@ class DocxArtifactRenderer {
       ..write(_paragraph('Approval Gates', style: 'Heading1'))
       ..write(_approvalGatesTable(document))
       ..write(_paragraph('Validation Checklist', style: 'Heading1'))
-      ..write(_validationChecklistTable(document));
+      ..write(_validationChecklistTable(document))
+      ..write(_paragraph('Customer Handoff Scorecard', style: 'Heading1'))
+      ..write(_handoffScorecardTable(document))
+      ..write(_paragraph('Decision Log', style: 'Heading1'))
+      ..write(_decisionLogTable(document));
     if (document.assumptions.isNotEmpty) {
       body.write(_paragraph('Appendix A: Assumptions', style: 'Heading1'));
       for (final assumption in document.assumptions) {
@@ -351,6 +375,8 @@ class DocxArtifactRenderer {
       'Evidence Confidence Matrix',
       'Approval Gates',
       'Validation Checklist',
+      'Customer Handoff Scorecard',
+      'Decision Log',
       if (document.assumptions.isNotEmpty) 'Appendix A: Assumptions',
       if (document.citations.isNotEmpty) 'Appendix B: Sources / Evidence',
     ];
@@ -422,6 +448,14 @@ class DocxArtifactRenderer {
         'Decision gates required before customer handoff or implementation.',
       ],
       ['Validation Checklist', 'Quality and handoff readiness checks.'],
+      [
+        'Customer Handoff Scorecard',
+        'Handoff readiness score, status signals, and owner follow-up.',
+      ],
+      [
+        'Decision Log',
+        'Decision, owner, evidence, and next-action record for review.',
+      ],
       if (document.assumptions.isNotEmpty)
         [
           'Appendix A: Assumptions',
@@ -795,6 +829,152 @@ class DocxArtifactRenderer {
     );
   }
 
+  String _handoffScorecardTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Customer Handoff Scorecard',
+        rows: _handoffScorecardRows(document),
+      ),
+    );
+  }
+
+  List<List<String>> _handoffScorecardRows(ArtifactDocument document) {
+    return [
+      ['Area', 'Status', 'Score', 'Required Follow-Up'],
+      [
+        'Narrative',
+        document.summary.trim().isEmpty ? 'Missing' : 'Ready for review',
+        document.summary.trim().isEmpty ? '0' : '20',
+        document.summary.trim().isEmpty
+            ? 'Add executive summary.'
+            : 'Confirm wording with stakeholder.',
+      ],
+      [
+        'Structured content',
+        document.sections.isEmpty
+            ? 'Missing'
+            : '${document.sections.length} section${document.sections.length == 1 ? '' : 's'}',
+        document.sections.isEmpty ? '0' : '20',
+        document.sections.isEmpty
+            ? 'Add report sections.'
+            : 'Confirm section order and owner.',
+      ],
+      [
+        'Evidence',
+        document.citations.isEmpty
+            ? 'Needs sources'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'}',
+        document.citations.isEmpty ? '0' : '20',
+        document.citations.isEmpty
+            ? 'Attach citations/source evidence.'
+            : 'Verify freshness and authority.',
+      ],
+      [
+        'Assumptions',
+        document.assumptions.isEmpty
+            ? 'Needs assumptions'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'}',
+        document.assumptions.isEmpty ? '0' : '20',
+        document.assumptions.isEmpty
+            ? 'Capture unknowns and owner confirmation.'
+            : 'Confirm assumptions with accountable owner.',
+      ],
+      [
+        'Data support',
+        document.tables.isEmpty
+            ? 'No structured tables'
+            : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'}',
+        document.tables.isEmpty ? '10' : '20',
+        document.tables.isEmpty
+            ? 'Attach source data if needed.'
+            : 'Validate source data, units, and dates.',
+      ],
+    ];
+  }
+
+  String _decisionLogTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(title: 'Decision Log', rows: _decisionLogRows(document)),
+    );
+  }
+
+  List<List<String>> _decisionLogRows(ArtifactDocument document) {
+    final recommendation = _firstMatchingBullet(document, [
+      'recommend',
+      'solution',
+      'architecture',
+      'proposal',
+      'should',
+    ]);
+    final risk = _firstMatchingBullet(document, [
+      'risk',
+      'block',
+      'gap',
+      'unknown',
+      'validate',
+      'confirm',
+    ]);
+    final next = _firstMatchingBullet(document, [
+      'next',
+      'phase',
+      'action',
+      'implement',
+      'verify',
+      'confirm',
+    ]);
+    return [
+      ['Decision', 'Owner', 'Evidence Signal', 'Next Action'],
+      [
+        'Approve report direction',
+        _decisionOwner(document),
+        recommendation ?? _firstSentence(document.summary),
+        _decisionAskFor(document),
+      ],
+      [
+        'Validate evidence',
+        'Evidence reviewer',
+        document.citations.isEmpty
+            ? 'No cited evidence included'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached',
+        document.citations.isEmpty
+            ? 'Attach source evidence before final handoff.'
+            : 'Check freshness and source authority.',
+      ],
+      [
+        'Resolve assumptions',
+        'Project owner',
+        document.assumptions.isEmpty
+            ? 'No explicit assumptions listed'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} documented',
+        document.assumptions.isEmpty
+            ? 'Capture assumptions and unknowns.'
+            : 'Confirm assumptions with accountable stakeholder.',
+      ],
+      [
+        'Move to execution',
+        'Implementation owner',
+        risk ?? 'No explicit blocking risk detected',
+        next ?? 'Assign owner, date, and verification criteria.',
+      ],
+    ];
+  }
+
+  int _handoffScoreFor(List<List<String>> rows) {
+    var total = 0;
+    for (final row in rows) {
+      if (row.length < 3) continue;
+      total += int.tryParse(row[2]) ?? 0;
+    }
+    return total.clamp(0, 100);
+  }
+
+  String _handoffReadinessLevelFor(int score) {
+    if (score >= 90) return 'Customer handoff ready';
+    if (score >= 70) return 'Review-ready draft';
+    if (score >= 45) return 'Needs evidence before handoff';
+    return 'Needs more content';
+  }
+
   List<String> _keywords(ArtifactDocument document) {
     final keywords = <String>{
       'artifact',
@@ -958,6 +1138,8 @@ class DocxArtifactRenderer {
       'Risk register',
       'Next steps',
       'Validation checklist',
+      'Customer handoff scorecard',
+      'Decision log',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
@@ -975,6 +1157,8 @@ class DocxArtifactRenderer {
       'Evidence confidence matrix',
       'Approval gates',
       'Validation checklist',
+      'Customer handoff scorecard',
+      'Decision log',
       if (document.tables.isNotEmpty) 'Data tables',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',

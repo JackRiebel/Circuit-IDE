@@ -28,6 +28,8 @@ class DocxArtifactInspection {
   final bool hasNextStepActionPlan;
   final bool hasDocumentMap;
   final bool hasValidationChecklist;
+  final bool hasCustomerHandoffScorecard;
+  final bool hasDecisionLog;
   final bool hasAssumptionsAppendix;
   final bool hasSourcesAppendix;
   final bool hasCircuitHeader;
@@ -65,6 +67,8 @@ class DocxArtifactInspection {
     required this.hasNextStepActionPlan,
     required this.hasDocumentMap,
     required this.hasValidationChecklist,
+    required this.hasCustomerHandoffScorecard,
+    required this.hasDecisionLog,
     required this.hasAssumptionsAppendix,
     required this.hasSourcesAppendix,
     required this.hasCircuitHeader,
@@ -100,6 +104,8 @@ class DocxArtifactInspection {
       hasNextStepActionPlan &&
       hasDocumentMap &&
       hasValidationChecklist &&
+      hasCustomerHandoffScorecard &&
+      hasDecisionLog &&
       hasCircuitHeader &&
       hasCircuitFooter &&
       hasEnterpriseStyles &&
@@ -160,6 +166,8 @@ class DocxArtifactInspector {
       hasNextStepActionPlan: text.contains('Next-Step Action Plan'),
       hasDocumentMap: text.contains('Document Map'),
       hasValidationChecklist: text.contains('Validation Checklist'),
+      hasCustomerHandoffScorecard: text.contains('Customer Handoff Scorecard'),
+      hasDecisionLog: text.contains('Decision Log'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),
       hasSourcesAppendix: text.contains('Appendix B: Sources / Evidence'),
       hasCircuitHeader: text.contains('CircuitCode report package'),
