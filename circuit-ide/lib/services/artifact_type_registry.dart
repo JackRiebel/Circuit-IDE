@@ -115,6 +115,7 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.pdf,
+        GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['plan mode', 'approval review'],
     ),

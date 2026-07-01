@@ -1320,6 +1320,121 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     },
   );
 
+  test('change summary prompt creates a shaped DOCX artifact', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-change-summary-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a post-work change summary / diff report',
+          content: '''
+# CircuitCode Artifact Workspace Change Summary
+
+Implemented artifact workspace improvements and rebuilt the desktop app.
+
+## Files changed
+- lib/services/generated_artifact_writer.dart (+42 -3)
+- lib/services/implementation_plan_artifact_builder.dart (+280 -0)
+- test/generated_artifact_writer_test.dart (+90 -0)
+
+## Verification
+- flutter analyze passed
+- git diff --check passed
+- flutter test passed
+- flutter build macos passed
+
+## Commands run
+- flutter analyze
+- git diff --check
+- flutter test
+- flutter build macos
+
+## Checkpoint
+- Commit 97aaf55 Add implementation plan artifact builder
+
+## Risks
+- Need live smoke test with real user prompt.
+
+## Next steps
+- Add change summary / diff report artifact depth.
+
+## Sources
+- Local git diff
+- Test output
+''',
+          turnId: 'turn-change-summary',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.docx);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.docx'));
+    expect(artifact.summary, contains('change summary / diff report'));
+    expect(artifact.summary, contains('verification'));
+    final bytes = File(artifact.filePath).readAsBytesSync();
+    expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
+    final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('Change Outcome Summary'));
+    expect(packageText, contains('Changed File Inventory'));
+    expect(packageText, contains('Verification Result Matrix'));
+    expect(packageText, contains('Command Run Log'));
+    expect(packageText, contains('Checkpoint Register'));
+    expect(packageText, contains('Open Risk And Follow-Up Register'));
+    expect(
+      packageText,
+      contains('lib/services/generated_artifact_writer.dart'),
+    );
+    expect(packageText, contains('flutter analyze'));
+    expect(packageText, contains('flutter test'));
+    expect(packageText, contains('97aaf55'));
+    expect(packageText, contains('live smoke test'));
+  });
+
+  test('change summary prompt can create a PDF handoff report', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-change-summary-pdf-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a PDF post-work change summary',
+          content: '''
+# Post-work summary
+
+Edited files:
+- lib/services/generated_artifact_writer.dart (+12 -1)
+
+Verification:
+- flutter analyze passed
+- flutter test passed
+
+Checkpoint:
+- checkpoint abc1234
+''',
+          turnId: 'turn-change-summary-pdf',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.pdf);
+    expect(artifact.status, GeneratedArtifactStatus.ready);
+    expect(artifact.fileName, endsWith('.pdf'));
+    expect(artifact.summary, contains('change summary / diff report PDF'));
+    final text = String.fromCharCodes(
+      File(artifact.filePath).readAsBytesSync(),
+    );
+    expect(text, startsWith('%PDF-1.'));
+    expect(text, contains('Change Outcome Summary'));
+    expect(text, contains('Changed File Inventory'));
+    expect(text, contains('Verification Result Matrix'));
+  });
+
   test('artifact registry exposes the 15 priority artifact descriptors', () {
     const registry = ArtifactTypeRegistry();
 
@@ -1398,6 +1513,10 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     );
     expect(
       detectGeneratedArtifactKind('create an implementation plan'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind('create a post-work change summary'),
       GeneratedArtifactKind.docx,
     );
     expect(

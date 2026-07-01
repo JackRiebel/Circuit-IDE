@@ -207,6 +207,11 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
+  if (RegExp(
+    r'\b(change summary|diff report|verification summary|post[- ]work summary|post[- ]work report|work summary|completion summary|implementation summary|patch summary|checkpoint report|release summary)\b',
+  ).hasMatch(normalized)) {
+    return GeneratedArtifactKind.docx;
+  }
   if (RegExp(r'\b(markdown|md|readme)\b').hasMatch(normalized)) {
     return GeneratedArtifactKind.markdown;
   }
