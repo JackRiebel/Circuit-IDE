@@ -87,6 +87,32 @@ class SolutionSizingWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Requirement Gates',
+        rows: [
+          const [
+            'Gate',
+            'Requirement Signal',
+            'Pass Criteria',
+            'Current Status',
+            'Sizing Impact',
+          ],
+          ..._requirementGateRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Candidate Validation',
+        rows: [
+          const [
+            'Candidate / Area',
+            'Must Validate',
+            'Why It Matters',
+            'Reject If',
+            'Status',
+          ],
+          ..._candidateValidationRows(profile, '$prompt\n$content'),
+        ],
+      ),
+      WorkbookTable(
         name: 'Recommendations',
         rows: [
           const ['Area', 'Recommendation', 'Rationale', 'Status'],
@@ -396,6 +422,105 @@ class SolutionSizingWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _requirementGateRows(_SizingProfile profile) {
+    return [
+      [
+        'Wi-Fi generation',
+        profile.wifiGenerationText,
+        'AP generation and power class are known before access switch selection.',
+        profile.requiresHighPowerAp
+            ? 'High-power AP signal detected'
+            : 'Needs input',
+        profile.requiresHighPowerAp
+            ? 'Require UPOE/UPOE+ and likely multigig access validation.'
+            : 'Collect AP model/generation before final sizing.',
+      ],
+      [
+        'Access port speed',
+        profile.requiresMultiGig ? 'mGig / 2.5G / 5G / 10G signal' : 'TBD',
+        'Access switch ports meet AP/client link-speed requirements.',
+        profile.requiresMultiGig ? 'mGig validation required' : 'Needs input',
+        'Reject candidates that only satisfy PoE but not access port speed.',
+      ],
+      [
+        'Power budget',
+        profile.requiresHighPowerAp ? 'UPOE / 802.3bt / 60W+' : 'TBD',
+        'Per-switch and per-closet power budgets exceed planned load plus reserve.',
+        profile.accessPoints == null
+            ? 'Needs AP count'
+            : 'Needs datasheet validation',
+        'Undersized PoE budgets can invalidate otherwise acceptable switches.',
+      ],
+      [
+        'WAN and security throughput',
+        profile.wanText,
+        'Firewall/SD-WAN throughput is validated with enabled services.',
+        profile.wanMbps == null
+            ? 'Needs WAN input'
+            : 'Needs platform validation',
+        'Do not use raw carrier line rate as inspected throughput.',
+      ],
+      [
+        'High availability',
+        profile.requiresHighAvailability ? 'HA signal detected' : 'TBD',
+        'Redundancy tier matches outage tolerance and site criticality.',
+        profile.requiresHighAvailability
+            ? 'HA design required'
+            : 'Needs customer decision',
+        'Impacts warm spares, dual WAN, redundant core, power, and licensing.',
+      ],
+      [
+        'Lifecycle and support',
+        'LDOS/EoX/current portfolio',
+        'Lifecycle dates and current portfolio fit are checked from official/current sources.',
+        'Needs validation',
+        'Treat EoX replacement PID as migration hint only, not final model selection.',
+      ],
+    ];
+  }
+
+  List<List<String>> _candidateValidationRows(
+    _SizingProfile profile,
+    String content,
+  ) {
+    final candidates = _candidateNames(content);
+    final rows = <List<String>>[
+      [
+        'Access switch shortlist',
+        'PoE/UPOE budget, mGig ports, uplinks, stacking/HA, lifecycle',
+        'Wi-Fi 6E/7 and high-density access can fail on power or port-speed even when port count looks sufficient.',
+        'No UPOE/802.3bt, insufficient power budget, no required mGig, stale lifecycle.',
+        'Needs validation',
+      ],
+      [
+        'Wireless/AP plan',
+        'AP count, Wi-Fi generation, power draw, client density, mounting/site constraints',
+        'AP requirements drive access switching, PoE reserve, uplinks, and licensing.',
+        'AP model/generation/power draw unknown.',
+        profile.accessPoints == null ? 'Needs input' : 'Review',
+      ],
+      [
+        'WAN/security edge',
+        'Throughput with services enabled, HA mode, circuit mix, SaaS/cloud traffic',
+        'Security inspection and SD-WAN features reduce usable throughput.',
+        'Only raw WAN speed is known.',
+        profile.wanMbps == null ? 'Needs input' : 'Review',
+      ],
+    ];
+    for (final candidate in candidates.take(8)) {
+      rows.add([
+        candidate,
+        'Datasheet capability, lifecycle, licensing, and requirement fit',
+        'Candidate must be current and satisfy the actual requirement gates.',
+        profile.requiresHighPowerAp
+            ? 'Fails Wi-Fi 7/UPOE/mGig/power budget gates.'
+            : 'Fails current capability, lifecycle, or licensing gates.',
+        'Unverified',
+      ]);
+    }
+    return rows;
+  }
+
   List<List<String>> _recommendationRows(ArtifactDocument document) {
     final rows = <List<String>>[];
     for (final section in document.sections) {
@@ -501,6 +626,20 @@ class SolutionSizingWorkbookBuilder {
     ];
   }
 
+  List<String> _candidateNames(String content) {
+    final matches = RegExp(
+      r'\b(?:C9\d{3}[A-Z0-9-]*|MS\d{3}[A-Z0-9-]*|MR\d{2,3}[A-Z0-9-]*|CW\d{4}[A-Z0-9-]*|MX\d{2,4}[A-Z0-9-]*|AIR-[A-Z0-9-]+)\b',
+      caseSensitive: false,
+    ).allMatches(content);
+    final seen = <String>{};
+    final names = <String>[];
+    for (final match in matches) {
+      final value = (match.group(0) ?? '').toUpperCase();
+      if (seen.add(value)) names.add(value);
+    }
+    return names;
+  }
+
   List<WorkbookTable> _sourceTables(ArtifactDocument document) {
     final tables = <WorkbookTable>[];
     for (var i = 0; i < document.tables.length && i < 4; i++) {
@@ -555,11 +694,14 @@ class _SizingProfile {
   final double? wanMbps;
   final double? growthPercent;
   final bool requiresHighPowerAp;
+  final bool requiresMultiGig;
+  final bool requiresHighAvailability;
   final String usersText;
   final String accessPointsText;
   final String switchesText;
   final String wanText;
   final String growthText;
+  final String wifiGenerationText;
 
   const _SizingProfile({
     required this.users,
@@ -568,11 +710,14 @@ class _SizingProfile {
     required this.wanMbps,
     required this.growthPercent,
     required this.requiresHighPowerAp,
+    required this.requiresMultiGig,
+    required this.requiresHighAvailability,
     required this.usersText,
     required this.accessPointsText,
     required this.switchesText,
     required this.wanText,
     required this.growthText,
+    required this.wifiGenerationText,
   });
 
   double get growthMultiplier => 1 + ((growthPercent ?? 25) / 100);
@@ -599,6 +744,20 @@ class _SizingProfile {
       r'\b(wi-?fi\s*7|upoe\+?|802\.3bt|class\s*6|class\s*8|60w|90w)\b',
       caseSensitive: false,
     ).hasMatch(content);
+    final multiGig = RegExp(
+      r'\b(multigig|mGig|2\.5g|5g|10g(?:base)?(?: access)?|10gig)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final highAvailability = RegExp(
+      r'\b(ha|high availability|redundan\w+|dual wan|warm spare|active/active|active-active|failover)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+    final wifiGeneration =
+        RegExp(
+          r'\b(wi-?fi\s*(?:6e|7)|802\.11(?:ax|be))\b',
+          caseSensitive: false,
+        ).firstMatch(content)?.group(0) ??
+        (highPower ? 'Wi-Fi 7 / high-power AP signal' : 'TBD');
     return _SizingProfile(
       users: _firstInt(usersText),
       accessPoints: _firstInt(apText),
@@ -606,11 +765,14 @@ class _SizingProfile {
       wanMbps: _wanMbps(wanText),
       growthPercent: _growthPercent(growthText),
       requiresHighPowerAp: highPower,
+      requiresMultiGig: multiGig || highPower,
+      requiresHighAvailability: highAvailability,
       usersText: usersText,
       accessPointsText: apText,
       switchesText: switchesText,
       wanText: wanText,
       growthText: growthText == 'TBD' ? '25% default' : growthText,
+      wifiGenerationText: wifiGeneration,
     );
   }
 

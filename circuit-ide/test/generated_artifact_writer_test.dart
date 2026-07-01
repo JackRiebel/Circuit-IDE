@@ -165,6 +165,8 @@ Here is the data.
     expect(packageText, contains('PoE Budget'));
     expect(packageText, contains('WAN Throughput'));
     expect(packageText, contains('HA Growth'));
+    expect(packageText, contains('Requirement Gates'));
+    expect(packageText, contains('Candidate Validation'));
     expect(packageText, contains('Recommendations'));
     expect(packageText, contains('Validation'));
     expect(packageText, contains('Assumptions'));
@@ -173,6 +175,8 @@ Here is the data.
     expect(packageText, contains('90'));
     expect(packageText, contains('2 Gbps'));
     expect(packageText, contains('inspected throughput'));
+    expect(packageText, contains('mGig validation required'));
+    expect(packageText, contains('Access switch shortlist'));
   });
 
   test(

@@ -54,6 +54,8 @@ void main() {
           'PoE Budget',
           'WAN Throughput',
           'HA Growth',
+          'Requirement Gates',
+          'Candidate Validation',
           'Recommendations',
           'Validation',
           'Assumptions',
@@ -74,6 +76,39 @@ void main() {
       );
       expect(
         inspection.sheetContains('HA Growth', 'EoX replacement PID'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Requirement Gates', 'Access port speed'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains(
+          'Requirement Gates',
+          'mGig validation required',
+        ),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains(
+          'Candidate Validation',
+          'Access switch shortlist',
+        ),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains(
+          'Candidate Validation',
+          'insufficient power budget',
+        ),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Candidate Validation', 'required mGig'),
+        isTrue,
+      );
+      expect(
+        inspection.sheetContains('Candidate Validation', 'stale lifecycle'),
         isTrue,
       );
       expect(
