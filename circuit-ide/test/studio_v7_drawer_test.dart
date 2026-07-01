@@ -123,7 +123,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Progress'), findsWidgets);
-    expect(find.text('Artifacts'), findsOneWidget);
+    expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
     expect(find.text('Code'), findsWidgets);
     expect(find.text('Diff'), findsOneWidget);
     expect(find.text('Files'), findsOneWidget);
@@ -1746,6 +1746,83 @@ void main() {
     expect(find.text('18'), findsOneWidget);
     expect(find.text('4 gates'), findsOneWidget);
     expect(find.text('3 recommended'), findsOneWidget);
+  });
+
+  testWidgets('Artifacts drawer shows package manifest metadata', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final root = Directory.systemTemp.createTempSync(
+      'studio_package_manifest_',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/business-case-package.md')
+      ..writeAsStringSync('# Business Use Case Package');
+    final artifact = GeneratedArtifact(
+      id: 'package-1',
+      kind: GeneratedArtifactKind.markdown,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'business-case-package.md',
+      filePath: file.path,
+      summary: 'Created a package manifest for 3 generated artifacts.',
+      byteSize: file.lengthSync(),
+      previewRows: const [
+        ['Artifact', 'Type', 'Status'],
+        ['brief.docx', 'Word', 'Ready'],
+        ['deck.pptx', 'PowerPoint', 'Ready'],
+        ['value-chart.svg', 'Chart', 'Ready'],
+      ],
+      sheetCount: 3,
+      metadata: const {
+        'artifact': 'artifact_package_manifest',
+        'packageLabel': 'business use case package',
+        'artifactCount': 3,
+        'artifactFiles': ['brief.docx', 'deck.pptx', 'value-chart.svg'],
+        'qualityStatus': 'Package ready',
+        'qualityScore': 100,
+        'hasCustomerReadyArtifact': true,
+      },
+      createdAt: DateTime(2026, 7, 1, 12),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('business-case-package.md'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Markdown • Package ready • business use case package • 3 artifacts',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Package manifest for the generated deliverable set'),
+      findsOneWidget,
+    );
+    expect(find.text('Package contents'), findsOneWidget);
+    expect(find.text('deck.pptx'), findsOneWidget);
+
+    await tester.tap(find.text('business-case-package.md'));
+    await tester.pump();
+
+    expect(find.text('Package'), findsOneWidget);
+    expect(find.text('business use case package'), findsOneWidget);
+    expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
+    expect(find.text('3'), findsAtLeastNWidgets(1));
+    expect(find.text('Files'), findsOneWidget);
+    expect(find.textContaining('brief.docx, deck.pptx +1'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer Review opens text artifacts in code mode', (

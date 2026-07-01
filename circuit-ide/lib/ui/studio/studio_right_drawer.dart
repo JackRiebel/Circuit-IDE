@@ -3084,7 +3084,7 @@ class _ArtifactDrawerCard extends ConsumerWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            _artifactWorkbenchHint(artifact.kind),
+                            _artifactWorkbenchHint(artifact),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -3142,6 +3142,12 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     final parts = <String>[artifact.typeLabel];
     final qualityStatus = _metadataString(artifact, 'qualityStatus');
     if (qualityStatus.isNotEmpty) parts.add(qualityStatus);
+    if (_isArtifactPackageManifest(artifact)) {
+      final packageLabel = _metadataString(artifact, 'packageLabel');
+      final artifactCount = _metadataInt(artifact, 'artifactCount');
+      if (packageLabel.isNotEmpty) parts.add(packageLabel);
+      if (artifactCount > 0) parts.add('$artifactCount artifacts');
+    }
     if (artifact.kind == GeneratedArtifactKind.diagram) {
       final nodeCount = _metadataInt(artifact, 'nodeCount');
       final edgeCount = _metadataInt(artifact, 'edgeCount');
@@ -3233,8 +3239,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
   }
 }
 
-String _artifactWorkbenchHint(GeneratedArtifactKind kind) {
-  return switch (kind) {
+String _artifactWorkbenchHint(GeneratedArtifact artifact) {
+  if (_isArtifactPackageManifest(artifact)) {
+    return 'Package manifest for the generated deliverable set';
+  }
+  return switch (artifact.kind) {
     GeneratedArtifactKind.excel =>
       'Workbook artifact for sizing, inventories, and matrices',
     GeneratedArtifactKind.csv => 'Dataset artifact for clean tabular exchange',
@@ -3253,6 +3262,10 @@ String _artifactWorkbenchHint(GeneratedArtifactKind kind) {
     GeneratedArtifactKind.report =>
       'Report artifact for structured customer deliverables',
   };
+}
+
+bool _isArtifactPackageManifest(GeneratedArtifact artifact) {
+  return artifact.metadata['artifact'] == 'artifact_package_manifest';
 }
 
 bool _artifactOpensInCodeReview(GeneratedArtifactKind kind) {
@@ -3303,6 +3316,17 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
         ('Next', _metadataString(artifact, 'qualityNextAction')),
       if (_metadataBool(artifact, 'hasCustomerReadyArtifact'))
         ('Ready', 'Customer handoff candidate'),
+      if (_isArtifactPackageManifest(artifact)) ...[
+        if (_metadataString(artifact, 'packageLabel').isNotEmpty)
+          ('Package', _metadataString(artifact, 'packageLabel')),
+        if (_metadataInt(artifact, 'artifactCount') > 0)
+          ('Artifacts', '${_metadataInt(artifact, 'artifactCount')}'),
+        if (_metadataStringList(artifact, 'artifactFiles').isNotEmpty)
+          (
+            'Files',
+            _compactSignalList(_metadataStringList(artifact, 'artifactFiles')),
+          ),
+      ],
       ('Created', _compactDate(artifact.createdAt)),
       if (extension.isNotEmpty) ('Format', extension.toUpperCase()),
       if (artifact.sheetCount > 0)
@@ -3816,8 +3840,10 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
       GeneratedArtifactKind.diagram => 'Topology readiness',
       GeneratedArtifactKind.chart => 'Chart summary',
       GeneratedArtifactKind.json => 'Structured data preview',
-      GeneratedArtifactKind.markdown ||
-      GeneratedArtifactKind.report => 'Document preview',
+      GeneratedArtifactKind.markdown || GeneratedArtifactKind.report =>
+        _isArtifactPackageManifest(artifact)
+            ? 'Package contents'
+            : 'Document preview',
     };
   }
 
