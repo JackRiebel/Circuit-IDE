@@ -3719,6 +3719,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Slide families',
             _compactSignalList(_metadataStringList(artifact, 'slideFamilies')),
           ),
+        if (_metadataStringList(artifact, 'slidePreview').isNotEmpty)
+          (
+            'Slide preview',
+            _compactSignalList(_metadataStringList(artifact, 'slidePreview')),
+          ),
         if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
           (
             'Readiness',
@@ -3784,6 +3789,8 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Package', 'Stakeholder-review deck'),
         if (_metadataBool(artifact, 'hasSpeakerNotes'))
           ('Notes', 'Speaker notes included'),
+        if (_metadataInt(artifact, 'speakerNoteCount') > 0)
+          ('Speaker notes', '${_metadataInt(artifact, 'speakerNoteCount')}'),
       ],
       if (artifact.kind == GeneratedArtifactKind.docx ||
           artifact.kind == GeneratedArtifactKind.pdf) ...[

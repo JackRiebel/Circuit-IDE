@@ -1263,9 +1263,14 @@ void main() {
           summary: 'Created a customer presentation deck.',
           byteSize: 8192,
           previewRows: const [
-            ['Slide', 'Type', 'Title'],
-            ['1', 'Title', 'Executive Brief'],
-            ['2', 'Agenda', 'Decision Flow'],
+            ['Slide', 'Type', 'Title', 'Role'],
+            [
+              '1',
+              'Title',
+              'Executive Brief',
+              'Open with audience, purpose, and evidence count',
+            ],
+            ['2', 'Agenda', 'Decision Flow', 'Set the decision path'],
           ],
           sheetCount: 6,
           metadata: const {
@@ -1294,6 +1299,12 @@ void main() {
               'Assumptions/sources',
               'Appendix',
             ],
+            'slidePreview': [
+              '1. Title: Executive Brief - Open with audience, purpose, and evidence count',
+              '2. Agenda: Decision Flow - Set the decision path',
+              '3. Decision: Decision Snapshot - Summarize recommendation, risk, and next step',
+            ],
+            'slidePreviewCount': 3,
             'tableCoverage': '2 tables packaged',
             'sourceCoverage': '5 source items captured',
             'evidenceConfidence': 'High - sources and assumptions captured',
@@ -1327,6 +1338,7 @@ void main() {
             'hasCustomerReadyStructure': true,
             'hasCustomerReadyDeck': true,
             'hasSpeakerNotes': true,
+            'speakerNoteCount': 6,
           },
           createdAt: DateTime(2026, 6, 30, 9, 15),
         ).toSourceArtifact(),
@@ -1487,6 +1499,13 @@ void main() {
     );
     expect(find.text('Slide families'), findsOneWidget);
     expect(find.textContaining('Opening, Agenda +6'), findsOneWidget);
+    expect(find.text('Slide preview'), findsOneWidget);
+    expect(
+      find.textContaining(
+        '1. Title: Executive Brief - Open with audience, purpose',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Readiness'), findsOneWidget);
     expect(find.text('Agenda, Decision snapshot +3'), findsOneWidget);
     expect(find.text('Sections'), findsOneWidget);
@@ -1523,6 +1542,8 @@ void main() {
     expect(find.text('Stakeholder-review deck'), findsOneWidget);
     expect(find.text('Notes'), findsOneWidget);
     expect(find.text('Speaker notes included'), findsOneWidget);
+    expect(find.text('Speaker notes'), findsOneWidget);
+    expect(find.text('6'), findsAtLeastNWidgets(1));
     expect(find.text('5'), findsAtLeastNWidgets(1));
     expect(find.textContaining('6 slide deck ready'), findsNothing);
     expect(find.textContaining('Word document ready'), findsNothing);

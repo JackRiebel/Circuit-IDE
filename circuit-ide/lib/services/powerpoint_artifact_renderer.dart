@@ -18,9 +18,14 @@ class PowerPointArtifactRenderer {
       document,
     ).take(_maxSlides).toList(growable: false);
     return [
-      ['Slide', 'Type', 'Title'],
+      ['Slide', 'Type', 'Title', 'Role'],
       for (var i = 0; i < slides.length; i++)
-        ['${i + 1}', slides[i].kind.label, slides[i].title],
+        [
+          '${i + 1}',
+          slides[i].kind.label,
+          slides[i].title,
+          _slideRoleFor(slides[i]),
+        ],
     ];
   }
 
@@ -42,6 +47,7 @@ class PowerPointArtifactRenderer {
     final validationGaps = _validationGapsFor(document, slideTypeCounts);
     final agendaItems = _agendaItemsFor(document, sections);
     final slideFamilies = _slideFamiliesFor(slideTypeCounts);
+    final slidePreview = _slidePreviewFor(slides);
     final reviewChecklist = _reviewChecklistFor(
       document,
       slideTypeCounts,
@@ -65,6 +71,8 @@ class PowerPointArtifactRenderer {
       'agendaItemCount': agendaItems.length,
       'slideFamilies': slideFamilies,
       'slideFamilyCount': slideFamilies.length,
+      'slidePreview': slidePreview,
+      'slidePreviewCount': slidePreview.length,
       'presentationQuality': 'Enterprise structured deck',
       'visualSystem': '${theme.label} enterprise presentation system',
       'layoutFeatures': [
@@ -160,6 +168,7 @@ class PowerPointArtifactRenderer {
         _DeckSlideKind.appendix.label,
       ),
       'hasSpeakerNotes': true,
+      'speakerNoteCount': slides.length,
       'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
       'hasCustomerReadyDeck':
           _hasCustomerReadyStructure(slideTypeCounts) && validationGaps.isEmpty,
@@ -890,6 +899,36 @@ class PowerPointArtifactRenderer {
       if (slideTypeCounts.containsKey(_DeckSlideKind.appendix.label))
         'Appendix',
     ];
+  }
+
+  List<String> _slidePreviewFor(List<_DeckSlide> slides) {
+    return [
+      for (var i = 0; i < slides.length && i < 10; i++)
+        '${i + 1}. ${slides[i].kind.label}: ${slides[i].title} - ${_slideRoleFor(slides[i])}',
+      if (slides.length > 10) '+${slides.length - 10} additional slides',
+    ];
+  }
+
+  String _slideRoleFor(_DeckSlide slide) {
+    return switch (slide.kind) {
+      _DeckSlideKind.title => 'Open with audience, purpose, and evidence count',
+      _DeckSlideKind.agenda => 'Set the decision path',
+      _DeckSlideKind.talkTrack => 'Guide presenter framing',
+      _DeckSlideKind.snapshot =>
+        'Summarize recommendation, risk, and next step',
+      _DeckSlideKind.decisionMatrix => 'Compare decision signals and actions',
+      _DeckSlideKind.stakeholderAlignment => 'Map owners to follow-up actions',
+      _DeckSlideKind.dataSnapshot => 'Summarize supporting tables',
+      _DeckSlideKind.takeaways => 'Highlight executive takeaways',
+      _DeckSlideKind.sectionDivider => 'Separate major story sections',
+      _DeckSlideKind.content => 'Explain supporting detail',
+      _DeckSlideKind.recommendation => 'Show recommendation or action plan',
+      _DeckSlideKind.roadmap => 'Sequence phases and verification',
+      _DeckSlideKind.closing => 'Close with decision ask',
+      _DeckSlideKind.table => 'Preview structured data',
+      _DeckSlideKind.appendix => 'Package handoff checklist',
+      _DeckSlideKind.sources => 'Document assumptions and sources',
+    };
   }
 
   List<String> _validationGapsFor(

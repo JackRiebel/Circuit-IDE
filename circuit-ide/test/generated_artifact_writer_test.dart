@@ -54,7 +54,7 @@ Short executive summary for the customer.
       expect(artifact.fileName, endsWith('.pptx'));
       expect(artifact.sheetCount, greaterThanOrEqualTo(8));
       expect(artifact.summary, contains('PowerPoint deck'));
-      expect(artifact.previewRows.first, ['Slide', 'Type', 'Title']);
+      expect(artifact.previewRows.first, ['Slide', 'Type', 'Title', 'Role']);
       expect(artifact.metadata['deckType'], 'Customer proposal deck');
       expect(
         artifact.metadata['handoffStatus'],
@@ -75,6 +75,12 @@ Short executive summary for the customer.
         artifact.metadata['slideFamilies'],
         containsAll(['Opening', 'Agenda', 'Decision snapshot']),
       );
+      expect(
+        artifact.metadata['slidePreview'],
+        contains(contains('1. Title: Customer Architecture Proposal')),
+      );
+      expect(artifact.metadata['slidePreviewCount'], greaterThanOrEqualTo(8));
+      expect(artifact.metadata['speakerNoteCount'], artifact.sheetCount);
       expect(artifact.metadata['tableCoverage'], '1 table packaged');
       expect(artifact.metadata['sourceCoverage'], '1 source item captured');
       expect(artifact.metadata['validationGapCount'], 0);

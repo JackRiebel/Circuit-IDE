@@ -147,6 +147,15 @@ void main() {
         'Appendix',
       ]),
     );
+    expect(
+      metadata['slidePreview'],
+      containsAll([
+        contains('1. Title: Customer Architecture Proposal'),
+        contains('2. Agenda: Agenda'),
+        contains('Decision Snapshot'),
+      ]),
+    );
+    expect(metadata['slidePreviewCount'], greaterThanOrEqualTo(10));
     expect(metadata['validationGapCount'], 0);
     expect(metadata['tableSlideCount'], 1);
     expect(metadata['sectionDividerCount'], 2);
@@ -206,6 +215,7 @@ void main() {
     expect(metadata['hasDataSnapshot'], isTrue);
     expect(metadata['hasAppendixHandoff'], isTrue);
     expect(metadata['hasSpeakerNotes'], isTrue);
+    expect(metadata['speakerNoteCount'], inspection.slideCount);
     expect(metadata['hasCustomerReadyStructure'], isTrue);
     expect(metadata['hasCustomerReadyDeck'], isTrue);
   });
