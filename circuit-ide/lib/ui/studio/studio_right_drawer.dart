@@ -3292,10 +3292,8 @@ class _ArtifactDrawerPreview extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    if ((artifact.kind == GeneratedArtifactKind.excel ||
-            artifact.kind == GeneratedArtifactKind.csv) &&
-        artifact.previewRows.isNotEmpty) {
-      return _ArtifactTablePreview(rows: artifact.previewRows);
+    if (artifact.previewRows.isNotEmpty) {
+      return _ArtifactStructuredPreview(artifact: artifact);
     }
     if (_isBinaryPreviewOnly(artifact.kind)) {
       return _BinaryArtifactPreview(artifact: artifact);
@@ -3358,6 +3356,111 @@ class _ArtifactDrawerPreview extends ConsumerWidget {
       0,
       bytes.length,
     ).replaceAll('\u0000', '').trim();
+  }
+}
+
+class _ArtifactStructuredPreview extends ConsumerWidget {
+  final GeneratedArtifact artifact;
+
+  const _ArtifactStructuredPreview({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+      decoration: BoxDecoration(
+        color: tokens.surfacePanel.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 7, 8, 6),
+            child: Row(
+              children: [
+                Icon(
+                  _previewIcon(artifact.kind),
+                  color: tokens.textMuted,
+                  size: 13,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _previewTitle(artifact),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textSecondary,
+                      fontSize: FontSizes.xxs,
+                      height: 1.1,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                if (artifact.sheetCount > 0)
+                  Text(
+                    _previewCount(artifact),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xxs,
+                      height: 1.1,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          _ArtifactTablePreview(rows: artifact.previewRows, embedded: true),
+        ],
+      ),
+    );
+  }
+
+  IconData _previewIcon(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel ||
+      GeneratedArtifactKind.csv => Icons.table_chart_outlined,
+      GeneratedArtifactKind.powerPoint => Icons.view_carousel_outlined,
+      GeneratedArtifactKind.docx ||
+      GeneratedArtifactKind.pdf ||
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.report => Icons.article_outlined,
+      GeneratedArtifactKind.diagram ||
+      GeneratedArtifactKind.chart => Icons.account_tree_outlined,
+      GeneratedArtifactKind.json => Icons.data_object_outlined,
+    };
+  }
+
+  String _previewTitle(GeneratedArtifact artifact) {
+    return switch (artifact.kind) {
+      GeneratedArtifactKind.excel => 'Workbook preview',
+      GeneratedArtifactKind.csv => 'Dataset preview',
+      GeneratedArtifactKind.powerPoint => 'Slide outline',
+      GeneratedArtifactKind.docx => 'Report outline',
+      GeneratedArtifactKind.pdf => 'PDF outline',
+      GeneratedArtifactKind.diagram => 'Diagram structure',
+      GeneratedArtifactKind.chart => 'Chart summary',
+      GeneratedArtifactKind.json => 'Structured data preview',
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.report => 'Document preview',
+    };
+  }
+
+  String _previewCount(GeneratedArtifact artifact) {
+    return switch (artifact.kind) {
+      GeneratedArtifactKind.powerPoint => '${artifact.sheetCount} slides',
+      GeneratedArtifactKind.docx => '${artifact.sheetCount} sections',
+      GeneratedArtifactKind.pdf => '${artifact.sheetCount} pages',
+      GeneratedArtifactKind.chart => '${artifact.sheetCount} charts',
+      GeneratedArtifactKind.excel => '${artifact.sheetCount} sheets',
+      _ => '${artifact.sheetCount} items',
+    };
   }
 }
 
@@ -3491,8 +3594,9 @@ class _BinaryArtifactPreview extends ConsumerWidget {
 
 class _ArtifactTablePreview extends ConsumerWidget {
   final List<List<String>> rows;
+  final bool embedded;
 
-  const _ArtifactTablePreview({required this.rows});
+  const _ArtifactTablePreview({required this.rows, this.embedded = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -3502,6 +3606,58 @@ class _ArtifactTablePreview extends ConsumerWidget {
       0,
       (max, row) => row.length > max ? row.length : max,
     );
+    final table = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        border: TableBorder(
+          horizontalInside: BorderSide(
+            color: tokens.studioDivider.withValues(alpha: 0.16),
+          ),
+        ),
+        children: [
+          for (var rowIndex = 0; rowIndex < visibleRows.length; rowIndex++)
+            TableRow(
+              decoration: BoxDecoration(
+                color: rowIndex == 0
+                    ? tokens.studioControl.withValues(alpha: 0.36)
+                    : Colors.transparent,
+              ),
+              children: [
+                for (
+                  var columnIndex = 0;
+                  columnIndex < columnCount;
+                  columnIndex++
+                )
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Text(
+                      columnIndex < visibleRows[rowIndex].length
+                          ? visibleRows[rowIndex][columnIndex]
+                          : '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: rowIndex == 0
+                            ? tokens.textPrimary
+                            : tokens.textSecondary,
+                        fontSize: FontSizes.xxs,
+                        height: 1.18,
+                        fontWeight: rowIndex == 0
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+    if (embedded) return table;
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       decoration: BoxDecoration(
@@ -3510,57 +3666,7 @@ class _ArtifactTablePreview extends ConsumerWidget {
         border: Border.all(color: tokens.studioDivider.withValues(alpha: 0.22)),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Table(
-          defaultColumnWidth: const IntrinsicColumnWidth(),
-          border: TableBorder(
-            horizontalInside: BorderSide(
-              color: tokens.studioDivider.withValues(alpha: 0.16),
-            ),
-          ),
-          children: [
-            for (var rowIndex = 0; rowIndex < visibleRows.length; rowIndex++)
-              TableRow(
-                decoration: BoxDecoration(
-                  color: rowIndex == 0
-                      ? tokens.studioControl.withValues(alpha: 0.36)
-                      : Colors.transparent,
-                ),
-                children: [
-                  for (
-                    var columnIndex = 0;
-                    columnIndex < columnCount;
-                    columnIndex++
-                  )
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        columnIndex < visibleRows[rowIndex].length
-                            ? visibleRows[rowIndex][columnIndex]
-                            : '',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: rowIndex == 0
-                              ? tokens.textPrimary
-                              : tokens.textSecondary,
-                          fontSize: FontSizes.xxs,
-                          height: 1.18,
-                          fontWeight: rowIndex == 0
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-          ],
-        ),
-      ),
+      child: table,
     );
   }
 }

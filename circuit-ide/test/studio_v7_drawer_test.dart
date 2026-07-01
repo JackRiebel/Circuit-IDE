@@ -951,6 +951,11 @@ void main() {
         filePath: '/tmp/campus-refresh.pdf',
         summary: 'Created a PDF handoff report.',
         byteSize: 2048,
+        previewRows: const [
+          ['Section', 'Type', 'Items'],
+          ['1', 'Executive Summary', '1'],
+          ['2', 'Recommendations', '4'],
+        ],
         sheetCount: 2,
         threadId: null,
         requestId: 'request-pdf',
@@ -973,13 +978,14 @@ void main() {
 
       expect(find.text('campus-refresh.pdf'), findsOneWidget);
       expect(find.textContaining('PDF • 2 pages'), findsOneWidget);
-      expect(find.textContaining('2 page PDF document ready'), findsOneWidget);
+      expect(find.text('PDF outline'), findsOneWidget);
+      expect(find.text('2 pages'), findsOneWidget);
+      expect(find.text('Section'), findsOneWidget);
+      expect(find.text('Executive Summary'), findsOneWidget);
       expect(
         find.textContaining('Open to inspect the full document'),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('PDF'), findsOneWidget);
-      expect(find.text('2.0 KB'), findsOneWidget);
       expect(find.text('2 pages'), findsOneWidget);
       expect(
         find.text('Final handoff artifact for fixed review'),
@@ -989,7 +995,7 @@ void main() {
       await tester.tap(find.text('campus-refresh.pdf'));
       await tester.pump();
 
-      expect(find.text('Type'), findsOneWidget);
+      expect(find.text('Type'), findsAtLeastNWidgets(1));
       expect(find.text('Status'), findsOneWidget);
       expect(find.text('Format'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
@@ -1016,6 +1022,11 @@ void main() {
           filePath: '/tmp/executive-brief.pptx',
           summary: 'Created a customer presentation deck.',
           byteSize: 8192,
+          previewRows: const [
+            ['Slide', 'Type', 'Title'],
+            ['1', 'Title', 'Executive Brief'],
+            ['2', 'Agenda', 'Decision Flow'],
+          ],
           sheetCount: 6,
           createdAt: DateTime(2026, 6, 30, 9, 15),
         ).toSourceArtifact(),
@@ -1029,6 +1040,11 @@ void main() {
           filePath: '/tmp/architecture-review.docx',
           summary: 'Created an architecture review report.',
           byteSize: 4096,
+          previewRows: const [
+            ['Section', 'Type', 'Items'],
+            ['1', 'Findings', '5'],
+            ['2', 'Risk Register', '4'],
+          ],
           sheetCount: 4,
           createdAt: DateTime(2026, 6, 30, 9, 16),
         ).toSourceArtifact(),
@@ -1055,10 +1071,12 @@ void main() {
       find.text('Document artifact for reports, briefs, and handoffs'),
       findsOneWidget,
     );
-    expect(find.textContaining('6 slide deck ready'), findsOneWidget);
-    expect(find.textContaining('Word document ready'), findsOneWidget);
-    expect(find.text('PPTX'), findsOneWidget);
-    expect(find.text('DOCX'), findsOneWidget);
+    expect(find.text('Slide outline'), findsOneWidget);
+    expect(find.text('Report outline'), findsOneWidget);
+    expect(find.text('Executive Brief'), findsOneWidget);
+    expect(find.text('Risk Register'), findsOneWidget);
+    expect(find.textContaining('6 slide deck ready'), findsNothing);
+    expect(find.textContaining('Word document ready'), findsNothing);
   });
 
   testWidgets('Artifacts drawer Review opens text artifacts in code mode', (
