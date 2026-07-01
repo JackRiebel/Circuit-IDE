@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:circuit_ide/models/generated_artifact.dart';
+import 'package:circuit_ide/services/generated_artifact_package_writer.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -193,6 +194,196 @@ graph LR
         }
       },
     );
+
+    test(
+      'creates enterprise artifact packages with persisted metadata',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'circuit-artifact-package-smoke-',
+        );
+        addTearDown(() => root.delete(recursive: true));
+        const packageWriter = GeneratedArtifactPackageWriter();
+        const cases = <_ArtifactPackageSmokeCase>[
+          _ArtifactPackageSmokeCase(
+            name: 'topology package',
+            prompt: 'create a network topology package for this Cisco campus',
+            expectedLabel: 'topology package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.diagram,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'business use case package',
+            prompt: 'create a business case package for this customer',
+            expectedLabel: 'business use case package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'solution sizing package',
+            prompt: 'create a solution sizing package for 500 users and 90 APs',
+            expectedLabel: 'solution sizing package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'product comparison package',
+            prompt: 'create a product comparison package for C9300 and MS355',
+            expectedLabel: 'product comparison package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'lifecycle package',
+            prompt:
+                'create an LDOS lifecycle review package for this inventory',
+            expectedLabel: 'lifecycle review package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.pdf,
+              GeneratedArtifactKind.json,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'evidence package',
+            prompt: 'create a final evidence pack for customer handoff',
+            expectedLabel: 'evidence pack package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.json,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'architecture review package',
+            prompt: 'create an architecture review package for this design',
+            expectedLabel: 'architecture review package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'implementation plan package',
+            prompt: 'create an implementation plan package for this project',
+            expectedLabel: 'implementation plan package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'change summary package',
+            prompt: 'create a post-work change summary package',
+            expectedLabel: 'change summary package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+        ];
+
+        for (final smokeCase in cases) {
+          final package = await packageWriter.writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: smokeCase.prompt,
+            content: _enterprisePackageContent,
+            turnId: 'turn-${smokeCase.name.replaceAll(' ', '-')}',
+            threadId: 'thread-package-smoke',
+            requestId: 'request-package-smoke',
+          );
+
+          expect(package, isNotNull, reason: smokeCase.name);
+          expect(package!.label, smokeCase.expectedLabel);
+          expect(
+            package.artifacts.map((artifact) => artifact.kind).toList(),
+            smokeCase.expectedKinds,
+            reason: smokeCase.name,
+          );
+          expect(package.primary!.kind, GeneratedArtifactKind.markdown);
+          expect(
+            package.primary!.metadata['packageQualityStatus'],
+            isA<String>().having(
+              (value) => value,
+              'quality status',
+              startsWith('Package'),
+            ),
+            reason: smokeCase.name,
+          );
+          expect(
+            package.primary!.metadata['packageCompletenessStatus'],
+            'Complete',
+            reason: smokeCase.name,
+          );
+          expect(
+            package.primary!.metadata['artifactCount'],
+            smokeCase.expectedKinds.length - 1,
+            reason: smokeCase.name,
+          );
+          expect(
+            package.primary!.metadata['hasCompletePackage'],
+            isTrue,
+            reason: smokeCase.name,
+          );
+          expect(
+            package.primary!.metadata['packageDrawerActions'],
+            containsAll(['Open', 'Reveal in Finder', 'Copy path', 'Review']),
+            reason: smokeCase.name,
+          );
+
+          for (final artifact in package.artifacts) {
+            expect(
+              artifact.filePath.startsWith(
+                '${root.path}${Platform.pathSeparator}outputs',
+              ),
+              isTrue,
+              reason: '${smokeCase.name}: ${artifact.fileName}',
+            );
+            expect(
+              File(artifact.filePath).existsSync(),
+              isTrue,
+              reason: '${smokeCase.name}: ${artifact.fileName}',
+            );
+            expect(
+              artifact.threadId,
+              'thread-package-smoke',
+              reason: '${smokeCase.name}: ${artifact.fileName}',
+            );
+            expect(
+              artifact.requestId,
+              'request-package-smoke',
+              reason: '${smokeCase.name}: ${artifact.fileName}',
+            );
+            final restored = GeneratedArtifact.fromSourceArtifact(
+              artifact.toSourceArtifact(),
+            );
+            expect(restored, isNotNull);
+            expect(restored!.kind, artifact.kind);
+            expect(restored.filePath, artifact.filePath);
+          }
+        }
+      },
+    );
   });
 }
 
@@ -215,3 +406,53 @@ class _ArtifactSmokeCase {
     this.textNeedles = const [],
   });
 }
+
+class _ArtifactPackageSmokeCase {
+  final String name;
+  final String prompt;
+  final String expectedLabel;
+  final List<GeneratedArtifactKind> expectedKinds;
+
+  const _ArtifactPackageSmokeCase({
+    required this.name,
+    required this.prompt,
+    required this.expectedLabel,
+    required this.expectedKinds,
+  });
+}
+
+const _enterprisePackageContent = '''
+# Campus Refresh Workbench Package
+
+Executive summary for a Cisco-focused customer deliverable.
+
+## Current State
+- Three sites with mixed access switching.
+- Wi-Fi 7 AP rollout requires multigig and UPOE validation.
+- Lifecycle risk exists on the older access layer.
+
+## Recommendations
+- Validate PoE, uplink, WAN, and lifecycle assumptions before final selection.
+- Create phased implementation and verification gates.
+- Use source-backed evidence for lifecycle and model recommendations.
+
+| Item | Count | Risk |
+| --- | ---: | --- |
+| Users | 500 | Medium |
+| APs | 90 | High |
+| Switches | 6 | Medium |
+
+## Implementation Phases
+1. Discovery and evidence collection.
+2. Sizing and product comparison.
+3. Pilot deployment and validation.
+4. Production rollout.
+
+## Sources
+- Customer workshop notes - checked 2026-07-01.
+- Cisco datasheet references - validation required before customer handoff.
+
+## Assumptions
+- Final customer counts may change.
+- EoX replacement hints require current portfolio validation.
+''';
