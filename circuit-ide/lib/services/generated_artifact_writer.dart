@@ -201,7 +201,7 @@ class GeneratedArtifactWriter {
         extension: 'docx',
         bytes: bytes,
         summary: businessUseCase
-            ? 'Created a business use case brief with executive summary, use cases, value, next steps, assumptions, and sources.'
+            ? 'Created a business use case brief with executive summary, prioritized use cases, solution mapping, stakeholder discovery, value metrics, next steps, assumptions, and sources.'
             : evidencePack
             ? 'Created an evidence pack with claim register, source inventory, checked dates, assumptions, confidence, and unsupported-claim follow-up.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
