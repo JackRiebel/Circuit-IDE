@@ -214,6 +214,17 @@ void main() {
     );
     expect(metadata['visualVerificationChecklistCount'], 8);
     expect(
+      metadata['reportEvidencePolicy'],
+      containsAll([
+        'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+        'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+        'Use cited sources as the evidence register for external review.',
+        'Review assumptions with the accountable owner before stakeholder handoff.',
+      ]),
+    );
+    expect(metadata['reportEvidencePolicyCount'], 4);
+    expect(metadata['hasReportEvidencePolicy'], isTrue);
+    expect(
       metadata['publishingMetadata'],
       containsAll([
         'Report type: Architecture report',

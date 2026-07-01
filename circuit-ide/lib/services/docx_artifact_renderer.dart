@@ -78,6 +78,10 @@ class DocxArtifactRenderer {
     final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
     final handoffActions = _reportHandoffActionsFor(document);
     final accessibilitySignals = _accessibilitySignalsFor(document);
+    final visualVerificationChecklist = _visualVerificationChecklistFor(
+      document,
+    );
+    final reportEvidencePolicy = _reportEvidencePolicyFor(document);
     final publishingMetadata = _publishingMetadataFor(document);
     return {
       'generator': 'CircuitCode',
@@ -127,6 +131,10 @@ class DocxArtifactRenderer {
       'reportHandoffActionCount': handoffActions.length,
       'accessibilitySignals': accessibilitySignals,
       'accessibilitySignalCount': accessibilitySignals.length,
+      'visualVerificationChecklist': visualVerificationChecklist,
+      'visualVerificationChecklistCount': visualVerificationChecklist.length,
+      'reportEvidencePolicy': reportEvidencePolicy,
+      'reportEvidencePolicyCount': reportEvidencePolicy.length,
       'publishingMetadata': publishingMetadata,
       'publishingMetadataCount': publishingMetadata.length,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
@@ -168,6 +176,8 @@ class DocxArtifactRenderer {
       'hasReportQualityManifest': true,
       'hasPublishingMetadata': true,
       'hasAccessibilitySignals': true,
+      'hasVisualVerificationChecklist': true,
+      'hasReportEvidencePolicy': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -256,6 +266,12 @@ class DocxArtifactRenderer {
       'CircuitDocumentParts': _documentPartsFor(document).join(', '),
       'CircuitAccessibilityPolicy':
           'Real Word headings, real numbering, explicit table geometry, repeating table headers, header/footer markers.',
+      'CircuitVisualVerification': _visualVerificationChecklistFor(
+        document,
+      ).join('; '),
+      'CircuitReportEvidencePolicy': _reportEvidencePolicyFor(
+        document,
+      ).join('; '),
       'CircuitPublishingStatus': _handoffStatus(document),
     };
     var pid = 2;
@@ -1366,6 +1382,37 @@ class DocxArtifactRenderer {
       'Header and footer package markers',
       if (document.citations.isNotEmpty) 'Source appendix included',
       if (document.assumptions.isNotEmpty) 'Assumption appendix included',
+    ];
+  }
+
+  List<String> _visualVerificationChecklistFor(ArtifactDocument document) {
+    return [
+      'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
+      'Confirm table headers repeat and columns remain readable in print layout.',
+      'Verify executive decision brief, recommendation summary, risk register, approval gates, and sign-off page appear in order.',
+      if (document.citations.isNotEmpty)
+        'Confirm sources appendix is included with checked dates and source labels.'
+      else
+        'Mark the report as an unsourced draft until source artifacts are attached.',
+      if (document.assumptions.isNotEmpty)
+        'Confirm assumptions appendix is explicit and owner-reviewable.'
+      else
+        'Capture assumptions before external handoff.',
+    ];
+  }
+
+  List<String> _reportEvidencePolicyFor(ArtifactDocument document) {
+    return [
+      'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+      'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+      if (document.citations.isNotEmpty)
+        'Use cited sources as the evidence register for external review.'
+      else
+        'Do not represent unsupported claims as validated facts until sources are attached.',
+      if (document.assumptions.isNotEmpty)
+        'Review assumptions with the accountable owner before stakeholder handoff.'
+      else
+        'Capture assumptions and unknowns before treating the report as customer-ready.',
     ];
   }
 

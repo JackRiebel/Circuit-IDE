@@ -4435,6 +4435,13 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Evidence confidence',
             _metadataString(artifact, 'evidenceConfidence'),
           ),
+        if (_metadataStringList(artifact, 'reportEvidencePolicy').isNotEmpty)
+          (
+            'Evidence policy',
+            _compactSignalList(
+              _metadataStringList(artifact, 'reportEvidencePolicy'),
+            ),
+          ),
         if (_metadataStringList(artifact, 'reportReviewChecklist').isNotEmpty)
           (
             'Report review',

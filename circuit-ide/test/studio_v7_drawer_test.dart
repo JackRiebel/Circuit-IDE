@@ -985,6 +985,12 @@ void main() {
           'Bookmark destinations resolve',
           'Table grid draws inside content frame',
         ],
+        'reportEvidencePolicy': [
+          'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+          'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+          'Use cited sources as the evidence register for external review.',
+          'Review assumptions with the accountable owner before stakeholder handoff.',
+        ],
         'documentParts': [
           'Executive decision brief',
           'Recommendation summary',
@@ -1108,6 +1114,8 @@ void main() {
       find.text('Render-safe text frame, US Letter media box +4'),
       findsOneWidget,
     );
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(find.textContaining('Report narrative is guidance'), findsOneWidget);
     expect(find.text('Parts'), findsOneWidget);
     expect(
       find.textContaining(
@@ -1504,6 +1512,19 @@ void main() {
             'tableCoverage': '3 tables packaged',
             'evidenceCoverage': '6 source items captured',
             'evidenceConfidence': 'High - sources and assumptions captured',
+            'visualVerificationChecklist': [
+              'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
+              'Confirm table headers repeat and columns remain readable in print layout.',
+              'Verify executive decision brief, recommendation summary, risk register, approval gates, and sign-off page appear in order.',
+              'Confirm sources appendix is included with checked dates and source labels.',
+              'Confirm assumptions appendix is explicit and owner-reviewable.',
+            ],
+            'reportEvidencePolicy': [
+              'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+              'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+              'Use cited sources as the evidence register for external review.',
+              'Review assumptions with the accountable owner before stakeholder handoff.',
+            ],
             'reportReviewChecklist': [
               'Confirm report title, audience, decision owner, and decision ask.',
               'Review executive decision brief and recommendation summary for customer-specific language.',
@@ -1746,6 +1767,13 @@ void main() {
       find.text('High - sources and assumptions captured'),
       findsOneWidget,
     );
+    expect(find.text('Visual checks'), findsOneWidget);
+    expect(
+      find.textContaining('Open the DOCX in Word and verify headings'),
+      findsOneWidget,
+    );
+    expect(find.text('Evidence policy'), findsOneWidget);
+    expect(find.textContaining('Report narrative is guidance'), findsOneWidget);
     expect(find.text('Report review'), findsOneWidget);
     expect(
       find.textContaining(

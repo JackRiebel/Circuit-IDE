@@ -181,6 +181,29 @@ void main() {
     );
     expect(metadata['accessibilitySignalCount'], 7);
     expect(
+      metadata['visualVerificationChecklist'],
+      containsAll([
+        'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
+        'Confirm table headers repeat and columns remain readable in print layout.',
+        'Verify executive decision brief, recommendation summary, risk register, approval gates, and sign-off page appear in order.',
+        'Confirm sources appendix is included with checked dates and source labels.',
+        'Confirm assumptions appendix is explicit and owner-reviewable.',
+      ]),
+    );
+    expect(metadata['visualVerificationChecklistCount'], 5);
+    expect(metadata['hasVisualVerificationChecklist'], isTrue);
+    expect(
+      metadata['reportEvidencePolicy'],
+      containsAll([
+        'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+        'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+        'Use cited sources as the evidence register for external review.',
+        'Review assumptions with the accountable owner before stakeholder handoff.',
+      ]),
+    );
+    expect(metadata['reportEvidencePolicyCount'], 4);
+    expect(metadata['hasReportEvidencePolicy'], isTrue);
+    expect(
       metadata['publishingMetadata'],
       containsAll([
         'Report type: Architecture report',

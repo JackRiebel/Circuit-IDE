@@ -90,6 +90,7 @@ class PdfArtifactRenderer {
     final visualVerificationChecklist = _visualVerificationChecklistFor(
       document,
     );
+    final reportEvidencePolicy = _reportEvidencePolicyFor(document);
     final publishingMetadata = _publishingMetadataFor(document);
     return {
       'generator': 'CircuitCode',
@@ -140,6 +141,8 @@ class PdfArtifactRenderer {
       'reportHandoffActionCount': handoffActions.length,
       'visualVerificationChecklist': visualVerificationChecklist,
       'visualVerificationChecklistCount': visualVerificationChecklist.length,
+      'reportEvidencePolicy': reportEvidencePolicy,
+      'reportEvidencePolicyCount': reportEvidencePolicy.length,
       'publishingMetadata': publishingMetadata,
       'publishingMetadataCount': publishingMetadata.length,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
@@ -182,6 +185,7 @@ class PdfArtifactRenderer {
       'hasVisualVerificationManifest': true,
       'hasRenderSafeContentFrame': true,
       'hasPublishingMetadata': true,
+      'hasReportEvidencePolicy': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -209,6 +213,7 @@ class PdfArtifactRenderer {
       '/Creator (CircuitCode) /Producer (CircuitCode Artifact Renderer) '
       '/CircuitReportQualityManifest (${_pdfText('Bookmark outline, render-safe frame, page numbering, table grid, handoff sections, validation checklist.')}) '
       '/CircuitVisualVerification (${_pdfText(_visualVerificationChecklistFor(document).join('; '))}) '
+      '/CircuitReportEvidencePolicy (${_pdfText(_reportEvidencePolicyFor(document).join('; '))}) '
       '/CircuitAccessibilityPolicy (${_pdfText('Readable type scale, explicit table grid, bookmark outline, page footer, source appendix support.')}) '
       '/CircuitPublishingStatus (${_pdfText(_handoffStatus(document))}) '
       '/CircuitReviewPath (${_pdfText(_reviewPathFor(document))}) >>',
@@ -1360,6 +1365,21 @@ class PdfArtifactRenderer {
       'Table grid draws inside content frame',
       if (document.citations.isNotEmpty) 'Source appendix included',
       if (document.assumptions.isNotEmpty) 'Assumption appendix included',
+    ];
+  }
+
+  List<String> _reportEvidencePolicyFor(ArtifactDocument document) {
+    return [
+      'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+      'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+      if (document.citations.isNotEmpty)
+        'Use cited sources as the evidence register for external review.'
+      else
+        'Do not represent unsupported claims as validated facts until sources are attached.',
+      if (document.assumptions.isNotEmpty)
+        'Review assumptions with the accountable owner before stakeholder handoff.'
+      else
+        'Capture assumptions and unknowns before treating the PDF as customer-ready.',
     ];
   }
 
