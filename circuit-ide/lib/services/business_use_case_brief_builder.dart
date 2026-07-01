@@ -91,6 +91,33 @@ class BusinessUseCaseBriefBuilder {
       ),
       _section(
         document,
+        title: 'Buying Triggers And Timing',
+        patterns: const [
+          'buying triggers',
+          'trigger',
+          'timing',
+          'budget',
+          'initiative',
+          'event',
+        ],
+        fallbackBody:
+            'Identify the business events, renewal windows, risk deadlines, or executive initiatives that make this use case urgent now.',
+      ),
+      _section(
+        document,
+        title: 'Value Metrics And ROI',
+        patterns: const [
+          'value metrics',
+          'roi metrics',
+          'kpi',
+          'metrics',
+          'measurement',
+        ],
+        fallbackBody:
+            'Define baseline metrics, target improvement, owner, and evidence needed before quoting ROI.',
+      ),
+      _section(
+        document,
         title: 'Stakeholders And Workflows',
         patterns: const [
           'stakeholders',
@@ -102,6 +129,33 @@ class BusinessUseCaseBriefBuilder {
         ],
         fallbackBody:
             'Identify business sponsors, technical owners, operators, and the workflows each use case improves.',
+      ),
+      _section(
+        document,
+        title: 'Account Motion Plan',
+        patterns: const [
+          'account motion',
+          'sales motion',
+          'go to market',
+          'next meeting',
+          'customer motion',
+        ],
+        fallbackBody:
+            'Use discovery with the Executive sponsor + workflow owner, solution alignment, and an evidence-backed proposal. The proof artifact should include an Evidence pack, value metrics plan, and implementation roadmap before asking for pilot approval. The 30 / 60 / 90 Day Action Plan should start with Validated priority use cases.',
+      ),
+      _section(
+        document,
+        title: 'Objection And Risk Handling',
+        patterns: const [
+          'objection',
+          'objections',
+          'risks',
+          'risk handling',
+          'concerns',
+          'blockers',
+        ],
+        fallbackBody:
+            'Capture the risks, objections, unsupported claims, and proof needed before the business case is customer-ready.',
       ),
       _section(
         document,
@@ -241,6 +295,18 @@ class BusinessUseCaseBriefBuilder {
   }) {
     return [
       ArtifactTable(
+        title: 'Executive Decision Snapshot',
+        rows: [
+          const [
+            'Decision area',
+            'Current signal',
+            'Business value',
+            'Required proof',
+          ],
+          ..._executiveDecisionRows(sections),
+        ],
+      ),
+      ArtifactTable(
         title: 'Use Case Prioritization Matrix',
         rows: [
           const [
@@ -253,6 +319,19 @@ class BusinessUseCaseBriefBuilder {
             'Next validation',
           ],
           ..._useCaseRows(sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Value Metrics Plan',
+        rows: [
+          const [
+            'Use case',
+            'KPI / value metric',
+            'Baseline needed',
+            'Target hypothesis',
+            'Evidence owner',
+          ],
+          ..._valueMetricRows(sections),
         ],
       ),
       ArtifactTable(
@@ -290,6 +369,30 @@ class BusinessUseCaseBriefBuilder {
             'Confidence',
           ],
           ..._evidenceRows(document, sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Account Motion Plan',
+        rows: [
+          const [
+            'Motion',
+            'Primary buyer',
+            'Proof artifact',
+            'Next meeting ask',
+          ],
+          ..._accountMotionRows(sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Objection And Risk Handling',
+        rows: [
+          const [
+            'Objection / risk',
+            'Why it matters',
+            'Mitigation',
+            'Evidence',
+          ],
+          ..._objectionRows(sections),
         ],
       ),
       ArtifactTable(
@@ -337,6 +440,51 @@ class BusinessUseCaseBriefBuilder {
     return rows;
   }
 
+  List<List<String>> _executiveDecisionRows(List<ArtifactSection> sections) {
+    final pains = _bulletsFor(sections, const [
+      'pain',
+      'signals',
+      'challenges',
+      'current state',
+    ]);
+    final useCases = _bulletsFor(sections, const [
+      'priority use cases',
+      'use cases',
+      'opportunities',
+    ]);
+    final values = _bulletsFor(sections, const [
+      'value',
+      'impact',
+      'roi',
+      'benefits',
+      'outcomes',
+    ]);
+    return [
+      [
+        'Business priority',
+        pains.isEmpty ? 'Needs customer discovery' : _shorten(pains.first, 120),
+        values.isEmpty
+            ? 'Potential value is not yet quantified.'
+            : _shorten(values.first, 120),
+        'Executive sponsor, success metric, baseline, and checked source evidence.',
+      ],
+      [
+        'Recommended use case',
+        useCases.isEmpty
+            ? 'Use case shortlist not confirmed'
+            : _shorten(useCases.first, 120),
+        'Frames the first customer conversation around a concrete business outcome.',
+        'Customer confirmation that the use case maps to funded priority and owned workflow.',
+      ],
+      [
+        'Decision readiness',
+        'Needs evidence-backed value and feasibility scoring',
+        'Prevents a generic pitch from becoming an unsupported recommendation.',
+        'Evidence pack, stakeholder owner, implementation dependency list, and next-meeting ask.',
+      ],
+    ];
+  }
+
   List<List<String>> _solutionRows(List<ArtifactSection> sections) {
     final useCases = _bulletsFor(sections, const [
       'priority use cases',
@@ -369,6 +517,27 @@ class BusinessUseCaseBriefBuilder {
       index++;
     }
     return rows;
+  }
+
+  List<List<String>> _valueMetricRows(List<ArtifactSection> sections) {
+    final useCases = _bulletsFor(sections, const [
+      'priority use cases',
+      'use cases',
+      'opportunities',
+    ]);
+    final candidates = useCases.isEmpty
+        ? const ['Customer-validated use case']
+        : useCases.take(8);
+    return [
+      for (final useCase in candidates)
+        [
+          useCase,
+          _successMetric(useCase),
+          'Current baseline, source system, measurement window, and owner.',
+          _targetHypothesis(useCase),
+          _personaFor(useCase),
+        ],
+    ];
   }
 
   List<List<String>> _stakeholderRows(
@@ -430,6 +599,45 @@ class BusinessUseCaseBriefBuilder {
     return stakeholders;
   }
 
+  List<List<String>> _accountMotionRows(List<ArtifactSection> sections) {
+    final useCases = _bulletsFor(sections, const [
+      'priority use cases',
+      'use cases',
+      'opportunities',
+    ]);
+    final nextSteps = _bulletsFor(sections, const [
+      'next steps',
+      'action plan',
+      'follow up',
+      'implementation',
+    ]);
+    final primaryUseCase = useCases.isEmpty
+        ? 'priority business use case'
+        : _shorten(useCases.first, 90);
+    return [
+      [
+        'Discovery',
+        'Executive sponsor + workflow owner',
+        'Business value hypothesis and discovery question list',
+        nextSteps.isEmpty
+            ? 'Confirm decision owner, metric, data source, and next working session.'
+            : _shorten(nextSteps.first, 120),
+      ],
+      [
+        'Solution alignment',
+        _personaFor(primaryUseCase),
+        'Solution map tied to $primaryUseCase',
+        'Review target architecture, customer inputs, and feasibility risks.',
+      ],
+      [
+        'Evidence-backed proposal',
+        'Buying committee',
+        'Evidence pack, value metrics plan, and implementation roadmap',
+        'Approve pilot scope, success criteria, and stakeholder operating model.',
+      ],
+    ];
+  }
+
   List<List<String>> _evidenceRows(
     ArtifactDocument document,
     List<ArtifactSection> sections,
@@ -464,6 +672,32 @@ class BusinessUseCaseBriefBuilder {
       ]);
     }
     return rows;
+  }
+
+  List<List<String>> _objectionRows(List<ArtifactSection> sections) {
+    final risks = _bulletsFor(sections, const [
+      'risk',
+      'risks',
+      'objection',
+      'objections',
+      'assumptions',
+      'unknowns',
+      'dependencies',
+    ]);
+    final candidates = risks.isEmpty
+        ? const [
+            'Business impact, data quality, stakeholder ownership, and implementation feasibility are not fully validated.',
+          ]
+        : risks.take(8);
+    return [
+      for (final risk in candidates)
+        [
+          risk,
+          'Unresolved risk can weaken executive confidence or slow approval.',
+          'Convert into a discovery question, proof artifact, owner, and decision gate.',
+          'Customer confirmation, source citation, baseline data, or technical feasibility note.',
+        ],
+    ];
   }
 
   List<List<String>> _actionPlanRows(List<ArtifactSection> sections) {
@@ -587,6 +821,22 @@ class BusinessUseCaseBriefBuilder {
       return 'Site availability, failover success, app performance, operational tickets.';
     }
     return 'Validated KPI, adoption signal, time saved, revenue/risk impact.';
+  }
+
+  String _targetHypothesis(String useCase) {
+    final lower = useCase.toLowerCase();
+    if (lower.contains('downtime') || lower.contains('maintenance')) {
+      return 'Reduce unplanned downtime exposure and improve maintenance response.';
+    }
+    if (lower.contains('security') || lower.contains('incident')) {
+      return 'Improve incident response speed, control coverage, and audit readiness.';
+    }
+    if (lower.contains('network') ||
+        lower.contains('wan') ||
+        lower.contains('connectivity')) {
+      return 'Improve site availability, failover confidence, and operational visibility.';
+    }
+    return 'Improve measurable business execution once baseline and owner are confirmed.';
   }
 
   String _shorten(String value, int maxLength) {
