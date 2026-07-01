@@ -11,6 +11,7 @@ class DocxArtifactInspection {
   final bool hasFooter;
   final bool hasCoreProperties;
   final bool hasExtendedProperties;
+  final bool hasCustomProperties;
   final String? title;
   final int paragraphCount;
   final int tableCount;
@@ -39,6 +40,8 @@ class DocxArtifactInspection {
   final bool hasExplicitTableGeometry;
   final bool hasRepeatingTableHeaders;
   final bool hasKeywordsMetadata;
+  final bool hasReportQualityManifest;
+  final bool hasAccessibilityManifest;
 
   const DocxArtifactInspection({
     required this.hasZipHeader,
@@ -51,6 +54,7 @@ class DocxArtifactInspection {
     required this.hasFooter,
     required this.hasCoreProperties,
     required this.hasExtendedProperties,
+    required this.hasCustomProperties,
     required this.title,
     required this.paragraphCount,
     required this.tableCount,
@@ -79,6 +83,8 @@ class DocxArtifactInspection {
     required this.hasExplicitTableGeometry,
     required this.hasRepeatingTableHeaders,
     required this.hasKeywordsMetadata,
+    required this.hasReportQualityManifest,
+    required this.hasAccessibilityManifest,
   });
 
   bool get isStructurallyValid =>
@@ -92,6 +98,8 @@ class DocxArtifactInspection {
       hasFooter &&
       hasCoreProperties &&
       hasExtendedProperties &&
+      hasCustomProperties &&
+      hasReportQualityManifest &&
       paragraphCount > 0 &&
       styleCount >= 6;
 
@@ -114,7 +122,8 @@ class DocxArtifactInspection {
       hasEnterpriseStyles &&
       hasExplicitTableGeometry &&
       hasRepeatingTableHeaders &&
-      hasKeywordsMetadata;
+      hasKeywordsMetadata &&
+      hasAccessibilityManifest;
 }
 
 class DocxArtifactInspector {
@@ -145,6 +154,9 @@ class DocxArtifactInspector {
       hasExtendedProperties:
           text.contains('docProps/app.xml') &&
           text.contains('<Application>CircuitCode</Application>'),
+      hasCustomProperties:
+          text.contains('docProps/custom.xml') &&
+          text.contains('CircuitReportQualityManifest'),
       title: _firstElementText(text, 'dc:title'),
       paragraphCount: RegExp(r'<w:p[ >]').allMatches(text).length,
       tableCount: RegExp(r'<w:tbl[ >]').allMatches(text).length,
@@ -194,6 +206,15 @@ class DocxArtifactInspector {
           text.contains('<cp:keywords>') &&
           text.contains('enterprise') &&
           text.contains('CircuitCode'),
+      hasReportQualityManifest:
+          text.contains('CircuitDecisionAsk') &&
+          text.contains('CircuitReviewPath') &&
+          text.contains('CircuitHandoffReadiness') &&
+          text.contains('CircuitEvidenceConfidence'),
+      hasAccessibilityManifest:
+          text.contains('CircuitAccessibilityPolicy') &&
+          text.contains('Real Word headings') &&
+          text.contains('repeating table headers'),
     );
   }
 

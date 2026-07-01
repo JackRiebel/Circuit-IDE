@@ -43,6 +43,7 @@ void main() {
 
     final bytes = const DocxArtifactRenderer().render(document);
     final inspection = const DocxArtifactInspector().inspect(bytes);
+    final packageText = String.fromCharCodes(bytes);
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportStructure, isTrue);
@@ -68,9 +69,19 @@ void main() {
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasRepeatingTableHeaders, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
+    expect(inspection.hasCustomProperties, isTrue);
+    expect(inspection.hasReportQualityManifest, isTrue);
+    expect(inspection.hasAccessibilityManifest, isTrue);
+    expect(packageText, contains('docProps/custom.xml'));
+    expect(packageText, contains('CircuitReportQualityManifest'));
+    expect(packageText, contains('CircuitAccessibilityPolicy'));
+    expect(packageText, contains('CircuitDecisionAsk'));
+    expect(packageText, contains('CircuitReviewPath'));
+    expect(packageText, contains('CircuitHandoffReadiness'));
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
     expect(metadata['artifact'], 'word_report');
+    expect(metadata['qualityManifestVersion'], '1.0');
     expect(metadata['reportType'], 'Architecture report');
     expect(metadata['audience'], 'Architecture reviewers');
     expect(
@@ -157,6 +168,30 @@ void main() {
     );
     expect(metadata['reportReviewChecklistCount'], 6);
     expect(
+      metadata['accessibilitySignals'],
+      containsAll([
+        'Real Word headings',
+        'Real numbering for bullets',
+        'Explicit table geometry',
+        'Repeating table headers',
+        'Header and footer package markers',
+        'Source appendix included',
+        'Assumption appendix included',
+      ]),
+    );
+    expect(metadata['accessibilitySignalCount'], 7);
+    expect(
+      metadata['publishingMetadata'],
+      containsAll([
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence confidence: High - sources and assumptions captured',
+        'Publishing status: Ready for stakeholder review',
+      ]),
+    );
+    expect(metadata['publishingMetadataCount'], 6);
+    expect(
       metadata['reportHandoffActions'],
       containsAll([
         'Send report to internal reviewer with source artifacts attached.',
@@ -212,6 +247,9 @@ void main() {
     expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasRepeatingTableHeaders'], isTrue);
+    expect(metadata['hasReportQualityManifest'], isTrue);
+    expect(metadata['hasPublishingMetadata'], isTrue);
+    expect(metadata['hasAccessibilitySignals'], isTrue);
     expect(metadata['hasAssumptionsAppendix'], isTrue);
     expect(metadata['hasSourcesAppendix'], isTrue);
     expect(metadata['hasCustomerReadyPackage'], isTrue);
@@ -259,6 +297,9 @@ void main() {
     expect(inspection.hasExplicitTableGeometry, isTrue);
     expect(inspection.hasRepeatingTableHeaders, isTrue);
     expect(inspection.hasKeywordsMetadata, isTrue);
+    expect(inspection.hasCustomProperties, isTrue);
+    expect(inspection.hasReportQualityManifest, isTrue);
+    expect(inspection.hasAccessibilityManifest, isTrue);
 
     final metadata = const DocxArtifactRenderer().metadataFor(document);
     expect(metadata['reportType'], 'Implementation plan');
@@ -305,6 +346,9 @@ void main() {
     expect(metadata['hasLeadDecisionCallout'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
     expect(metadata['hasRepeatingTableHeaders'], isTrue);
+    expect(metadata['hasReportQualityManifest'], isTrue);
+    expect(metadata['hasPublishingMetadata'], isTrue);
+    expect(metadata['hasAccessibilitySignals'], isTrue);
     expect(
       metadata['formFactors'],
       containsAll([
@@ -355,6 +399,9 @@ void main() {
     expect(inspection.hasTableOfContents, isTrue);
     expect(inspection.hasRiskRegister, isTrue);
     expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(inspection.hasCustomProperties, isTrue);
+    expect(inspection.hasReportQualityManifest, isTrue);
+    expect(inspection.hasAccessibilityManifest, isTrue);
     expect(packageText, contains('No cited evidence included'));
     expect(packageText, contains('Evidence gap'));
     expect(packageText, contains('Decision owner'));
@@ -372,5 +419,7 @@ void main() {
     expect(packageText, contains('Table of Contents'));
     expect(packageText, contains('CalloutLabel'));
     expect(packageText, contains('<w:tblHeader/>'));
+    expect(packageText, contains('CircuitReportQualityManifest'));
+    expect(packageText, contains('CircuitAccessibilityPolicy'));
   });
 }

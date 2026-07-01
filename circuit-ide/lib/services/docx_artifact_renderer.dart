@@ -77,9 +77,12 @@ class DocxArtifactRenderer {
     final handoffScore = _handoffScoreFor(scorecardRows);
     final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
     final handoffActions = _reportHandoffActionsFor(document);
+    final accessibilitySignals = _accessibilitySignalsFor(document);
+    final publishingMetadata = _publishingMetadataFor(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'word_report',
+      'qualityManifestVersion': '1.0',
       'reportType': _reportTypeFor(document),
       'audience': _audienceFor(document),
       'reportPurpose': _reportPurposeFor(document),
@@ -122,6 +125,10 @@ class DocxArtifactRenderer {
       'reportReviewChecklistCount': reviewChecklist.length,
       'reportHandoffActions': handoffActions,
       'reportHandoffActionCount': handoffActions.length,
+      'accessibilitySignals': accessibilitySignals,
+      'accessibilitySignalCount': accessibilitySignals.length,
+      'publishingMetadata': publishingMetadata,
+      'publishingMetadataCount': publishingMetadata.length,
       'reportRiskFlags': _reportRiskFlagsFor(document, validationGaps),
       'appendixCoverage': _appendixCoverageFor(document),
       'validationGaps': validationGaps,
@@ -158,6 +165,9 @@ class DocxArtifactRenderer {
       'hasDecisionSignOffPage': true,
       'hasExplicitTableGeometry': true,
       'hasRepeatingTableHeaders': true,
+      'hasReportQualityManifest': true,
+      'hasPublishingMetadata': true,
+      'hasAccessibilitySignals': true,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -172,6 +182,7 @@ class DocxArtifactRenderer {
       _DocxFile('_rels/.rels', _bytes(_rootRels())),
       _DocxFile('docProps/app.xml', _bytes(_appXml(document))),
       _DocxFile('docProps/core.xml', _bytes(_coreXml(document))),
+      _DocxFile('docProps/custom.xml', _bytes(_customXml(document))),
       _DocxFile('word/document.xml', _bytes(_documentXml(document))),
       _DocxFile('word/styles.xml', _bytes(_stylesXml())),
       _DocxFile('word/numbering.xml', _bytes(_numberingXml())),
@@ -192,6 +203,7 @@ class DocxArtifactRenderer {
         '<Default Extension="xml" ContentType="application/xml"/>'
         '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
         '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+        '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
         '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>'
@@ -207,6 +219,7 @@ class DocxArtifactRenderer {
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
         '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
         '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+        '<Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/>'
         '</Relationships>';
   }
 
@@ -225,6 +238,36 @@ class DocxArtifactRenderer {
         '<Company>CircuitCode</Company>'
         '<Words>${_wordCount(document)}</Words>'
         '<Paragraphs>${_paragraphCount(document)}</Paragraphs>'
+        '</Properties>';
+  }
+
+  String _customXml(ArtifactDocument document) {
+    final handoffScore = _handoffScoreFor(
+      _handoffScorecardRows(document).skip(1).toList(),
+    );
+    final properties = <String, String>{
+      'CircuitReportQualityManifest':
+          'Design preset, table geometry, decision brief, evidence matrix, validation checklist, approval gates, handoff scorecard.',
+      'CircuitReportType': _reportTypeFor(document),
+      'CircuitDecisionAsk': _decisionAskFor(document),
+      'CircuitReviewPath': _reviewPathFor(document),
+      'CircuitHandoffReadiness': _handoffReadinessLevelFor(handoffScore),
+      'CircuitEvidenceConfidence': _evidenceConfidenceFor(document),
+      'CircuitDocumentParts': _documentPartsFor(document).join(', '),
+      'CircuitAccessibilityPolicy':
+          'Real Word headings, real numbering, explicit table geometry, repeating table headers, header/footer markers.',
+      'CircuitPublishingStatus': _handoffStatus(document),
+    };
+    var pid = 2;
+    final entries = properties.entries
+        .map(
+          (entry) =>
+              '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="${pid++}" name="${_xml(entry.key)}"><vt:lpwstr>${_xml(entry.value)}</vt:lpwstr></property>',
+        )
+        .join();
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+        '$entries'
         '</Properties>';
   }
 
@@ -1311,6 +1354,32 @@ class DocxArtifactRenderer {
         'Keep cited sources with the handoff package.'
       else
         'Add cited evidence before external handoff.',
+    ];
+  }
+
+  List<String> _accessibilitySignalsFor(ArtifactDocument document) {
+    return [
+      'Real Word headings',
+      'Real numbering for bullets',
+      'Explicit table geometry',
+      'Repeating table headers',
+      'Header and footer package markers',
+      if (document.citations.isNotEmpty) 'Source appendix included',
+      if (document.assumptions.isNotEmpty) 'Assumption appendix included',
+    ];
+  }
+
+  List<String> _publishingMetadataFor(ArtifactDocument document) {
+    final handoffScore = _handoffScoreFor(
+      _handoffScorecardRows(document).skip(1).toList(),
+    );
+    return [
+      'Report type: ${_reportTypeFor(document)}',
+      'Decision ask: ${_decisionAskFor(document)}',
+      'Review path: ${_reviewPathFor(document)}',
+      'Handoff readiness: ${_handoffReadinessLevelFor(handoffScore)}',
+      'Evidence confidence: ${_evidenceConfidenceFor(document)}',
+      'Publishing status: ${_handoffStatus(document)}',
     ];
   }
 
