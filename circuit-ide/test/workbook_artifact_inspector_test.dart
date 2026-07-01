@@ -359,6 +359,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(inspection.hasEnterpriseWorkbookStructure, isTrue);
     expect(
       inspection.hasSheets(const [
+        'Executive Risk',
         'Lifecycle Status',
         'Urgency Timeline',
         'Migration Hints',
@@ -366,11 +367,27 @@ Source checked 2026-06-30 from Cisco EoX/API.
         'Decision Gates',
         'Source Quality',
         'Official Date Evidence',
+        'Date Authority',
+        'Support Runway',
         'Replacement Suitability',
+        'Migration Decision',
+        'Replacement Readiness',
         'WiFi7 UPOE Readiness',
+        'Customer Actions',
         'Risk Register',
         'Assumptions',
       ]),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Executive Risk', 'Highest lifecycle risk'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Executive Risk',
+        'Do not treat migration hint as final recommendation',
+      ),
       isTrue,
     );
     expect(inspection.sheetContains('Lifecycle Status', 'AIR-AP2802I'), isTrue);
@@ -407,6 +424,15 @@ Source checked 2026-06-30 from Cisco EoX/API.
       isTrue,
     );
     expect(
+      inspection.sheetContains('Date Authority', 'Official lifecycle dates'),
+      isTrue,
+    );
+    expect(inspection.sheetContains('Date Authority', 'Checked date'), isTrue);
+    expect(
+      inspection.sheetContains('Support Runway', 'Support runway at risk'),
+      isTrue,
+    );
+    expect(
       inspection.sheetContains(
         'Replacement Suitability',
         'Migration hint only',
@@ -421,7 +447,33 @@ Source checked 2026-06-30 from Cisco EoX/API.
       isTrue,
     );
     expect(
+      inspection.sheetContains('Migration Decision', 'suggestedMigrationPid'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Migration Decision',
+        'Supersede if newer model better satisfies',
+      ),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Replacement Readiness', 'Replacement Gate'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains('Replacement Readiness', 'UPOE / UPOE+ budget'),
+      isTrue,
+    );
+    expect(
       inspection.sheetContains('WiFi7 UPOE Readiness', 'UPOE / UPOE+ budget'),
+      isTrue,
+    );
+    expect(
+      inspection.sheetContains(
+        'Customer Actions',
+        'Customer-ready action plan',
+      ),
       isTrue,
     );
     expect(

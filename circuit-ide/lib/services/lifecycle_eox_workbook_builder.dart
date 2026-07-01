@@ -24,7 +24,25 @@ class LifecycleEoxWorkbookBuilder {
     final lifecycleRecords = records
         .map(_LifecycleRecord.fromRow)
         .toList(growable: false);
+    final fullContent = '$prompt\n$content';
+    final profile = _LifecycleProfile(
+      records: lifecycleRecords,
+      content: fullContent,
+      checkedDate: _checkedDate(fullContent),
+    );
     return [
+      WorkbookTable(
+        name: 'Executive Risk',
+        rows: [
+          const [
+            'Decision Signal',
+            'Current Answer',
+            'Why It Matters',
+            'Next Action',
+          ],
+          ..._executiveRiskRows(profile),
+        ],
+      ),
       WorkbookTable(
         name: 'Lifecycle Status',
         rows: [
@@ -72,7 +90,7 @@ class LifecycleEoxWorkbookBuilder {
             'Why it matters',
             'Validation needed before recommendation',
           ],
-          ..._replacementValidationRows('$prompt\n$content'),
+          ..._replacementValidationRows(fullContent),
         ],
       ),
       WorkbookTable(
@@ -84,7 +102,7 @@ class LifecycleEoxWorkbookBuilder {
             'Reject / caution trigger',
             'Required evidence',
           ],
-          ..._decisionGateRows('$prompt\n$content'),
+          ..._decisionGateRows(fullContent),
         ],
       ),
       WorkbookTable(
@@ -109,7 +127,33 @@ class LifecycleEoxWorkbookBuilder {
             'Missing evidence',
             'Customer-ready action',
           ],
-          ..._officialDateEvidenceRows(lifecycleRecords, '$prompt\n$content'),
+          ..._officialDateEvidenceRows(lifecycleRecords, fullContent),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Date Authority',
+        rows: [
+          const [
+            'Evidence Area',
+            'Authority',
+            'Current Status',
+            'Customer-Ready Requirement',
+            'Gap',
+          ],
+          ..._dateAuthorityRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Support Runway',
+        rows: [
+          const [
+            'Product / PID',
+            'LDOS',
+            'Runway State',
+            'Customer Risk',
+            'Action',
+          ],
+          ..._supportRunwayRows(lifecycleRecords),
         ],
       ),
       WorkbookTable(
@@ -125,9 +169,35 @@ class LifecycleEoxWorkbookBuilder {
           ],
           ..._replacementSuitabilityRows(
             document: document,
-            content: '$prompt\n$content',
+            content: fullContent,
             records: lifecycleRecords,
           ),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Migration Decision',
+        rows: [
+          const [
+            'Current Product',
+            'Migration Hint',
+            'Decision Treatment',
+            'Supersede If',
+            'Evidence Needed',
+          ],
+          ..._migrationDecisionRows(document, fullContent, profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Replacement Readiness',
+        rows: [
+          const [
+            'Replacement Gate',
+            'Required Proof',
+            'Status',
+            'Reject If',
+            'Owner',
+          ],
+          ..._replacementReadinessRows(profile),
         ],
       ),
       WorkbookTable(
@@ -139,7 +209,14 @@ class LifecycleEoxWorkbookBuilder {
             'Replacement validation',
             'Status',
           ],
-          ..._wifi7ReadinessRows('$prompt\n$content'),
+          ..._wifi7ReadinessRows(fullContent),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Customer Actions',
+        rows: [
+          const ['Action', 'Owner', 'Needed Before', 'Output'],
+          ..._customerActionRows(profile),
         ],
       ),
       WorkbookTable(
@@ -260,6 +337,51 @@ class LifecycleEoxWorkbookBuilder {
       ]);
     }
     return rows.take(80).toList(growable: false);
+  }
+
+  List<List<String>> _executiveRiskRows(_LifecycleProfile profile) {
+    return [
+      [
+        'Highest lifecycle risk',
+        profile.highestRisk,
+        'This determines whether the customer needs monitoring, date validation, or immediate migration planning.',
+        profile.highestRisk == 'High'
+            ? 'Prioritize migration plan and support-risk communication.'
+            : 'Validate official lifecycle evidence before making replacement claims.',
+      ],
+      [
+        'Lifecycle date authority',
+        profile.hasCiscoSource
+            ? 'Official Cisco source signal present'
+            : 'Official Cisco source not proven',
+        'Lifecycle dates are customer-facing only when backed by Cisco EoX/API or official Cisco evidence.',
+        profile.hasCiscoSource
+            ? 'Attach URL/API record and checked date to the customer handoff.'
+            : 'Fetch Cisco EoX/API records before presenting dates.',
+      ],
+      [
+        'Checked date requirement',
+        profile.checkedDate ?? 'Missing checked date',
+        'Lifecycle data goes stale; checked date makes the report auditable.',
+        profile.checkedDate == null
+            ? 'Add checked date for every lifecycle lookup.'
+            : 'Keep checked date visible in handoff materials.',
+      ],
+      [
+        'Migration recommendation posture',
+        profile.hasMigrationSignal
+            ? 'Migration hints detected'
+            : 'No structured migration hints',
+        'Cisco EoX replacement PID is a migration clue only, not the best-current-model decision.',
+        'Do not treat migration hint as final recommendation; compare current portfolio candidates.',
+      ],
+      [
+        'Current requirement pressure',
+        _replacementRequirementSignal(profile.content),
+        'Wi-Fi 7, UPOE, mGig, uplinks, licensing, and lifecycle runway can supersede old migration hints.',
+        'Run readiness gates before recommending a replacement model.',
+      ],
+    ];
   }
 
   List<List<String>> _migrationHintRows(
@@ -456,6 +578,73 @@ class LifecycleEoxWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _dateAuthorityRows(_LifecycleProfile profile) {
+    final checked = profile.checkedDate ?? 'Missing checked date';
+    return [
+      [
+        'Official lifecycle dates',
+        'Cisco EoX/API or official Cisco source',
+        profile.hasCiscoSource
+            ? 'Cisco source signal detected'
+            : 'Needs authoritative source',
+        'Status, End of Sale, LDOS, source URL/API record, checked date',
+        profile.hasCiscoSource
+            ? 'Confirm exact URL/API record'
+            : 'Missing Cisco authoritative evidence',
+      ],
+      [
+        'Checked date',
+        'Report metadata / source review date',
+        checked,
+        'A visible date for when lifecycle evidence was checked',
+        profile.checkedDate == null ? 'Missing checked date' : 'None detected',
+      ],
+      [
+        'Replacement suitability facts',
+        'Current portfolio datasheets / official catalog',
+        profile.hasMigrationSignal
+            ? 'Migration hint exists; suitability unproven'
+            : 'Needs current shortlist',
+        'Current candidates, rejected alternatives, fit rationale, lifecycle runway',
+        'Needs current portfolio comparison',
+      ],
+      [
+        'Customer requirements',
+        'Customer supplied and design validated',
+        _replacementRequirementSignal(profile.content),
+        'Wi-Fi generation, AP power draw, mGig ports, uplinks, HA, licensing, growth',
+        profile.hasModernRequirementSignal
+            ? 'Convert signals into numeric design requirements'
+            : 'Needs discovery',
+      ],
+    ];
+  }
+
+  List<List<String>> _supportRunwayRows(List<_LifecycleRecord> records) {
+    final targetRecords = records.isEmpty
+        ? const [
+            _LifecycleRecord(
+              product: 'TBD',
+              status: 'Needs lookup',
+              endOfSale: 'TBD',
+              ldos: 'TBD',
+              risk: 'Unknown',
+              source: 'Use Cisco EoX/API or official Cisco source.',
+            ),
+          ]
+        : records.take(48);
+    return [
+      for (final record in targetRecords)
+        [
+          record.product,
+          record.ldos,
+          record.runwayState,
+          record.customerRisk,
+          record.action,
+        ],
+    ];
+  }
+
   List<List<String>> _officialDateEvidenceRows(
     List<_LifecycleRecord> records,
     String content,
@@ -528,6 +717,87 @@ class LifecycleEoxWorkbookBuilder {
           ];
         })
         .toList(growable: false);
+  }
+
+  List<List<String>> _migrationDecisionRows(
+    ArtifactDocument document,
+    String content,
+    _LifecycleProfile profile,
+  ) {
+    final migrationRows = _migrationHintRows(document, content);
+    if (migrationRows.isEmpty) {
+      return const [
+        [
+          'TBD',
+          'TBD',
+          'No final recommendation',
+          'Any current candidate better satisfies requirements or has longer runway',
+          'Current portfolio candidates, datasheets, lifecycle dates, and customer requirements',
+        ],
+      ];
+    }
+    return migrationRows
+        .take(48)
+        .map(
+          (row) => [
+            row[0],
+            row.length > 1 ? row[1] : 'TBD',
+            'suggestedMigrationPid only; not final recommendation',
+            profile.hasModernRequirementSignal
+                ? 'Supersede if newer model better satisfies Wi-Fi 7, UPOE, mGig, uplinks, licensing, or lifecycle runway.'
+                : 'Supersede if current portfolio comparison proves better fit or longer support runway.',
+            'Official datasheets/catalog facts, lifecycle runway, rejected alternatives, and fit score.',
+          ],
+        )
+        .toList(growable: false);
+  }
+
+  List<List<String>> _replacementReadinessRows(_LifecycleProfile profile) {
+    return [
+      [
+        'Lifecycle runway',
+        'Candidate has support runway suitable for the customer lifecycle',
+        profile.hasCiscoSource
+            ? 'Needs candidate LDOS comparison'
+            : 'Needs official dates',
+        'Candidate is near EoS/EoL or has shorter runway than alternatives',
+        'SE / lifecycle owner',
+      ],
+      [
+        'Wi-Fi generation fit',
+        'Candidate supports target AP generation and operational model',
+        profile.hasWifi7
+            ? 'Wi-Fi 7 requirement detected'
+            : 'Needs AP generation confirmation',
+        'Candidate does not support the intended AP generation or management plane',
+        'Wireless architect',
+      ],
+      [
+        'UPOE / UPOE+ budget',
+        'Per-port and aggregate power meet AP draw with reserve',
+        profile.hasHighPower
+            ? 'Power requirement detected'
+            : 'Needs power draw input',
+        'Insufficient per-port power, aggregate budget, or redundant PSU capacity',
+        'Switching architect',
+      ],
+      [
+        'mGig and uplinks',
+        'Access ports and uplinks avoid bottlenecks for modern APs/WAN',
+        profile.hasMultiGig
+            ? 'mGig/high-speed signal detected'
+            : 'Needs access/uplink target',
+        'No mGig where required or uplinks oversubscribe design targets',
+        'Network architect',
+      ],
+      [
+        'Licensing and operations',
+        'License tier, management plane, support contract, and migration effort fit',
+        'Needs customer operations validation',
+        'Hardware fits technically but fails licensing/support/operations constraints',
+        'Customer operations owner',
+      ],
+    ];
   }
 
   List<List<String>> _wifi7ReadinessRows(String content) {
@@ -607,6 +877,43 @@ class LifecycleEoxWorkbookBuilder {
           'Potential unsupported recommendation',
           'Add official lifecycle sources before customer-facing handoff.',
         ],
+    ];
+  }
+
+  List<List<String>> _customerActionRows(_LifecycleProfile profile) {
+    return [
+      [
+        'Customer-ready action plan',
+        'SE / account team',
+        'Before customer handoff',
+        'Summarize lifecycle risk, migration posture, and required validations.',
+      ],
+      [
+        'Pull official EoX evidence',
+        'Lifecycle owner',
+        'Before presenting dates',
+        profile.checkedDate == null
+            ? 'Cisco EoX/API records with source URLs and checked date.'
+            : 'Cisco EoX/API records with source URLs; checked date ${profile.checkedDate}.',
+      ],
+      [
+        'Build current portfolio shortlist',
+        'Architecture owner',
+        'Before final replacement recommendation',
+        'Candidate models, fit scores, rejected alternatives, lifecycle runway.',
+      ],
+      [
+        'Validate Wi-Fi 7/UPOE/mGig gates',
+        'Wireless and switching owners',
+        'Before BOM recommendation',
+        'AP draw, port speed, power supplies, uplinks, stacking, HA, and growth headroom.',
+      ],
+      [
+        'Document recommendation caveats',
+        'Evidence reviewer',
+        'Before executive/customer share',
+        'Clear distinction between lifecycle dates, migration hints, and final model selection.',
+      ],
     ];
   }
 
@@ -831,6 +1138,35 @@ class _LifecycleRecord {
     return 'Validate official lifecycle data and replacement suitability.';
   }
 
+  String get runwayState {
+    final lower = '$status $risk $ldos'.toLowerCase();
+    if (ldos == 'TBD') return 'Unknown runway';
+    if (lower.contains('high') ||
+        lower.contains('unsupported') ||
+        lower.contains('end of support')) {
+      return 'Support runway at risk';
+    }
+    if (lower.contains('medium') ||
+        lower.contains('review') ||
+        lower.contains('end of sale')) {
+      return 'Runway requires validation';
+    }
+    return 'Monitor runway';
+  }
+
+  String get customerRisk {
+    final lower = '$status $risk'.toLowerCase();
+    if (lower.contains('high') ||
+        lower.contains('unsupported') ||
+        lower.contains('end of support')) {
+      return 'Potential unsupported hardware, renewal exposure, and migration urgency.';
+    }
+    if (ldos == 'TBD' || endOfSale == 'TBD') {
+      return 'Missing lifecycle dates can create false confidence in the recommendation.';
+    }
+    return 'No immediate lifecycle risk proven; continue monitoring and validate replacement separately.';
+  }
+
   String get sourceAuthority {
     final lower = source.toLowerCase();
     if (lower.contains('cisco') &&
@@ -862,5 +1198,80 @@ class _LifecycleRecord {
       return 'Lifecycle dates are reviewable; still validate replacement suitability separately.';
     }
     return 'Add Cisco EoX/API record, checked date, and source URL before customer handoff.';
+  }
+}
+
+class _LifecycleProfile {
+  final List<_LifecycleRecord> records;
+  final String content;
+  final String? checkedDate;
+
+  const _LifecycleProfile({
+    required this.records,
+    required this.content,
+    required this.checkedDate,
+  });
+
+  bool get hasCiscoSource {
+    return records.any(
+          (record) => record.source.toLowerCase().contains('cisco'),
+        ) ||
+        RegExp(
+          r'\bcisco\b.*\b(eox|api|official)\b',
+          caseSensitive: false,
+        ).hasMatch(content);
+  }
+
+  bool get hasMigrationSignal {
+    return RegExp(
+      r'\b(replacement pid|migration pid|successor|replacement|migration hint|suggestedmigrationpid)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+  }
+
+  bool get hasWifi7 {
+    return RegExp(
+      r'\b(wi[- ]?fi\s*7|wifi\s*7)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+  }
+
+  bool get hasHighPower {
+    return RegExp(
+      r'\b(upoe\+?|802\.3bt|60w|90w|high power)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+  }
+
+  bool get hasMultiGig {
+    return RegExp(
+      r'\b(multigig|mgig|2\.5g|5g|10g|10gig)\b',
+      caseSensitive: false,
+    ).hasMatch(content);
+  }
+
+  bool get hasModernRequirementSignal {
+    return hasWifi7 || hasHighPower || hasMultiGig;
+  }
+
+  String get highestRisk {
+    final combined = records
+        .map((record) => '${record.status} ${record.risk}')
+        .join(' ')
+        .toLowerCase();
+    if (combined.contains('high') ||
+        combined.contains('unsupported') ||
+        combined.contains('end of support')) {
+      return 'High';
+    }
+    if (combined.contains('medium') ||
+        combined.contains('review') ||
+        combined.contains('end of sale') ||
+        records.any(
+          (record) => record.ldos == 'TBD' || record.endOfSale == 'TBD',
+        )) {
+      return 'Review';
+    }
+    return 'Monitor';
   }
 }

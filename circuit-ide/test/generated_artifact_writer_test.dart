@@ -319,18 +319,19 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.xlsx'));
     expect(artifact.summary, contains('Lifecycle / EoX workbook'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(5));
+    expect(artifact.summary, contains('executive risk'));
+    expect(artifact.summary, contains('replacement readiness'));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(17));
     expect(artifact.previewRows.first, [
-      'Product / PID',
-      'Lifecycle status',
-      'End of sale',
-      'Last date of support',
-      'Risk',
-      'Source / evidence',
+      'Decision Signal',
+      'Current Answer',
+      'Why It Matters',
+      'Next Action',
     ]);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
     final packageText = String.fromCharCodes(bytes);
+    expect(packageText, contains('Executive Risk'));
     expect(packageText, contains('Lifecycle Status'));
     expect(packageText, contains('Urgency Timeline'));
     expect(packageText, contains('Migration Hints'));
@@ -338,8 +339,13 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('Decision Gates'));
     expect(packageText, contains('Source Quality'));
     expect(packageText, contains('Official Date Evidence'));
+    expect(packageText, contains('Date Authority'));
+    expect(packageText, contains('Support Runway'));
     expect(packageText, contains('Replacement Suitability'));
+    expect(packageText, contains('Migration Decision'));
+    expect(packageText, contains('Replacement Readiness'));
     expect(packageText, contains('WiFi7 UPOE Readiness'));
+    expect(packageText, contains('Customer Actions'));
     expect(packageText, contains('Risk Register'));
     expect(packageText, contains('Assumptions'));
     expect(packageText, contains('C9300-48P'));
@@ -349,11 +355,17 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('suggestedMigrationPid'));
     expect(packageText, contains('checked date'));
     expect(packageText, contains('2026-06-30'));
+    expect(packageText, contains('Highest lifecycle risk'));
+    expect(packageText, contains('Official lifecycle dates'));
+    expect(packageText, contains('Support runway at risk'));
     expect(packageText, contains('Migration hint only'));
     expect(
       packageText,
       contains('Do not recommend CW9176I unless sourced facts prove'),
     );
+    expect(packageText, contains('suggestedMigrationPid only'));
+    expect(packageText, contains('Replacement Gate'));
+    expect(packageText, contains('Customer-ready action plan'));
     expect(packageText, contains('current portfolio comparison'));
     expect(packageText, contains('Wi-Fi 7'));
     expect(packageText, contains('UPOE'));
