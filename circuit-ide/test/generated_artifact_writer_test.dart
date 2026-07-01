@@ -2017,13 +2017,34 @@ Checkpoint:
     const registry = ArtifactTypeRegistry();
 
     expect(ArtifactTypeRegistry.descriptors, hasLength(15));
+    for (final descriptor in ArtifactTypeRegistry.descriptors) {
+      expect(descriptor.primaryKind, descriptor.supportedKinds.first);
+      expect(descriptor.previewSurface, isNotEmpty);
+      expect(descriptor.drawerActions, contains('Open'));
+      expect(descriptor.drawerActions, contains('Reveal in Finder'));
+      expect(descriptor.drawerActions, contains('Copy path'));
+      expect(descriptor.verificationChecks.length, greaterThanOrEqualTo(3));
+    }
     expect(
       registry.descriptorForKind(GeneratedArtifactKind.powerPoint)?.id,
       'powerpoint_deck',
     );
     expect(
+      registry.descriptorForId('chart_pack')?.previewSurface,
+      'Chart summary',
+    );
+    expect(registry.descriptorForId('business_use_case_brief')?.packageKinds, [
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.chart,
+    ]);
+    expect(
       registry.descriptorForPrompt('make a topology diagram')?.id,
       'network_topology_diagram',
+    );
+    expect(
+      registry.descriptorForPrompt('create a chart pack for PoE budget')?.id,
+      'chart_pack',
     );
     expect(
       registry.descriptorForPrompt('create a business case for Acme')?.id,
@@ -2226,11 +2247,27 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     expect(
       package.primary!.metadata['packageReviewWorkflow'],
       containsAll([
-        'Review Word report narrative, assumptions, citations, and sign-off gates.',
-        'Review deck slide order, speaker notes, and customer-facing framing.',
-        'Review chart thresholds, risk labels, and executive insights.',
+        'DOCX package opens/parses',
+        'PPTX package opens/parses',
+        'SVG chart root parses',
         'Open each generated artifact from the Artifacts drawer before sharing.',
       ]),
+    );
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Report outline', 'Slide outline', 'Chart summary']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      containsAll([
+        'Report outline metadata persists',
+        'Deck readiness metadata renders',
+        'Decision and threshold preview renders',
+      ]),
+    );
+    expect(
+      package.primary!.metadata['packageDrawerActions'],
+      containsAll(['Open', 'Reveal in Finder', 'Copy path', 'Review']),
     );
     expect(
       package.primary!.metadata['packageFileTypes'],
@@ -2305,9 +2342,20 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     expect(
       package.primary!.metadata['packageReviewWorkflow'],
       containsAll([
-        'Validate workbook inputs, formulas, gates, and source sheets.',
-        'Review chart thresholds, risk labels, and executive insights.',
+        'XLSX package opens/parses',
+        'SVG chart root parses',
         'Open each generated artifact from the Artifacts drawer before sharing.',
+      ]),
+    );
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Workbook preview', 'Chart summary']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      containsAll([
+        'Sheet count metadata persists',
+        'Chart signal metadata persists',
       ]),
     );
     expect(
@@ -2318,7 +2366,8 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
     expect(manifestText, contains('Solution Sizing Package'));
     expect(manifestText, contains('Package Readiness'));
     expect(manifestText, contains('Review Workflow'));
-    expect(manifestText, contains('Validate workbook inputs'));
+    expect(manifestText, contains('Sizing sheets parse'));
+    expect(manifestText, contains('Chart signal metadata persists'));
     expect(manifestText, contains('.xlsx'));
     expect(manifestText, contains('.svg'));
     expect(package.artifacts[1].fileName, endsWith('.xlsx'));

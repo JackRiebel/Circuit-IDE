@@ -23,6 +23,7 @@ import '../../models/studio_source_artifact.dart';
 import '../../models/studio_thread.dart';
 import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
+import '../../services/artifact_type_registry.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
@@ -3270,25 +3271,9 @@ String _artifactWorkbenchHint(GeneratedArtifact artifact) {
   if (_isArtifactPackageManifest(artifact)) {
     return 'Package manifest for the generated deliverable set';
   }
-  return switch (artifact.kind) {
-    GeneratedArtifactKind.excel =>
-      'Workbook artifact for sizing, inventories, and matrices',
-    GeneratedArtifactKind.csv => 'Dataset artifact for clean tabular exchange',
-    GeneratedArtifactKind.powerPoint =>
-      'Presentation artifact for customer-ready decks',
-    GeneratedArtifactKind.docx =>
-      'Document artifact for reports, briefs, and handoffs',
-    GeneratedArtifactKind.pdf => 'Final handoff artifact for fixed review',
-    GeneratedArtifactKind.diagram =>
-      'Diagram artifact for topology and architecture visuals',
-    GeneratedArtifactKind.chart =>
-      'Visual artifact for comparison and trend analysis',
-    GeneratedArtifactKind.json => 'Structured data artifact for integrations',
-    GeneratedArtifactKind.markdown =>
-      'Markdown artifact for editable planning and notes',
-    GeneratedArtifactKind.report =>
-      'Report artifact for structured customer deliverables',
-  };
+  final descriptor = _artifactDescriptorFor(artifact.kind);
+  if (descriptor.useCases.isEmpty) return '${descriptor.label} artifact';
+  return '${descriptor.label} for ${descriptor.useCases.take(3).join(', ')}';
 }
 
 bool _isArtifactPackageManifest(GeneratedArtifact artifact) {
@@ -4248,20 +4233,8 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
   }
 
   String _previewTitle(GeneratedArtifact artifact) {
-    return switch (artifact.kind) {
-      GeneratedArtifactKind.excel => 'Workbook preview',
-      GeneratedArtifactKind.csv => 'Dataset preview',
-      GeneratedArtifactKind.powerPoint => 'Slide outline',
-      GeneratedArtifactKind.docx => 'Report outline',
-      GeneratedArtifactKind.pdf => 'PDF outline',
-      GeneratedArtifactKind.diagram => 'Topology readiness',
-      GeneratedArtifactKind.chart => 'Chart summary',
-      GeneratedArtifactKind.json => 'Structured data preview',
-      GeneratedArtifactKind.markdown || GeneratedArtifactKind.report =>
-        _isArtifactPackageManifest(artifact)
-            ? 'Package contents'
-            : 'Document preview',
-    };
+    if (_isArtifactPackageManifest(artifact)) return 'Package contents';
+    return _artifactDescriptorFor(artifact.kind).previewSurface;
   }
 
   String _previewCount(GeneratedArtifact artifact) {
@@ -4278,6 +4251,15 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
       _ => '${artifact.sheetCount} items',
     };
   }
+}
+
+ArtifactTypeDescriptor _artifactDescriptorFor(GeneratedArtifactKind kind) {
+  return const ArtifactTypeRegistry().descriptorForKind(kind) ??
+      ArtifactTypeDescriptor(
+        id: kind.name,
+        label: _exportLabel(kind),
+        supportedKinds: [kind],
+      );
 }
 
 int _metadataInt(GeneratedArtifact artifact, String key) {

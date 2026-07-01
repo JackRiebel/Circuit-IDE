@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../models/generated_artifact.dart';
+import 'artifact_type_registry.dart';
 import 'generated_artifact_writer.dart';
 
 class GeneratedArtifactPackage {
@@ -24,12 +25,18 @@ class GeneratedArtifactPackage {
 
 class GeneratedArtifactPackageWriter {
   final GeneratedArtifactWriter writer;
+  final ArtifactTypeRegistry registry;
 
   const GeneratedArtifactPackageWriter({
     this.writer = const GeneratedArtifactWriter(),
+    this.registry = const ArtifactTypeRegistry(),
   });
 
   List<GeneratedArtifactKind> packageTargetsForPrompt(String prompt) {
+    final descriptor = registry.descriptorForPrompt(prompt);
+    if (descriptor?.supportsCompanionPackage == true) {
+      return descriptor!.packageKinds;
+    }
     final normalized = prompt.toLowerCase();
     final primary = detectGeneratedArtifactKind(prompt);
     final targets = <GeneratedArtifactKind>[];
@@ -149,6 +156,7 @@ class GeneratedArtifactPackageWriter {
     required List<GeneratedArtifact> artifacts,
   }) async {
     final root = p.normalize(rootPath);
+    final packageDescriptor = registry.descriptorForPrompt(prompt);
     final outputDir = Directory(p.join(root, 'outputs'));
     await outputDir.create(recursive: true);
     final label = _labelFor(prompt, artifacts);
@@ -157,7 +165,10 @@ class GeneratedArtifactPackageWriter {
     if (!p.isWithin(root, filePath)) {
       throw StateError('Package manifest path escaped workspace root.');
     }
-    final readiness = _packageReadinessFor(artifacts);
+    final readiness = _packageReadinessFor(
+      artifacts,
+      packageDescriptor: packageDescriptor,
+    );
     final content = _manifestMarkdown(
       label: label,
       prompt: prompt,
@@ -195,6 +206,18 @@ class GeneratedArtifactPackageWriter {
         'packageReviewWorkflow': readiness.reviewWorkflow,
         'packageReadinessGaps': readiness.gaps,
         'packageReadinessSignals': readiness.signals,
+        'packagePreviewSurfaces': _packagePreviewSurfaces(
+          artifacts,
+          packageDescriptor: packageDescriptor,
+        ),
+        'packageVerificationChecks': _packageVerificationChecks(
+          artifacts,
+          packageDescriptor: packageDescriptor,
+        ),
+        'packageDrawerActions': _packageDrawerActions(
+          artifacts,
+          packageDescriptor: packageDescriptor,
+        ),
         'packageFileTypes': artifacts
             .map((artifact) => artifact.typeLabel)
             .toSet()
@@ -290,7 +313,10 @@ class GeneratedArtifactPackageWriter {
     return buffer.toString();
   }
 
-  _PackageReadiness _packageReadinessFor(List<GeneratedArtifact> artifacts) {
+  _PackageReadiness _packageReadinessFor(
+    List<GeneratedArtifact> artifacts, {
+    ArtifactTypeDescriptor? packageDescriptor,
+  }) {
     final readyCount = artifacts
         .where((artifact) => artifact.status == GeneratedArtifactStatus.ready)
         .length;
@@ -356,65 +382,69 @@ class GeneratedArtifactPackageWriter {
       averageQualityScore: averageQualityScore,
       gaps: gaps,
       signals: signals,
-      reviewWorkflow: _reviewWorkflowFor(artifacts),
+      reviewWorkflow: _reviewWorkflowFor(
+        artifacts,
+        packageDescriptor: packageDescriptor,
+      ),
     );
   }
 
-  List<String> _reviewWorkflowFor(List<GeneratedArtifact> artifacts) {
-    final steps = <String>[];
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.excel,
-    )) {
-      steps.add(
-        'Validate workbook inputs, formulas, gates, and source sheets.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.chart,
-    )) {
-      steps.add(
-        'Review chart thresholds, risk labels, and executive insights.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.diagram,
-    )) {
-      steps.add(
-        'Review topology assumptions, links, capacity, and failure domains.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.docx,
-    )) {
-      steps.add(
-        'Review Word report narrative, assumptions, citations, and sign-off gates.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
-    )) {
-      steps.add(
-        'Review deck slide order, speaker notes, and customer-facing framing.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
-    )) {
-      steps.add(
-        'Use PDF as final handoff only after source and assumption review.',
-      );
-    }
-    if (artifacts.any(
-      (artifact) => artifact.kind == GeneratedArtifactKind.json,
-    )) {
-      steps.add(
-        'Validate JSON evidence structure before importing into other tools.',
-      );
-    }
+  List<String> _reviewWorkflowFor(
+    List<GeneratedArtifact> artifacts, {
+    ArtifactTypeDescriptor? packageDescriptor,
+  }) {
+    final steps = <String>{
+      if (packageDescriptor?.supportsCompanionPackage == true)
+        ...packageDescriptor!.verificationChecks,
+      for (final artifact in artifacts)
+        ..._descriptorFor(artifact).verificationChecks,
+    }.toList();
     steps.add(
       'Open each generated artifact from the Artifacts drawer before sharing.',
     );
     return steps.toList(growable: false);
+  }
+
+  List<String> _packagePreviewSurfaces(
+    List<GeneratedArtifact> artifacts, {
+    ArtifactTypeDescriptor? packageDescriptor,
+  }) {
+    return <String>{
+      if (packageDescriptor != null) packageDescriptor.previewSurface,
+      for (final artifact in artifacts) _descriptorFor(artifact).previewSurface,
+    }.toList(growable: false);
+  }
+
+  List<String> _packageVerificationChecks(
+    List<GeneratedArtifact> artifacts, {
+    ArtifactTypeDescriptor? packageDescriptor,
+  }) {
+    return <String>{
+      if (packageDescriptor?.supportsCompanionPackage == true)
+        ...packageDescriptor!.verificationChecks,
+      for (final artifact in artifacts)
+        ..._descriptorFor(artifact).verificationChecks,
+    }.toList(growable: false);
+  }
+
+  List<String> _packageDrawerActions(
+    List<GeneratedArtifact> artifacts, {
+    ArtifactTypeDescriptor? packageDescriptor,
+  }) {
+    return <String>{
+      if (packageDescriptor != null) ...packageDescriptor.drawerActions,
+      for (final artifact in artifacts)
+        ..._descriptorFor(artifact).drawerActions,
+    }.toList(growable: false);
+  }
+
+  ArtifactTypeDescriptor _descriptorFor(GeneratedArtifact artifact) {
+    return registry.descriptorForKind(artifact.kind) ??
+        ArtifactTypeDescriptor(
+          id: artifact.kind.name,
+          label: artifact.typeLabel,
+          supportedKinds: [artifact.kind],
+        );
   }
 
   String _qualityLabel(GeneratedArtifact artifact) {

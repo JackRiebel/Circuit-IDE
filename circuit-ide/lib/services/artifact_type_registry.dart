@@ -6,6 +6,10 @@ class ArtifactTypeDescriptor {
   final List<GeneratedArtifactKind> supportedKinds;
   final List<String> useCases;
   final List<String> requiredInputs;
+  final List<String> drawerActions;
+  final List<String> verificationChecks;
+  final List<GeneratedArtifactKind> packageKinds;
+  final String previewSurface;
 
   const ArtifactTypeDescriptor({
     required this.id,
@@ -13,7 +17,24 @@ class ArtifactTypeDescriptor {
     required this.supportedKinds,
     this.useCases = const [],
     this.requiredInputs = const [],
+    this.drawerActions = const [
+      'Open',
+      'Reveal in Finder',
+      'Copy path',
+      'Review',
+    ],
+    this.verificationChecks = const [
+      'Generated file exists',
+      'Metadata persists',
+      'Drawer preview renders',
+    ],
+    this.packageKinds = const [],
+    this.previewSurface = 'Artifact preview',
   });
+
+  GeneratedArtifactKind get primaryKind => supportedKinds.first;
+
+  bool get supportsCompanionPackage => packageKinds.length > 1;
 }
 
 class ArtifactTypeRegistry {
@@ -24,6 +45,16 @@ class ArtifactTypeRegistry {
       supportedKinds: [GeneratedArtifactKind.powerPoint],
       useCases: ['proposal', 'architecture review', 'business case'],
       requiredInputs: ['title', 'sections'],
+      packageKinds: [
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
+      previewSurface: 'Slide outline',
+      verificationChecks: [
+        'PPTX package opens/parses',
+        'Slide outline metadata persists',
+        'Deck readiness metadata renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'docx_report',
@@ -33,6 +64,13 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.markdown,
       ],
       useCases: ['architecture document', 'implementation report'],
+      packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.pdf],
+      previewSurface: 'Report outline',
+      verificationChecks: [
+        'DOCX package opens/parses',
+        'Report outline metadata persists',
+        'Appendix and citation metadata renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'pdf_report',
@@ -42,6 +80,12 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.markdown,
       ],
       useCases: ['customer handoff', 'final report'],
+      previewSurface: 'PDF outline',
+      verificationChecks: [
+        'PDF header parses',
+        'Page count metadata persists',
+        'PDF outline preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'excel_workbook',
@@ -49,6 +93,12 @@ class ArtifactTypeRegistry {
       supportedKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.csv],
       useCases: ['inventory', 'sizing', 'lifecycle data'],
       requiredInputs: ['tables'],
+      previewSurface: 'Workbook preview',
+      verificationChecks: [
+        'XLSX package opens/parses',
+        'Sheet count metadata persists',
+        'Table preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'csv_dataset',
@@ -56,6 +106,12 @@ class ArtifactTypeRegistry {
       supportedKinds: [GeneratedArtifactKind.csv],
       useCases: ['raw export', 'data interchange'],
       requiredInputs: ['table'],
+      previewSurface: 'Dataset preview',
+      verificationChecks: [
+        'CSV file exists',
+        'Rows parse cleanly',
+        'Dataset preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'network_topology_diagram',
@@ -65,6 +121,13 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.markdown,
       ],
       useCases: ['topology', 'architecture visual'],
+      packageKinds: [GeneratedArtifactKind.diagram, GeneratedArtifactKind.pdf],
+      previewSurface: 'Topology readiness',
+      verificationChecks: [
+        'SVG root parses',
+        'Topology metadata persists',
+        'Readiness and assumptions preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'architecture_review_pack',
@@ -75,12 +138,30 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['findings', 'risks', 'recommendations'],
+      packageKinds: [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
+      previewSurface: 'Review package',
+      verificationChecks: [
+        'Findings matrix is present',
+        'Risk and validation metadata persists',
+        'Review workflow renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'solution_sizing_workbook',
       label: 'Solution Sizing Workbook',
       supportedKinds: [GeneratedArtifactKind.excel],
       useCases: ['users', 'PoE', 'WAN', 'model sizing'],
+      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.chart],
+      previewSurface: 'Sizing workbook',
+      verificationChecks: [
+        'Sizing sheets parse',
+        'PoE/WAN validation metadata persists',
+        'Sizing audit preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'lifecycle_eox_report',
@@ -90,6 +171,13 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.excel,
       ],
       useCases: ['LDOS', 'EoL', 'support risk'],
+      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.pdf],
+      previewSurface: 'Lifecycle report',
+      verificationChecks: [
+        'Lifecycle sheets parse',
+        'EoX caveat metadata persists',
+        'Replacement evidence preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'product_comparison_matrix',
@@ -97,6 +185,13 @@ class ArtifactTypeRegistry {
       supportedKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.csv],
       useCases: ['model comparison', 'fit scoring'],
       requiredInputs: ['candidate models', 'capabilities', 'requirements'],
+      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.chart],
+      previewSurface: 'Comparison matrix',
+      verificationChecks: [
+        'Comparison sheets parse',
+        'Fit-score metadata persists',
+        'Rejected alternatives preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'business_use_case_brief',
@@ -107,6 +202,17 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['company research', 'use cases'],
+      packageKinds: [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.chart,
+      ],
+      previewSurface: 'Business brief package',
+      verificationChecks: [
+        'Brief narrative renders',
+        'Use-case and evidence metadata persists',
+        'Package review workflow renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'implementation_plan',
@@ -118,6 +224,17 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['plan mode', 'approval review'],
+      packageKinds: [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
+      previewSurface: 'Implementation plan',
+      verificationChecks: [
+        'Plan phases are present',
+        'Verification and rollback metadata persists',
+        'Approval gates preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'change_summary_diff_report',
@@ -128,6 +245,13 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       useCases: ['post-work summary', 'verification'],
+      packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.pdf],
+      previewSurface: 'Change summary',
+      verificationChecks: [
+        'Changed file inventory is present',
+        'Verification metadata persists',
+        'Diff summary preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'chart_pack',
@@ -145,6 +269,12 @@ class ArtifactTypeRegistry {
         'risk scoring',
         'roadmap',
       ],
+      previewSurface: 'Chart summary',
+      verificationChecks: [
+        'SVG chart root parses',
+        'Chart signal metadata persists',
+        'Decision and threshold preview renders',
+      ],
     ),
     ArtifactTypeDescriptor(
       id: 'evidence_pack',
@@ -155,10 +285,24 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.json,
       ],
       useCases: ['citations', 'checked dates', 'confidence'],
+      packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+      previewSurface: 'Evidence register',
+      verificationChecks: [
+        'Claim/source register is present',
+        'Checked-date and confidence metadata persists',
+        'Unsupported-claim preview renders',
+      ],
     ),
   ];
 
   const ArtifactTypeRegistry();
+
+  ArtifactTypeDescriptor? descriptorForId(String id) {
+    for (final descriptor in descriptors) {
+      if (descriptor.id == id) return descriptor;
+    }
+    return null;
+  }
 
   ArtifactTypeDescriptor? descriptorForKind(GeneratedArtifactKind kind) {
     for (final descriptor in descriptors) {
@@ -193,6 +337,18 @@ class ArtifactTypeRegistry {
         (descriptor) => descriptor.id == 'network_topology_diagram',
       );
     }
+    if (RegExp(
+      r'\b(chart pack|charts?|graphs?|visualization|risk chart|poe budget chart|wan capacity chart|roadmap chart)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'chart_pack',
+      );
+    }
+    if (RegExp(r'\b(evidence|citations?|sources?)\b').hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'evidence_pack',
+      );
+    }
     if (RegExp(r'\b(eox|eol|ldos|lifecycle)\b').hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'lifecycle_eox_report',
@@ -208,11 +364,6 @@ class ArtifactTypeRegistry {
     ).hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'business_use_case_brief',
-      );
-    }
-    if (RegExp(r'\b(evidence|citations?|sources?)\b').hasMatch(normalized)) {
-      return descriptors.firstWhere(
-        (descriptor) => descriptor.id == 'evidence_pack',
       );
     }
     if (RegExp(

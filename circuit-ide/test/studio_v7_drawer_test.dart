@@ -1045,7 +1045,7 @@ void main() {
       );
       expect(find.text('2 pages'), findsOneWidget);
       expect(
-        find.text('Final handoff artifact for fixed review'),
+        find.text('PDF Report for customer handoff, final report'),
         findsOneWidget,
       );
 
@@ -1494,11 +1494,15 @@ void main() {
     expect(find.text('executive-brief.pptx'), findsOneWidget);
     expect(find.text('architecture-review.docx'), findsOneWidget);
     expect(
-      find.text('Presentation artifact for customer-ready decks'),
+      find.text(
+        'PowerPoint Deck for proposal, architecture review, business case',
+      ),
       findsOneWidget,
     );
     expect(
-      find.text('Document artifact for reports, briefs, and handoffs'),
+      find.text(
+        'Word / DOCX Report for architecture document, implementation report',
+      ),
       findsOneWidget,
     );
     expect(
