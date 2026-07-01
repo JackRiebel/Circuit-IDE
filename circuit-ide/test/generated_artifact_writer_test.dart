@@ -1042,15 +1042,45 @@ Executive-ready summary for a final customer handoff.
       contains(contains('Recommendations')),
     );
     expect(artifact.metadata['artifact'], 'pdf_report');
+    expect(artifact.metadata['reportType'], 'Architecture report');
+    expect(artifact.metadata['audience'], 'Architecture reviewers');
+    expect(
+      artifact.metadata['reportPurpose'],
+      'Review findings, risks, and recommendations',
+    );
+    expect(artifact.metadata['handoffStatus'], 'Ready for stakeholder review');
+    expect(
+      artifact.metadata['decisionOwner'],
+      'Architecture owner / customer sponsor',
+    );
     expect(artifact.metadata['pageCount'], artifact.sheetCount);
     expect(artifact.metadata['bookmarkCount'], greaterThanOrEqualTo(3));
+    expect(artifact.metadata['reportSectionCount'], greaterThanOrEqualTo(12));
     expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
     expect(artifact.metadata['tableCount'], 1);
     expect(artifact.metadata['assumptionCount'], 1);
     expect(artifact.metadata['citationCount'], 1);
+    expect(artifact.metadata['evidenceGapCount'], 0);
+    expect(
+      artifact.metadata['readinessSignals'],
+      containsAll([
+        'Decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next steps',
+        'Validation checklist',
+        'Data tables',
+        'Assumptions',
+        'Sources',
+      ]),
+    );
     expect(artifact.metadata['hasOutline'], isTrue);
+    expect(artifact.metadata['hasDocumentMap'], isTrue);
+    expect(artifact.metadata['hasEvidenceConfidenceMatrix'], isTrue);
+    expect(artifact.metadata['hasApprovalGates'], isTrue);
     expect(artifact.metadata['hasValidationChecklist'], isTrue);
     expect(artifact.metadata['hasSourcesAppendix'], isTrue);
+    expect(artifact.metadata['hasCustomerReadyPackage'], isTrue);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(String.fromCharCodes(bytes.take(8).toList()), startsWith('%PDF-1.'));

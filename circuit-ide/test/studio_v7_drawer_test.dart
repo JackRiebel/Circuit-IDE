@@ -958,12 +958,31 @@ void main() {
         ],
         sheetCount: 2,
         metadata: const {
+          'reportType': 'Architecture report',
+          'audience': 'Architecture reviewers',
+          'reportPurpose': 'Review findings, risks, and recommendations',
+          'handoffStatus': 'Ready for stakeholder review',
+          'decisionOwner': 'Architecture owner / customer sponsor',
+          'readinessSignals': [
+            'Decision brief',
+            'Recommendation summary',
+            'Risk register',
+            'Next steps',
+            'Validation checklist',
+            'Data tables',
+            'Assumptions',
+            'Sources',
+          ],
           'pageCount': 2,
           'bookmarkCount': 8,
+          'reportSectionCount': 12,
           'sectionCount': 4,
           'tableCount': 1,
           'assumptionCount': 2,
           'citationCount': 3,
+          'evidenceGapCount': 0,
+          'approvalGateCount': 4,
+          'hasCustomerReadyPackage': true,
         },
         threadId: null,
         requestId: 'request-pdf',
@@ -986,7 +1005,11 @@ void main() {
 
       expect(find.text('campus-refresh.pdf'), findsOneWidget);
       expect(
-        find.textContaining('PDF • 8 bookmarks • 2 pages'),
+        find.textContaining('PDF • Architecture report • 8 bookmarks'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Ready for stakeholder review'),
         findsOneWidget,
       );
       expect(find.text('PDF outline'), findsOneWidget);
@@ -1007,14 +1030,38 @@ void main() {
       await tester.pump();
 
       expect(find.text('Type'), findsAtLeastNWidgets(1));
+      expect(find.text('Architecture report'), findsOneWidget);
+      expect(find.text('Audience'), findsAtLeastNWidgets(1));
+      expect(find.text('Architecture reviewers'), findsOneWidget);
+      expect(find.text('Purpose'), findsAtLeastNWidgets(1));
+      expect(
+        find.text('Review findings, risks, and recommendations'),
+        findsOneWidget,
+      );
+      expect(find.text('Handoff'), findsOneWidget);
+      expect(find.text('Ready for stakeholder review'), findsOneWidget);
+      expect(find.text('Owner'), findsOneWidget);
+      expect(
+        find.text('Architecture owner / customer sponsor'),
+        findsOneWidget,
+      );
+      expect(find.text('Readiness'), findsAtLeastNWidgets(1));
+      expect(
+        find.text('Decision brief, Recommendation summary +6'),
+        findsOneWidget,
+      );
       expect(find.text('Status'), findsOneWidget);
       expect(find.text('Format'), findsOneWidget);
       expect(find.text('Pages'), findsOneWidget);
       expect(find.text('Bookmarks'), findsOneWidget);
+      expect(find.text('Report parts'), findsOneWidget);
       expect(find.text('Sections'), findsOneWidget);
       expect(find.text('Tables'), findsOneWidget);
       expect(find.text('Assumptions'), findsOneWidget);
       expect(find.text('Sources'), findsOneWidget);
+      expect(find.text('Approval gates'), findsOneWidget);
+      expect(find.text('Package'), findsOneWidget);
+      expect(find.text('Customer-ready report flow'), findsOneWidget);
       expect(find.text('8'), findsOneWidget);
       expect(find.text('Request'), findsOneWidget);
       expect(find.text('Folder'), findsOneWidget);

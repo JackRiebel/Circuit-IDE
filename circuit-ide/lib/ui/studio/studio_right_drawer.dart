@@ -3192,7 +3192,11 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     }
     if (artifact.kind == GeneratedArtifactKind.pdf) {
       final bookmarkCount = _metadataInt(artifact, 'bookmarkCount');
+      final reportType = _metadataString(artifact, 'reportType');
+      final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      if (reportType.isNotEmpty) parts.add(reportType);
       if (bookmarkCount > 0) parts.add('$bookmarkCount bookmarks');
+      if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.sheetCount > 1) {
       parts.add(switch (artifact.kind) {
