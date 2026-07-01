@@ -23,6 +23,7 @@ class PowerPointArtifactRenderer {
   Map<String, Object?> metadataFor(ArtifactDocument document) {
     final slides = _slidesFor(document).take(24).toList(growable: false);
     final theme = _DeckTheme.forDocument(document);
+    final sections = document.sections.take(10).toList(growable: false);
     final slideTypeCounts = <String, int>{};
     for (final slide in slides) {
       slideTypeCounts.update(
@@ -31,20 +32,35 @@ class PowerPointArtifactRenderer {
         ifAbsent: () => 1,
       );
     }
+    final readinessSignals = _readinessSignals(document, slideTypeCounts);
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
       'slideCount': slides.length,
       'theme': theme.label,
+      'audience': _audienceFor(document),
+      'deckPurpose': _deckPurposeFor(document),
+      'narrativeArc': _narrativeArcFor(document, sections),
+      'communicationJob': _communicationJobFor(document, sections),
       'slideTypes': slideTypeCounts.keys.toList(growable: false),
       'slideTypeCounts': slideTypeCounts,
       'sectionCount': document.sections.length,
+      'sectionDividerCount':
+          slideTypeCounts[_DeckSlideKind.sectionDivider.label] ?? 0,
       'tableCount': document.tables.length,
+      'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
+      'recommendationSlideCount':
+          slideTypeCounts[_DeckSlideKind.recommendation.label] ?? 0,
       'assumptionCount': document.assumptions.length,
       'citationCount': document.citations.length,
+      'readinessSignals': readinessSignals,
+      'readinessSignalCount': readinessSignals.length,
       'hasAgenda': slideTypeCounts.containsKey(_DeckSlideKind.agenda.label),
       'hasDecisionSnapshot': slideTypeCounts.containsKey(
         _DeckSlideKind.snapshot.label,
+      ),
+      'hasSectionDividers': slideTypeCounts.containsKey(
+        _DeckSlideKind.sectionDivider.label,
       ),
       'hasRecommendation': slideTypeCounts.containsKey(
         _DeckSlideKind.recommendation.label,
@@ -55,6 +71,8 @@ class PowerPointArtifactRenderer {
         _DeckSlideKind.sources.label,
       ),
       'hasSpeakerNotes': true,
+      'hasCustomerReadyStructure': _hasCustomerReadyStructure(slideTypeCounts),
+      'maxSlides': 24,
     };
   }
 
@@ -379,6 +397,119 @@ class PowerPointArtifactRenderer {
         'Approval path: Capture owner, due date, and success criteria before converting this into an implementation packet.',
       ],
     );
+  }
+
+  String _audienceFor(ArtifactDocument document) {
+    final text =
+        '${document.metadata['prompt'] ?? ''} ${document.title} ${document.summary} ${document.sections.map((section) => section.title).join(' ')}'
+            .toLowerCase();
+    if (text.contains('customer') ||
+        text.contains('proposal') ||
+        text.contains('client')) {
+      return 'Customer stakeholders';
+    }
+    if (text.contains('executive') || text.contains('leadership')) {
+      return 'Executive stakeholders';
+    }
+    if (text.contains('architecture') ||
+        text.contains('technical') ||
+        text.contains('network')) {
+      return 'Architecture reviewers';
+    }
+    if (text.contains('sales') || text.contains('business case')) {
+      return 'Sales and business stakeholders';
+    }
+    return 'Project stakeholders';
+  }
+
+  String _deckPurposeFor(ArtifactDocument document) {
+    final prompt = '${document.metadata['prompt'] ?? ''}'.toLowerCase();
+    final allText =
+        '${document.title} ${document.summary} ${document.sections.map((s) => s.title).join(' ')}'
+            .toLowerCase();
+    if (prompt.contains('proposal') || allText.contains('recommend')) {
+      return 'Support a decision';
+    }
+    if (prompt.contains('review') || allText.contains('risk')) {
+      return 'Review findings and risks';
+    }
+    if (prompt.contains('business case') || allText.contains('value')) {
+      return 'Build business alignment';
+    }
+    if (prompt.contains('implementation') || allText.contains('roadmap')) {
+      return 'Guide implementation';
+    }
+    return 'Inform and align';
+  }
+
+  String _narrativeArcFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final sectionText = sections.map((section) => section.title).join(' ');
+    final text = '${document.title} ${document.summary} $sectionText'
+        .toLowerCase();
+    if (text.contains('risk') && text.contains('recommend')) {
+      return 'Context -> risk -> recommendation -> action';
+    }
+    if (text.contains('current') && text.contains('future')) {
+      return 'Current state -> future state -> path';
+    }
+    if (text.contains('problem') || text.contains('challenge')) {
+      return 'Problem -> options -> recommendation';
+    }
+    if (text.contains('implementation') || text.contains('roadmap')) {
+      return 'Scope -> phases -> verification -> handoff';
+    }
+    return 'Context -> evidence -> implication -> next step';
+  }
+
+  String _communicationJobFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final audience = _audienceFor(document);
+    final purpose = _deckPurposeFor(document).toLowerCase();
+    final takeaway =
+        _firstMatchingBullet(sections, [
+          'recommend',
+          'solution',
+          'architecture',
+          'decision',
+        ]) ??
+        (document.summary.isNotEmpty
+            ? _truncate(document.summary, 120)
+            : 'the proposed path and required validation steps');
+    return 'By the end, $audience should $purpose because $takeaway.';
+  }
+
+  List<String> _readinessSignals(
+    ArtifactDocument document,
+    Map<String, int> slideTypeCounts,
+  ) {
+    final signals = <String>[
+      if (slideTypeCounts.containsKey(_DeckSlideKind.agenda.label)) 'Agenda',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label))
+        'Decision snapshot',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
+        'Recommendation slides',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
+        'Table slides',
+      if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
+        'Assumptions/sources',
+      'Speaker notes',
+    ];
+    return signals;
+  }
+
+  bool _hasCustomerReadyStructure(Map<String, int> slideTypeCounts) {
+    return slideTypeCounts.containsKey(_DeckSlideKind.title.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.agenda.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.snapshot.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.sources.label);
   }
 
   String? _firstMatchingBullet(

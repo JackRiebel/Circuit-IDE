@@ -3173,7 +3173,14 @@ class _ArtifactDrawerCard extends ConsumerWidget {
     }
     if (artifact.kind == GeneratedArtifactKind.powerPoint) {
       final theme = _metadataString(artifact, 'theme');
+      final readinessSignals = _metadataStringList(
+        artifact,
+        'readinessSignals',
+      );
       if (theme.isNotEmpty) parts.add('$theme theme');
+      if (readinessSignals.isNotEmpty) {
+        parts.add(_compactSignalList(readinessSignals));
+      }
     }
     if (artifact.kind == GeneratedArtifactKind.docx) {
       final wordCount = _metadataInt(artifact, 'wordCount');
@@ -3339,14 +3346,40 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
       if (artifact.kind == GeneratedArtifactKind.powerPoint) ...[
         if (_metadataString(artifact, 'theme').isNotEmpty)
           ('Theme', _metadataString(artifact, 'theme')),
+        if (_metadataString(artifact, 'audience').isNotEmpty)
+          ('Audience', _metadataString(artifact, 'audience')),
+        if (_metadataString(artifact, 'deckPurpose').isNotEmpty)
+          ('Purpose', _metadataString(artifact, 'deckPurpose')),
+        if (_metadataString(artifact, 'narrativeArc').isNotEmpty)
+          ('Narrative', _metadataString(artifact, 'narrativeArc')),
+        if (_metadataStringList(artifact, 'readinessSignals').isNotEmpty)
+          (
+            'Readiness',
+            _compactSignalList(
+              _metadataStringList(artifact, 'readinessSignals'),
+            ),
+          ),
         if (_metadataInt(artifact, 'sectionCount') > 0)
           ('Sections', '${_metadataInt(artifact, 'sectionCount')}'),
+        if (_metadataInt(artifact, 'sectionDividerCount') > 0)
+          ('Dividers', '${_metadataInt(artifact, 'sectionDividerCount')}'),
         if (_metadataInt(artifact, 'tableCount') > 0)
           ('Tables', '${_metadataInt(artifact, 'tableCount')}'),
+        if (_metadataInt(artifact, 'tableSlideCount') > 0)
+          ('Table slides', '${_metadataInt(artifact, 'tableSlideCount')}'),
+        if (_metadataInt(artifact, 'recommendationSlideCount') > 0)
+          (
+            'Recommendations',
+            '${_metadataInt(artifact, 'recommendationSlideCount')} slides',
+          ),
         if (_metadataInt(artifact, 'assumptionCount') > 0)
           ('Assumptions', '${_metadataInt(artifact, 'assumptionCount')}'),
         if (_metadataInt(artifact, 'citationCount') > 0)
           ('Sources', '${_metadataInt(artifact, 'citationCount')}'),
+        if (_metadataBool(artifact, 'hasCustomerReadyStructure'))
+          ('Structure', 'Customer-ready deck flow'),
+        if (_metadataBool(artifact, 'hasSpeakerNotes'))
+          ('Notes', 'Speaker notes included'),
       ],
       if (artifact.kind == GeneratedArtifactKind.docx ||
           artifact.kind == GeneratedArtifactKind.pdf) ...[
