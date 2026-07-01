@@ -44,7 +44,9 @@ graph LR
     expect(inspection.hasEmbeddedTopologySpec, isTrue);
     expect(inspection.hasTopologyEvidencePolicy, isTrue);
     expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
+    expect(inspection.citationCount, 0);
     expect(inspection.linkScheduleCount, 2);
     expect(inspection.readinessItemCount, 4);
     expect(inspection.advisoryCount, greaterThanOrEqualTo(2));
@@ -71,6 +73,7 @@ graph LR
           'Validate PoE budget before final model selection.',
           'Validate WAN handoff speeds at every branch.',
         ],
+        citations: ['Customer inventory export.'],
       );
       final result = const DiagramArtifactRenderer().render(
         document: document,
@@ -96,6 +99,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasEmbeddedTopologySpec, isTrue);
       expect(inspection.hasTopologyEvidencePolicy, isTrue);
       expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
+      expect(inspection.hasExternalHandoffManifest, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
       expect(
@@ -114,6 +118,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.containsDeviceToken('C9300'), isTrue);
       expect(inspection.containsDeviceToken('CW9176'), isTrue);
       expect(inspection.assumptionCount, 2);
+      expect(inspection.citationCount, 1);
       expect(inspection.designZoneCount, greaterThanOrEqualTo(6));
       expect(inspection.linkScheduleCount, greaterThanOrEqualTo(5));
       expect(inspection.readinessItemCount, 4);
@@ -153,6 +158,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(result.metadata['hasEmbeddedTopologySpec'], isTrue);
       expect(result.metadata['hasTopologyEvidencePolicy'], isTrue);
       expect(result.metadata['hasTopologyVisualVerificationChecklist'], isTrue);
+      expect(result.metadata['hasExternalHandoffManifest'], isTrue);
+      expect(result.metadata['externalHandoffManifestCount'], 11);
+      expect(
+        result.metadata['externalHandoffManifest'],
+        containsAll([
+          'Review owner: Network architecture owner / customer sponsor',
+          'Topology type: Multi-site topology',
+          'Review path: Network architecture review -> failure-domain validation -> implementation decision',
+          'Handoff readiness: Needs validation before handoff',
+          'Quality status: Needs validation',
+          'Evidence status: Sources and assumptions attached',
+          'Source package: 1 source item attached',
+          'Assumption package: 2 assumptions captured',
+          'Capacity package: PoE/UPOE and AP power review required',
+        ]),
+      );
       expect(result.metadata['hasTopologyValidationGate'], isTrue);
       expect(result.metadata['topologyQualityChecklistCount'], greaterThan(7));
       expect(result.metadata['topologyEvidencePolicyCount'], greaterThan(2));
@@ -181,6 +202,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(svg, contains('Architecture advisories'));
       expect(svg, contains('Failure-domain review'));
       expect(svg, contains('Quality gate'));
+      expect(svg, contains('&quot;externalHandoffManifest&quot;:'));
+      expect(
+        svg,
+        contains('Review owner: Network architecture owner / customer sponsor'),
+      );
+      expect(svg, contains('Source package: 1 source item attached'));
       expect(svg, contains('EoX replacement PIDs'));
       expect(svg, contains('Wi-Fi 7 APs require explicit UPOE'));
     },
@@ -229,6 +256,7 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.hasEmbeddedTopologySpec, isTrue);
     expect(inspection.hasTopologyEvidencePolicy, isTrue);
     expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(inspection.hasLifecycleReplacementCaveat, isTrue);
     expect(inspection.hasWifi7PowerAdvisory, isTrue);
     expect(inspection.advisoryCount, greaterThanOrEqualTo(3));

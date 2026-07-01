@@ -1770,6 +1770,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
 ## Assumptions
 - Validate PoE budget before final model selection.
 - Validate WAN handoff speeds at every branch.
+
+## Sources
+- Customer inventory export.
 ''',
           turnId: 'turn-enterprise-diagram',
           threadId: 'thread-1',
@@ -1783,6 +1786,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.previewRows.expand((row) => row), contains('2700W est.'));
     expect(artifact.metadata['topologyType'], 'Multi-site topology');
     expect(artifact.metadata['topologySpecVersion'], '1.0');
+    expect(artifact.metadata['citationCount'], 1);
     expect(
       artifact.metadata['handoffStatus'],
       'Draft - validate topology inputs',
@@ -1813,6 +1817,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.metadata['hasCapacityChecks'], isTrue);
     expect(artifact.metadata['hasReadinessScorecard'], isTrue);
     expect(artifact.metadata['hasFailureDomainReview'], isTrue);
+    expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
+    expect(artifact.metadata['externalHandoffManifestCount'], 11);
+    expect(
+      artifact.metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Network architecture owner / customer sponsor',
+        'Topology type: Multi-site topology',
+        'Review path: Network architecture review -> failure-domain validation -> implementation decision',
+        'Handoff readiness: Needs validation before handoff',
+        'Quality status: Needs validation',
+        'Evidence status: Sources and assumptions attached',
+        'Source package: 1 source item attached',
+        'Assumption package: 2 assumptions captured',
+        'Capacity package: PoE/UPOE and AP power review required',
+      ]),
+    );
     expect(artifact.metadata['failureDomainCount'], 5);
     expect(
       artifact.metadata['criticalFailureDomainCount'],
@@ -1941,6 +1961,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('Wi-Fi 7'));
     expect(svg, contains('Capacity checks'));
     expect(svg, contains('Failure-domain review'));
+    expect(svg, contains('&quot;externalHandoffManifest&quot;:'));
+    expect(
+      svg,
+      contains('Review owner: Network architecture owner / customer sponsor'),
+    );
+    expect(svg, contains('Source package: 1 source item attached'));
     expect(svg, contains('WAN edge'));
     expect(svg, contains('Security edge'));
     expect(svg, contains('MDF / Core'));

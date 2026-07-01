@@ -59,6 +59,7 @@ class DiagramArtifactRenderer {
       graph: resolvedGraph,
       tiers: tiers,
       assumptions: assumptions,
+      citationCount: document.citations.length,
       profile: profile,
       readinessItems: readinessItems,
       capacityItems: capacityItems,
@@ -70,6 +71,7 @@ class DiagramArtifactRenderer {
       resolvedGraph,
       title: document.title,
       assumptions: assumptions,
+      citationCount: document.citations.length,
       profile: profile,
     );
     return DiagramRenderResult(
@@ -92,6 +94,7 @@ class DiagramArtifactRenderer {
     required _DiagramGraph graph,
     required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
     required List<String> assumptions,
+    required int citationCount,
     required _TopologyProfile profile,
     required List<({String check, String state, bool ready})> readinessItems,
     required List<({String metric, String value, String guidance, bool ready})>
@@ -157,6 +160,20 @@ class DiagramArtifactRenderer {
       validationGapLabels,
       topologyRiskFlags,
     );
+    final topologyReadinessLevel = _topologyReadinessLevelFor(
+      topologyReadinessScore,
+      topologyRiskFlags,
+    );
+    final externalHandoffManifest = _externalHandoffManifestFor(
+      profile: profile,
+      assumptions: assumptions,
+      citationCount: citationCount,
+      topologyType: _topologyTypeFor(profile),
+      readinessLevel: topologyReadinessLevel,
+      qualityStatus: topologyQualityStatus,
+      validationGaps: validationGapLabels,
+      topologyRiskFlags: topologyRiskFlags,
+    );
     final customerReady =
         validationGapLabels.isEmpty &&
         graph.nodes.isNotEmpty &&
@@ -176,6 +193,7 @@ class DiagramArtifactRenderer {
       'tierCount': tiers.length,
       'designZones': designZoneLabels,
       'assumptionCount': assumptions.length,
+      'citationCount': citationCount,
       'siteCount': profile.siteCount,
       'mdfCount': profile.mdfCount,
       'idfCount': profile.idfCount,
@@ -205,10 +223,7 @@ class DiagramArtifactRenderer {
       'topologyRiskFlags': topologyRiskFlags,
       'topologyRiskFlagCount': topologyRiskFlags.length,
       'topologyReadinessScore': topologyReadinessScore,
-      'topologyReadinessLevel': _topologyReadinessLevelFor(
-        topologyReadinessScore,
-        topologyRiskFlags,
-      ),
+      'topologyReadinessLevel': topologyReadinessLevel,
       'topologyQualityManifestVersion': '1.0',
       'topologyQualityStatus': topologyQualityStatus,
       'topologyQualityChecklist': topologyQualityChecklist,
@@ -221,6 +236,9 @@ class DiagramArtifactRenderer {
       'topologyEvidencePolicyCount': topologyEvidencePolicy.length,
       'topologyPublishingMetadata': topologyPublishingMetadata,
       'topologyPublishingMetadataCount': topologyPublishingMetadata.length,
+      'externalHandoffManifest': externalHandoffManifest,
+      'externalHandoffManifestCount': externalHandoffManifest.length,
+      'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
       'advisoryCount': advisories.length,
@@ -693,6 +711,7 @@ class DiagramArtifactRenderer {
     _DiagramGraph graph, {
     required String title,
     required List<String> assumptions,
+    required int citationCount,
     required _TopologyProfile profile,
   }) {
     final nodeEntries = graph.nodes.values.toList(growable: false);
@@ -713,6 +732,7 @@ class DiagramArtifactRenderer {
       graph: graph,
       tiers: tiers,
       assumptions: assumptions,
+      citationCount: citationCount,
       profile: profile,
       readinessItems: readinessItems,
       capacityItems: capacityItems,
@@ -1565,6 +1585,9 @@ class DiagramArtifactRenderer {
         readinessScore >= 88) {
       return 'Customer-review ready';
     }
+    if (validationGaps.isNotEmpty || topologyRiskFlags.length > 2) {
+      return readinessScore >= 50 ? 'Needs validation' : 'Discovery required';
+    }
     if (readinessScore >= 72) return 'Architecture-review ready';
     if (readinessScore >= 50) return 'Needs validation';
     return 'Discovery required';
@@ -1632,6 +1655,52 @@ class DiagramArtifactRenderer {
       topologyRiskFlags.length <= 2
           ? 'Risk posture: review standard topology assumptions'
           : 'Risk posture: ${topologyRiskFlags.take(3).join(', ')}',
+    ];
+  }
+
+  List<String> _externalHandoffManifestFor({
+    required _TopologyProfile profile,
+    required List<String> assumptions,
+    required int citationCount,
+    required String topologyType,
+    required String readinessLevel,
+    required String qualityStatus,
+    required List<String> validationGaps,
+    required List<String> topologyRiskFlags,
+  }) {
+    final publishingGate =
+        validationGaps.isEmpty && topologyRiskFlags.length <= 2
+        ? 'ready for architecture approval'
+        : 'resolve ${math.max(validationGaps.length, topologyRiskFlags.length)} topology review item${math.max(validationGaps.length, topologyRiskFlags.length) == 1 ? '' : 's'}';
+    final evidenceStatus = citationCount > 0 && assumptions.isNotEmpty
+        ? 'Sources and assumptions attached'
+        : citationCount > 0
+        ? 'Sources attached, assumptions need owner review'
+        : assumptions.isNotEmpty
+        ? 'Assumptions captured, sources need validation'
+        : 'Sources and assumptions need validation';
+    final decisionAsk = switch (topologyType) {
+      'Multi-site topology' =>
+        'Approve resiliency model, failure-domain posture, and validation owners.',
+      'Campus topology' =>
+        'Review MDF/IDF design, PoE/uplink assumptions, and implementation readiness.',
+      'WAN edge topology' =>
+        'Confirm WAN handoffs, HA behavior, and edge ownership before implementation.',
+      _ =>
+        'Review topology assumptions, validation gaps, and next design step.',
+    };
+    return [
+      'Review owner: Network architecture owner / customer sponsor',
+      'Topology type: $topologyType',
+      'Review path: Network architecture review -> failure-domain validation -> implementation decision',
+      'Handoff readiness: $readinessLevel',
+      'Quality status: $qualityStatus',
+      'Evidence status: $evidenceStatus',
+      'Publishing gate: $publishingGate',
+      'Decision ask: $decisionAsk',
+      'Source package: ${citationCount == 0 ? 'sources missing' : '$citationCount source item${citationCount == 1 ? '' : 's'} attached'}',
+      'Assumption package: ${assumptions.isEmpty ? 'assumptions missing' : '${assumptions.length} assumption${assumptions.length == 1 ? '' : 's'} captured'}',
+      'Capacity package: ${profile.hasWifi7 || profile.hasPoe || profile.hasUpoe ? 'PoE/UPOE and AP power review required' : 'capture AP/PoE requirements if wireless is in scope'}',
     ];
   }
 

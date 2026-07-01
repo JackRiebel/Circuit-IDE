@@ -23,10 +23,12 @@ class DiagramArtifactInspection {
   final bool hasEmbeddedTopologySpec;
   final bool hasTopologyEvidencePolicy;
   final bool hasTopologyVisualVerificationChecklist;
+  final bool hasExternalHandoffManifest;
   final int nodeCount;
   final int edgeCount;
   final int tierCount;
   final int assumptionCount;
+  final int citationCount;
   final int designZoneCount;
   final int linkScheduleCount;
   final int readinessItemCount;
@@ -84,10 +86,12 @@ class DiagramArtifactInspection {
     required this.hasEmbeddedTopologySpec,
     required this.hasTopologyEvidencePolicy,
     required this.hasTopologyVisualVerificationChecklist,
+    required this.hasExternalHandoffManifest,
     required this.nodeCount,
     required this.edgeCount,
     required this.tierCount,
     required this.assumptionCount,
+    required this.citationCount,
     required this.designZoneCount,
     required this.linkScheduleCount,
     required this.readinessItemCount,
@@ -151,7 +155,8 @@ class DiagramArtifactInspection {
       hasTopologyQualityGate &&
       hasEmbeddedTopologySpec &&
       hasTopologyEvidencePolicy &&
-      hasTopologyVisualVerificationChecklist;
+      hasTopologyVisualVerificationChecklist &&
+      hasExternalHandoffManifest;
 
   bool containsDeviceToken(String value) => deviceTokens.any((token) {
     final normalizedToken = token.toLowerCase();
@@ -265,10 +270,17 @@ class DiagramArtifactInspector {
           (_metadataInt(metadata, 'topologyVisualVerificationChecklistCount') ??
                   0) >
               0,
+      hasExternalHandoffManifest:
+          metadata['hasExternalHandoffManifest'] == true &&
+          (_metadataInt(metadata, 'externalHandoffManifestCount') ?? 0) > 0 &&
+          svg.contains('Review owner: Network architecture owner') &&
+          svg.contains('Publishing gate:') &&
+          svg.contains('Source package:'),
       nodeCount: nodeCount,
       edgeCount: edgeCount,
       tierCount: tierCount,
       assumptionCount: assumptionCount,
+      citationCount: _metadataInt(metadata, 'citationCount') ?? 0,
       designZoneCount: designZoneCount,
       linkScheduleCount: linkScheduleCount,
       readinessItemCount: readinessItemCount,
