@@ -791,6 +791,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('WAN Capacity'));
     expect(svg, contains('Lifecycle'));
     expect(svg, contains('Comparison'));
+    expect(svg, contains('id="chart-summary"'));
+    expect(svg, contains('id="chart-risk-legend"'));
+    expect(svg, contains('&quot;highRiskCount&quot;'));
+    expect(svg, contains('&quot;hasPoe&quot;'));
+    expect(svg, contains('&quot;hasWan&quot;'));
+    expect(svg, contains('&quot;hasLifecycle&quot;'));
     expect(svg, contains('Compare required load'));
     expect(svg, contains('Compare demand'));
     expect(svg, contains('High=3'));

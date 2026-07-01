@@ -30,6 +30,8 @@ void main() {
     expect(inspection.pointCount, 3);
     expect(inspection.containsKind('poe'), isTrue);
     expect(inspection.chartTitles, contains('PoE Budget'));
+    expect(inspection.hasChartSummaryPanel, isTrue);
+    expect(inspection.hasPoeSignal, isTrue);
     expect(inspection.noteCount, greaterThanOrEqualTo(1));
   });
 
@@ -81,6 +83,15 @@ void main() {
     expect(inspection.hasEnterpriseChartPackStructure, isTrue);
     expect(inspection.chartCount, 4);
     expect(inspection.pointCount, 8);
+    expect(inspection.hasChartSummaryPanel, isTrue);
+    expect(inspection.hasRiskLegend, isTrue);
+    expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
+    expect(inspection.mediumRiskCount, greaterThanOrEqualTo(2));
+    expect(inspection.lowRiskCount, greaterThanOrEqualTo(2));
+    expect(inspection.hasPoeSignal, isTrue);
+    expect(inspection.hasWanSignal, isTrue);
+    expect(inspection.hasLifecycleSignal, isTrue);
+    expect(inspection.hasComparisonSignal, isTrue);
     expect(
       inspection.chartKinds,
       containsAll(['poe', 'wan', 'lifecycle', 'comparison']),

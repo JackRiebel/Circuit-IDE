@@ -8,9 +8,18 @@ class ChartArtifactInspection {
   final bool hasDescription;
   final bool hasCircuitMetadata;
   final bool hasChartPackGroup;
+  final bool hasChartSummaryPanel;
+  final bool hasRiskLegend;
   final int chartCount;
   final int pointCount;
   final int noteCount;
+  final int highRiskCount;
+  final int mediumRiskCount;
+  final int lowRiskCount;
+  final bool hasPoeSignal;
+  final bool hasWanSignal;
+  final bool hasLifecycleSignal;
+  final bool hasComparisonSignal;
   final String? title;
   final List<String> chartKinds;
   final List<String> chartTitles;
@@ -23,9 +32,18 @@ class ChartArtifactInspection {
     required this.hasDescription,
     required this.hasCircuitMetadata,
     required this.hasChartPackGroup,
+    required this.hasChartSummaryPanel,
+    required this.hasRiskLegend,
     required this.chartCount,
     required this.pointCount,
     required this.noteCount,
+    required this.highRiskCount,
+    required this.mediumRiskCount,
+    required this.lowRiskCount,
+    required this.hasPoeSignal,
+    required this.hasWanSignal,
+    required this.hasLifecycleSignal,
+    required this.hasComparisonSignal,
     required this.title,
     required this.chartKinds,
     required this.chartTitles,
@@ -39,11 +57,15 @@ class ChartArtifactInspection {
       hasDescription &&
       hasCircuitMetadata &&
       hasChartPackGroup &&
+      hasChartSummaryPanel &&
       chartCount > 0 &&
       pointCount > 0;
 
   bool get hasEnterpriseChartPackStructure =>
-      isStructurallyValid && chartKinds.toSet().length >= 2 && noteCount > 0;
+      isStructurallyValid &&
+      hasRiskLegend &&
+      chartKinds.toSet().length >= 2 &&
+      noteCount > 0;
 
   bool containsKind(String value) =>
       chartKinds.any((kind) => kind.toLowerCase() == value.toLowerCase());
@@ -69,6 +91,9 @@ class ChartArtifactInspector {
     final pointCount =
         _metadataInt(metadata, 'pointCount') ??
         RegExp(r'class="chart-point"').allMatches(svg).length;
+    final highRiskCount = _metadataInt(metadata, 'highRiskCount') ?? 0;
+    final mediumRiskCount = _metadataInt(metadata, 'mediumRiskCount') ?? 0;
+    final lowRiskCount = _metadataInt(metadata, 'lowRiskCount') ?? 0;
 
     return ChartArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -80,9 +105,18 @@ class ChartArtifactInspector {
           metadata['generator'] == 'CircuitCode' &&
           metadata['artifact'] == 'chart_pack',
       hasChartPackGroup: svg.contains('id="chart-pack"'),
+      hasChartSummaryPanel: svg.contains('id="chart-summary"'),
+      hasRiskLegend: svg.contains('id="chart-risk-legend"'),
       chartCount: chartCount,
       pointCount: pointCount,
       noteCount: RegExp(r'class="chart-note"').allMatches(svg).length,
+      highRiskCount: highRiskCount,
+      mediumRiskCount: mediumRiskCount,
+      lowRiskCount: lowRiskCount,
+      hasPoeSignal: metadata['hasPoe'] == true,
+      hasWanSignal: metadata['hasWan'] == true,
+      hasLifecycleSignal: metadata['hasLifecycle'] == true,
+      hasComparisonSignal: metadata['hasComparison'] == true,
       title: _firstElementText(svg, 'title'),
       chartKinds: chartKinds,
       chartTitles: chartTitles,
