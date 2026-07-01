@@ -553,9 +553,22 @@ class _ProgressDrawer extends ConsumerWidget {
 
   StudioTurnEvent? _latestEvent(StudioTurn? turn) {
     if (turn == null || turn.events.isEmpty) return null;
-    final events = turn.events.toList()
+    final events = turn.events.where(_isProgressDrawableEvent).toList()
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-    return events.first;
+    return events.firstOrNull;
+  }
+
+  bool _isProgressDrawableEvent(StudioTurnEvent event) {
+    return switch (event.type) {
+      StudioTurnEventType.userMessage ||
+      StudioTurnEventType.assistantMessage ||
+      StudioTurnEventType.context => false,
+      StudioTurnEventType.progress ||
+      StudioTurnEventType.tool ||
+      StudioTurnEventType.approvalRequest ||
+      StudioTurnEventType.error ||
+      StudioTurnEventType.completionSummary => true,
+    };
   }
 
   StudioTurnEvent? _latestActionableEvent(StudioTurn? turn) {

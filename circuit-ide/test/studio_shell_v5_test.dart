@@ -3138,6 +3138,91 @@ void main() {
     expect(drawer.filePath, file.path);
   });
 
+  testWidgets('Artifact-backed table responses collapse to outcome summary', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync(
+      'studio-artifact-table-collapse-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/customer_inventory.xlsx')
+      ..writeAsBytesSync([80, 75, 3, 4]);
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final threadController = container.read(studioThreadProvider.notifier);
+    final thread = threadController.createBlankThread(title: 'Excel artifact');
+    const turnId = 'turn-artifact-table-collapse';
+    const requestId = 'request-artifact-table-collapse';
+    final artifact = GeneratedArtifact(
+      id: 'customer-inventory',
+      kind: GeneratedArtifactKind.excel,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'customer_inventory.xlsx',
+      filePath: file.path,
+      summary: 'Created an Excel workbook.',
+      byteSize: file.lengthSync(),
+      previewRows: const [
+        ['Product', 'Count', 'Status'],
+        ['AIR-AP2802I-B-K9', '41', 'Active'],
+      ],
+      sheetCount: 1,
+      threadId: thread.id,
+      requestId: requestId,
+      createdAt: DateTime(2026),
+    );
+    final tableRows = List.generate(
+      12,
+      (index) => '| AIR-AP2802I-B-K9-$index | Serial-$index | Active |',
+    ).join('\n');
+    final turn = StudioTurn(
+      id: turnId,
+      threadId: thread.id,
+      requestId: requestId,
+      userMessageId: 'message-artifact-table-collapse',
+      prompt: 'create an Excel file from this inventory',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: turnId,
+          requestId: requestId,
+          threadId: thread.id,
+          content:
+              'I created the Excel-ready inventory artifact.\n\n'
+              '| Product | Serial | Status |\n'
+              '| --- | --- | --- |\n'
+              '$tableRows',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    threadController.upsertTurn(thread.id, turn, select: true);
+    threadController.upsertSourceArtifact(
+      thread.id,
+      artifact.toSourceArtifact(),
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('customer_inventory.xlsx'), findsOneWidget);
+    expect(find.textContaining('Created an Excel workbook.'), findsWidgets);
+    expect(find.textContaining('AIR-AP2802I-B-K9-11'), findsNothing);
+    expect(find.textContaining('| Product | Serial | Status |'), findsNothing);
+  });
+
   testWidgets('Studio transcript renders meaningful completion summaries', (
     tester,
   ) async {

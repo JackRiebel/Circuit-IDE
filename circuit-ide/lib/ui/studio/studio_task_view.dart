@@ -310,22 +310,58 @@ class _TaskTranscript extends ConsumerWidget {
   ) {
     final trimmed = content.trim();
     if (trimmed.isEmpty || artifacts.isEmpty) return trimmed;
-    if (!_containsLargeMarkdownTable(trimmed)) return trimmed;
-    final intro = trimmed
-        .split('\n')
-        .takeWhile((line) {
-          final value = line.trim();
-          return value.isEmpty || !value.contains('|');
-        })
-        .join('\n')
-        .trim();
-    final artifact = GeneratedArtifact.fromSourceArtifact(artifacts.first);
+    if (!_shouldCollapseArtifactAssistantContent(trimmed)) return trimmed;
+    final intro = _artifactResponseIntro(trimmed);
+    final generatedArtifacts = artifacts
+        .map(GeneratedArtifact.fromSourceArtifact)
+        .nonNulls
+        .toList(growable: false);
+    final artifact = generatedArtifacts.isNotEmpty
+        ? generatedArtifacts.first
+        : null;
     final fileName = artifact?.fileName ?? artifacts.first.title;
-    final summary = artifact?.summary ?? 'Created a file artifact.';
+    final summary = generatedArtifacts.length > 1
+        ? 'Created ${generatedArtifacts.length} file artifacts.'
+        : artifact?.summary ?? 'Created a file artifact.';
     return [
       if (intro.isNotEmpty) intro,
       '$summary See `$fileName` below.',
     ].join('\n\n');
+  }
+
+  bool _shouldCollapseArtifactAssistantContent(String content) {
+    if (_containsLargeMarkdownTable(content)) return true;
+    final lines = content.split('\n');
+    final nonEmptyLines = lines.where((line) => line.trim().isNotEmpty).length;
+    if (content.length >= 1800 && nonEmptyLines >= 16) return true;
+    if (nonEmptyLines >= 34) return true;
+    final headingCount = lines
+        .where((line) => line.trimLeft().startsWith(RegExp(r'#{2,6}\s')))
+        .length;
+    final bulletCount = lines
+        .where((line) => line.trimLeft().startsWith(RegExp(r'[-*]\s+')))
+        .length;
+    return content.length >= 1400 && headingCount >= 2 && bulletCount >= 6;
+  }
+
+  String _artifactResponseIntro(String content) {
+    final introLines = <String>[];
+    var nonEmptyLines = 0;
+    for (final line in content.split('\n')) {
+      final value = line.trim();
+      if (value.contains('|') ||
+          value.startsWith('```') ||
+          value.startsWith(RegExp(r'#{2,6}\s')) ||
+          value.startsWith(RegExp(r'[-*]\s+'))) {
+        break;
+      }
+      introLines.add(line);
+      if (value.isNotEmpty) nonEmptyLines++;
+      if (nonEmptyLines >= 4 || introLines.join('\n').length >= 560) break;
+    }
+    final intro = introLines.join('\n').trim();
+    if (intro.length <= 640) return intro;
+    return '${intro.substring(0, 640).trimRight()}...';
   }
 
   bool _containsLargeMarkdownTable(String content) {
