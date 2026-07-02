@@ -1892,10 +1892,21 @@ void main() {
           'Modern requirements: Wi-Fi 7, UPOE, mGig, uplink, licensing, and HA gates are validated before BOM or model recommendation.: Required',
         ],
         'lifecyclePublishingMetadataCount': 5,
+        'lifecycleCustomerHandoffMatrix': [
+          'Official lifecycle date authority: Every customer-facing EoS/EoL/LDOS date is backed by Cisco EoX/API or official Cisco evidence.: Official Cisco lifecycle source signal detected: Ready: Attach source URL/API record for every lifecycle date.: Do not publish lifecycle dates without official source evidence.',
+          'Checked-date traceability: Lifecycle evidence includes a visible checked date so stale data can be refreshed.: Checked 2026-06-30: Ready: Record checked date and refresh interval for each lifecycle lookup.: Customer handoff must show when lifecycle evidence was checked.',
+          'Lifecycle completeness: All in-scope products have status, End of Sale, LDOS, risk, and source fields populated.: TBD lifecycle dates remain: Blocked: Fill missing lifecycle dates from official sources before final handoff.: Unknown dates must be labeled as gaps, not implied as validated.',
+          'Migration hint caveat: EoX replacement PID is labeled as suggestedMigrationPid or migration hint only.: suggestedMigrationPid / replacement hint detected: Ready: Compare every migration hint against current portfolio alternatives.: Never present EoX replacement PID as final best model by itself.',
+          'Current portfolio fit validation: Replacement recommendation checks current capabilities, lifecycle runway, licensing, HA, uplinks, PoE/UPOE, and mGig.: Wi-Fi 7, UPOE / 802.3bt, mGig / high-speed access: Needs validation: Attach current datasheet/catalog facts and rejected alternatives.: Final model choice requires current portfolio validation, not EoX hint alone.',
+          'Risk posture and next action: High-risk lifecycle items have owner, urgency, and migration/revalidation action.: High-risk products detected: Needs review: Assign owner and migration plan before customer decision.: High-risk support dates should drive refresh urgency and customer communication.',
+        ],
+        'lifecycleCustomerHandoffGateCount': 6,
+        'lifecycleCustomerHandoffReadyCount': 3,
         'hasLifecycleQualityManifest': true,
         'hasLifecycleEvidencePolicy': true,
         'hasLifecycleVisualVerificationChecklist': true,
         'hasLifecyclePublishingMetadata': true,
+        'hasLifecycleCustomerHandoffMatrix': true,
         'qualityStatus': 'Needs evidence review',
         'qualityScore': 84,
         'qualityGates': [
@@ -1951,6 +1962,8 @@ void main() {
       find.textContaining('Lifecycle dates are authoritative'),
       findsOneWidget,
     );
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('3/6 ready'), findsOneWidget);
     expect(find.text('Lifecycle manifest'), findsOneWidget);
     expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Highest risk'), findsOneWidget);

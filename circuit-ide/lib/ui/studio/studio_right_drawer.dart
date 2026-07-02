@@ -4362,6 +4362,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Decision posture',
             _metadataString(artifact, 'lifecycleDecisionPosture'),
           ),
+        if (_metadataInt(artifact, 'lifecycleCustomerHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'lifecycleCustomerHandoffReadyCount')}/${_metadataInt(artifact, 'lifecycleCustomerHandoffGateCount')} ready',
+          ),
         if (_metadataBool(artifact, 'hasLifecycleQualityManifest'))
           (
             'Lifecycle manifest',

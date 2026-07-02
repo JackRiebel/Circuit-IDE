@@ -267,6 +267,20 @@ class LifecycleEoxWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Customer Handoff Matrix',
+        rows: [
+          const [
+            'Gate',
+            'Customer-facing requirement',
+            'Current signal',
+            'Status',
+            'Owner action',
+            'Handoff rule',
+          ],
+          ..._lifecycleCustomerHandoffRows(profile),
+        ],
+      ),
+      WorkbookTable(
         name: 'Assumptions',
         rows: [
           const ['Assumption', 'Impact'],
@@ -325,6 +339,10 @@ class LifecycleEoxWorkbookBuilder {
     final publishingRows = _rowsFor(
       tables,
       'Publishing Readiness',
+    ).skip(1).toList(growable: false);
+    final handoffRows = _rowsFor(
+      tables,
+      'Customer Handoff Matrix',
     ).skip(1).toList(growable: false);
     final sourceSheetCount = tables
         .where((table) => table.name.toLowerCase().startsWith('source '))
@@ -409,10 +427,16 @@ class LifecycleEoxWorkbookBuilder {
       'lifecycleVisualVerificationChecklistCount': visualQaRows.length,
       'lifecyclePublishingMetadata': _stringRows(publishingRows),
       'lifecyclePublishingMetadataCount': publishingRows.length,
+      'lifecycleCustomerHandoffMatrix': _stringRows(handoffRows),
+      'lifecycleCustomerHandoffGateCount': handoffRows.length,
+      'lifecycleCustomerHandoffReadyCount': handoffRows.where((row) {
+        return row.length > 3 && row[3].toLowerCase().contains('ready');
+      }).length,
       'hasLifecycleQualityManifest': true,
       'hasLifecycleEvidencePolicy': evidencePolicyRows.isNotEmpty,
       'hasLifecycleVisualVerificationChecklist': visualQaRows.isNotEmpty,
       'hasLifecyclePublishingMetadata': publishingRows.isNotEmpty,
+      'hasLifecycleCustomerHandoffMatrix': handoffRows.isNotEmpty,
     };
   }
 
@@ -1296,6 +1320,88 @@ class LifecycleEoxWorkbookBuilder {
         'Modern requirements',
         'Wi-Fi 7, UPOE, mGig, uplink, licensing, and HA gates are validated before BOM or model recommendation.',
         profile.hasModernRequirementSignal ? 'Required' : 'Needs discovery',
+      ],
+    ];
+  }
+
+  List<List<String>> _lifecycleCustomerHandoffRows(_LifecycleProfile profile) {
+    final hasCompleteDates =
+        profile.records.isNotEmpty &&
+        profile.records.every(
+          (record) => record.endOfSale != 'TBD' && record.ldos != 'TBD',
+        );
+    final hasHighRisk = profile.records.any((record) {
+      final joined = '${record.status} ${record.risk}'.toLowerCase();
+      return joined.contains('high') ||
+          joined.contains('unsupported') ||
+          joined.contains('end of support');
+    });
+    final sourceStatus = profile.hasCiscoSource
+        ? 'Official Cisco lifecycle source signal detected'
+        : 'Official Cisco lifecycle source missing';
+    final checkedDateStatus = profile.checkedDate == null
+        ? 'Checked date missing'
+        : 'Checked ${profile.checkedDate}';
+    final migrationStatus = profile.hasMigrationSignal
+        ? 'suggestedMigrationPid / replacement hint detected'
+        : 'No EoX migration hint detected';
+    final requirementStatus = profile.hasModernRequirementSignal
+        ? _replacementRequirementSignal(profile.content)
+        : 'Modern requirement discovery incomplete';
+    return [
+      [
+        'Official lifecycle date authority',
+        'Every customer-facing EoS/EoL/LDOS date is backed by Cisco EoX/API or official Cisco evidence.',
+        sourceStatus,
+        profile.hasCiscoSource ? 'Ready' : 'Blocked',
+        'Attach source URL/API record for every lifecycle date.',
+        'Do not publish lifecycle dates without official source evidence.',
+      ],
+      [
+        'Checked-date traceability',
+        'Lifecycle evidence includes a visible checked date so stale data can be refreshed.',
+        checkedDateStatus,
+        profile.checkedDate == null ? 'Blocked' : 'Ready',
+        'Record checked date and refresh interval for each lifecycle lookup.',
+        'Customer handoff must show when lifecycle evidence was checked.',
+      ],
+      [
+        'Lifecycle completeness',
+        'All in-scope products have status, End of Sale, LDOS, risk, and source fields populated.',
+        hasCompleteDates
+            ? 'No TBD lifecycle dates detected'
+            : 'TBD lifecycle dates remain',
+        hasCompleteDates ? 'Ready' : 'Blocked',
+        'Fill missing lifecycle dates from official sources before final handoff.',
+        'Unknown dates must be labeled as gaps, not implied as validated.',
+      ],
+      [
+        'Migration hint caveat',
+        'EoX replacement PID is labeled as suggestedMigrationPid or migration hint only.',
+        migrationStatus,
+        profile.hasMigrationSignal ? 'Ready' : 'Monitor',
+        'Compare every migration hint against current portfolio alternatives.',
+        'Never present EoX replacement PID as final best model by itself.',
+      ],
+      [
+        'Current portfolio fit validation',
+        'Replacement recommendation checks current capabilities, lifecycle runway, licensing, HA, uplinks, PoE/UPOE, and mGig.',
+        requirementStatus,
+        profile.hasModernRequirementSignal ? 'Needs validation' : 'Blocked',
+        'Attach current datasheet/catalog facts and rejected alternatives.',
+        'Final model choice requires current portfolio validation, not EoX hint alone.',
+      ],
+      [
+        'Risk posture and next action',
+        'High-risk lifecycle items have owner, urgency, and migration/revalidation action.',
+        hasHighRisk
+            ? 'High-risk products detected'
+            : 'No high-risk products detected',
+        hasHighRisk ? 'Needs review' : 'Ready',
+        hasHighRisk
+            ? 'Assign owner and migration plan before customer decision.'
+            : 'Keep lifecycle monitoring cadence visible.',
+        'High-risk support dates should drive refresh urgency and customer communication.',
       ],
     ];
   }

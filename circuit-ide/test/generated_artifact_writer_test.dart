@@ -755,7 +755,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(artifact.summary, contains('Lifecycle / EoX workbook'));
     expect(artifact.summary, contains('executive risk'));
     expect(artifact.summary, contains('replacement readiness'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(21));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(22));
     expect(artifact.metadata['workbookKind'], 'lifecycle_eox');
     expect(artifact.metadata['lifecycleQualityManifestVersion'], '1.0');
     expect(artifact.metadata['lifecycleRecordCount'], 2);
@@ -796,6 +796,19 @@ Source checked 2026-06-30 from Cisco EoX/API.
       artifact.metadata['lifecyclePublishingMetadata'],
       anyElement(contains('External handoff')),
     );
+    expect(artifact.metadata['lifecycleCustomerHandoffGateCount'], 6);
+    expect(
+      artifact.metadata['lifecycleCustomerHandoffReadyCount'],
+      greaterThanOrEqualTo(2),
+    );
+    expect(
+      artifact.metadata['lifecycleCustomerHandoffMatrix'],
+      anyElement(contains('Official lifecycle date authority')),
+    );
+    expect(
+      artifact.metadata['lifecycleCustomerHandoffMatrix'],
+      anyElement(contains('EoX replacement PID')),
+    );
     expect(artifact.metadata['hasLifecycleQualityManifest'], isTrue);
     expect(artifact.metadata['hasLifecycleEvidencePolicy'], isTrue);
     expect(
@@ -803,6 +816,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
       isTrue,
     );
     expect(artifact.metadata['hasLifecyclePublishingMetadata'], isTrue);
+    expect(artifact.metadata['hasLifecycleCustomerHandoffMatrix'], isTrue);
     expect(artifact.previewRows.first, [
       'Decision Signal',
       'Current Answer',
@@ -832,6 +846,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(packageText, contains('Evidence Policy'));
     expect(packageText, contains('Visual QA'));
     expect(packageText, contains('Publishing Readiness'));
+    expect(packageText, contains('Customer Handoff Matrix'));
     expect(packageText, contains('Assumptions'));
     expect(packageText, contains('C9300-48P'));
     expect(packageText, contains('AIR-AP2802I'));
@@ -876,6 +891,8 @@ Source checked 2026-06-30 from Cisco EoX/API.
       contains('Open workbook and confirm all lifecycle sheets'),
     );
     expect(packageText, contains('Lifecycle dates inform support risk'));
+    expect(packageText, contains('Official lifecycle date authority'));
+    expect(packageText, contains('Current portfolio fit validation'));
   });
 
   test('lifecycle package adds PDF and JSON evidence register', () async {
