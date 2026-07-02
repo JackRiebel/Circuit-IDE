@@ -2790,6 +2790,40 @@ VRF Corp - 10.10.0.0/16
     );
     expect(artifact.metadata['validationGapCount'], 0);
     expect(artifact.metadata['hasDecisionMatrix'], isTrue);
+    expect(artifact.metadata['hasCapacityThresholdPanel'], isTrue);
+    expect(
+      artifact.metadata['capacityThresholdStatus'],
+      'Low headroom - validate growth and redundancy',
+    );
+    expect(artifact.metadata['capacityThresholdRowCount'], 6);
+    expect(artifact.metadata['capacityThresholdBreachCount'], 0);
+    expect(artifact.metadata['capacityThresholdWarningCount'], 2);
+    final capacityRows =
+        artifact.metadata['capacityThresholdRows'] as List<Object?>;
+    expect(
+      capacityRows,
+      anyElement(
+        allOf(
+          isA<Map>(),
+          containsPair('item', 'Branch 2'),
+          containsPair('status', 'Low headroom'),
+          containsPair('headroom', '150'),
+          containsPair('utilization', '85%'),
+        ),
+      ),
+    );
+    expect(
+      capacityRows,
+      anyElement(
+        allOf(
+          isA<Map>(),
+          containsPair('item', 'IDF 2'),
+          containsPair('status', 'Low headroom'),
+          containsPair('headroom', '600'),
+          containsPair('utilization', '92%'),
+        ),
+      ),
+    );
     expect(artifact.metadata['decisionActionCount'], greaterThanOrEqualTo(5));
     expect(artifact.metadata['criticalDecisionCount'], greaterThanOrEqualTo(3));
     final decisionQuestions =
@@ -2840,6 +2874,16 @@ VRF Corp - 10.10.0.0/16
       ),
       isTrue,
     );
+    expect(
+      artifact.previewRows.any(
+        (row) =>
+            row.length == 3 &&
+            row[0] == 'Capacity: Branch 2' &&
+            row[1] == 'Low headroom' &&
+            row[2] == '150',
+      ),
+      isTrue,
+    );
     final svg = File(artifact.filePath).readAsStringSync();
     expect(svg, contains('PoE Budget'));
     expect(svg, contains('WAN Capacity'));
@@ -2852,6 +2896,7 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('id="chart-validation-gates"'));
     expect(svg, contains('id="chart-recommended-actions"'));
     expect(svg, contains('id="chart-decision-matrix"'));
+    expect(svg, contains('id="chart-capacity-thresholds"'));
     expect(svg, contains('id="chart-risk-legend"'));
     expect(svg, contains('&quot;highRiskCount&quot;'));
     expect(svg, contains('&quot;insightCount&quot;'));
@@ -2859,6 +2904,8 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('&quot;recommendedActionCount&quot;'));
     expect(svg, contains('&quot;decisionActionCount&quot;'));
     expect(svg, contains('&quot;criticalDecisionCount&quot;'));
+    expect(svg, contains('&quot;capacityThresholdWarningCount&quot;:2'));
+    expect(svg, contains('&quot;capacityThresholdBreachCount&quot;:0'));
     expect(svg, contains('&quot;hasPoe&quot;'));
     expect(svg, contains('&quot;hasWan&quot;'));
     expect(svg, contains('&quot;hasLifecycle&quot;'));
@@ -2870,6 +2917,8 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('validated with current pricing'));
     expect(svg, contains('sequencing signals'));
     expect(svg, contains('Decision matrix'));
+    expect(svg, contains('Capacity threshold readout'));
+    expect(svg, contains('Low headroom: Branch 2'));
     expect(svg, contains('Risk ownership'));
     expect(svg, contains('Lifecycle evidence'));
     expect(svg, contains('C9300X-48HX'));

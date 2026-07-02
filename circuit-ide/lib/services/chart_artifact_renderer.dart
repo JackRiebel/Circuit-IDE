@@ -13,6 +13,18 @@ typedef _DecisionActionRow = ({
   bool critical,
 });
 
+typedef _CapacityThresholdRow = ({
+  String chart,
+  String item,
+  String used,
+  String budget,
+  String headroom,
+  String utilization,
+  String status,
+  bool breach,
+  bool warning,
+});
+
 class ChartRenderResult {
   final Uint8List bytes;
   final int chartCount;
@@ -56,6 +68,7 @@ class ChartArtifactRenderer {
     final validationGaps = _validationGapsFrom(gates);
     final dataQualityItems = _dataQualityItems(document, profile);
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
+    final capacityRows = _capacityThresholdRows(charts);
     final decisionRows = _decisionActionRows(profile);
     final decisionQuestions = _decisionQuestionsFor(profile, validationGaps);
     final handoffChecklist = _handoffChecklistFor(
@@ -82,6 +95,7 @@ class ChartArtifactRenderer {
       gates: gates,
       dataQualityItems: dataQualityItems,
       thresholdItems: thresholdItems,
+      capacityRows: capacityRows,
       decisionRows: decisionRows,
     );
     final chartVisualVerificationChecklist =
@@ -150,6 +164,7 @@ class ChartArtifactRenderer {
       'hasDataQualityPanel': dataQualityItems.isNotEmpty,
       'hasSourceProvenancePanel': true,
       'hasThresholdGuidance': thresholdItems.isNotEmpty,
+      'hasCapacityThresholdPanel': capacityRows.isNotEmpty,
       'hasDecisionMatrix': decisionRows.isNotEmpty,
       'hasChartQualityManifest': true,
       'hasChartQualityGate': true,
@@ -166,6 +181,32 @@ class ChartArtifactRenderer {
       'recommendedActionCount': actions.length,
       'dataQualityItemCount': dataQualityItems.length,
       'thresholdGuidanceCount': thresholdItems.length,
+      'capacityThresholdStatus': _capacityThresholdStatusFor(
+        capacityRows,
+        profile,
+      ),
+      'capacityThresholdRows': capacityRows
+          .map(
+            (row) => {
+              'chart': row.chart,
+              'item': row.item,
+              'used': row.used,
+              'budget': row.budget,
+              'headroom': row.headroom,
+              'utilization': row.utilization,
+              'status': row.status,
+              'breach': row.breach,
+              'warning': row.warning,
+            },
+          )
+          .toList(growable: false),
+      'capacityThresholdRowCount': capacityRows.length,
+      'capacityThresholdBreachCount': capacityRows
+          .where((item) => item.breach)
+          .length,
+      'capacityThresholdWarningCount': capacityRows
+          .where((item) => item.warning)
+          .length,
       'decisionActionCount': decisionRows.length,
       'criticalDecisionCount': decisionRows
           .where((item) => item.critical)
@@ -183,11 +224,14 @@ class ChartArtifactRenderer {
   ) {
     if (charts.isEmpty) return const [];
     final decisionRows = _decisionActionRows(profile);
+    final capacityRows = _capacityThresholdRows(charts);
     if (charts.length == 1) {
       return [
         ['Metric', charts.first.valueLabel],
         for (final point in charts.first.points.take(8))
           [point.label, _format(point.value)],
+        for (final item in capacityRows.take(2))
+          ['Capacity: ${item.item}', item.status],
         for (final item in decisionRows.take(1))
           ['Decision: ${item.focus}', item.urgency],
       ];
@@ -196,6 +240,8 @@ class ChartArtifactRenderer {
       ['Chart', 'Signal', 'Data points'],
       for (final chart in charts.take(8))
         [chart.title, chart.kind.label, chart.points.length.toString()],
+      for (final item in capacityRows.take(2))
+        ['Capacity: ${item.item}', item.status, item.headroom],
       for (final item in decisionRows.take(2))
         ['Decision: ${item.focus}', item.urgency, item.owner],
     ];
@@ -531,13 +577,14 @@ class ChartArtifactRenderer {
     const chartHeight = 330;
     const chartTop = 330;
     final footerTop = chartTop + (charts.length * chartHeight);
-    final height = math.max(720, footerTop + 430);
+    final height = math.max(720, footerTop + 510);
     const width = 1040;
     final insights = _executiveInsights(profile);
     final gates = _validationGates(profile);
     final actions = _recommendedActions(profile);
     final dataQualityItems = _dataQualityItems(document, profile);
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
+    final capacityRows = _capacityThresholdRows(charts);
     final decisionRows = _decisionActionRows(profile);
     final metadata = _metadataFor(charts, profile, document);
     final buffer = StringBuffer()
@@ -605,6 +652,12 @@ class ChartArtifactRenderer {
       buffer,
       thresholdItems,
       top: footerTop + 334,
+      width: width,
+    );
+    _writeCapacityThresholdPanel(
+      buffer,
+      capacityRows,
+      top: footerTop + 404,
       width: width,
     );
     buffer.writeln('</svg>');
@@ -1005,6 +1058,7 @@ class ChartArtifactRenderer {
     dataQualityItems,
     required List<({String topic, String guidance, bool critical})>
     thresholdItems,
+    required List<_CapacityThresholdRow> capacityRows,
     required List<_DecisionActionRow> decisionRows,
   }) {
     return <String>[
@@ -1015,6 +1069,7 @@ class ChartArtifactRenderer {
       if (gates.isNotEmpty) 'Validation gates embedded',
       if (dataQualityItems.isNotEmpty) 'Data quality checks embedded',
       if (thresholdItems.isNotEmpty) 'Threshold guidance embedded',
+      if (capacityRows.isNotEmpty) 'Capacity threshold readout embedded',
       if (decisionRows.isNotEmpty) 'Decision matrix embedded',
       if (document.assumptions.isNotEmpty) 'Assumptions embedded',
       if (document.citations.isNotEmpty) 'Source citations embedded',
@@ -1028,6 +1083,8 @@ class ChartArtifactRenderer {
       'Executive insights, validation gates, actions, and decision matrix are visible',
       if (profile.hasPoe || profile.hasWan)
         'Capacity and threshold guidance is visible',
+      if (profile.hasPoe || profile.hasWan)
+        'Capacity threshold readout shows breaches, warnings, and headroom',
       if (profile.hasLifecycle || profile.hasComparison)
         'Lifecycle/comparison caveats are visible',
     ];
@@ -1265,6 +1322,67 @@ class ChartArtifactRenderer {
     return items.take(4).toList(growable: false);
   }
 
+  List<_CapacityThresholdRow> _capacityThresholdRows(List<_ChartData> charts) {
+    final rows = <_CapacityThresholdRow>[];
+    for (final chart in charts) {
+      if (chart.secondaryPoints.isEmpty) continue;
+      final isCapacityChart =
+          chart.kind == _ChartKind.poe || chart.kind == _ChartKind.wan;
+      for (var index = 0; index < chart.points.length; index++) {
+        if (index >= chart.secondaryPoints.length) continue;
+        final used = chart.points[index].value;
+        final budget = chart.secondaryPoints[index].value;
+        if (budget <= 0) continue;
+        final headroom = budget - used;
+        final utilization = used / budget;
+        final breach = utilization > 1;
+        final warning = !breach && utilization >= 0.85;
+        if (!isCapacityChart && !breach && !warning) continue;
+        final status = breach
+            ? 'Over budget'
+            : warning
+            ? 'Low headroom'
+            : 'Headroom OK';
+        rows.add((
+          chart: chart.title,
+          item: chart.points[index].label,
+          used: _format(used),
+          budget: _format(budget),
+          headroom: _format(headroom),
+          utilization: '${(utilization * 100).round()}%',
+          status: status,
+          breach: breach,
+          warning: warning,
+        ));
+      }
+    }
+    rows.sort((a, b) {
+      if (a.breach != b.breach) return a.breach ? -1 : 1;
+      if (a.warning != b.warning) return a.warning ? -1 : 1;
+      final aHeadroom = double.tryParse(a.headroom) ?? 0;
+      final bHeadroom = double.tryParse(b.headroom) ?? 0;
+      return aHeadroom.compareTo(bHeadroom);
+    });
+    return rows.take(8).toList(growable: false);
+  }
+
+  String _capacityThresholdStatusFor(
+    List<_CapacityThresholdRow> rows,
+    _ChartPackProfile profile,
+  ) {
+    if (rows.any((row) => row.breach)) {
+      return 'Capacity breach - revise design before handoff';
+    }
+    if (rows.any((row) => row.warning)) {
+      return 'Low headroom - validate growth and redundancy';
+    }
+    if (rows.isNotEmpty) return 'Capacity thresholds captured';
+    if (profile.hasPoe || profile.hasWan) {
+      return 'Capacity signal present - add available budget columns';
+    }
+    return 'No capacity threshold data';
+  }
+
   void _writeExecutiveInsights(
     StringBuffer buffer,
     List<String> insights, {
@@ -1461,6 +1579,68 @@ class ChartArtifactRenderer {
           '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 39}" fill="#cdd4d1" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(item.guidance, 40))}</text>',
         );
       x += cardWidth + 8;
+    }
+    buffer.writeln('</g>');
+  }
+
+  void _writeCapacityThresholdPanel(
+    StringBuffer buffer,
+    List<_CapacityThresholdRow> rows, {
+    required int top,
+    required int width,
+  }) {
+    if (rows.isEmpty) return;
+    final breaches = rows.where((row) => row.breach).length;
+    final warnings = rows.where((row) => row.warning).length;
+    buffer
+      ..writeln(
+        '<g id="chart-capacity-thresholds" data-capacity-threshold-row-count="${rows.length}" data-capacity-threshold-breach-count="$breaches" data-capacity-threshold-warning-count="$warnings">',
+      )
+      ..writeln(
+        '<rect x="34" y="$top" width="${width - 68}" height="74" rx="16" fill="#151716" stroke="#29302d" stroke-width="1"/>',
+      )
+      ..writeln(
+        '<text x="42" y="${top + 25}" fill="#f4f1eb" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Capacity threshold readout</text>',
+      )
+      ..writeln(
+        '<text x="42" y="${top + 45}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10">Over budget and low-headroom rows require sizing owner review.</text>',
+      );
+    final visible = rows.take(4).toList(growable: false);
+    const startX = 304.0;
+    final cardWidth =
+        (width - startX - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var index = 0; index < visible.length; index++) {
+      final row = visible[index];
+      final x = startX + (index * (cardWidth + 8));
+      final fill = row.breach
+          ? '#321d1b'
+          : row.warning
+          ? '#302f21'
+          : '#172620';
+      final stroke = row.breach
+          ? '#65332d'
+          : row.warning
+          ? '#5c5530'
+          : '#2e5148';
+      final text = row.breach
+          ? '#ec8f87'
+          : row.warning
+          ? '#e1bb6d'
+          : '#8dd3bd';
+      buffer
+        ..writeln(
+          '<rect class="chart-capacity-card" x="${x.toStringAsFixed(1)}" y="${top + 12}" width="${cardWidth.toStringAsFixed(1)}" height="48" rx="10" fill="$fill" stroke="$stroke"/>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 26}" fill="$text" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten('${row.status}: ${row.item}', 34))}</text>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 41}" fill="#d2d8d5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml('Use ${row.used} / Budget ${row.budget}')}</text>',
+        )
+        ..writeln(
+          '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 55}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml('Headroom ${row.headroom} • Utilization ${row.utilization}')}</text>',
+        );
     }
     buffer.writeln('</g>');
   }
