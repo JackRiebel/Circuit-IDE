@@ -222,6 +222,10 @@ class BusinessUseCaseBriefBuilder {
       businessTables,
       'Business Case Readiness Scorecard',
     ).skip(1).toList(growable: false);
+    final handoffRows = _tableRows(
+      businessTables,
+      'Customer Handoff Matrix',
+    ).skip(1).toList(growable: false);
     final tables = [...businessTables, ...document.tables];
 
     return ArtifactDocument(
@@ -253,6 +257,10 @@ class BusinessUseCaseBriefBuilder {
         'businessCaseExecutiveReadiness': _businessCaseExecutiveReadiness(
           readinessRows,
         ),
+        'businessCaseHandoffGateCount': handoffRows.length,
+        'businessCaseHandoffReadyCount': _handoffReadyCount(handoffRows),
+        'businessCaseCustomerHandoffMatrix': _stringRows(handoffRows),
+        'hasBusinessCaseCustomerHandoffMatrix': handoffRows.isNotEmpty,
       },
     );
   }
@@ -434,6 +442,20 @@ class BusinessUseCaseBriefBuilder {
         rows: [
           const ['Window', 'Action', 'Owner', 'Output'],
           ..._actionPlanRows(sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Customer Handoff Matrix',
+        rows: [
+          const [
+            'Gate',
+            'Customer-facing requirement',
+            'Current signal',
+            'Status',
+            'Owner action',
+            'Handoff rule',
+          ],
+          ..._customerHandoffRows(document, sections),
         ],
       ),
     ];
@@ -828,6 +850,112 @@ class BusinessUseCaseBriefBuilder {
     ];
   }
 
+  List<List<String>> _customerHandoffRows(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final useCases = _bulletsFor(sections, const [
+      'priority use cases',
+      'use cases',
+      'opportunities',
+    ]);
+    final pains = _bulletsFor(sections, const [
+      'pain',
+      'signals',
+      'challenges',
+      'current state',
+    ]);
+    final values = _bulletsFor(sections, const [
+      'value',
+      'impact',
+      'roi',
+      'benefits',
+      'outcomes',
+    ]);
+    final stakeholders = _bulletsFor(sections, const [
+      'stakeholders',
+      'personas',
+      'workflow',
+      'workflows',
+      'buying committee',
+    ]);
+    final nextSteps = _bulletsFor(sections, const [
+      'next steps',
+      'action plan',
+      'follow up',
+      'implementation',
+    ]);
+    final hasSources = document.citations.isNotEmpty;
+    final hasAssumptions = document.assumptions.isNotEmpty;
+    final hasUseCases = useCases.isNotEmpty;
+    final hasPainSignals = pains.isNotEmpty;
+    final hasValueSignals = values.isNotEmpty;
+    final hasStakeholders = stakeholders.isNotEmpty;
+    final hasNextSteps = nextSteps.isNotEmpty;
+    return [
+      [
+        'Sourced company and industry evidence',
+        'Every external business claim has a cited source and checked date.',
+        hasSources
+            ? 'Source evidence attached'
+            : 'No cited source evidence attached',
+        hasSources ? 'Ready' : 'Blocked',
+        'Attach public/company/customer sources with checked dates.',
+        'Do not customer-share unsupported market, company, or value claims.',
+      ],
+      [
+        'Customer-specific use cases',
+        'Brief names concrete use cases tied to this customer or industry context.',
+        hasUseCases
+            ? '${useCases.length} use cases captured'
+            : 'No use case shortlist',
+        hasUseCases ? 'Ready' : 'Blocked',
+        'Confirm priority use cases with the business sponsor and workflow owner.',
+        'Generic use cases must be reframed around the customer before handoff.',
+      ],
+      [
+        'Pain and trigger validation',
+        'Business pains, buying triggers, or operational signals are explicit.',
+        hasPainSignals
+            ? '${pains.length} pain/signals captured'
+            : 'Pain signals missing',
+        hasPainSignals ? 'Ready' : 'Needs discovery',
+        'Validate pains, timing, and trigger events with customer stakeholders.',
+        'Do not position a recommendation without a current business trigger.',
+      ],
+      [
+        'Value metric and baseline',
+        'Each priority use case has a measurable KPI, baseline, owner, or target hypothesis.',
+        hasValueSignals
+            ? '${values.length} value signals captured'
+            : 'Value metrics need baseline',
+        hasValueSignals ? 'Needs validation' : 'Blocked',
+        'Collect baseline KPI, measurement owner, and target improvement.',
+        'ROI/value claims stay advisory until baseline evidence is attached.',
+      ],
+      [
+        'Stakeholder owner and workflow',
+        'Decision owner, workflow owner, and technical owner are clear enough for next-step discovery.',
+        hasStakeholders
+            ? 'Stakeholder/workflow section present'
+            : 'Stakeholder ownership needs discovery',
+        hasStakeholders ? 'Ready' : 'Needs discovery',
+        'Name executive sponsor, workflow owner, technical owner, and approval path.',
+        'No pilot ask without accountable owner and workflow fit.',
+      ],
+      [
+        'Evidence pack and next ask',
+        'Brief closes with next action, proof artifact, assumptions, and open evidence gaps.',
+        hasNextSteps || hasAssumptions
+            ? 'Next action / assumptions captured'
+            : 'Next action not explicit',
+        hasNextSteps ? 'Ready' : 'Needs discovery',
+        'Attach evidence pack, discovery questions, assumptions, and next meeting ask.',
+        'Customer handoff must make the next decision and proof requirement obvious.',
+      ],
+    ];
+  }
+
   List<List<String>> _tableRows(List<ArtifactTable> tables, String title) {
     for (final table in tables) {
       if (table.title == title) return table.rows;
@@ -840,6 +968,19 @@ class BusinessUseCaseBriefBuilder {
     return rows.where((row) {
       return row.any((cell) => cell.toLowerCase().contains(normalizedNeedle));
     }).length;
+  }
+
+  int _handoffReadyCount(List<List<String>> rows) {
+    return rows.where((row) {
+      return row.length > 3 && row[3].toLowerCase().contains('ready');
+    }).length;
+  }
+
+  List<String> _stringRows(List<List<String>> rows) {
+    return rows
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .map((row) => row.map((cell) => cell.trim()).join(': '))
+        .toList(growable: false);
   }
 
   String _businessCaseExecutiveReadiness(List<List<String>> rows) {

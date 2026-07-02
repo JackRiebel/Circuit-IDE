@@ -2591,6 +2591,67 @@ void main() {
     expect(find.text('Stakeholder-ready Word report'), findsOneWidget);
   });
 
+  testWidgets('Artifacts drawer shows business use case handoff gates', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'business-brief-1',
+      kind: GeneratedArtifactKind.docx,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'acme-business-brief.docx',
+      filePath: '/tmp/acme-business-brief.docx',
+      summary: 'Created a business use case brief.',
+      byteSize: 8192,
+      sheetCount: 12,
+      metadata: const {
+        'artifactTemplate': 'business_use_case_brief',
+        'reportType': 'Business use case brief',
+        'handoffStatus': 'Discovery ready',
+        'businessCaseExecutiveReadiness':
+            'Discovery ready - validate evidence gaps before executive handoff',
+        'businessCaseHandoffGateCount': 6,
+        'businessCaseHandoffReadyCount': 4,
+        'businessCaseCustomerHandoffMatrix': [
+          'Sourced company and industry evidence: Every external business claim has a cited source and checked date.: Source evidence attached: Ready: Attach public/company/customer sources with checked dates.: Do not customer-share unsupported market, company, or value claims.',
+          'Customer-specific use cases: Brief names concrete use cases tied to this customer or industry context.: 2 use cases captured: Ready: Confirm priority use cases with the business sponsor and workflow owner.: Generic use cases must be reframed around the customer before handoff.',
+          'Value metric and baseline: Each priority use case has a measurable KPI, baseline, owner, or target hypothesis.: Value metrics need baseline: Blocked: Collect baseline KPI, measurement owner, and target improvement.: ROI/value claims stay advisory until baseline evidence is attached.',
+        ],
+        'hasBusinessCaseCustomerHandoffMatrix': true,
+      },
+      createdAt: DateTime(2026, 7, 2, 10),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('acme-business-brief.docx'), findsOneWidget);
+    await tester.tap(find.text('acme-business-brief.docx'));
+    await tester.pump();
+
+    expect(find.text('Business readiness'), findsOneWidget);
+    expect(
+      find.text(
+        'Discovery ready - validate evidence gaps before executive handoff',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('4/6 ready'), findsOneWidget);
+  });
+
   testWidgets('Artifacts drawer shows topology readiness metadata', (
     tester,
   ) async {

@@ -1843,6 +1843,24 @@ Acme needs an executive-ready brief that connects business signals to prioritize
       artifact.metadata['businessCaseExecutiveReadiness'],
       contains('Discovery ready'),
     );
+    expect(artifact.metadata['businessCaseHandoffGateCount'], 6);
+    expect(
+      artifact.metadata['businessCaseHandoffReadyCount'],
+      greaterThanOrEqualTo(3),
+    );
+    expect(
+      artifact.metadata['businessCaseCustomerHandoffMatrix'],
+      anyElement(contains('Sourced company and industry evidence')),
+    );
+    expect(
+      artifact.metadata['businessCaseCustomerHandoffMatrix'],
+      anyElement(contains('Customer-specific use cases')),
+    );
+    expect(
+      artifact.metadata['businessCaseCustomerHandoffMatrix'],
+      anyElement(contains('Value metric and baseline')),
+    );
+    expect(artifact.metadata['hasBusinessCaseCustomerHandoffMatrix'], isTrue);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -1868,6 +1886,10 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Evidence And Confidence Register'));
     expect(packageText, contains('Objection And Risk Handling'));
     expect(packageText, contains('30 / 60 / 90 Day Action Plan'));
+    expect(packageText, contains('Customer Handoff Matrix'));
+    expect(packageText, contains('Sourced company and industry evidence'));
+    expect(packageText, contains('Customer-specific use cases'));
+    expect(packageText, contains('Value metric and baseline'));
     expect(packageText, contains('Stakeholder Readout'));
     expect(packageText, contains('Evidence Confidence Matrix'));
     expect(packageText, contains('Approval Gates'));

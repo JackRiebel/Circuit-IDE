@@ -4840,6 +4840,23 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Ask', _metadataString(artifact, 'decisionAsk')),
         if (_metadataString(artifact, 'reviewPath').isNotEmpty)
           ('Review path', _metadataString(artifact, 'reviewPath')),
+        if (_metadataString(artifact, 'artifactTemplate') ==
+                'business_use_case_brief' &&
+            _metadataString(
+              artifact,
+              'businessCaseExecutiveReadiness',
+            ).isNotEmpty)
+          (
+            'Business readiness',
+            _metadataString(artifact, 'businessCaseExecutiveReadiness'),
+          ),
+        if (_metadataString(artifact, 'artifactTemplate') ==
+                'business_use_case_brief' &&
+            _metadataInt(artifact, 'businessCaseHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'businessCaseHandoffReadyCount')}/${_metadataInt(artifact, 'businessCaseHandoffGateCount')} ready',
+          ),
         if (artifact.kind == GeneratedArtifactKind.docx &&
             _metadataString(artifact, 'docxInspectionStatus').isNotEmpty)
           (

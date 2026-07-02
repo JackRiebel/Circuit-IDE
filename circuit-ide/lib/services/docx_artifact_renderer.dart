@@ -410,7 +410,7 @@ class DocxArtifactRenderer {
         body.write(_bulletParagraph(bullet));
       }
     }
-    for (final table in document.tables.take(10)) {
+    for (final table in document.tables) {
       body
         ..write(_paragraph(table.title, style: 'Heading2'))
         ..write(_table(table));
