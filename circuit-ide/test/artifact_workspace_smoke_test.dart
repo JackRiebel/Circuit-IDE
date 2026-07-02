@@ -270,6 +270,17 @@ graph LR
             ],
           ),
           _ArtifactPackageSmokeCase(
+            name: 'visual evidence package',
+            prompt: 'create a visual evidence package from these screenshots',
+            expectedLabel: 'evidence pack package',
+            content: _visualEvidencePackageContent,
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.json,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
             name: 'architecture review package',
             prompt: 'create an architecture review package for this design',
             expectedLabel: 'architecture review package',
@@ -307,7 +318,7 @@ graph LR
           final package = await packageWriter.writePackageFromAssistantOutput(
             rootPath: root.path,
             prompt: smokeCase.prompt,
-            content: _enterprisePackageContent,
+            content: smokeCase.content ?? _enterprisePackageContent,
             turnId: 'turn-${smokeCase.name.replaceAll(' ', '-')}',
             threadId: 'thread-package-smoke',
             requestId: 'request-package-smoke',
@@ -381,6 +392,20 @@ graph LR
             expect(restored!.kind, artifact.kind);
             expect(restored.filePath, artifact.filePath);
           }
+          if (smokeCase.name == 'visual evidence package') {
+            expect(
+              package.artifacts[1].metadata['hasVisualEvidenceRegister'],
+              isTrue,
+            );
+            expect(
+              package.artifacts[1].metadata['visualEvidenceCount'],
+              greaterThanOrEqualTo(2),
+            );
+            expect(
+              package.artifacts[2].metadata['hasVisualEvidenceRegister'],
+              isTrue,
+            );
+          }
         }
       },
     );
@@ -412,14 +437,33 @@ class _ArtifactPackageSmokeCase {
   final String prompt;
   final String expectedLabel;
   final List<GeneratedArtifactKind> expectedKinds;
+  final String? content;
 
   const _ArtifactPackageSmokeCase({
     required this.name,
     required this.prompt,
     required this.expectedLabel,
     required this.expectedKinds,
+    this.content,
   });
 }
+
+const _visualEvidencePackageContent = '''
+# Studio Visual Evidence Package
+
+Evidence captured from UI review screenshots.
+
+## Visual Evidence
+- Screenshot: transcript answer is too narrow at 1366x768.
+- UX evidence: right drawer source placeholders are visible without real sources.
+- Screen capture evidence: plan card remains bounded with action controls visible.
+
+## Sources
+- Internal screenshot attachment metadata - checked 2026-07-01.
+
+## Assumptions
+- Pixel-level details require OCR/vision or user description before external claims.
+''';
 
 const _enterprisePackageContent = '''
 # Campus Refresh Workbench Package

@@ -2723,6 +2723,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     );
     expect(
       const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
+        'create a screenshot evidence package from this UI review',
+      ),
+      [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+    );
+    expect(
+      const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
         'create a final evidence pack for customer handoff',
       ),
       [
