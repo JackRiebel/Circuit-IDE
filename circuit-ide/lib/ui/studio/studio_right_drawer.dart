@@ -4644,6 +4644,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Deck', _metadataString(artifact, 'deckType')),
         if (_metadataString(artifact, 'handoffStatus').isNotEmpty)
           ('Handoff', _metadataString(artifact, 'handoffStatus')),
+        if (_metadataInt(artifact, 'customerHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'customerHandoffGateReadyCount')}/${_metadataInt(artifact, 'customerHandoffGateCount')} ready',
+          ),
         if (_metadataString(artifact, 'theme').isNotEmpty)
           ('Theme', _metadataString(artifact, 'theme')),
         if (_metadataString(artifact, 'audience').isNotEmpty)

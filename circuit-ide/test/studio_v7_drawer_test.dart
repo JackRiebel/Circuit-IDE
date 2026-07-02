@@ -2046,6 +2046,8 @@ void main() {
             ],
             'deckType': 'Customer proposal deck',
             'handoffStatus': 'Ready for stakeholder review',
+            'customerHandoffGateCount': 5,
+            'customerHandoffGateReadyCount': 4,
             'decisionAsk':
                 'Review the recommendation, confirm assumptions, and approve the next implementation step.',
             'theme': 'Light',
@@ -2347,6 +2349,8 @@ void main() {
     expect(find.textContaining('PPTX package opens/parses'), findsOneWidget);
     expect(find.text('Handoff'), findsOneWidget);
     expect(find.text('Ready for stakeholder review'), findsOneWidget);
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('4/5 ready'), findsOneWidget);
     expect(find.text('Theme'), findsOneWidget);
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Audience'), findsOneWidget);

@@ -96,6 +96,9 @@ class PowerPointArtifactRenderer {
       evidenceConfidence: evidenceConfidence,
     );
     final customerHandoffRows = _customerHandoffRowsFor(document, sections);
+    final customerHandoffReadyCount = _customerHandoffReadyCount(
+      customerHandoffRows,
+    );
     final customerHandoffGateStatus = _customerHandoffGateStatus(document);
     return {
       'generator': 'CircuitCode',
@@ -178,6 +181,7 @@ class PowerPointArtifactRenderer {
           .map((row) => row.join(' | '))
           .toList(growable: false),
       'customerHandoffGateCount': math.max(0, customerHandoffRows.length - 1),
+      'customerHandoffGateReadyCount': customerHandoffReadyCount,
       'hasCustomerHandoffReadinessMatrix': true,
       'deckHandoffActions': handoffActions,
       'deckHandoffActionCount': handoffActions.length,
@@ -1027,6 +1031,13 @@ class PowerPointArtifactRenderer {
     if (readyCount == 3) return 'Ready for reviewer approval';
     if (readyCount >= 2) return 'Internal review before external handoff';
     return 'Draft - add evidence before external sharing';
+  }
+
+  int _customerHandoffReadyCount(List<List<String>> rows) {
+    return rows.skip(1).where((row) {
+      if (row.length < 3) return false;
+      return row[2].trim().toLowerCase() == 'ready';
+    }).length;
   }
 
   _DeckSlide _appendixHandoff(ArtifactDocument document) {

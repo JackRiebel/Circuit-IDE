@@ -100,6 +100,7 @@ Short executive summary for the customer.
       expect(artifact.metadata['hasHandoffReadinessSlide'], isTrue);
       expect(artifact.metadata['handoffReadinessSlideCount'], 1);
       expect(artifact.metadata['customerHandoffGateCount'], 5);
+      expect(artifact.metadata['customerHandoffGateReadyCount'], 5);
       expect(
         artifact.metadata['customerHandoffGateStatus'],
         'Ready for reviewer approval',
