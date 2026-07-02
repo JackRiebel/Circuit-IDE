@@ -278,6 +278,7 @@ graph LR
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.docx,
               GeneratedArtifactKind.json,
+              GeneratedArtifactKind.pdf,
             ],
           ),
           _ArtifactPackageSmokeCase(
@@ -415,6 +416,11 @@ graph LR
               package.artifacts[2].metadata['hasVisualEvidenceRegister'],
               isTrue,
             );
+            expect(
+              package.artifacts[3].metadata['hasVisualEvidenceRegister'],
+              isTrue,
+            );
+            expect(package.artifacts[3].fileName, endsWith('.pdf'));
           }
         }
       },

@@ -2725,7 +2725,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
         'create a screenshot evidence package from this UI review',
       ),
-      [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+      [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
+      ],
     );
     expect(
       const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
@@ -3317,5 +3321,70 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
     expect(package.artifacts[2].metadata['artifact'], 'json_evidence_pack');
     expect(package.artifacts[3].fileName, endsWith('.pdf'));
     expect(package.artifacts[3].metadata['artifactTemplate'], 'evidence_pack');
+  });
+
+  test('visual evidence package creates PDF handoff companion', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-visual-evidence-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a screenshot evidence package from this UI review',
+          content: '''
+# Studio Visual Evidence Package
+
+## Visual Evidence
+- Screenshot: composer overlaps the final response at 1366x768.
+- Screenshot evidence: plan actions remain visible after collapse.
+- UX evidence: empty source placeholders should be hidden.
+
+## Sources
+- Internal screenshot attachment metadata - checked 2026-07-01.
+
+## Assumptions
+- Pixel-level details require OCR/vision or user description before customer-facing claims.
+''',
+          turnId: 'turn-visual-evidence-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'evidence pack package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.json,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Word',
+      'JSON',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Word',
+      'JSON',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Report outline', 'Evidence register', 'PDF outline']),
+    );
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(
+      manifestText,
+      contains('| Word, JSON, PDF | Word, JSON, PDF | None |'),
+    );
+    expect(manifestText, contains('.pdf'));
+    expect(package.artifacts[1].metadata['hasVisualEvidenceRegister'], isTrue);
+    expect(package.artifacts[2].metadata['hasVisualEvidenceRegister'], isTrue);
+    expect(package.artifacts[3].fileName, endsWith('.pdf'));
+    expect(package.artifacts[3].metadata['artifactTemplate'], 'evidence_pack');
+    expect(package.artifacts[3].metadata['hasVisualEvidenceRegister'], isTrue);
   });
 }

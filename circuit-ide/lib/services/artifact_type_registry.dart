@@ -486,12 +486,12 @@ class ArtifactTypeRegistry {
     final primary = requestedKind ?? detectGeneratedArtifactKind(prompt);
     if (resolvedDescriptor?.supportsCompanionPackage == true) {
       final companionDescriptor = resolvedDescriptor!;
+      final evidencePackageNeedsPdf =
+          companionDescriptor.id == 'evidence_pack' &&
+          _evidencePackageNeedsPdf(normalized);
       if (_requestsArtifactPackage(normalized) ||
           _descriptorDefaultsToPackage(companionDescriptor, normalized)) {
-        if (companionDescriptor.id == 'evidence_pack' &&
-            RegExp(
-              r'\b(final|handoff|customer handoff)\b',
-            ).hasMatch(normalized)) {
+        if (evidencePackageNeedsPdf) {
           return _withTarget(
             companionDescriptor.packageKinds,
             GeneratedArtifactKind.pdf,
@@ -510,6 +510,12 @@ class ArtifactTypeRegistry {
       if (explicitKind != null &&
           companionDescriptor.packageKinds.contains(explicitKind)) {
         return [explicitKind];
+      }
+      if (evidencePackageNeedsPdf) {
+        return _withTarget(
+          companionDescriptor.packageKinds,
+          GeneratedArtifactKind.pdf,
+        );
       }
       return companionDescriptor.packageKinds;
     }
@@ -626,9 +632,15 @@ bool _descriptorDefaultsToPackage(
     ).hasMatch(normalized);
   }
   if (descriptor.id == 'evidence_pack') {
-    return RegExp(r'\b(final|handoff|customer handoff)\b').hasMatch(normalized);
+    return _evidencePackageNeedsPdf(normalized);
   }
   return false;
+}
+
+bool _evidencePackageNeedsPdf(String normalized) {
+  return RegExp(
+    r'\b(final|handoff|customer handoff|external|share|visual evidence|screenshot evidence|screenshot review|screen capture evidence|ui evidence|ux evidence|image evidence|visual qa evidence)\b',
+  ).hasMatch(normalized);
 }
 
 List<GeneratedArtifactKind> _explicitlyRequestedKinds(String normalized) {
