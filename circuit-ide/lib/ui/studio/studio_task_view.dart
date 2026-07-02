@@ -107,7 +107,10 @@ class _TaskTranscript extends ConsumerWidget {
               }
               if (transcriptIndex.turnIds.isEmpty) {
                 return _TranscriptItemFrame(
-                  child: _EmptyThreadState(title: transcriptIndex.title),
+                  child: _EmptyThreadState(
+                    title: transcriptIndex.title,
+                    lastError: transcriptIndex.lastError,
+                  ),
                 );
               }
               final turnIndex = itemIndex - 1;
@@ -444,6 +447,7 @@ class _TaskTranscriptIndex {
   final String? effectiveTaskId;
   final String statusLabel;
   final bool statusActive;
+  final String? lastError;
   final List<String> turnIds;
 
   const _TaskTranscriptIndex({
@@ -451,6 +455,7 @@ class _TaskTranscriptIndex {
     required this.effectiveTaskId,
     required this.statusLabel,
     required this.statusActive,
+    required this.lastError,
     required this.turnIds,
   });
 
@@ -469,6 +474,7 @@ class _TaskTranscriptIndex {
       effectiveTaskId: effectiveTaskId,
       statusLabel: _statusLabel(thread, displayState),
       statusActive: displayState.isActive,
+      lastError: thread?.lastError,
       turnIds: [for (final turn in orderedTurns) turn.id],
     );
   }
@@ -2044,8 +2050,9 @@ class _PlanChoiceButton extends ConsumerWidget {
 
 class _EmptyThreadState extends ConsumerWidget {
   final String title;
+  final String? lastError;
 
-  const _EmptyThreadState({required this.title});
+  const _EmptyThreadState({required this.title, this.lastError});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2085,11 +2092,11 @@ class _EmptyThreadState extends ConsumerWidget {
                     const SizedBox(height: 2),
                   ],
                   Text(
-                    title == 'New Circuit task'
-                        ? 'Start a new message below.'
-                        : 'No saved turns yet. Start a follow-up below.',
+                    _emptyStateDetail,
                     style: TextStyle(
-                      color: tokens.textMuted,
+                      color: lastError?.trim().isNotEmpty == true
+                          ? tokens.warning
+                          : tokens.textMuted,
                       fontSize: FontSizes.xs,
                       height: 1.28,
                     ),
@@ -2101,6 +2108,14 @@ class _EmptyThreadState extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String get _emptyStateDetail {
+    final error = lastError?.trim();
+    if (error != null && error.isNotEmpty) return error;
+    return title == 'New Circuit task'
+        ? 'Start a new message below.'
+        : 'No saved turns yet. Start a follow-up below.';
   }
 }
 

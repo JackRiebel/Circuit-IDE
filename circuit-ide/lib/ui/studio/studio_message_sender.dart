@@ -265,16 +265,49 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
       );
   final priorThreadMessages = studioModelHistoryForThread(thread);
+  final userMessageId = _uuid.v4();
+  final requestId = _uuid.v4();
+  var turnRegistered = false;
+
+  void registerTurnIfNeeded() {
+    if (turnRegistered) return;
+    ref
+        .read(studioTurnProvider.notifier)
+        .registerTurn(
+          requestId: requestId,
+          threadId: thread.id,
+          taskId: taskId,
+          userMessageId: userMessageId,
+          prompt: visibleText,
+          model: model,
+          contextSummary: payload.summary,
+          intent: intent,
+          acceptedPlanState: acceptedPlan == null
+              ? AcceptedPlanState.none
+              : AcceptedPlanState.accepted,
+          acceptedPlanContext: acceptedPlan,
+          contextRetrieval: payload.contextRetrieval,
+          userMessageTranscriptVisible:
+              acceptedPlan == null && userMessageTranscriptVisible,
+        );
+    turnRegistered = true;
+  }
+
+  void registerBlockedTurn(String message) {
+    registerTurnIfNeeded();
+    ref.read(studioTurnProvider.notifier).fail(requestId, message);
+  }
 
   if (beforeSend.hasActiveStudioRequest) {
     const message =
         'A request is already running. Wait for it to finish or cancel it before sending another.';
-    ref.read(studioThreadProvider.notifier).block(thread.id, message);
+    registerBlockedTurn(message);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
     }
     return StudioSendResult.blocked(
       message,
+      requestId: requestId,
       threadId: thread.id,
       taskId: taskId,
       contextSummary: payload.summary,
@@ -289,14 +322,13 @@ Future<StudioSendResult> sendStudioMessage(
   if (!preflight.canSend) {
     final message =
         preflight.primaryIssue?.message ?? 'Circuit AI is not ready.';
-    ref
-        .read(studioThreadProvider.notifier)
-        .block(thread.id, message, preflight: preflight);
+    registerBlockedTurn(message);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
     }
     return StudioSendResult.blocked(
       message,
+      requestId: requestId,
       threadId: thread.id,
       taskId: taskId,
       preflight: preflight,
@@ -307,12 +339,13 @@ Future<StudioSendResult> sendStudioMessage(
   if ((rootPath == null || !workspace.canCode) && requiresWorkspace) {
     const message =
         'Choose a bound project folder before using Code, Fix, or Review mode.';
-    ref.read(studioThreadProvider.notifier).block(thread.id, message);
+    registerBlockedTurn(message);
     if (finishTask && taskId != null) {
       ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
     }
     return StudioSendResult.blocked(
       message,
+      requestId: requestId,
       threadId: thread.id,
       taskId: taskId,
       contextSummary: payload.summary,
@@ -328,8 +361,6 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
         contextSummary: payload.summary,
       );
-  final userMessageId = _uuid.v4();
-
   ref
       .read(studioThreadProvider.notifier)
       .markPhase(
@@ -339,26 +370,7 @@ Future<StudioSendResult> sendStudioMessage(
         model: model,
         contextSummary: payload.summary,
       );
-  final requestId = _uuid.v4();
-  ref
-      .read(studioTurnProvider.notifier)
-      .registerTurn(
-        requestId: requestId,
-        threadId: thread.id,
-        taskId: taskId,
-        userMessageId: userMessageId,
-        prompt: visibleText,
-        model: model,
-        contextSummary: payload.summary,
-        intent: intent,
-        acceptedPlanState: acceptedPlan == null
-            ? AcceptedPlanState.none
-            : AcceptedPlanState.accepted,
-        acceptedPlanContext: acceptedPlan,
-        contextRetrieval: payload.contextRetrieval,
-        userMessageTranscriptVisible:
-            acceptedPlan == null && userMessageTranscriptVisible,
-      );
+  registerTurnIfNeeded();
   ref
       .read(studioRequestLifecycleProvider.notifier)
       .registerRequest(

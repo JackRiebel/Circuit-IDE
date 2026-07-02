@@ -135,6 +135,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     final issues = <AgentPreflightIssue>[];
     final settings = ref.read(settingsProvider);
     final connectionStatus = ref.read(connectionStatusProvider);
+    final studioConnection = ref.read(studioAgentConnectionProvider);
+    final hasProvider = studioConnection.provider != null;
     final workspace = ref.read(workspaceContextProvider);
     final selectedModel = settings.ciscoModel;
     final cachedModelInfo = settings.connectorModels
@@ -157,7 +159,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       );
     }
 
-    if (connectionStatus != ConnectionStatus.connected) {
+    if (connectionStatus != ConnectionStatus.connected && !hasProvider) {
       final looksCredentialRelated =
           settings.connectorHealthStatus ==
               ConnectorHealthStatus.credentialsMissing ||

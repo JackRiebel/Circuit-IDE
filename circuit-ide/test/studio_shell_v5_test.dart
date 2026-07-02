@@ -928,6 +928,57 @@ void main() {
     );
   });
 
+  testWidgets('Blocked Studio send preserves visible failed user turn', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    late WidgetRef capturedRef;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, child) {
+              capturedRef = ref;
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      ),
+    );
+
+    final result = await tester.runAsync(
+      () => sendStudioMessage(capturedRef, 'hello'),
+    );
+    await tester.pump();
+
+    expect(result?.status, StudioSendStatus.blocked);
+    expect(result?.error, contains('AI is not connected'));
+
+    final thread = container.read(studioThreadProvider).selectedThread;
+    expect(thread, isNotNull);
+    expect(thread!.status, StudioThreadStatus.failed);
+    expect(thread.turns, hasLength(1));
+
+    final turn = thread.turns.single;
+    expect(turn.prompt, 'hello');
+    expect(turn.status, StudioTurnStatus.failed);
+    expect(
+      turn.events.any((event) => event.type == StudioTurnEventType.userMessage),
+      isTrue,
+    );
+    expect(
+      turn.events.any(
+        (event) =>
+            event.type == StudioTurnEventType.error &&
+            event.detail.contains('AI is not connected'),
+      ),
+      isTrue,
+    );
+  });
+
   testWidgets('Vague fix prompts do not create a workspace or expose tools', (
     tester,
   ) async {

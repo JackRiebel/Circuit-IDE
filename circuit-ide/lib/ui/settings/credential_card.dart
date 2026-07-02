@@ -309,8 +309,18 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
         },
         workingDir: workingDir,
       );
+      final studioSuccess = await ref
+          .read(studioAgentConnectionProvider.notifier)
+          .connect(
+            providerType: AIProviderType.cisco,
+            credentials: {
+              'client_id': values.ciscoClientId!,
+              'client_secret': values.ciscoClientSecret!,
+              'app_key': values.ciscoAppKey!,
+            },
+          );
 
-      if (success) {
+      if (success && studioSuccess) {
         ref
             .read(connectionStatusProvider.notifier)
             .set(ConnectionStatus.connected);
@@ -324,7 +334,9 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
         setState(() {
           _errorMessage = serviceError != null
               ? serviceError.replaceFirst('Exception: ', '')
-              : 'Connection failed. Check credentials and try again.';
+              : studioSuccess
+              ? 'Connection failed. Check credentials and try again.'
+              : 'Studio AI connection failed. Check credentials and try again.';
         });
       }
     } catch (e) {
