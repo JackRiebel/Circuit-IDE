@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:circuit_ide/models/artifact_document.dart';
 import 'package:circuit_ide/services/powerpoint_artifact_inspector.dart';
 import 'package:circuit_ide/services/powerpoint_artifact_renderer.dart';
@@ -458,5 +460,73 @@ void main() {
     expect(inspection.hasClosingDecisionAsk, isTrue);
     expect(inspection.hasAssumptionsSourcesSlide, isTrue);
     expect(inspection.hasSpeakerNotes, isTrue);
+  });
+
+  test('PowerPoint renderer continues long sections across slides', () {
+    const document = ArtifactDocument(
+      title: 'Implementation Workplan',
+      summary: 'Customer-ready implementation plan with detailed workstreams.',
+      sections: [
+        ArtifactSection(
+          title: 'Implementation Plan',
+          bullets: [
+            'Confirm sponsors, decision owner, and approval path.',
+            'Validate source data and inventory assumptions.',
+            'Map current state systems and integration points.',
+            'Define target architecture and security posture.',
+            'Sequence MVP scope into delivery phases.',
+            'Assign workstream owners and success criteria.',
+            'Create test plan and acceptance evidence.',
+            'Prepare migration runbook and rollback criteria.',
+            'Confirm training, handoff, and support model.',
+            'Review operational readiness with stakeholders.',
+            'Capture launch decision and post-launch checks.',
+            'Package final evidence, sources, and assumptions.',
+            'Schedule executive readout and implementation signoff.',
+            'Create follow-up backlog for post-MVP enhancements.',
+            'Archive source artifacts with checked dates.',
+            'Close the customer handoff loop with owners.',
+          ],
+        ),
+      ],
+      assumptions: ['Customer confirms final implementation window.'],
+      citations: ['Implementation workshop notes.'],
+    );
+
+    const renderer = PowerPointArtifactRenderer();
+    final bytes = renderer.render(document);
+    final metadata = renderer.metadataFor(document);
+    final inspection = const PowerPointArtifactInspector().inspect(bytes);
+    final pptxText = latin1.decode(bytes, allowInvalid: true);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(metadata['hasSectionContinuationSlides'], isTrue);
+    expect(metadata['sectionContinuationSlideCount'], 2);
+    expect(metadata['sectionOverflowBulletCount'], 9);
+    expect(
+      metadata['sectionContinuationSummaries'],
+      contains('Implementation Plan: 16 points split across 3 slides'),
+    );
+    expect(metadata['layoutFeatures'], contains('Section continuation slides'));
+    expect(
+      metadata['readinessSignals'],
+      contains('Section continuation slides'),
+    );
+    expect(
+      metadata['deckReviewChecklist'],
+      contains(
+        'Review section continuation slides for narrative flow, duplicated context, and complete coverage.',
+      ),
+    );
+    expect(
+      metadata['deckVisualVerificationChecklist'],
+      contains(
+        'Review section continuation slides at 16:9 and confirm every continuation keeps the story readable.',
+      ),
+    );
+    expect(pptxText, contains('Implementation Plan (2/3)'));
+    expect(pptxText, contains('Implementation Plan (3/3)'));
+    expect(pptxText, contains('points 15-16 of 16'));
+    expect(pptxText, contains('Close the customer handoff loop with owners.'));
   });
 }

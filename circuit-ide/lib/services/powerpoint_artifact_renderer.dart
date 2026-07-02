@@ -7,9 +7,10 @@ import '../models/artifact_document.dart';
 class PowerPointArtifactRenderer {
   const PowerPointArtifactRenderer();
 
-  static const int _maxSlides = 32;
+  static const int _maxSlides = 48;
   static const int _maxTablesInDeck = 4;
   static const int _tableDataRowsPerSlide = 6;
+  static const int _sectionBulletsPerSlide = 7;
 
   int slideCountFor(ArtifactDocument document) {
     return _slidesFor(document).take(_maxSlides).length;
@@ -105,6 +106,13 @@ class PowerPointArtifactRenderer {
     final tableContinuationSlideCount = _tableContinuationSlideCount(document);
     final tableOverflowRowCount = _tableOverflowRowCount(document);
     final tableContinuationSummaries = _tableContinuationSummaries(document);
+    final sectionContinuationSlideCount = _sectionContinuationSlideCount(
+      document,
+    );
+    final sectionOverflowBulletCount = _sectionOverflowBulletCount(document);
+    final sectionContinuationSummaries = _sectionContinuationSummaries(
+      document,
+    );
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -154,6 +162,7 @@ class PowerPointArtifactRenderer {
         'Closing decision ask',
         if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
           'Section divider slides',
+        if (sectionContinuationSlideCount > 0) 'Section continuation slides',
         if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
           'Table slides',
         'Speaker notes',
@@ -166,6 +175,11 @@ class PowerPointArtifactRenderer {
       'tableOverflowRowCount': tableOverflowRowCount,
       'tableContinuationSummaries': tableContinuationSummaries,
       'tableContinuationSummaryCount': tableContinuationSummaries.length,
+      'hasSectionContinuationSlides': sectionContinuationSlideCount > 0,
+      'sectionContinuationSlideCount': sectionContinuationSlideCount,
+      'sectionOverflowBulletCount': sectionOverflowBulletCount,
+      'sectionContinuationSummaries': sectionContinuationSummaries,
+      'sectionContinuationSummaryCount': sectionContinuationSummaries.length,
       'sourceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
@@ -410,21 +424,9 @@ class PowerPointArtifactRenderer {
       _implementationRoadmap(document, sections),
     ];
     for (final section in sections) {
-      final bullets = [
-        ...section.bullets,
-        if (section.bullets.isEmpty && section.body.isNotEmpty)
-          ..._sentences(section.body).take(5),
-      ];
-      slides
-        ..add(_sectionDivider(section, bullets))
-        ..add(
-          _DeckSlide(
-            title: _contentTitle(section.title),
-            eyebrow: _contentEyebrow(section.title),
-            kind: _sectionKind(section.title),
-            bullets: _recommendationBullets(section.title, bullets),
-          ),
-        );
+      final bullets = _sectionBullets(section);
+      slides.add(_sectionDivider(section, bullets));
+      slides.addAll(_sectionContentSlides(section, bullets));
     }
     if (document.tables.isNotEmpty) {
       slides.add(_dataSnapshot(document));
@@ -1208,6 +1210,8 @@ class PowerPointArtifactRenderer {
         'Table slides',
       if (_tableContinuationSlideCount(document) > 0)
         'Table continuation slides',
+      if (_sectionContinuationSlideCount(document) > 0)
+        'Section continuation slides',
       if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
         'Assumptions/sources',
       'Speaker notes',
@@ -1398,6 +1402,8 @@ class PowerPointArtifactRenderer {
             : 'Review table slides for sensitive data, stale values, and column readability.'
       else
         'Attach supporting data or explain why no data table is required.',
+      if (_sectionContinuationSlideCount(document) > 0)
+        'Review section continuation slides for narrative flow, duplicated context, and complete coverage.',
       if (document.assumptions.isNotEmpty)
         'Confirm assumptions with the accountable owner.'
       else
@@ -1440,6 +1446,8 @@ class PowerPointArtifactRenderer {
             : 'Review table slides for readable row count, clipped values, and column alignment.'
       else
         'Confirm no table slide is needed, or attach the supporting data artifact.',
+      if (_sectionContinuationSlideCount(document) > 0)
+        'Review section continuation slides at 16:9 and confirm every continuation keeps the story readable.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
         'Check recommendation cards fit without wrapping into neighboring content.'
       else
@@ -1764,6 +1772,60 @@ class PowerPointArtifactRenderer {
     ];
   }
 
+  List<String> _sectionBullets(ArtifactSection section) {
+    final bullets = section.bullets
+        .map((bullet) => bullet.trim())
+        .where((bullet) => bullet.isNotEmpty)
+        .toList(growable: false);
+    if (bullets.isNotEmpty) return bullets;
+    return _sentences(section.body).toList(growable: false);
+  }
+
+  List<_DeckSlide> _sectionContentSlides(
+    ArtifactSection section,
+    List<String> bullets,
+  ) {
+    if (bullets.isEmpty) {
+      return [
+        _DeckSlide(
+          title: _contentTitle(section.title),
+          eyebrow: _contentEyebrow(section.title),
+          kind: _sectionKind(section.title),
+          bullets: const [
+            'No section detail was provided; validate the desired customer-facing content before sharing.',
+          ],
+        ),
+      ];
+    }
+
+    final slides = <_DeckSlide>[];
+    final slideCount = (bullets.length / _sectionBulletsPerSlide).ceil();
+    for (var slideIndex = 0; slideIndex < slideCount; slideIndex++) {
+      final start = slideIndex * _sectionBulletsPerSlide;
+      final end = math.min(start + _sectionBulletsPerSlide, bullets.length);
+      final chunk = bullets.sublist(start, end);
+      final title = slideCount == 1
+          ? _contentTitle(section.title)
+          : '${_contentTitle(section.title)} (${slideIndex + 1}/$slideCount)';
+      final eyebrow = slideIndex == 0
+          ? _contentEyebrow(section.title)
+          : '${_contentEyebrow(section.title)} continuation';
+      slides.add(
+        _DeckSlide(
+          title: title,
+          eyebrow: eyebrow,
+          kind: _sectionKind(section.title),
+          bullets: _recommendationBullets(section.title, [
+            if (slideCount > 1)
+              'Section coverage: points ${start + 1}-$end of ${bullets.length}; continue through all slides before approving.',
+            ...chunk,
+          ]),
+        ),
+      );
+    }
+    return slides;
+  }
+
   Iterable<String> _sentences(String body) {
     return body
         .replaceAll('\n', ' ')
@@ -1852,6 +1914,30 @@ class PowerPointArtifactRenderer {
       for (final table in document.tables.take(_maxTablesInDeck))
         if (math.max(0, table.rows.length - 1) > _tableDataRowsPerSlide)
           '${table.title}: ${math.max(0, table.rows.length - 1)} rows split across ${(math.max(0, table.rows.length - 1) / _tableDataRowsPerSlide).ceil()} slides',
+    ];
+  }
+
+  int _sectionContinuationSlideCount(ArtifactDocument document) {
+    return document.sections.take(10).fold<int>(0, (sum, section) {
+      final count = _sectionBullets(section).length;
+      if (count <= _sectionBulletsPerSlide) return sum;
+      return sum + (count / _sectionBulletsPerSlide).ceil() - 1;
+    });
+  }
+
+  int _sectionOverflowBulletCount(ArtifactDocument document) {
+    return document.sections
+        .take(10)
+        .map((section) => _sectionBullets(section).length)
+        .where((count) => count > _sectionBulletsPerSlide)
+        .fold<int>(0, (sum, count) => sum + count - _sectionBulletsPerSlide);
+  }
+
+  List<String> _sectionContinuationSummaries(ArtifactDocument document) {
+    return [
+      for (final section in document.sections.take(10))
+        if (_sectionBullets(section).length > _sectionBulletsPerSlide)
+          '${section.title}: ${_sectionBullets(section).length} points split across ${(_sectionBullets(section).length / _sectionBulletsPerSlide).ceil()} slides',
     ];
   }
 
