@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:circuit_ide/models/generated_artifact.dart';
+import 'package:circuit_ide/services/artifact_type_registry.dart';
 import 'package:circuit_ide/services/generated_artifact_package_writer.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -425,6 +426,187 @@ graph LR
         }
       },
     );
+
+    test(
+      'every priority registry descriptor has an executable generation route',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'circuit-artifact-registry-smoke-',
+        );
+        addTearDown(() => root.delete(recursive: true));
+        const registry = ArtifactTypeRegistry();
+        const packageWriter = GeneratedArtifactPackageWriter();
+        const cases = <_PriorityDescriptorSmokeCase>[
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'powerpoint_deck',
+            prompt: 'create a PowerPoint deck for this customer proposal',
+            expectedTargets: [GeneratedArtifactKind.powerPoint],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'docx_report',
+            prompt: 'create a customer proposal report',
+            expectedTargets: [GeneratedArtifactKind.docx],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'pdf_report',
+            prompt: 'create a final customer handoff PDF',
+            expectedTargets: [GeneratedArtifactKind.pdf],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'excel_workbook',
+            prompt: 'create an Excel workbook from this inventory',
+            expectedTargets: [GeneratedArtifactKind.excel],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'csv_dataset',
+            prompt: 'create a CSV dataset export from this table',
+            expectedTargets: [GeneratedArtifactKind.csv],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'network_topology_diagram',
+            prompt: 'create a network topology package for this Cisco campus',
+            expectedTargets: [
+              GeneratedArtifactKind.diagram,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'architecture_review_pack',
+            prompt: 'create an architecture review package for this design',
+            expectedTargets: [
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'solution_sizing_workbook',
+            prompt: 'create a solution sizing package for 500 users and 90 APs',
+            expectedTargets: [
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'lifecycle_eox_report',
+            prompt: 'create an LDOS lifecycle report package',
+            expectedTargets: [
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.pdf,
+              GeneratedArtifactKind.json,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'product_comparison_matrix',
+            prompt: 'create a product comparison package for C9300 and MS355',
+            expectedTargets: [
+              GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'business_use_case_brief',
+            prompt: 'create a business case package for this customer',
+            expectedTargets: [
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.chart,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'implementation_plan',
+            prompt: 'create an implementation plan package for this project',
+            expectedTargets: [
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'change_summary_diff_report',
+            prompt: 'create a post-work change summary package',
+            expectedTargets: [
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'chart_pack',
+            prompt: 'create a chart pack for PoE budget risk',
+            expectedTargets: [GeneratedArtifactKind.chart],
+          ),
+          _PriorityDescriptorSmokeCase(
+            descriptorId: 'evidence_pack',
+            prompt: 'create a final evidence pack for customer handoff',
+            expectedTargets: [
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.json,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+        ];
+
+        expect(cases.map((entry) => entry.descriptorId).toSet().length, 15);
+
+        for (final smokeCase in cases) {
+          final route = registry.routeForPrompt(smokeCase.prompt);
+          expect(
+            route.descriptor?.id,
+            smokeCase.descriptorId,
+            reason: smokeCase.descriptorId,
+          );
+          expect(
+            route.targetKinds,
+            smokeCase.expectedTargets,
+            reason: smokeCase.descriptorId,
+          );
+
+          final package = await packageWriter.writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: smokeCase.prompt,
+            content: _enterprisePackageContent,
+            turnId: 'turn-${smokeCase.descriptorId}',
+            threadId: 'thread-registry-smoke',
+            requestId: 'request-registry-smoke',
+          );
+
+          expect(package, isNotNull, reason: smokeCase.descriptorId);
+          final expectedKinds = smokeCase.expectedTargets.length > 1
+              ? [GeneratedArtifactKind.markdown, ...smokeCase.expectedTargets]
+              : smokeCase.expectedTargets;
+          expect(
+            package!.artifacts.map((artifact) => artifact.kind).toList(),
+            expectedKinds,
+            reason: smokeCase.descriptorId,
+          );
+          for (final artifact in package.artifacts) {
+            expect(
+              File(artifact.filePath).existsSync(),
+              isTrue,
+              reason: '${smokeCase.descriptorId}: ${artifact.fileName}',
+            );
+            expect(
+              artifact.filePath.startsWith(
+                '${root.path}${Platform.pathSeparator}outputs',
+              ),
+              isTrue,
+              reason: '${smokeCase.descriptorId}: ${artifact.fileName}',
+            );
+            expect(
+              artifact.summary.trim(),
+              isNotEmpty,
+              reason: '${smokeCase.descriptorId}: ${artifact.fileName}',
+            );
+            expect(
+              GeneratedArtifact.fromSourceArtifact(artifact.toSourceArtifact()),
+              isNotNull,
+              reason: '${smokeCase.descriptorId}: ${artifact.fileName}',
+            );
+          }
+        }
+      },
+    );
   });
 }
 
@@ -461,6 +643,18 @@ class _ArtifactPackageSmokeCase {
     required this.expectedLabel,
     required this.expectedKinds,
     this.content,
+  });
+}
+
+class _PriorityDescriptorSmokeCase {
+  final String descriptorId;
+  final String prompt;
+  final List<GeneratedArtifactKind> expectedTargets;
+
+  const _PriorityDescriptorSmokeCase({
+    required this.descriptorId,
+    required this.prompt,
+    required this.expectedTargets,
   });
 }
 

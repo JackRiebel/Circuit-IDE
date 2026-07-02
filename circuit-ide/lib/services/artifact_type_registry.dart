@@ -396,6 +396,20 @@ class ArtifactTypeRegistry {
         (descriptor) => descriptor.id == 'chart_pack',
       );
     }
+    if (RegExp(
+      r'\b(excel workbook|xlsx workbook|spreadsheet|workbook|inventory export|tabular workbook)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'excel_workbook',
+      );
+    }
+    if (RegExp(
+      r'\b(csv dataset|csv export|comma[- ]separated|dataset export|raw dataset)\b',
+    ).hasMatch(normalized)) {
+      return descriptors.firstWhere(
+        (descriptor) => descriptor.id == 'csv_dataset',
+      );
+    }
     if (RegExp(r'\b(eox|eol|ldos|lifecycle)\b').hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'lifecycle_eox_report',
