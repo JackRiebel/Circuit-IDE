@@ -20,6 +20,14 @@ typedef _SegmentationDomain = ({
   bool ready,
 });
 
+typedef _TopologyHandoffGate = ({
+  String gate,
+  String signal,
+  String status,
+  String ownerAction,
+  bool ready,
+});
+
 class DiagramRenderResult {
   final Uint8List bytes;
   final int nodeCount;
@@ -186,6 +194,15 @@ class DiagramArtifactRenderer {
       validationGaps: validationGapLabels,
       topologyRiskFlags: topologyRiskFlags,
     );
+    final handoffReadinessMatrix = _topologyHandoffReadinessMatrixFor(
+      profile: profile,
+      assumptions: assumptions,
+      citationCount: citationCount,
+      topologyReadinessLevel: topologyReadinessLevel,
+      validationGaps: validationGapLabels,
+      topologyRiskFlags: topologyRiskFlags,
+      failureDomains: failureDomains,
+    );
     final customerReady =
         validationGapLabels.isEmpty &&
         graph.nodes.isNotEmpty &&
@@ -266,6 +283,21 @@ class DiagramArtifactRenderer {
       'externalHandoffManifest': externalHandoffManifest,
       'externalHandoffManifestCount': externalHandoffManifest.length,
       'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
+      'topologyHandoffReadinessMatrix': [
+        for (final gate in handoffReadinessMatrix)
+          {
+            'gate': gate.gate,
+            'signal': gate.signal,
+            'status': gate.status,
+            'ownerAction': gate.ownerAction,
+            'ready': gate.ready,
+          },
+      ],
+      'topologyHandoffReadinessGateCount': handoffReadinessMatrix.length,
+      'topologyHandoffReadinessReadyCount': handoffReadinessMatrix
+          .where((gate) => gate.ready)
+          .length,
+      'hasTopologyHandoffReadinessMatrix': handoffReadinessMatrix.isNotEmpty,
       'capacityItemCount': capacityItems.length,
       'linkScheduleCount': linkSchedule.length,
       'advisoryCount': advisories.length,
@@ -306,6 +338,7 @@ class DiagramArtifactRenderer {
         graph: graph,
         tiers: tiers,
         assumptions: assumptions,
+        citationCount: citationCount,
         profile: profile,
         readinessItems: readinessItems,
         capacityItems: capacityItems,
@@ -314,6 +347,7 @@ class DiagramArtifactRenderer {
         failureDomains: failureDomains,
         validationGaps: validationGapLabels,
         topologyRiskFlags: topologyRiskFlags,
+        topologyReadinessLevel: topologyReadinessLevel,
       ),
     };
   }
@@ -322,6 +356,7 @@ class DiagramArtifactRenderer {
     required _DiagramGraph graph,
     required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
     required List<String> assumptions,
+    required int citationCount,
     required _TopologyProfile profile,
     required List<({String check, String state, bool ready})> readinessItems,
     required List<({String metric, String value, String guidance, bool ready})>
@@ -332,6 +367,7 @@ class DiagramArtifactRenderer {
     required List<_FailureDomainRow> failureDomains,
     required List<String> validationGaps,
     required List<String> topologyRiskFlags,
+    required String topologyReadinessLevel,
   }) {
     return {
       'schema': 'circuit.networkTopologySpec',
@@ -435,6 +471,24 @@ class DiagramArtifactRenderer {
             'impact': domain.impact,
             'validation': domain.validation,
             'ready': domain.ready,
+          },
+      ],
+      'handoffReadinessMatrix': [
+        for (final gate in _topologyHandoffReadinessMatrixFor(
+          profile: profile,
+          assumptions: assumptions,
+          citationCount: citationCount,
+          topologyReadinessLevel: topologyReadinessLevel,
+          validationGaps: validationGaps,
+          topologyRiskFlags: topologyRiskFlags,
+          failureDomains: failureDomains,
+        ))
+          {
+            'gate': gate.gate,
+            'signal': gate.signal,
+            'status': gate.status,
+            'ownerAction': gate.ownerAction,
+            'ready': gate.ready,
           },
       ],
       'advisories': [
@@ -874,6 +928,12 @@ class DiagramArtifactRenderer {
       width: width,
       height: height,
     );
+    _drawTopologyHandoffReadinessMatrix(
+      buffer,
+      _handoffReadinessRowsFromMetadata(metadata),
+      width: width,
+      height: height,
+    );
     _drawLinkSchedule(buffer, linkSchedule, width: width, height: height);
     _drawReadinessScorecard(
       buffer,
@@ -1245,6 +1305,67 @@ class DiagramArtifactRenderer {
         )
         ..writeln(
           '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 36}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(item.guidance, 48))}</text>',
+        );
+    }
+    buffer.writeln('</g>');
+  }
+
+  List<_TopologyHandoffGate> _handoffReadinessRowsFromMetadata(
+    Map<String, Object?> metadata,
+  ) {
+    final raw = metadata['topologyHandoffReadinessMatrix'];
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          (
+            gate: item['gate']?.toString() ?? '',
+            signal: item['signal']?.toString() ?? '',
+            status: item['status']?.toString() ?? '',
+            ownerAction: item['ownerAction']?.toString() ?? '',
+            ready: item['ready'] == true,
+          ),
+    ].where((item) => item.gate.isNotEmpty).toList(growable: false);
+  }
+
+  void _drawTopologyHandoffReadinessMatrix(
+    StringBuffer buffer,
+    List<_TopologyHandoffGate> gates, {
+    required int width,
+    required int height,
+  }) {
+    if (gates.isEmpty) return;
+    final y = height - 604;
+    final visible = gates.take(4).toList(growable: false);
+    final readyCount = gates.where((gate) => gate.ready).length;
+    buffer.writeln(
+      '<g id="topology-handoff-readiness" data-handoff-gate-count="${gates.length}" data-ready-handoff-gate-count="$readyCount">',
+    );
+    buffer.writeln(
+      '<rect x="36" y="$y" width="${width - 72}" height="50" rx="12" fill="#121615" stroke="#2b3835"/>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 18}" fill="#b9c0bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700">Customer handoff readiness</text>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 37}" fill="#78aaa5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">$readyCount/${gates.length} gates ready</text>',
+    );
+    var x = 262.0;
+    final cardWidth =
+        (width - x - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var i = 0; i < visible.length; i++) {
+      final gate = visible[i];
+      final cardX = x + (i * (cardWidth + 8));
+      buffer
+        ..writeln(
+          '<rect x="${cardX.toStringAsFixed(1)}" y="${y + 9}" width="${cardWidth.toStringAsFixed(1)}" height="32" rx="8" fill="${gate.ready ? '#182621' : '#2a241b'}" stroke="${gate.ready ? '#2e5148' : '#59482b'}"/>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 22}" fill="${gate.ready ? '#8dd3bd' : '#e1bb6d'}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten('${gate.gate}: ${gate.status}', 34))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 36}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(gate.ownerAction, 42))}</text>',
         );
     }
     buffer.writeln('</g>');
@@ -1721,6 +1842,7 @@ class DiagramArtifactRenderer {
       if (capacityItems.isNotEmpty) 'Capacity checks embedded',
       if (failureDomains.isNotEmpty) 'Failure-domain review embedded',
       if (advisories.isNotEmpty) 'Architecture advisories embedded',
+      'Customer handoff readiness matrix embedded',
       if (profile.segmentationDomains.isNotEmpty)
         'Segmentation domains and subnet validation embedded',
       if (assumptions.isNotEmpty) 'Assumptions embedded',
@@ -1734,6 +1856,7 @@ class DiagramArtifactRenderer {
       'SVG has title, description, viewBox, and embedded metadata',
       'Topology summary, design zones, links, and nodes are visible',
       'Readiness, capacity, validation, and failure-domain panels are visible',
+      'Customer handoff readiness matrix is visible',
       if (profile.segmentationDomains.isNotEmpty)
         'VLAN/VRF/subnet segmentation plan is visible',
       if (profile.apCount > 0)
@@ -1816,6 +1939,81 @@ class DiagramArtifactRenderer {
       if (profile.segmentationDomains.isNotEmpty)
         'Segmentation package: ${profile.segmentationDomains.length} VLAN/VRF/subnet domain${profile.segmentationDomains.length == 1 ? '' : 's'} captured',
       'Capacity package: ${profile.hasWifi7 || profile.hasPoe || profile.hasUpoe ? 'PoE/UPOE and AP power review required' : 'capture AP/PoE requirements if wireless is in scope'}',
+    ];
+  }
+
+  List<_TopologyHandoffGate> _topologyHandoffReadinessMatrixFor({
+    required _TopologyProfile profile,
+    required List<String> assumptions,
+    required int citationCount,
+    required String topologyReadinessLevel,
+    required List<String> validationGaps,
+    required List<String> topologyRiskFlags,
+    required List<_FailureDomainRow> failureDomains,
+  }) {
+    final capacityReady =
+        profile.accessPortCount > 0 &&
+        (!profile.hasWifi7 || (profile.hasPoe && profile.hasMultigig));
+    final failureReady =
+        failureDomains.isNotEmpty && failureDomains.every((item) => item.ready);
+    final publishingReady =
+        validationGaps.isEmpty && topologyRiskFlags.length <= 2;
+    return [
+      (
+        gate: 'Evidence package',
+        signal: citationCount == 0
+            ? 'No cited sources attached'
+            : '$citationCount source item${citationCount == 1 ? '' : 's'} attached',
+        status: citationCount == 0 ? 'Needs evidence' : 'Ready',
+        ownerAction: citationCount == 0
+            ? 'Attach inventory, design notes, or source evidence.'
+            : 'Keep source evidence with the topology handoff package.',
+        ready: citationCount > 0,
+      ),
+      (
+        gate: 'Assumptions',
+        signal: assumptions.isEmpty
+            ? 'No assumptions captured'
+            : '${assumptions.length} assumption${assumptions.length == 1 ? '' : 's'} captured',
+        status: assumptions.isEmpty ? 'Needs owner review' : 'Ready',
+        ownerAction: assumptions.isEmpty
+            ? 'Capture topology assumptions and accountable owners.'
+            : 'Review assumptions with the customer sponsor.',
+        ready: assumptions.isNotEmpty,
+      ),
+      (
+        gate: 'Capacity validation',
+        signal: profile.apCount > 0
+            ? '${profile.apCount} APs / ${profile.accessPortCount} access ports / ${profile.estimatedApPowerWatts}W est.'
+            : profile.accessPortCount > 0
+            ? '${profile.accessPortCount} access ports captured'
+            : 'Access capacity not captured',
+        status: capacityReady ? 'Ready' : 'Needs capacity review',
+        ownerAction: capacityReady
+            ? 'Confirm PoE, mGig, uplink, and power-supply headroom.'
+            : 'Validate AP power, mGig, uplinks, and access-port headroom.',
+        ready: capacityReady,
+      ),
+      (
+        gate: 'Failure domains',
+        signal: failureDomains.isEmpty
+            ? 'No failure-domain review'
+            : '${failureDomains.where((item) => item.ready).length}/${failureDomains.length} domains ready',
+        status: failureReady ? 'Ready' : 'Needs resiliency review',
+        ownerAction: failureReady
+            ? 'Confirm failover behavior and operational ownership.'
+            : 'Assign owners to unresolved failure-domain risks.',
+        ready: failureReady,
+      ),
+      (
+        gate: 'Publishing gate',
+        signal: topologyReadinessLevel,
+        status: publishingReady ? 'Ready' : 'Needs review',
+        ownerAction: publishingReady
+            ? 'Proceed to architecture approval review.'
+            : 'Resolve validation gaps and high-risk topology flags.',
+        ready: publishingReady,
+      ),
     ];
   }
 

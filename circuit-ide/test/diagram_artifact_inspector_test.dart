@@ -44,6 +44,7 @@ graph LR
     expect(inspection.hasEmbeddedTopologySpec, isTrue);
     expect(inspection.hasTopologyEvidencePolicy, isTrue);
     expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
+    expect(inspection.hasTopologyHandoffReadinessMatrix, isTrue);
     expect(inspection.hasExternalHandoffManifest, isTrue);
     expect(inspection.designZoneCount, greaterThanOrEqualTo(1));
     expect(inspection.citationCount, 0);
@@ -59,6 +60,11 @@ graph LR
     expect(
       inspection.topologyVisualVerificationChecklistCount,
       greaterThanOrEqualTo(3),
+    );
+    expect(inspection.topologyHandoffReadinessGateCount, 5);
+    expect(
+      inspection.topologyHandoffReadinessReadyCount,
+      greaterThanOrEqualTo(1),
     );
     expect(inspection.topologyQualityStatus, isNotEmpty);
   });
@@ -99,6 +105,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(inspection.hasEmbeddedTopologySpec, isTrue);
       expect(inspection.hasTopologyEvidencePolicy, isTrue);
       expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
+      expect(inspection.hasTopologyHandoffReadinessMatrix, isTrue);
       expect(inspection.hasExternalHandoffManifest, isTrue);
       expect(inspection.nodeCount, greaterThanOrEqualTo(6));
       expect(inspection.edgeCount, greaterThanOrEqualTo(5));
@@ -158,6 +165,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(result.metadata['hasEmbeddedTopologySpec'], isTrue);
       expect(result.metadata['hasTopologyEvidencePolicy'], isTrue);
       expect(result.metadata['hasTopologyVisualVerificationChecklist'], isTrue);
+      expect(result.metadata['hasTopologyHandoffReadinessMatrix'], isTrue);
+      expect(result.metadata['topologyHandoffReadinessGateCount'], 5);
+      expect(
+        result.metadata['topologyHandoffReadinessReadyCount'],
+        greaterThanOrEqualTo(2),
+      );
       expect(result.metadata['hasExternalHandoffManifest'], isTrue);
       expect(result.metadata['externalHandoffManifestCount'], 11);
       expect(
@@ -181,6 +194,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
         result.metadata['topologyVisualVerificationChecklistCount'],
         greaterThan(3),
       );
+      expect(inspection.topologyHandoffReadinessGateCount, 5);
+      expect(
+        inspection.topologyHandoffReadinessReadyCount,
+        greaterThanOrEqualTo(2),
+      );
       expect(
         result.metadata['topologyEvidencePolicy'],
         contains(
@@ -202,6 +220,9 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(svg, contains('Architecture advisories'));
       expect(svg, contains('Failure-domain review'));
       expect(svg, contains('Quality gate'));
+      expect(svg, contains('Customer handoff readiness'));
+      expect(svg, contains('id="topology-handoff-readiness"'));
+      expect(svg, contains('&quot;handoffReadinessMatrix&quot;:'));
       expect(svg, contains('&quot;externalHandoffManifest&quot;:'));
       expect(
         svg,
@@ -257,12 +278,18 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(inspection.hasTopologyEvidencePolicy, isTrue);
     expect(inspection.hasTopologyVisualVerificationChecklist, isTrue);
     expect(inspection.hasExternalHandoffManifest, isTrue);
+    expect(inspection.hasTopologyHandoffReadinessMatrix, isTrue);
     expect(inspection.hasLifecycleReplacementCaveat, isTrue);
     expect(inspection.hasWifi7PowerAdvisory, isTrue);
     expect(inspection.advisoryCount, greaterThanOrEqualTo(3));
     expect(inspection.failureDomainCount, 5);
     expect(inspection.criticalFailureDomainCount, 0);
     expect(inspection.topologyQualityStatus, isNotEmpty);
+    expect(inspection.topologyHandoffReadinessGateCount, 5);
+    expect(
+      inspection.topologyHandoffReadinessReadyCount,
+      greaterThanOrEqualTo(3),
+    );
     expect(inspection.topologyQualityChecklistCount, greaterThanOrEqualTo(8));
     expect(inspection.topologyEvidencePolicyCount, greaterThanOrEqualTo(4));
     expect(svg, contains('Inventory'));
@@ -270,6 +297,8 @@ warm spare MX250 firewalls, dual WAN, all 48 ports UPOE with 10gig speed, and 90
     expect(svg, contains('Architecture advisories'));
     expect(svg, contains('Failure-domain review'));
     expect(svg, contains('Quality gate'));
+    expect(svg, contains('Customer handoff readiness'));
+    expect(svg, contains('id="topology-handoff-readiness"'));
     expect(svg, contains('Link schedule'));
     expect(svg, contains('Readiness scorecard'));
     expect(svg, contains('Capacity checks'));

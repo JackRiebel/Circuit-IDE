@@ -32,6 +32,7 @@ class NetworkTopologyBriefBuilder {
     final links = _listOfMaps(spec['links']);
     final capacityChecks = _listOfMaps(spec['capacityChecks']);
     final readinessChecks = _listOfMaps(spec['readinessChecks']);
+    final handoffReadinessMatrix = _listOfMaps(spec['handoffReadinessMatrix']);
     final failureDomains = _listOfMaps(spec['failureDomains']);
     final advisories = _listOfMaps(spec['advisories']);
     final validationGaps = _stringList(spec['validationGaps']);
@@ -93,6 +94,16 @@ class NetworkTopologyBriefBuilder {
             '${_string(check['check'])}: ${_string(check['state'])}',
         ],
       ),
+      if (handoffReadinessMatrix.isNotEmpty)
+        ArtifactSection(
+          title: 'Customer Handoff Readiness',
+          body:
+              'Use these gates to decide whether the topology is ready for stakeholder approval, needs owner review, or should stay in discovery.',
+          bullets: [
+            for (final gate in handoffReadinessMatrix.take(6))
+              '${_string(gate['gate'])}: ${_string(gate['status'])} - ${_string(gate['ownerAction'])}',
+          ],
+        ),
       ArtifactSection(
         title: 'Failure Domains And Risks',
         body:
@@ -190,6 +201,21 @@ class NetworkTopologyBriefBuilder {
             ],
         ],
       ),
+      if (handoffReadinessMatrix.isNotEmpty)
+        ArtifactTable(
+          title: 'Customer Handoff Readiness Matrix',
+          rows: [
+            const ['Gate', 'Signal', 'Status', 'Owner Action', 'Ready'],
+            for (final gate in handoffReadinessMatrix)
+              [
+                _string(gate['gate']),
+                _string(gate['signal']),
+                _string(gate['status']),
+                _string(gate['ownerAction']),
+                _string(gate['ready']),
+              ],
+          ],
+        ),
       ArtifactTable(
         title: 'Failure Domain Review',
         rows: [
@@ -236,6 +262,11 @@ class NetworkTopologyBriefBuilder {
         'topologyValidationGapCount': validationGaps.length,
         'topologyFailureDomainCount': failureDomains.length,
         'topologyCapacityCheckCount': capacityChecks.length,
+        'topologyHandoffReadinessGateCount': handoffReadinessMatrix.length,
+        'topologyHandoffReadinessReadyCount': handoffReadinessMatrix
+            .where((gate) => gate['ready'] == true)
+            .length,
+        'hasTopologyHandoffReadinessMatrix': handoffReadinessMatrix.isNotEmpty,
         'topologySegmentationDomainCount': segmentation.length,
         'hasTopologySegmentationReview': segmentation.isNotEmpty,
         'topologyCapabilities': capabilities,

@@ -24,6 +24,7 @@ class DiagramArtifactInspection {
   final bool hasTopologyEvidencePolicy;
   final bool hasTopologyVisualVerificationChecklist;
   final bool hasExternalHandoffManifest;
+  final bool hasTopologyHandoffReadinessMatrix;
   final int nodeCount;
   final int edgeCount;
   final int tierCount;
@@ -39,6 +40,8 @@ class DiagramArtifactInspection {
   final int topologyQualityChecklistCount;
   final int topologyEvidencePolicyCount;
   final int topologyVisualVerificationChecklistCount;
+  final int topologyHandoffReadinessGateCount;
+  final int topologyHandoffReadinessReadyCount;
   final int siteCount;
   final int mdfCount;
   final int idfCount;
@@ -87,6 +90,7 @@ class DiagramArtifactInspection {
     required this.hasTopologyEvidencePolicy,
     required this.hasTopologyVisualVerificationChecklist,
     required this.hasExternalHandoffManifest,
+    required this.hasTopologyHandoffReadinessMatrix,
     required this.nodeCount,
     required this.edgeCount,
     required this.tierCount,
@@ -102,6 +106,8 @@ class DiagramArtifactInspection {
     required this.topologyQualityChecklistCount,
     required this.topologyEvidencePolicyCount,
     required this.topologyVisualVerificationChecklistCount,
+    required this.topologyHandoffReadinessGateCount,
+    required this.topologyHandoffReadinessReadyCount,
     required this.siteCount,
     required this.mdfCount,
     required this.idfCount,
@@ -156,6 +162,7 @@ class DiagramArtifactInspection {
       hasEmbeddedTopologySpec &&
       hasTopologyEvidencePolicy &&
       hasTopologyVisualVerificationChecklist &&
+      hasTopologyHandoffReadinessMatrix &&
       hasExternalHandoffManifest;
 
   bool containsDeviceToken(String value) => deviceTokens.any((token) {
@@ -233,6 +240,14 @@ class DiagramArtifactInspector {
         _metadataInt(metadata, 'topologyQualityChecklistCount') ??
         _dataInt(svg, 'data-quality-check-count') ??
         0;
+    final topologyHandoffReadinessGateCount =
+        _metadataInt(metadata, 'topologyHandoffReadinessGateCount') ??
+        _dataInt(svg, 'data-handoff-gate-count') ??
+        0;
+    final topologyHandoffReadinessReadyCount =
+        _metadataInt(metadata, 'topologyHandoffReadinessReadyCount') ??
+        _dataInt(svg, 'data-ready-handoff-gate-count') ??
+        0;
 
     return DiagramArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -270,6 +285,11 @@ class DiagramArtifactInspector {
           (_metadataInt(metadata, 'topologyVisualVerificationChecklistCount') ??
                   0) >
               0,
+      hasTopologyHandoffReadinessMatrix:
+          metadata['hasTopologyHandoffReadinessMatrix'] == true &&
+          topologyHandoffReadinessGateCount > 0 &&
+          svg.contains('id="topology-handoff-readiness"') &&
+          svg.contains('Customer handoff readiness'),
       hasExternalHandoffManifest:
           metadata['hasExternalHandoffManifest'] == true &&
           (_metadataInt(metadata, 'externalHandoffManifestCount') ?? 0) > 0 &&
@@ -294,6 +314,8 @@ class DiagramArtifactInspector {
       topologyVisualVerificationChecklistCount:
           _metadataInt(metadata, 'topologyVisualVerificationChecklistCount') ??
           0,
+      topologyHandoffReadinessGateCount: topologyHandoffReadinessGateCount,
+      topologyHandoffReadinessReadyCount: topologyHandoffReadinessReadyCount,
       siteCount: _metadataInt(metadata, 'siteCount') ?? 0,
       mdfCount: _metadataInt(metadata, 'mdfCount') ?? 0,
       idfCount: _metadataInt(metadata, 'idfCount') ?? 0,

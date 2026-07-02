@@ -2482,7 +2482,29 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(artifact.metadata['hasReadinessScorecard'], isTrue);
     expect(artifact.metadata['hasFailureDomainReview'], isTrue);
     expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
+    expect(artifact.metadata['hasTopologyHandoffReadinessMatrix'], isTrue);
     expect(artifact.metadata['externalHandoffManifestCount'], 11);
+    expect(artifact.metadata['topologyHandoffReadinessGateCount'], 5);
+    expect(
+      artifact.metadata['topologyHandoffReadinessReadyCount'],
+      greaterThanOrEqualTo(2),
+    );
+    final handoffMatrix =
+        (artifact.metadata['topologyHandoffReadinessMatrix'] as List)
+            .cast<Map>();
+    expect(
+      handoffMatrix.any(
+        (gate) => gate['gate'] == 'Evidence package' && gate['ready'] == true,
+      ),
+      isTrue,
+    );
+    expect(
+      handoffMatrix.any(
+        (gate) =>
+            gate['gate'] == 'Capacity validation' && gate['ready'] == false,
+      ),
+      isTrue,
+    );
     expect(
       artifact.metadata['externalHandoffManifest'],
       containsAll([
@@ -2595,6 +2617,19 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       ),
       isTrue,
     );
+    final handoffReadinessMatrix =
+        (topologySpec['handoffReadinessMatrix'] as List).cast<Map>();
+    expect(handoffReadinessMatrix, hasLength(5));
+    expect(
+      handoffReadinessMatrix.map((gate) => gate['gate']),
+      containsAll([
+        'Evidence package',
+        'Assumptions',
+        'Capacity validation',
+        'Failure domains',
+        'Publishing gate',
+      ]),
+    );
     expect(
       topologySpec['validationGaps'],
       contains('Failure domain: MDF / Core'),
@@ -2611,6 +2646,8 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('id="topology-capacity"'));
     expect(svg, contains('id="topology-inventory"'));
     expect(svg, contains('id="topology-validation"'));
+    expect(svg, contains('id="topology-handoff-readiness"'));
+    expect(svg, contains('Customer handoff readiness'));
     expect(svg, contains('WAN / Cloud'));
     expect(svg, contains('Security Edge'));
     expect(svg, contains('MDF / Core'));
@@ -2626,6 +2663,8 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('Capacity checks'));
     expect(svg, contains('Failure-domain review'));
     expect(svg, contains('&quot;externalHandoffManifest&quot;:'));
+    expect(svg, contains('&quot;handoffReadinessMatrix&quot;:'));
+    expect(svg, contains('&quot;topologyHandoffReadinessGateCount&quot;:5'));
     expect(
       svg,
       contains('Review owner: Network architecture owner / customer sponsor'),
