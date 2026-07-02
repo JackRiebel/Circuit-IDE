@@ -29,6 +29,7 @@ import 'package:circuit_ide/services/agent_service.dart';
 import 'package:circuit_ide/state/agent_run_provider.dart';
 import 'package:circuit_ide/state/agent_workspace_provider.dart';
 import 'package:circuit_ide/state/agent_turn_runtime_provider.dart';
+import 'package:circuit_ide/state/artifact_launch_provider.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
 import 'package:circuit_ide/state/command_run_provider.dart';
 import 'package:circuit_ide/state/connection_provider.dart';
@@ -3136,6 +3137,88 @@ void main() {
     final drawer = container.read(studioRightDrawerProvider);
     expect(drawer.mode, StudioDrawerMode.code);
     expect(drawer.filePath, file.path);
+  });
+
+  testWidgets('Inline artifact card Open and Reveal dispatch file paths', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final root = Directory.systemTemp.createTempSync(
+      'studio-inline-artifact-open-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/proposal.pptx')
+      ..writeAsBytesSync([1, 2, 3]);
+    final launched = <Uri>[];
+
+    final container = ProviderContainer(
+      overrides: [
+        artifactLaunchProvider.overrideWithValue((uri) async {
+          launched.add(uri);
+          return true;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    final threadController = container.read(studioThreadProvider.notifier);
+    final thread = threadController.createBlankThread(title: 'Artifact open');
+    const turnId = 'turn-inline-artifact-open';
+    const requestId = 'request-inline-artifact-open';
+    final artifact = GeneratedArtifact(
+      id: 'inline-pptx',
+      kind: GeneratedArtifactKind.powerPoint,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'proposal.pptx',
+      filePath: file.path,
+      summary: 'Created a PowerPoint deck.',
+      byteSize: file.lengthSync(),
+      threadId: thread.id,
+      requestId: requestId,
+      createdAt: DateTime(2026),
+    );
+    final turn = StudioTurn(
+      id: turnId,
+      threadId: thread.id,
+      requestId: requestId,
+      userMessageId: 'message-inline-artifact-open',
+      prompt: 'create a deck',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: turnId,
+          requestId: requestId,
+          threadId: thread.id,
+          content: 'Created the deck artifact.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    threadController.upsertTurn(thread.id, turn, select: true);
+    threadController.upsertSourceArtifact(
+      thread.id,
+      artifact.toSourceArtifact(),
+    );
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Open'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Reveal'));
+    await tester.pump();
+
+    expect(launched.map((uri) => uri.toFilePath()), [file.path, root.path]);
   });
 
   testWidgets('Artifact-backed table responses collapse to outcome summary', (

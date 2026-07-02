@@ -25,6 +25,7 @@ import '../../models/studio_turn.dart';
 import '../../models/studio_view_models.dart';
 import '../../services/artifact_type_registry.dart';
 import '../../state/command_run_provider.dart';
+import '../../state/artifact_launch_provider.dart';
 import '../../state/context_pack_provider.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/git_provider.dart';
@@ -5407,14 +5408,18 @@ class _ArtifactDrawerActions extends ConsumerWidget {
             style: _compactDrawerActionStyle(tokens),
             onPressed: artifact.filePath.isEmpty
                 ? null
-                : () => launchUrl(Uri.file(artifact.filePath)),
+                : () => ref.read(artifactLaunchProvider)(
+                    Uri.file(artifact.filePath),
+                  ),
             child: const Text('Open'),
           ),
           TextButton(
             style: _compactDrawerActionStyle(tokens),
             onPressed: artifact.filePath.isEmpty
                 ? null
-                : () => launchUrl(Uri.file(p.dirname(artifact.filePath))),
+                : () => ref.read(artifactLaunchProvider)(
+                    Uri.file(p.dirname(artifact.filePath)),
+                  ),
             child: const Text('Reveal'),
           ),
           TextButton(

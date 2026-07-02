@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 import 'package:path/path.dart' as p;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
@@ -22,6 +21,7 @@ import '../../models/turn_intent.dart';
 import '../../models/generated_artifact.dart';
 import '../../state/agent_workspace_provider.dart';
 import '../../state/agent_turn_runtime_provider.dart';
+import '../../state/artifact_launch_provider.dart';
 import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
@@ -1007,13 +1007,17 @@ class _GeneratedArtifactCard extends ConsumerWidget {
                   label: 'Open',
                   onPressed: filePath.isEmpty
                       ? null
-                      : () => _launchArtifactPath(context, filePath),
+                      : () => _launchArtifactPath(context, ref, filePath),
                 ),
                 _ArtifactCardAction(
                   label: 'Reveal',
                   onPressed: filePath.isEmpty
                       ? null
-                      : () => _launchArtifactPath(context, p.dirname(filePath)),
+                      : () => _launchArtifactPath(
+                          context,
+                          ref,
+                          p.dirname(filePath),
+                        ),
                 ),
                 _ArtifactCardAction(
                   label: 'Review',
@@ -1139,10 +1143,12 @@ class _GeneratedArtifactCard extends ConsumerWidget {
 
   static Future<void> _launchArtifactPath(
     BuildContext context,
+    WidgetRef ref,
     String filePath,
   ) async {
     final uri = Uri.file(filePath);
-    if (!await launchUrl(uri)) {
+    final launcher = ref.read(artifactLaunchProvider);
+    if (!await launcher(uri)) {
       if (!context.mounted) return;
       _showArtifactSnack(context, 'Could not open artifact');
     }

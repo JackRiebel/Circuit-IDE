@@ -11,6 +11,7 @@ import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
+import 'package:circuit_ide/state/artifact_launch_provider.dart';
 import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/command_run_provider.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
@@ -2868,6 +2869,56 @@ void main() {
     final drawer = container.read(studioRightDrawerProvider);
     expect(drawer.mode, StudioDrawerMode.code);
     expect(drawer.filePath, file.path);
+  });
+
+  testWidgets('Artifacts drawer Open and Reveal dispatch file paths', (
+    tester,
+  ) async {
+    final launched = <Uri>[];
+    final container = ProviderContainer(
+      overrides: [
+        artifactLaunchProvider.overrideWithValue((uri) async {
+          launched.add(uri);
+          return true;
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    final root = Directory.systemTemp.createTempSync('studio_artifact_open_');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final file = File('${root.path}/proposal.pptx')
+      ..writeAsBytesSync([1, 2, 3]);
+    final artifact = GeneratedArtifact(
+      id: 'pptx-1',
+      kind: GeneratedArtifactKind.powerPoint,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'proposal.pptx',
+      filePath: file.path,
+      summary: 'Created a PowerPoint deck.',
+      byteSize: file.lengthSync(),
+      createdAt: DateTime(2026, 6, 30, 9, 22),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Open'));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Reveal'));
+    await tester.pump();
+
+    expect(launched.map((uri) => uri.toFilePath()), [file.path, root.path]);
   });
 
   testWidgets('Artifacts drawer exposes CSV export targets', (tester) async {
