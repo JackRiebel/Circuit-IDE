@@ -2654,6 +2654,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       registry.descriptorForPrompt('create a screenshot evidence pack')?.id,
       'evidence_pack',
     );
+    expect(registry.descriptorForId('evidence_pack')?.packageKinds, [
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.json,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(
+      registry.descriptorForId('evidence_pack')?.verificationChecks,
+      contains('PDF handoff companion renders when requested'),
+    );
     expect(
       detectGeneratedArtifactKind('create a business case brief for Acme'),
       GeneratedArtifactKind.docx,
@@ -2736,7 +2745,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       const GeneratedArtifactPackageWriter().packageTargetsForPrompt(
         'create an evidence pack for these lifecycle claims',
       ),
-      [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+      [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
+      ],
     );
     expect(
       const GeneratedArtifactPackageWriter().packageTargetsForPrompt(

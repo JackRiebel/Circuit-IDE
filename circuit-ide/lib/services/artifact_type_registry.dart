@@ -332,6 +332,7 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.report,
         GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
       ],
       useCases: [
         'citations',
@@ -341,12 +342,17 @@ class ArtifactTypeRegistry {
         'screenshot evidence',
         'UI review evidence',
       ],
-      packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
+      packageKinds: [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Evidence register',
       verificationChecks: [
         'Claim/source register is present',
         'Checked-date and confidence metadata persists',
         'Unsupported-claim preview renders',
+        'PDF handoff companion renders when requested',
       ],
     ),
   ];
