@@ -3292,6 +3292,12 @@ class _ArtifactDrawerCard extends ConsumerWidget {
 }
 
 String _artifactWorkbenchHint(GeneratedArtifact artifact) {
+  final persistedLabel = _metadataString(artifact, 'artifactDescriptorLabel');
+  final persistedUseCases = _metadataStringList(artifact, 'artifactUseCases');
+  if (persistedLabel.isNotEmpty) {
+    if (persistedUseCases.isEmpty) return '$persistedLabel artifact';
+    return '$persistedLabel for ${persistedUseCases.take(3).join(', ')}';
+  }
   if (_isArtifactPackageManifest(artifact)) {
     return 'Package manifest for the generated deliverable set';
   }
@@ -3951,6 +3957,25 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
     final rows = <(String, String)>[
       ('Type', artifact.typeLabel),
       ('Status', artifact.statusLabel),
+      if (_metadataString(artifact, 'artifactDescriptorLabel').isNotEmpty)
+        ('Artifact', _metadataString(artifact, 'artifactDescriptorLabel')),
+      if (_metadataString(artifact, 'artifactPreviewSurface').isNotEmpty)
+        ('Preview', _metadataString(artifact, 'artifactPreviewSurface')),
+      if (_metadataStringList(artifact, 'artifactUseCases').isNotEmpty)
+        (
+          'Use cases',
+          _compactSignalList(_metadataStringList(artifact, 'artifactUseCases')),
+        ),
+      if (_metadataStringList(
+        artifact,
+        'artifactVerificationChecks',
+      ).isNotEmpty)
+        (
+          'Artifact checks',
+          _compactSignalList(
+            _metadataStringList(artifact, 'artifactVerificationChecks'),
+          ),
+        ),
       if (_metadataString(artifact, 'qualityStatus').isNotEmpty)
         ('Quality', _metadataString(artifact, 'qualityStatus')),
       if (_metadataInt(artifact, 'qualityScore') > 0)
@@ -5089,6 +5114,8 @@ class _ArtifactStructuredPreview extends ConsumerWidget {
 
   String _previewTitle(GeneratedArtifact artifact) {
     if (_isArtifactPackageManifest(artifact)) return 'Package contents';
+    final persisted = _metadataString(artifact, 'artifactPreviewSurface');
+    if (persisted.isNotEmpty) return persisted;
     return _artifactDescriptorFor(artifact.kind).previewSurface;
   }
 

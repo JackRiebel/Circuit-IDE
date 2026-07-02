@@ -56,6 +56,23 @@ Short executive summary for the customer.
       expect(artifact.summary, contains('PowerPoint deck'));
       expect(artifact.previewRows.first, ['Slide', 'Type', 'Title', 'Role']);
       expect(artifact.metadata['deckType'], 'Customer proposal deck');
+      expect(artifact.metadata['artifactDescriptorId'], 'powerpoint_deck');
+      expect(artifact.metadata['artifactDescriptorLabel'], 'PowerPoint Deck');
+      expect(artifact.metadata['artifactPreviewSurface'], 'Slide outline');
+      expect(
+        artifact.metadata['artifactUseCases'],
+        containsAll(['proposal', 'architecture review', 'business case']),
+      );
+      expect(
+        artifact.metadata['artifactVerificationChecks'],
+        containsAll([
+          'PPTX package opens/parses',
+          'Slide outline metadata persists',
+          'Deck readiness metadata renders',
+        ]),
+      );
+      expect(artifact.metadata['artifactRouteTargets'], ['powerPoint']);
+      expect(artifact.metadata['artifactContractLabel'], 'PowerPoint Deck');
       expect(
         artifact.metadata['handoffStatus'],
         'Ready for stakeholder review',

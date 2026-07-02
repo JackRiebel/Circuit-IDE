@@ -105,6 +105,7 @@ class GeneratedArtifactWriter {
       resolved: resolved,
       document: document,
       byteSize: size,
+      route: route,
     );
     return GeneratedArtifact(
       id: turnId,
@@ -164,6 +165,7 @@ class GeneratedArtifactWriter {
       resolved: resolved,
       document: document,
       byteSize: size,
+      route: artifactTypeRegistry.routeForPrompt(prompt),
     );
     return GeneratedArtifact(
       id: turnId,
@@ -186,7 +188,9 @@ class GeneratedArtifactWriter {
     required _ResolvedArtifact resolved,
     required ArtifactDocument document,
     required int byteSize,
+    required ArtifactRouteDecision route,
   }) {
+    final descriptor = _descriptorForRoute(route, resolved.kind);
     final quality = readinessEvaluator.metadataFor(
       kind: resolved.kind,
       status: resolved.status,
@@ -196,7 +200,77 @@ class GeneratedArtifactWriter {
       byteSize: byteSize,
       metadata: resolved.metadata,
     );
-    return {...resolved.metadata, ...quality};
+    return {
+      ...resolved.metadata,
+      ..._descriptorMetadata(
+        descriptor: descriptor,
+        route: route,
+        kind: resolved.kind,
+      ),
+      ...quality,
+    };
+  }
+
+  ArtifactTypeDescriptor _descriptorForRoute(
+    ArtifactRouteDecision route,
+    GeneratedArtifactKind kind,
+  ) {
+    final descriptor = route.descriptor;
+    if (descriptor != null &&
+        (descriptor.supportedKinds.contains(kind) ||
+            descriptor.packageKinds.contains(kind))) {
+      return descriptor;
+    }
+    return artifactTypeRegistry.descriptorForKind(kind) ??
+        ArtifactTypeDescriptor(
+          id: kind.name,
+          label: _generatedArtifactKindLabel(kind),
+          supportedKinds: [kind],
+        );
+  }
+
+  Map<String, Object?> _descriptorMetadata({
+    required ArtifactTypeDescriptor descriptor,
+    required ArtifactRouteDecision route,
+    required GeneratedArtifactKind kind,
+  }) {
+    return {
+      'artifactDescriptorId': descriptor.id,
+      'artifactDescriptorLabel': descriptor.label,
+      'artifactPreviewSurface': descriptor.previewSurface,
+      'artifactUseCases': descriptor.useCases,
+      'artifactRequiredInputs': descriptor.requiredInputs,
+      'artifactDrawerActions': descriptor.drawerActions,
+      'artifactVerificationChecks': descriptor.verificationChecks,
+      'artifactSupportedKinds': descriptor.supportedKinds
+          .map((kind) => kind.name)
+          .toList(growable: false),
+      'artifactPackageKinds': descriptor.packageKinds
+          .map((kind) => kind.name)
+          .toList(growable: false),
+      'artifactRouteTargets': route.targetKinds
+          .map((kind) => kind.name)
+          .toList(growable: false),
+      'artifactRouteLabel': route.label,
+      'artifactContractLabel': route.contractLabel,
+      'artifactRequestedKind': route.requestedKind?.name,
+      'artifactProducedKind': kind.name,
+    };
+  }
+
+  String _generatedArtifactKindLabel(GeneratedArtifactKind kind) {
+    return switch (kind) {
+      GeneratedArtifactKind.excel => 'Excel Workbook',
+      GeneratedArtifactKind.csv => 'CSV Dataset',
+      GeneratedArtifactKind.markdown => 'Markdown Document',
+      GeneratedArtifactKind.json => 'JSON Artifact',
+      GeneratedArtifactKind.pdf => 'PDF Report',
+      GeneratedArtifactKind.powerPoint => 'PowerPoint Deck',
+      GeneratedArtifactKind.docx => 'Word / DOCX Report',
+      GeneratedArtifactKind.diagram => 'Network Topology Diagram',
+      GeneratedArtifactKind.chart => 'Chart Pack',
+      GeneratedArtifactKind.report => 'Report',
+    };
   }
 
   _ResolvedArtifact? _resolveOutput({

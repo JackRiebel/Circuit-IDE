@@ -1848,6 +1848,19 @@ void main() {
           ],
           sheetCount: 6,
           metadata: const {
+            'artifactDescriptorId': 'powerpoint_deck',
+            'artifactDescriptorLabel': 'PowerPoint Deck',
+            'artifactPreviewSurface': 'Slide outline',
+            'artifactUseCases': [
+              'proposal',
+              'architecture review',
+              'business case',
+            ],
+            'artifactVerificationChecks': [
+              'PPTX package opens/parses',
+              'Slide outline metadata persists',
+              'Deck readiness metadata renders',
+            ],
             'deckType': 'Customer proposal deck',
             'handoffStatus': 'Ready for stakeholder review',
             'decisionAsk':
@@ -2115,6 +2128,17 @@ void main() {
 
     expect(find.text('Deck'), findsOneWidget);
     expect(find.text('Customer proposal deck'), findsOneWidget);
+    expect(find.text('Artifact'), findsOneWidget);
+    expect(find.text('PowerPoint Deck'), findsOneWidget);
+    expect(find.text('Preview'), findsOneWidget);
+    expect(find.text('Slide outline'), findsAtLeastNWidgets(1));
+    expect(find.text('Use cases'), findsOneWidget);
+    expect(
+      find.textContaining('proposal, architecture review +1'),
+      findsOneWidget,
+    );
+    expect(find.text('Artifact checks'), findsOneWidget);
+    expect(find.textContaining('PPTX package opens/parses'), findsOneWidget);
     expect(find.text('Handoff'), findsOneWidget);
     expect(find.text('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('Theme'), findsOneWidget);
