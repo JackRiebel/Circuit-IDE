@@ -538,12 +538,21 @@ class ArtifactTypeRegistry {
     final resolvedDescriptor = descriptor ?? descriptorForPrompt(prompt);
     final normalized = prompt.toLowerCase();
     final primary = requestedKind ?? detectGeneratedArtifactKind(prompt);
+    final requestedKinds = _explicitlyRequestedKinds(normalized);
+    if (_canUseGenericMixedDeliverableRoute(resolvedDescriptor)) {
+      final mixedDeliverableTargets = _mixedDeliverableTargets(
+        normalized,
+        requestedKinds: requestedKinds,
+      );
+      if (mixedDeliverableTargets.isNotEmpty) {
+        return mixedDeliverableTargets;
+      }
+    }
     if (resolvedDescriptor?.supportsCompanionPackage == true) {
       final companionDescriptor = resolvedDescriptor!;
       final evidencePackageNeedsPdf =
           companionDescriptor.id == 'evidence_pack' &&
           _evidencePackageNeedsPdf(normalized);
-      final requestedKinds = _explicitlyRequestedKinds(normalized);
       if (companionDescriptor.id == 'evidence_pack' &&
           requestedKinds.length == 1 &&
           requestedKinds.single == GeneratedArtifactKind.json &&
@@ -651,6 +660,47 @@ class ArtifactTypeRegistry {
 
     return targets;
   }
+}
+
+bool _canUseGenericMixedDeliverableRoute(ArtifactTypeDescriptor? descriptor) {
+  if (descriptor == null) return true;
+  return switch (descriptor.id) {
+    'powerpoint_deck' || 'docx_report' || 'pdf_report' => true,
+    _ => false,
+  };
+}
+
+List<GeneratedArtifactKind> _mixedDeliverableTargets(
+  String normalized, {
+  required List<GeneratedArtifactKind> requestedKinds,
+}) {
+  final asksForDeck = requestedKinds.contains(GeneratedArtifactKind.powerPoint);
+  final asksForReportLike = RegExp(
+    r'\b(report|brief|document|docx|word doc|word document)\b',
+  ).hasMatch(normalized);
+  if (!asksForDeck || !asksForReportLike) return const [];
+
+  final targets = <GeneratedArtifactKind>[GeneratedArtifactKind.powerPoint];
+  final asksForPdf = requestedKinds.contains(GeneratedArtifactKind.pdf);
+  final asksForEditableDocument =
+      RegExp(
+        r'\b(docx|word doc|word document|editable report|editable document)\b',
+      ).hasMatch(normalized) ||
+      !asksForPdf;
+  if (requestedKinds.contains(GeneratedArtifactKind.pdf)) {
+    targets.add(GeneratedArtifactKind.pdf);
+  }
+  if (asksForEditableDocument) {
+    targets.add(GeneratedArtifactKind.docx);
+  }
+  if (RegExp(
+    r'\b(package|pack|bundle|deliverables?|handoff set)\b',
+  ).hasMatch(normalized)) {
+    if (!targets.contains(GeneratedArtifactKind.pdf)) {
+      targets.add(GeneratedArtifactKind.pdf);
+    }
+  }
+  return targets;
 }
 
 List<GeneratedArtifactKind> _withTarget(

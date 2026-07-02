@@ -452,6 +452,28 @@ Short executive summary for the customer.
             ],
           ),
           _ArtifactPackageSmokeCase(
+            name: 'proposal deck and editable report package',
+            prompt: 'create a deck and report for this customer proposal',
+            expectedLabel: 'architecture review package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.docx,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
+            name: 'proposal deck and report deliverables package',
+            prompt:
+                'create a deck and report deliverables bundle for this customer proposal',
+            expectedLabel: 'architecture review package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
             name: 'implementation plan package',
             prompt: 'create an implementation plan package for this project',
             expectedLabel: 'implementation plan package',
