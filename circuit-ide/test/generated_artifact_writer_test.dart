@@ -4225,6 +4225,65 @@ Create a concise executive readout and implementation recommendation.
     expect(exported.previewRows.first, ['Product', 'Count']);
   });
 
+  test('diagram artifacts can export to a PowerPoint handoff deck', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-diagram-export-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final outputDir = Directory('${root.path}/outputs')..createSync();
+    final sourceFile = File('${outputDir.path}/campus-topology.svg')
+      ..writeAsStringSync('''
+<svg viewBox="0 0 800 600">
+  <title>Campus topology</title>
+  <desc>Topology diagram with dual WAN, MX250 pair, C9500 core, and access switches.</desc>
+  <text>Campus topology</text>
+</svg>
+''');
+    final source = GeneratedArtifact(
+      id: 'diagram-export-source',
+      kind: GeneratedArtifactKind.diagram,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'campus-topology.svg',
+      filePath: sourceFile.path,
+      summary:
+          'Created an SVG topology diagram with dual WAN, MX250, C9500, and access switching.',
+      byteSize: sourceFile.lengthSync(),
+      previewRows: const [
+        ['Topology', '7 nodes / 6 links', 'Review before handoff.'],
+      ],
+      sheetCount: 1,
+      metadata: const {
+        'topologyType': 'Campus topology',
+        'handoffStatus': 'Ready for architecture review',
+      },
+      createdAt: DateTime(2026, 7, 2, 9),
+      threadId: 'thread-1',
+      requestId: 'request-1',
+    );
+
+    final exported = await const GeneratedArtifactExporter().export(
+      artifact: source,
+      targetKind: GeneratedArtifactKind.powerPoint,
+    );
+
+    expect(exported, isNotNull);
+    expect(exported!.kind, GeneratedArtifactKind.powerPoint);
+    expect(exported.fileName, endsWith('.pptx'));
+    expect(File(exported.filePath).existsSync(), isTrue);
+    expect(File(exported.filePath).readAsBytesSync().take(4), [
+      0x50,
+      0x4b,
+      0x03,
+      0x04,
+    ]);
+    expect(exported.summary, contains('PowerPoint deck'));
+    expect(
+      exported.metadata['artifactDescriptorId'],
+      'network_topology_diagram',
+    );
+    expect(exported.metadata['artifact'], 'powerpoint_deck');
+  });
+
   test('business case package creates DOCX deck chart and PDF artifacts', () async {
     final root = await Directory.systemTemp.createTemp(
       'circuit-artifact-package-',

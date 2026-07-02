@@ -30,6 +30,7 @@ class GeneratedArtifactExporter {
         GeneratedArtifactKind.pdf,
       ],
       GeneratedArtifactKind.diagram || GeneratedArtifactKind.chart => [
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.pdf,
       ],

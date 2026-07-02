@@ -3365,6 +3365,64 @@ void main() {
     expect(find.text('Markdown'), findsOneWidget);
   });
 
+  testWidgets('Artifacts drawer exposes topology deck export target', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 720));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final root = Directory.systemTemp.createTempSync('studio_diagram_export_');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final outputDir = Directory('${root.path}/outputs')..createSync();
+    final file = File('${outputDir.path}/campus-topology.svg')
+      ..writeAsStringSync('<svg><title>Campus topology</title></svg>');
+    final artifact = GeneratedArtifact(
+      id: 'diagram-export-1',
+      kind: GeneratedArtifactKind.diagram,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'campus-topology.svg',
+      filePath: file.path,
+      summary: 'Created an SVG topology diagram.',
+      byteSize: file.lengthSync(),
+      previewRows: const [
+        ['Topology', '7 nodes / 6 links', 'Review before handoff.'],
+      ],
+      sheetCount: 1,
+      metadata: const {
+        'topologyType': 'Campus topology',
+        'nodeCount': 7,
+        'edgeCount': 6,
+      },
+      createdAt: DateTime(2026, 7, 2, 9, 30),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('campus-topology.svg'));
+    await tester.pump();
+    expect(find.text('Export'), findsOneWidget);
+
+    await tester.ensureVisible(find.byTooltip('Export as'));
+    await tester.tap(find.byTooltip('Export as'));
+    await tester.pumpAndSettle();
+    expect(find.text('PowerPoint deck'), findsOneWidget);
+    expect(find.text('PDF report'), findsOneWidget);
+    expect(find.text('Markdown'), findsOneWidget);
+  });
+
   test(
     'StudioSourceArtifactController exports CSV artifacts to XLSX',
     () async {
