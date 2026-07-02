@@ -135,7 +135,8 @@ class ScreenshotContextAttachmentBuilder {
   _ImageDimensions? _dimensionsFor(Uint8List bytes) {
     return _pngDimensions(bytes) ??
         _jpegDimensions(bytes) ??
-        _gifDimensions(bytes);
+        _gifDimensions(bytes) ??
+        _webpDimensions(bytes);
   }
 
   _ImageDimensions? _pngDimensions(Uint8List bytes) {
@@ -189,6 +190,71 @@ class ScreenshotContextAttachmentBuilder {
       offset += segmentLength;
     }
     return null;
+  }
+
+  _ImageDimensions? _webpDimensions(Uint8List bytes) {
+    if (bytes.length < 20) return null;
+    final riff = String.fromCharCodes(bytes.sublist(0, 4));
+    final webp = String.fromCharCodes(bytes.sublist(8, 12));
+    if (riff != 'RIFF' || webp != 'WEBP') return null;
+
+    var offset = 12;
+    while (offset + 8 <= bytes.length) {
+      final chunk = String.fromCharCodes(bytes.sublist(offset, offset + 4));
+      final chunkSize =
+          bytes[offset + 4] |
+          (bytes[offset + 5] << 8) |
+          (bytes[offset + 6] << 16) |
+          (bytes[offset + 7] << 24);
+      final dataOffset = offset + 8;
+      if (chunkSize < 0 || dataOffset + chunkSize > bytes.length) return null;
+
+      switch (chunk) {
+        case 'VP8X':
+          if (chunkSize >= 10) {
+            final width = 1 + _readUint24Le(bytes, dataOffset + 4);
+            final height = 1 + _readUint24Le(bytes, dataOffset + 7);
+            return _validDimensions(width, height);
+          }
+          break;
+        case 'VP8L':
+          if (chunkSize >= 5 && bytes[dataOffset] == 0x2f) {
+            final b1 = bytes[dataOffset + 1];
+            final b2 = bytes[dataOffset + 2];
+            final b3 = bytes[dataOffset + 3];
+            final b4 = bytes[dataOffset + 4];
+            final width = 1 + (b1 | ((b2 & 0x3f) << 8));
+            final height =
+                1 + (((b2 & 0xc0) >> 6) | (b3 << 2) | ((b4 & 0x0f) << 10));
+            return _validDimensions(width, height);
+          }
+          break;
+        case 'VP8 ':
+          if (chunkSize >= 10 &&
+              bytes[dataOffset + 3] == 0x9d &&
+              bytes[dataOffset + 4] == 0x01 &&
+              bytes[dataOffset + 5] == 0x2a) {
+            final rawWidth =
+                bytes[dataOffset + 6] | (bytes[dataOffset + 7] << 8);
+            final rawHeight =
+                bytes[dataOffset + 8] | (bytes[dataOffset + 9] << 8);
+            return _validDimensions(rawWidth & 0x3fff, rawHeight & 0x3fff);
+          }
+          break;
+      }
+
+      offset = dataOffset + chunkSize + (chunkSize.isOdd ? 1 : 0);
+    }
+    return null;
+  }
+
+  int _readUint24Le(Uint8List bytes, int offset) {
+    return bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16);
+  }
+
+  _ImageDimensions? _validDimensions(int width, int height) {
+    if (width <= 0 || height <= 0) return null;
+    return _ImageDimensions(width, height);
   }
 
   String _formatBytes(int bytes) {

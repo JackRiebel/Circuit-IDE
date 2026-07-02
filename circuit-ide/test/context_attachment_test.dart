@@ -157,6 +157,25 @@ void main() {
     },
   );
 
+  test('ScreenshotContextAttachmentBuilder reads WebP dimensions', () async {
+    final root = await Directory.systemTemp.createTemp('circuit-shot-webp-');
+    addTearDown(() => root.delete(recursive: true));
+    final image = File('${root.path}/screen.webp')
+      ..writeAsBytesSync(_webpVp8xBytes(width: 1920, height: 1080));
+
+    final attachment = await const ScreenshotContextAttachmentBuilder().build(
+      image.path,
+    );
+
+    expect(attachment, isNotNull);
+    expect(attachment!.content, contains('Format: WEBP'));
+    expect(attachment.content, contains('Dimensions: 1920 x 1080px'));
+    expect(attachment.metadata['mimeType'], 'image/webp');
+    expect(attachment.metadata['width'], 1920);
+    expect(attachment.metadata['height'], 1080);
+    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+  });
+
   test('ScreenshotContextAttachmentBuilder skips unsupported files', () async {
     final attachment = await const ScreenshotContextAttachmentBuilder().build(
       '/tmp/readme.md',
@@ -174,4 +193,23 @@ Uint8List _pngBytes({required int width, required int height}) {
   data.setUint32(16, width);
   data.setUint32(20, height);
   return bytes;
+}
+
+Uint8List _webpVp8xBytes({required int width, required int height}) {
+  final bytes = Uint8List(30);
+  bytes.setAll(0, 'RIFF'.codeUnits);
+  final data = ByteData.sublistView(bytes);
+  data.setUint32(4, bytes.length - 8, Endian.little);
+  bytes.setAll(8, 'WEBP'.codeUnits);
+  bytes.setAll(12, 'VP8X'.codeUnits);
+  data.setUint32(16, 10, Endian.little);
+  _setUint24Le(bytes, 24, width - 1);
+  _setUint24Le(bytes, 27, height - 1);
+  return bytes;
+}
+
+void _setUint24Le(Uint8List bytes, int offset, int value) {
+  bytes[offset] = value & 0xff;
+  bytes[offset + 1] = (value >> 8) & 0xff;
+  bytes[offset + 2] = (value >> 16) & 0xff;
 }
