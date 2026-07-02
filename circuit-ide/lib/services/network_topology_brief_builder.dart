@@ -28,6 +28,7 @@ class NetworkTopologyBriefBuilder {
     final summary = _map(spec['summary']);
     final inventory = _map(spec['inventory']);
     final capabilities = _map(spec['capabilities']);
+    final segmentation = _listOfMaps(spec['segmentation']);
     final links = _listOfMaps(spec['links']);
     final capacityChecks = _listOfMaps(spec['capacityChecks']);
     final readinessChecks = _listOfMaps(spec['readinessChecks']);
@@ -71,6 +72,16 @@ class NetworkTopologyBriefBuilder {
             '${_string(link['fromLabel'], fallback: _string(link['from']))} to ${_string(link['toLabel'], fallback: _string(link['to']))}: ${_string(link['validation'], fallback: 'Confirm link ownership and monitoring.')}',
         ],
       ),
+      if (segmentation.isNotEmpty)
+        ArtifactSection(
+          title: 'Segmentation And Policy Review',
+          body:
+              'Validate each VLAN, VRF, subnet, gateway, DHCP scope, and ACL boundary against customer standards before implementation.',
+          bullets: [
+            for (final domain in segmentation.take(8))
+              '${_string(domain['name'], fallback: 'Segmentation domain')}: ${_string(domain['subnet'], fallback: _string(domain['scope'], fallback: 'subnet pending'))} - ${_string(domain['validation'], fallback: 'Confirm gateway/DHCP/ACL ownership.')}',
+          ],
+        ),
       ArtifactSection(
         title: 'Capacity And Readiness Checks',
         body:
@@ -151,6 +162,21 @@ class NetworkTopologyBriefBuilder {
             ],
         ],
       ),
+      if (segmentation.isNotEmpty)
+        ArtifactTable(
+          title: 'Segmentation Review Matrix',
+          rows: [
+            const ['Domain', 'Scope', 'Subnet', 'Validation', 'Ready'],
+            for (final domain in segmentation)
+              [
+                _string(domain['name']),
+                _string(domain['scope']),
+                _string(domain['subnet'], fallback: 'Pending'),
+                _string(domain['validation']),
+                _string(domain['ready']),
+              ],
+          ],
+        ),
       ArtifactTable(
         title: 'Capacity Readiness Matrix',
         rows: [
@@ -210,6 +236,8 @@ class NetworkTopologyBriefBuilder {
         'topologyValidationGapCount': validationGaps.length,
         'topologyFailureDomainCount': failureDomains.length,
         'topologyCapacityCheckCount': capacityChecks.length,
+        'topologySegmentationDomainCount': segmentation.length,
+        'hasTopologySegmentationReview': segmentation.isNotEmpty,
         'topologyCapabilities': capabilities,
       },
     );

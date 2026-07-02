@@ -12,6 +12,14 @@ typedef _FailureDomainRow = ({
   bool ready,
 });
 
+typedef _SegmentationDomain = ({
+  String name,
+  String scope,
+  String subnet,
+  String validation,
+  bool ready,
+});
+
 class DiagramRenderResult {
   final Uint8List bytes;
   final int nodeCount;
@@ -138,6 +146,7 @@ class DiagramArtifactRenderer {
       assumptions: assumptions,
     );
     final topologyQualityChecklist = _topologyQualityChecklistFor(
+      profile: profile,
       graph: graph,
       tiers: tiers,
       assumptions: assumptions,
@@ -150,6 +159,9 @@ class DiagramArtifactRenderer {
     final topologyVisualVerificationChecklist =
         _topologyVisualVerificationChecklistFor(profile);
     final topologyEvidencePolicy = _topologyEvidencePolicyFor(profile);
+    final readySegmentationCount = profile.segmentationDomains
+        .where((domain) => domain.ready)
+        .length;
     final topologyPublishingMetadata = _topologyPublishingMetadataFor(
       topologyReadinessScore,
       validationGapLabels,
@@ -211,6 +223,21 @@ class DiagramArtifactRenderer {
       'hasUpoe': profile.hasUpoe,
       'hasMultigig': profile.hasMultigig,
       'hasWifi7': profile.hasWifi7,
+      'hasSegmentationSignal': profile.hasSegmentationSignal,
+      'hasSegmentationPlan': profile.segmentationDomains.isNotEmpty,
+      'hasSegmentationReview': profile.segmentationDomains.isNotEmpty,
+      'segmentationDomainCount': profile.segmentationDomains.length,
+      'readySegmentationDomainCount': readySegmentationCount,
+      'segmentationDomains': [
+        for (final domain in profile.segmentationDomains)
+          {
+            'name': domain.name,
+            'scope': domain.scope,
+            'subnet': domain.subnet,
+            'validation': domain.validation,
+            'ready': domain.ready,
+          },
+      ],
       'readinessSignals': readinessSignalLabels,
       'readyCheckCount': readinessItems.where((item) => item.ready).length,
       'readinessItemCount': readinessItems.length,
@@ -339,6 +366,16 @@ class DiagramArtifactRenderer {
         'estimatedApPowerWatts': profile.estimatedApPowerWatts,
         'apPortLoadPercent': profile.apPortLoadPercent,
       },
+      'segmentation': [
+        for (final domain in profile.segmentationDomains)
+          {
+            'name': domain.name,
+            'scope': domain.scope,
+            'subnet': domain.subnet,
+            'validation': domain.validation,
+            'ready': domain.ready,
+          },
+      ],
       'designZones': [
         for (final entry in tiers.entries)
           {
@@ -437,6 +474,12 @@ class DiagramArtifactRenderer {
             ? profile.resiliencyLabel
             : 'Confirm redundancy model.',
       ],
+      for (final domain in profile.segmentationDomains.take(3))
+        [
+          domain.name,
+          domain.subnet.isEmpty ? domain.scope : domain.subnet,
+          domain.validation,
+        ],
       for (final item in capacityItems.take(4))
         [item.metric, item.value, item.guidance],
       for (final item in advisories.take(2))
@@ -825,6 +868,12 @@ class DiagramArtifactRenderer {
       height: height,
     );
     _drawDesignAdvisories(buffer, advisories, width: width, height: height);
+    _drawSegmentationPanel(
+      buffer,
+      profile.segmentationDomains,
+      width: width,
+      height: height,
+    );
     _drawLinkSchedule(buffer, linkSchedule, width: width, height: height);
     _drawReadinessScorecard(
       buffer,
@@ -1201,6 +1250,49 @@ class DiagramArtifactRenderer {
     buffer.writeln('</g>');
   }
 
+  void _drawSegmentationPanel(
+    StringBuffer buffer,
+    List<_SegmentationDomain> domains, {
+    required int width,
+    required int height,
+  }) {
+    if (domains.isEmpty) return;
+    final y = height - 548;
+    final visible = domains.take(4).toList(growable: false);
+    final readyCount = domains.where((domain) => domain.ready).length;
+    buffer.writeln(
+      '<g id="topology-segmentation" data-segmentation-domain-count="${domains.length}" data-ready-segmentation-domain-count="$readyCount">',
+    );
+    buffer.writeln(
+      '<rect x="36" y="$y" width="${width - 72}" height="50" rx="12" fill="#121615" stroke="#26302d"/>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 18}" fill="#b9c0bd" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="11" font-weight="700">Segmentation review</text>',
+    );
+    buffer.writeln(
+      '<text x="54" y="${y + 37}" fill="#78aaa5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">$readyCount/${domains.length} VLAN/VRF/subnet domains ready</text>',
+    );
+    var x = 294.0;
+    final cardWidth =
+        (width - x - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var i = 0; i < visible.length; i++) {
+      final domain = visible[i];
+      final cardX = x + (i * (cardWidth + 8));
+      buffer
+        ..writeln(
+          '<rect x="${cardX.toStringAsFixed(1)}" y="${y + 9}" width="${cardWidth.toStringAsFixed(1)}" height="32" rx="8" fill="${domain.ready ? '#182621' : '#2a241b'}" stroke="${domain.ready ? '#2e5148' : '#59482b'}"/>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 22}" fill="${domain.ready ? '#8dd3bd' : '#e1bb6d'}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten(domain.name, 32))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 8).toStringAsFixed(1)}" y="${y + 36}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(domain.subnet.isEmpty ? domain.scope : domain.subnet, 38))}</text>',
+        );
+    }
+    buffer.writeln('</g>');
+  }
+
   void _drawLinkSchedule(
     StringBuffer buffer,
     List<({String from, String to, String link, String validation})> links, {
@@ -1243,6 +1335,9 @@ class DiagramArtifactRenderer {
     _TopologyProfile profile,
     List<String> assumptions,
   ) {
+    final readySegmentationCount = profile.segmentationDomains
+        .where((domain) => domain.ready)
+        .length;
     return [
       (
         check: 'Redundancy',
@@ -1268,6 +1363,17 @@ class DiagramArtifactRenderer {
         state: assumptions.isEmpty ? 'Needs assumptions' : 'Assumptions listed',
         ready: assumptions.isNotEmpty,
       ),
+      if (profile.hasSegmentationSignal ||
+          profile.segmentationDomains.isNotEmpty)
+        (
+          check: 'Segmentation',
+          state: profile.segmentationDomains.isEmpty
+              ? 'Confirm VLAN/IP plan'
+              : '$readySegmentationCount/${profile.segmentationDomains.length} domains ready',
+          ready:
+              profile.segmentationDomains.isNotEmpty &&
+              readySegmentationCount == profile.segmentationDomains.length,
+        ),
     ];
   }
 
@@ -1594,6 +1700,7 @@ class DiagramArtifactRenderer {
   }
 
   List<String> _topologyQualityChecklistFor({
+    required _TopologyProfile profile,
     required _DiagramGraph graph,
     required Map<_DiagramNodeRole, List<_DiagramNode>> tiers,
     required List<String> assumptions,
@@ -1614,6 +1721,8 @@ class DiagramArtifactRenderer {
       if (capacityItems.isNotEmpty) 'Capacity checks embedded',
       if (failureDomains.isNotEmpty) 'Failure-domain review embedded',
       if (advisories.isNotEmpty) 'Architecture advisories embedded',
+      if (profile.segmentationDomains.isNotEmpty)
+        'Segmentation domains and subnet validation embedded',
       if (assumptions.isNotEmpty) 'Assumptions embedded',
     ];
   }
@@ -1625,6 +1734,8 @@ class DiagramArtifactRenderer {
       'SVG has title, description, viewBox, and embedded metadata',
       'Topology summary, design zones, links, and nodes are visible',
       'Readiness, capacity, validation, and failure-domain panels are visible',
+      if (profile.segmentationDomains.isNotEmpty)
+        'VLAN/VRF/subnet segmentation plan is visible',
       if (profile.apCount > 0)
         'Wireless/AP counts and port-power checks are visible',
       if (profile.hasDualWan || profile.hasWarmSpare)
@@ -1638,6 +1749,8 @@ class DiagramArtifactRenderer {
       'Replacement choices require current portfolio, PoE, uplink, licensing, and lifecycle validation',
       if (profile.hasWifi7)
         'Wi-Fi 7 designs require explicit UPOE/UPOE+, mGig, and power-supply validation',
+      if (profile.segmentationDomains.isNotEmpty)
+        'VLAN, VRF, subnet, gateway, DHCP, and ACL assumptions must be validated against customer standards',
       'Customer handoff requires named assumptions, validation gaps, and review owner',
     ];
   }
@@ -1700,6 +1813,8 @@ class DiagramArtifactRenderer {
       'Decision ask: $decisionAsk',
       'Source package: ${citationCount == 0 ? 'sources missing' : '$citationCount source item${citationCount == 1 ? '' : 's'} attached'}',
       'Assumption package: ${assumptions.isEmpty ? 'assumptions missing' : '${assumptions.length} assumption${assumptions.length == 1 ? '' : 's'} captured'}',
+      if (profile.segmentationDomains.isNotEmpty)
+        'Segmentation package: ${profile.segmentationDomains.length} VLAN/VRF/subnet domain${profile.segmentationDomains.length == 1 ? '' : 's'} captured',
       'Capacity package: ${profile.hasWifi7 || profile.hasPoe || profile.hasUpoe ? 'PoE/UPOE and AP power review required' : 'capture AP/PoE requirements if wireless is in scope'}',
     ];
   }
@@ -1995,6 +2110,11 @@ class DiagramArtifactRenderer {
           combined,
           RegExp(r'\bCW9\d{3}[A-Z0-9-]*\b', caseSensitive: false),
         );
+    final segmentationDomains = _segmentationDomainsFor(combined);
+    final hasSegmentationSignal = RegExp(
+      r'\b(vlan|vrf|subnet|cidr|segment|segmentation|ssid|gateway|acl)\b',
+      caseSensitive: false,
+    ).hasMatch(combined);
     return _TopologyProfile(
       siteCount: siteCount == 0 && branchCount == 0 ? 1 : siteCount,
       mdfCount: mdfCount,
@@ -2026,7 +2146,142 @@ class DiagramArtifactRenderer {
         caseSensitive: false,
       ).hasMatch(combined),
       hasWifi7: RegExp(r'\b(wi-?fi 7|wifi7|cw9\d{3})\b').hasMatch(normalized),
+      hasSegmentationSignal: hasSegmentationSignal,
+      segmentationDomains: segmentationDomains,
     );
+  }
+
+  List<_SegmentationDomain> _segmentationDomainsFor(String content) {
+    final domains = <_SegmentationDomain>[];
+    final seen = <String>{};
+    for (final raw in const LineSplitter().convert(content)) {
+      final line = raw
+          .trim()
+          .replaceFirst(RegExp(r'^[-*]\s*'), '')
+          .replaceFirst(RegExp(r'^\d+[.)]\s*'), '');
+      if (line.isEmpty) continue;
+      if (!RegExp(
+        r'\b(vlan|vrf|subnet|cidr|segment|segmentation|ssid)\b',
+        caseSensitive: false,
+      ).hasMatch(line)) {
+        continue;
+      }
+      final name = _segmentationNameFrom(line);
+      if (name.isEmpty) continue;
+      final subnet = _subnetFrom(line);
+      final scope = _segmentationScopeFor(line);
+      final ready = subnet.isNotEmpty && !subnet.endsWith('/0');
+      final domain = (
+        name: name,
+        scope: scope,
+        subnet: subnet,
+        validation: _segmentationValidationFor(line, subnet),
+        ready: ready,
+      );
+      final key = '${domain.name}|${domain.subnet}'.toLowerCase();
+      if (!seen.add(key)) continue;
+      domains.add(domain);
+      if (domains.length >= 8) break;
+    }
+    return domains;
+  }
+
+  String _segmentationNameFrom(String line) {
+    final vlanMatch = RegExp(
+      r'\bVLAN\s*([0-9]{1,4})\b\s*[:\-–—]?\s*([^,;|()]*)',
+      caseSensitive: false,
+    ).firstMatch(line);
+    if (vlanMatch != null) {
+      final number = vlanMatch.group(1)?.trim() ?? '';
+      final label = (vlanMatch.group(2) ?? '')
+          .replaceAll(RegExp(r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b'), '')
+          .replaceAll(
+            RegExp(r'\b(subnet|cidr|gateway|acl)\b.*$', caseSensitive: false),
+            '',
+          )
+          .replaceAll(RegExp(r'[-–—:|,\s]+$'), '')
+          .trim();
+      return label.isEmpty ? 'VLAN $number' : 'VLAN $number $label';
+    }
+    final vrfMatch = RegExp(
+      r'\bVRF\s+([A-Za-z0-9_-]+)\b',
+      caseSensitive: false,
+    ).firstMatch(line);
+    if (vrfMatch != null) {
+      return 'VRF ${vrfMatch.group(1)?.trim() ?? ''}'.trim();
+    }
+    final ssidMatch = RegExp(
+      r'\bSSID\s+([A-Za-z0-9 _-]+)',
+      caseSensitive: false,
+    ).firstMatch(line);
+    if (ssidMatch != null) {
+      return 'SSID ${ssidMatch.group(1)?.trim() ?? ''}'.trim();
+    }
+    final subnet = _subnetFrom(line);
+    if (subnet.isNotEmpty) return 'Subnet $subnet';
+    final segmentMatch = RegExp(
+      r'\b(?:segment|segmentation)\s+([A-Za-z0-9 _-]+)',
+      caseSensitive: false,
+    ).firstMatch(line);
+    return segmentMatch?.group(1)?.trim() ?? '';
+  }
+
+  String _subnetFrom(String line) {
+    return RegExp(
+          r'\b\d{1,3}(?:\.\d{1,3}){3}/\d{1,2}\b',
+        ).firstMatch(line)?.group(0) ??
+        '';
+  }
+
+  String _segmentationScopeFor(String line) {
+    final normalized = line.toLowerCase();
+    if (RegExp(r'\b(guest|guest wi-?fi|visitor)\b').hasMatch(normalized)) {
+      return 'Guest access';
+    }
+    if (RegExp(r'\b(voice|voip|phone)\b').hasMatch(normalized)) {
+      return 'Voice';
+    }
+    if (RegExp(r'\b(iot|camera|printer|ot)\b').hasMatch(normalized)) {
+      return 'IoT / OT';
+    }
+    if (RegExp(r'\b(mgmt|management|admin)\b').hasMatch(normalized)) {
+      return 'Management';
+    }
+    if (RegExp(r'\b(server|data center|datacenter)\b').hasMatch(normalized)) {
+      return 'Server / datacenter';
+    }
+    if (RegExp(r'\b(wireless|ssid|ap)\b').hasMatch(normalized)) {
+      return 'Wireless';
+    }
+    if (RegExp(r'\b(wan|transit|routing)\b').hasMatch(normalized)) {
+      return 'WAN / transit';
+    }
+    if (RegExp(r'\b(user|client|employee|corp)\b').hasMatch(normalized)) {
+      return 'Users';
+    }
+    return 'Segmentation domain';
+  }
+
+  String _segmentationValidationFor(String line, String subnet) {
+    final needs = <String>[
+      if (subnet.isEmpty) 'subnet/CIDR',
+      if (!RegExp(
+        r'\b(gateway|default gateway)\b',
+        caseSensitive: false,
+      ).hasMatch(line))
+        'gateway',
+      if (!RegExp(r'\b(dhcp|scope)\b', caseSensitive: false).hasMatch(line))
+        'DHCP scope',
+      if (!RegExp(
+        r'\b(acl|policy|firewall)\b',
+        caseSensitive: false,
+      ).hasMatch(line))
+        'ACL/policy',
+    ];
+    if (needs.isEmpty) {
+      return 'Validate gateway, DHCP, ACL, and ownership against customer standards.';
+    }
+    return 'Confirm ${needs.join(', ')} before implementation.';
   }
 
   int _accessPortCount(String content, int accessSwitchCount) {
@@ -2269,6 +2524,8 @@ class _TopologyProfile {
   final bool hasUpoe;
   final bool hasMultigig;
   final bool hasWifi7;
+  final bool hasSegmentationSignal;
+  final List<_SegmentationDomain> segmentationDomains;
 
   const _TopologyProfile({
     required this.siteCount,
@@ -2287,6 +2544,8 @@ class _TopologyProfile {
     required this.hasUpoe,
     required this.hasMultigig,
     required this.hasWifi7,
+    required this.hasSegmentationSignal,
+    required this.segmentationDomains,
   });
 
   int? get apPortLoadPercent {

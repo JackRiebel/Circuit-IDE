@@ -2518,6 +2518,89 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('Validate PoE budget'));
   });
 
+  test('topology diagram captures VLAN VRF and subnet segmentation', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-segmented-topology-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final artifact = await const GeneratedArtifactWriter()
+        .writeFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a topology diagram with VLAN and subnet plan',
+          content: '''
+# Segmented Campus Topology
+
+Campus has dual WAN, MX250 firewalls, C9500 core, C9300 UPOE access, 24 CW9176 APs.
+VLAN 10 Users - 10.10.10.0/24
+VLAN 20 Voice - 10.10.20.0/24
+VLAN 30 Guest Wi-Fi - 10.10.30.0/24
+VRF Corp - 10.10.0.0/16
+
+## Assumptions
+- ACLs and DHCP scopes require customer validation.
+
+## Sources
+- Customer IP plan export.
+''',
+          turnId: 'turn-segmented-diagram',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(artifact, isNotNull);
+    expect(artifact!.kind, GeneratedArtifactKind.diagram);
+    expect(artifact.metadata['hasSegmentationSignal'], isTrue);
+    expect(artifact.metadata['hasSegmentationPlan'], isTrue);
+    expect(artifact.metadata['hasSegmentationReview'], isTrue);
+    expect(
+      artifact.metadata['segmentationDomainCount'],
+      greaterThanOrEqualTo(4),
+    );
+    expect(
+      artifact.metadata['readySegmentationDomainCount'],
+      greaterThanOrEqualTo(4),
+    );
+    expect(artifact.metadata['readinessSignals'], contains('Segmentation'));
+    expect(
+      artifact.metadata['externalHandoffManifest'],
+      anyElement(contains('Segmentation package:')),
+    );
+    expect(
+      artifact.previewRows.expand((row) => row),
+      contains('VLAN 10 Users'),
+    );
+
+    final topologySpec =
+        artifact.metadata['topologySpec'] as Map<String, Object?>;
+    final segmentation = (topologySpec['segmentation'] as List).cast<Map>();
+    expect(segmentation, hasLength(greaterThanOrEqualTo(4)));
+    expect(
+      segmentation.map((item) => item['name']),
+      containsAll([
+        'VLAN 10 Users',
+        'VLAN 20 Voice',
+        'VLAN 30 Guest Wi-Fi',
+        'VRF Corp',
+      ]),
+    );
+    expect(
+      segmentation.map((item) => item['subnet']),
+      containsAll([
+        '10.10.10.0/24',
+        '10.10.20.0/24',
+        '10.10.30.0/24',
+        '10.10.0.0/16',
+      ]),
+    );
+
+    final svg = File(artifact.filePath).readAsStringSync();
+    expect(svg, contains('id="topology-segmentation"'));
+    expect(svg, contains('VLAN 10 Users'));
+    expect(svg, contains('10.10.10.0/24'));
+    expect(svg, contains('VRF Corp'));
+    expect(svg, contains('&quot;segmentation&quot;:['));
+  });
+
   test(
     'chart prompt creates a real SVG chart artifact from table data',
     () async {
@@ -3227,6 +3310,63 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
         package.primary!.metadata['packageVerificationChecks'],
         contains('Topology brief deck/report renders'),
       );
+    },
+  );
+
+  test(
+    'segmented topology package carries segmentation review into brief artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-segmented-topology-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a network topology package with VLAN segmentation',
+            content: '''
+# Segmented Campus Topology
+
+Campus has dual WAN, MX250 firewalls, C9500 core, C9300 UPOE access, 24 CW9176 APs.
+VLAN 10 Users - 10.10.10.0/24
+VLAN 20 Voice - 10.10.20.0/24
+VLAN 30 Guest Wi-Fi - 10.10.30.0/24
+VRF Corp - 10.10.0.0/16
+
+## Assumptions
+- ACLs and DHCP scopes require customer validation.
+''',
+            turnId: 'turn-segmented-topology-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      final diagram = package!.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.diagram,
+      );
+      final deck = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
+      );
+      final pdf = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
+      );
+
+      expect(diagram.metadata['segmentationDomainCount'], 4);
+      expect(deck.metadata['topologySegmentationDomainCount'], 4);
+      expect(deck.metadata['hasTopologySegmentationReview'], isTrue);
+      expect(pdf.metadata['topologySegmentationDomainCount'], 4);
+      expect(pdf.metadata['hasTopologySegmentationReview'], isTrue);
+      expect(
+        deck.previewRows.expand((row) => row),
+        contains('Segmentation Review Matrix'),
+      );
+
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('.svg'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
     },
   );
 
