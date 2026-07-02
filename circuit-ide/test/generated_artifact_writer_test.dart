@@ -2579,6 +2579,110 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains(' re S'));
   });
 
+  test(
+    'PDF report tables continue across pages instead of truncating rows',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a PDF handoff report for this customer inventory',
+            content: '''
+# Customer Inventory Handoff
+
+Executive-ready report with full inventory evidence.
+
+## Summary
+- Preserve every inventory row for customer review.
+
+| Site | Device | Status |
+| --- | --- | --- |
+| Site 01 | Device 01 | Ready |
+| Site 02 | Device 02 | Ready |
+| Site 03 | Device 03 | Ready |
+| Site 04 | Device 04 | Ready |
+| Site 05 | Device 05 | Ready |
+| Site 06 | Device 06 | Ready |
+| Site 07 | Device 07 | Ready |
+| Site 08 | Device 08 | Ready |
+| Site 09 | Device 09 | Ready |
+| Site 10 | Device 10 | Ready |
+| Site 11 | Device 11 | Ready |
+| Site 12 | Device 12 | Ready |
+| Site 13 | Device 13 | Ready |
+| Site 14 | Device 14 | Ready |
+| Site 15 | Device 15 | Ready |
+| Site 16 | Device 16 | Review |
+| Site 17 | Device 17 | Review |
+| Site 18 | Device 18 | Review |
+| Site 19 | Device 19 | Review |
+| Site 20 | Device 20 | Review |
+| Site 21 | Device 21 | Review |
+| Site 22 | Device 22 | Review |
+| Site 23 | Device 23 | Review |
+| Site 24 | Device 24 | Review |
+| Site 25 | Device 25 | Review |
+| Site 26 | Device 26 | Review |
+| Site 27 | Device 27 | Review |
+| Site 28 | Device 28 | Review |
+| Site 29 | Device 29 | Review |
+| Site 30 | Device 30 | Review |
+| Site 31 | Device 31 | Validate |
+| Site 32 | Device 32 | Validate |
+
+## Assumptions
+- Customer validates inventory before external handoff.
+
+## Sources
+- Customer inventory export
+''',
+            turnId: 'turn-pdf-table-continuation',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.pdf);
+      expect(artifact.metadata['hasTableContinuationPages'], isTrue);
+      expect(artifact.metadata['tableContinuationPageCount'], 2);
+      expect(artifact.metadata['tableOverflowRowCount'], 17);
+      expect(
+        artifact.metadata['tableContinuationSummaries'],
+        contains(contains('32 rows split across 3 PDF table pages')),
+      );
+      expect(
+        artifact.metadata['readinessSignals'],
+        contains('Table continuation pages'),
+      );
+      expect(
+        artifact.metadata['documentParts'],
+        contains('Data table continuation pages'),
+      );
+      expect(
+        artifact.metadata['reportReviewChecklist'],
+        contains(
+          'Review data table continuation pages for row ranges, stale values, sensitive data, and source alignment.',
+        ),
+      );
+      expect(
+        artifact.metadata['visualVerificationChecklist'],
+        contains('Table continuation pages preserve headers and row ranges'),
+      );
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('3 pages / 1 table')),
+      );
+      final pdfText = String.fromCharCodes(
+        File(artifact.filePath).readAsBytesSync(),
+      );
+      expect(pdfText, startsWith('%PDF-1.'));
+      expect(pdfText, contains('Rows 16-30 of 32'));
+      expect(pdfText, contains('Rows 31-32 of 32'));
+      expect(pdfText, contains('Site 32'));
+    },
+  );
+
   test('topology prompt creates a real SVG diagram artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));

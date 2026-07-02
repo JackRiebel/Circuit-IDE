@@ -7,6 +7,9 @@ import '../models/artifact_document.dart';
 class PdfArtifactRenderer {
   const PdfArtifactRenderer();
 
+  static const int _maxTablesInReport = 6;
+  static const int _tableDataRowsPerPage = 15;
+
   List<List<String>> previewRowsFor(
     ArtifactDocument document, {
     int pageCount = 0,
@@ -36,7 +39,7 @@ class PdfArtifactRenderer {
         [
           '${document.sections.length + 7}',
           'Data Tables',
-          '${document.tables.length}',
+          '${_tablePageCount(document)} page${_tablePageCount(document) == 1 ? '' : 's'} / ${document.tables.length} table${document.tables.length == 1 ? '' : 's'}',
         ],
       ['${document.sections.length + 8}', 'Stakeholder Readout', '4'],
       [
@@ -110,6 +113,9 @@ class PdfArtifactRenderer {
       handoffScore: handoffScore,
       validationGaps: validationGaps,
     );
+    final tableContinuationPageCount = _tableContinuationPageCount(document);
+    final tableOverflowRowCount = _tableOverflowRowCount(document);
+    final tableContinuationSummaries = _tableContinuationSummaries(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'pdf_report',
@@ -151,12 +157,18 @@ class PdfArtifactRenderer {
         'Decision sign-off page',
         'External handoff manifest',
         if (document.tables.isNotEmpty) 'Data tables',
+        if (tableContinuationPageCount > 0) 'Data table continuation pages',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
       ],
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
+      'hasTableContinuationPages': tableContinuationPageCount > 0,
+      'tableContinuationPageCount': tableContinuationPageCount,
+      'tableOverflowRowCount': tableOverflowRowCount,
+      'tableContinuationSummaries': tableContinuationSummaries,
+      'tableContinuationSummaryCount': tableContinuationSummaries.length,
       'evidenceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
@@ -433,18 +445,10 @@ class PdfArtifactRenderer {
         items.add(_PdfText('- $bullet', size: 10.3, indent: 16, gapAfter: 2));
       }
     }
-    for (final table in document.tables.take(6)) {
-      items
-        ..add(
-          _PdfText(
-            table.title,
-            size: 13.5,
-            bold: true,
-            gapBefore: 12,
-            gapAfter: 6,
-          ),
-        )
-        ..add(_PdfTable(table.rows.take(16).toList(growable: false)));
+    for (final table in document.tables.take(_maxTablesInReport)) {
+      for (final tableItem in _tableItemsFor(table)) {
+        items.add(tableItem);
+      }
     }
     items
       ..add(
@@ -1380,6 +1384,7 @@ class PdfArtifactRenderer {
       'Decision sign-off',
       'External handoff manifest',
       if (document.tables.isNotEmpty) 'Data tables',
+      if (_tableContinuationPageCount(document) > 0) 'Table continuation pages',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
       if (document.citations.isEmpty) 'Evidence gaps',
@@ -1403,6 +1408,8 @@ class PdfArtifactRenderer {
       'Decision sign-off',
       'External handoff manifest',
       if (document.tables.isNotEmpty) 'Data tables',
+      if (_tableContinuationPageCount(document) > 0)
+        'Data table continuation pages',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',
     ];
@@ -1459,7 +1466,9 @@ class PdfArtifactRenderer {
       'Review executive decision brief and recommendation summary for customer-specific language.',
       'Validate risk register, next-step action plan, and approval gates.',
       if (document.tables.isNotEmpty)
-        'Review data tables for stale values, sensitive data, and source alignment.'
+        _tableContinuationPageCount(document) > 0
+            ? 'Review data table continuation pages for row ranges, stale values, sensitive data, and source alignment.'
+            : 'Review data tables for stale values, sensitive data, and source alignment.'
       else
         'Attach supporting data or state why no data table is required.',
       if (document.assumptions.isNotEmpty)
@@ -1495,6 +1504,8 @@ class PdfArtifactRenderer {
       'Page numbers present',
       'Bookmark destinations resolve',
       'Table grid draws inside content frame',
+      if (_tableContinuationPageCount(document) > 0)
+        'Table continuation pages preserve headers and row ranges',
       if (document.citations.isNotEmpty) 'Source appendix included',
       if (document.assumptions.isNotEmpty) 'Assumption appendix included',
     ];
@@ -1654,6 +1665,90 @@ class PdfArtifactRenderer {
         .split(RegExp(r'\n\s*\n'))
         .map((paragraph) => paragraph.replaceAll('\n', ' ').trim())
         .where((paragraph) => paragraph.isNotEmpty);
+  }
+
+  List<_PdfItem> _tableItemsFor(ArtifactTable table) {
+    if (table.rows.isEmpty) return const [];
+    final headers = table.rows.first;
+    final dataRows = table.rows.skip(1).toList(growable: false);
+    if (dataRows.isEmpty) {
+      return [
+        _PdfText(
+          table.title,
+          size: 13.5,
+          bold: true,
+          gapBefore: 12,
+          gapAfter: 6,
+        ),
+        _PdfTable([headers]),
+      ];
+    }
+
+    final items = <_PdfItem>[];
+    final pageCount = (dataRows.length / _tableDataRowsPerPage).ceil();
+    for (var pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+      final start = pageIndex * _tableDataRowsPerPage;
+      final end = math.min(start + _tableDataRowsPerPage, dataRows.length);
+      final chunk = dataRows.sublist(start, end);
+      final title = pageCount == 1
+          ? table.title
+          : '${table.title} (${pageIndex + 1}/$pageCount)';
+      items
+        ..add(
+          _PdfText(title, size: 13.5, bold: true, gapBefore: 12, gapAfter: 4),
+        )
+        ..add(
+          _PdfText(
+            pageCount == 1
+                ? 'Rows 1-$end of ${dataRows.length}.'
+                : 'Rows ${start + 1}-$end of ${dataRows.length}; headers repeated for review.',
+            size: 8.8,
+            color: _PdfColor.muted,
+            gapBefore: 0,
+            gapAfter: 4,
+          ),
+        )
+        ..add(_PdfTable([headers, ...chunk]));
+    }
+    return items;
+  }
+
+  int _tablePageCount(ArtifactDocument document) {
+    var count = 0;
+    for (final table in document.tables.take(_maxTablesInReport)) {
+      final dataRowCount = math.max(0, table.rows.length - 1);
+      count += math.max(1, (dataRowCount / _tableDataRowsPerPage).ceil());
+    }
+    return count;
+  }
+
+  int _tableContinuationPageCount(ArtifactDocument document) {
+    var count = 0;
+    for (final table in document.tables.take(_maxTablesInReport)) {
+      final dataRowCount = math.max(0, table.rows.length - 1);
+      if (dataRowCount <= _tableDataRowsPerPage) continue;
+      count += (dataRowCount / _tableDataRowsPerPage).ceil() - 1;
+    }
+    return count;
+  }
+
+  int _tableOverflowRowCount(ArtifactDocument document) {
+    return document.tables
+        .take(_maxTablesInReport)
+        .map((table) => math.max(0, table.rows.length - 1))
+        .where((rowCount) => rowCount > _tableDataRowsPerPage)
+        .fold<int>(
+          0,
+          (sum, rowCount) => sum + rowCount - _tableDataRowsPerPage,
+        );
+  }
+
+  List<String> _tableContinuationSummaries(ArtifactDocument document) {
+    return [
+      for (final table in document.tables.take(_maxTablesInReport))
+        if (math.max(0, table.rows.length - 1) > _tableDataRowsPerPage)
+          '${table.title}: ${math.max(0, table.rows.length - 1)} rows split across ${(math.max(0, table.rows.length - 1) / _tableDataRowsPerPage).ceil()} PDF table pages',
+    ];
   }
 
   List<List<_PlacedPdfItem>> _paginate(List<_PdfItem> source) {
