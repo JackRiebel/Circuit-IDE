@@ -1049,6 +1049,105 @@ void main() {
     },
   );
 
+  test(
+    'StudioSourceArtifactController records artifact materialization failures',
+    () async {
+      final rootFile = await File(
+        '${Directory.systemTemp.path}/circuit-artifact-root-file-${DateTime.now().microsecondsSinceEpoch}',
+      ).create();
+      addTearDown(() => rootFile.delete());
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container.read(studioSourceArtifactProvider);
+      final threadController = container.read(studioThreadProvider.notifier);
+      final thread = threadController.createBlankThread(
+        title: 'Broken artifact turn',
+      );
+      final now = DateTime(2026);
+      const turnId = 'turn-artifact-failed';
+      const requestId = 'request-artifact-failed';
+      final contextSummary = StudioContextSummary(
+        rootPath: rootFile.path,
+        projectLabel: 'Invalid artifact workspace',
+        includedItemCount: 1,
+        estimatedTokens: 120,
+      );
+      threadController.markPhase(
+        thread.id,
+        status: StudioThreadStatus.done,
+        phase: StudioSendPhase.completed,
+        requestId: requestId,
+        contextSummary: contextSummary,
+      );
+      final turn = StudioTurn(
+        id: turnId,
+        threadId: thread.id,
+        requestId: requestId,
+        userMessageId: 'message-artifact-failed',
+        prompt: 'Create an Excel file from this inventory table.',
+        model: 'gpt-5-nano',
+        contextSummary: contextSummary,
+        status: StudioTurnStatus.completed,
+        events: [
+          StudioTurnEvent.assistantMessage(
+            turnId: turnId,
+            requestId: requestId,
+            threadId: thread.id,
+            content: '''
+| Product | Count | Notes |
+| --- | ---: | --- |
+| C9300 | 6 | MDF switching |
+''',
+            timestamp: now,
+          ),
+        ],
+        createdAt: now,
+        updatedAt: now,
+        completedAt: now,
+      );
+
+      threadController.upsertTurn(thread.id, turn, select: true);
+
+      StudioThread? updated;
+      for (var i = 0; i < 25; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+        updated = container
+            .read(studioThreadProvider)
+            .threads
+            .where((candidate) => candidate.id == thread.id)
+            .firstOrNull;
+        final failureEvents =
+            updated?.turns
+                .firstWhere((candidate) => candidate.id == turnId)
+                .events
+                .where((event) => event.id == 'artifact-failed-$turnId')
+                .toList() ??
+            const <StudioTurnEvent>[];
+        if (failureEvents.isNotEmpty) break;
+      }
+
+      final refreshedTurn = updated!.turns.firstWhere(
+        (candidate) => candidate.id == turnId,
+      );
+      final failureEvents = refreshedTurn.events
+          .where((event) => event.id == 'artifact-failed-$turnId')
+          .toList();
+      expect(failureEvents, hasLength(1));
+      expect(failureEvents.single.title, 'Could not create artifact');
+      expect(
+        failureEvents.single.detail,
+        contains('Circuit could not create the requested artifact'),
+      );
+      expect(
+        updated.sourceArtifacts.where(
+          (artifact) =>
+              artifact.kind == StudioSourceArtifactKind.generatedArtifact,
+        ),
+        isEmpty,
+      );
+    },
+  );
+
   testWidgets('Artifacts drawer shows selected artifact metadata and binary preview', (
     tester,
   ) async {

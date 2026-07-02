@@ -212,6 +212,7 @@ class StudioSourceArtifactController
       )) {
         continue;
       }
+      if (_hasArtifactMaterializationFailure(turn)) continue;
       if (_artifactMaterializationInFlight.contains(turn.id)) continue;
       if (turn.status != StudioTurnStatus.completed) continue;
       if (!isGeneratedArtifactRequest(turn.prompt)) continue;
@@ -245,7 +246,15 @@ class StudioSourceArtifactController
             threadId: thread.id,
             requestId: turn.requestId,
           );
-      if (package == null || package.artifacts.isEmpty) return;
+      if (package == null || package.artifacts.isEmpty) {
+        _recordArtifactMaterializationFailure(
+          thread: thread,
+          turn: turn,
+          detail:
+              'Circuit could not create the requested artifact from this response. The artifact writer returned no supported outputs.',
+        );
+        return;
+      }
       for (final artifact in package.artifacts) {
         _upsertArtifact(artifact.toSourceArtifact());
       }
@@ -274,9 +283,48 @@ class StudioSourceArtifactController
               detail: detail,
             ),
           );
+    } catch (error) {
+      _recordArtifactMaterializationFailure(
+        thread: thread,
+        turn: turn,
+        detail:
+            'Circuit could not create the requested artifact. ${_safeArtifactError(error)}',
+      );
     } finally {
       _artifactMaterializationInFlight.remove(turn.id);
     }
+  }
+
+  bool _hasArtifactMaterializationFailure(StudioTurn turn) {
+    final failureId = 'artifact-failed-${turn.id}';
+    return turn.events.any((event) => event.id == failureId);
+  }
+
+  void _recordArtifactMaterializationFailure({
+    required StudioThread thread,
+    required StudioTurn turn,
+    required String detail,
+  }) {
+    ref
+        .read(studioThreadProvider.notifier)
+        .upsertTurnEvent(
+          thread.id,
+          turn.id,
+          StudioTurnEvent.completionSummary(
+            id: 'artifact-failed-${turn.id}',
+            turnId: turn.id,
+            requestId: turn.requestId,
+            threadId: thread.id,
+            title: 'Could not create artifact',
+            detail: detail,
+          ),
+        );
+  }
+
+  String _safeArtifactError(Object error) {
+    final text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isEmpty) return 'The artifact writer failed without details.';
+    return text.length <= 220 ? text : '${text.substring(0, 220)}...';
   }
 
   String _assistantContentForTurn(StudioTurn turn) {
