@@ -459,6 +459,79 @@ void main() {
     );
   });
 
+  test('DOCX report tables continue across blocks instead of truncating rows', () {
+    final document = ArtifactDocument(
+      title: 'Customer Inventory Report',
+      summary: 'Customer handoff report with full inventory evidence.',
+      sections: const [
+        ArtifactSection(
+          title: 'Findings',
+          bullets: ['Inventory must remain complete for customer review.'],
+        ),
+      ],
+      tables: [
+        ArtifactTable(
+          title: 'Customer Inventory',
+          rows: [
+            ['Site', 'Device', 'Status'],
+            for (var i = 1; i <= 52; i++)
+              [
+                'Site ${i.toString().padLeft(2, '0')}',
+                'Device ${i.toString().padLeft(2, '0')}',
+                i > 46 ? 'Validate' : 'Ready',
+              ],
+          ],
+        ),
+      ],
+      assumptions: const ['Customer validates inventory before handoff.'],
+      citations: const ['Customer inventory export.'],
+    );
+
+    const renderer = DocxArtifactRenderer();
+    final bytes = renderer.render(document);
+    final inspection = const DocxArtifactInspector().inspect(bytes);
+    final metadata = renderer.metadataFor(document);
+    final packageText = String.fromCharCodes(bytes);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(metadata['hasTableContinuationBlocks'], isTrue);
+    expect(metadata['tableContinuationBlockCount'], 2);
+    expect(metadata['tableOverflowRowCount'], 29);
+    expect(
+      metadata['tableContinuationSummaries'],
+      contains('Customer Inventory: 52 rows split across 3 Word table blocks'),
+    );
+    expect(metadata['formFactors'], contains('Data table continuation blocks'));
+    expect(
+      metadata['documentParts'],
+      contains('Data table continuation blocks'),
+    );
+    expect(
+      metadata['readinessSignals'],
+      contains('Data table continuation blocks'),
+    );
+    expect(
+      metadata['reportReviewChecklist'],
+      contains(
+        'Review data table continuation blocks for row order, repeated headers, sensitive data, and source alignment.',
+      ),
+    );
+    expect(
+      metadata['visualVerificationChecklist'],
+      contains(
+        'Confirm continued tables repeat headers, preserve row ranges, and remain readable in print layout.',
+      ),
+    );
+    expect(
+      renderer.previewRowsFor(document).map((row) => row.join(' / ')),
+      contains(contains('3 blocks / 1 table')),
+    );
+    expect(packageText, contains('Customer Inventory continued (2/3)'));
+    expect(packageText, contains('Customer Inventory continued (3/3)'));
+    expect(packageText, contains('rows 47-52 of 52'));
+    expect(packageText, contains('Site 52'));
+  });
+
   test('DOCX report records evidence gaps and next-step actions', () {
     const document = ArtifactDocument(
       title: 'Business Use Case Brief',

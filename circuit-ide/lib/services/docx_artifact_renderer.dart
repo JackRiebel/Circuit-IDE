@@ -6,7 +6,10 @@ import '../models/artifact_document.dart';
 class DocxArtifactRenderer {
   const DocxArtifactRenderer();
 
+  static const int _tableDataRowsPerBlock = 23;
+
   List<List<String>> previewRowsFor(ArtifactDocument document) {
+    final tableBlockCount = _tableBlockCount(document);
     return [
       ['Section', 'Type', 'Items'],
       ['1', 'Executive Decision Brief', '5'],
@@ -28,7 +31,7 @@ class DocxArtifactRenderer {
         [
           '${document.sections.length + 6}',
           'Data Tables',
-          '${document.tables.length}',
+          '$tableBlockCount block${tableBlockCount == 1 ? '' : 's'} / ${document.tables.length} table${document.tables.length == 1 ? '' : 's'}',
         ],
       ['${document.sections.length + 7}', 'Stakeholder Readout', '4'],
       [
@@ -96,6 +99,9 @@ class DocxArtifactRenderer {
       handoffScore: handoffScore,
       validationGaps: validationGaps,
     );
+    final tableContinuationBlockCount = _tableContinuationBlockCount(document);
+    final tableOverflowRowCount = _tableOverflowRowCount(document);
+    final tableContinuationSummaries = _tableContinuationSummaries(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'word_report',
@@ -135,12 +141,18 @@ class DocxArtifactRenderer {
         'Decision log',
         'Decision sign-off page',
         if (document.tables.isNotEmpty) 'Data tables',
+        if (tableContinuationBlockCount > 0) 'Data table continuation blocks',
         if (document.assumptions.isNotEmpty) 'Assumptions appendix',
         if (document.citations.isNotEmpty) 'Sources appendix',
       ],
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
+      'hasTableContinuationBlocks': tableContinuationBlockCount > 0,
+      'tableContinuationBlockCount': tableContinuationBlockCount,
+      'tableOverflowRowCount': tableOverflowRowCount,
+      'tableContinuationSummaries': tableContinuationSummaries,
+      'tableContinuationSummaryCount': tableContinuationSummaries.length,
       'evidenceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
@@ -1385,6 +1397,8 @@ class DocxArtifactRenderer {
       'Decision log',
       'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
+      if (_tableContinuationBlockCount(document) > 0)
+        'Data table continuation blocks',
       if (document.assumptions.isNotEmpty) 'Assumptions',
       if (document.citations.isNotEmpty) 'Sources',
       if (document.citations.isEmpty) 'Evidence gaps',
@@ -1406,6 +1420,8 @@ class DocxArtifactRenderer {
       'Decision log',
       'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
+      if (_tableContinuationBlockCount(document) > 0)
+        'Data table continuation blocks',
       if (document.assumptions.isNotEmpty) 'Assumptions appendix',
       if (document.citations.isNotEmpty) 'Sources appendix',
     ];
@@ -1462,7 +1478,9 @@ class DocxArtifactRenderer {
       'Review executive decision brief and recommendation summary for customer-specific language.',
       'Validate risk register, next-step action plan, and approval gates.',
       if (document.tables.isNotEmpty)
-        'Review data tables for stale values, sensitive data, and source alignment.'
+        _tableContinuationBlockCount(document) > 0
+            ? 'Review data table continuation blocks for row order, repeated headers, sensitive data, and source alignment.'
+            : 'Review data tables for stale values, sensitive data, and source alignment.'
       else
         'Attach supporting data or state why no data table is required.',
       if (document.assumptions.isNotEmpty)
@@ -1505,7 +1523,9 @@ class DocxArtifactRenderer {
   List<String> _visualVerificationChecklistFor(ArtifactDocument document) {
     return [
       'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
-      'Confirm table headers repeat and columns remain readable in print layout.',
+      _tableContinuationBlockCount(document) > 0
+          ? 'Confirm continued tables repeat headers, preserve row ranges, and remain readable in print layout.'
+          : 'Confirm table headers repeat and columns remain readable in print layout.',
       'Verify executive decision brief, recommendation summary, risk register, approval gates, and sign-off page appear in order.',
       if (document.citations.isNotEmpty)
         'Confirm sources appendix is included with checked dates and source labels.'
@@ -1515,6 +1535,46 @@ class DocxArtifactRenderer {
         'Confirm assumptions appendix is explicit and owner-reviewable.'
       else
         'Capture assumptions before external handoff.',
+    ];
+  }
+
+  int _tableBlockCount(ArtifactDocument document) {
+    var count = 0;
+    for (final table in document.tables) {
+      final dataRowCount = table.rows.isEmpty ? 0 : table.rows.length - 1;
+      count += dataRowCount <= 0
+          ? 1
+          : (dataRowCount / _tableDataRowsPerBlock).ceil();
+    }
+    return count;
+  }
+
+  int _tableContinuationBlockCount(ArtifactDocument document) {
+    var count = 0;
+    for (final table in document.tables) {
+      final dataRowCount = table.rows.isEmpty ? 0 : table.rows.length - 1;
+      if (dataRowCount <= _tableDataRowsPerBlock) continue;
+      count += (dataRowCount / _tableDataRowsPerBlock).ceil() - 1;
+    }
+    return count;
+  }
+
+  int _tableOverflowRowCount(ArtifactDocument document) {
+    return document.tables
+        .map((table) => table.rows.isEmpty ? 0 : table.rows.length - 1)
+        .where((rowCount) => rowCount > _tableDataRowsPerBlock)
+        .fold<int>(
+          0,
+          (sum, rowCount) => sum + rowCount - _tableDataRowsPerBlock,
+        );
+  }
+
+  List<String> _tableContinuationSummaries(ArtifactDocument document) {
+    return [
+      for (final table in document.tables)
+        if ((table.rows.isEmpty ? 0 : table.rows.length - 1) >
+            _tableDataRowsPerBlock)
+          '${table.title}: ${table.rows.length - 1} rows split across ${((table.rows.length - 1) / _tableDataRowsPerBlock).ceil()} Word table blocks',
     ];
   }
 
@@ -1697,7 +1757,41 @@ class DocxArtifactRenderer {
   }
 
   String _table(ArtifactTable table) {
-    final rows = table.rows.take(24).toList(growable: false);
+    if (table.rows.isEmpty) return '';
+    final header = table.rows.first;
+    final dataRows = table.rows.skip(1).toList(growable: false);
+    if (dataRows.length <= _tableDataRowsPerBlock) {
+      return _tableBlock(table.rows);
+    }
+
+    final buffer = StringBuffer();
+    final blockCount = (dataRows.length / _tableDataRowsPerBlock).ceil();
+    for (var blockIndex = 0; blockIndex < blockCount; blockIndex++) {
+      final start = blockIndex * _tableDataRowsPerBlock;
+      final end = start + _tableDataRowsPerBlock > dataRows.length
+          ? dataRows.length
+          : start + _tableDataRowsPerBlock;
+      if (blockIndex > 0) {
+        buffer.write(
+          _paragraph(
+            '${table.title} continued (${blockIndex + 1}/$blockCount): rows ${start + 1}-$end of ${dataRows.length}; headers repeated.',
+            style: 'Caption',
+          ),
+        );
+      } else {
+        buffer.write(
+          _paragraph(
+            'Rows 1-$end of ${dataRows.length}; continued table blocks repeat headers.',
+            style: 'Caption',
+          ),
+        );
+      }
+      buffer.write(_tableBlock([header, ...dataRows.sublist(start, end)]));
+    }
+    return buffer.toString();
+  }
+
+  String _tableBlock(List<List<String>> rows) {
     if (rows.isEmpty) return '';
     final widths = _columnWidths(rows);
     final grid = widths.map((width) => '<w:gridCol w:w="$width"/>').join();
