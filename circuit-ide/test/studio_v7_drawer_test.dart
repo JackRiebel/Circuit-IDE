@@ -1677,6 +1677,25 @@ void main() {
         'comparisonHandoffStatus': 'Comparison review workbook',
         'comparisonDecisionPosture':
             'Advisory only - validate hard gates and source evidence before final recommendation',
+        'hasComparisonCustomerHandoffMatrix': true,
+        'comparisonCustomerHandoffGateCount': 6,
+        'comparisonCustomerHandoffReadyCount': 2,
+        'comparisonCustomerHandoffMatrix': [
+          {
+            'gate': 'Candidate set',
+            'signal': '3 candidates captured',
+            'status': 'Ready',
+            'ownerAction': 'Confirm candidate roles.',
+            'ready': true,
+          },
+          {
+            'gate': 'Hard-gate fit',
+            'signal': 'UPOE/high-power AP; multigig access',
+            'status': 'Needs validation',
+            'ownerAction': 'Validate power, mGig, lifecycle, and support.',
+            'ready': false,
+          },
+        ],
         'recommendedCandidate': 'C9300-48P',
         'runnerUpCandidate': 'Meraki MS355',
         'requirementPressure':
@@ -1764,6 +1783,8 @@ void main() {
     expect(find.text('Comparison review workbook'), findsOneWidget);
     expect(find.text('Decision posture'), findsOneWidget);
     expect(find.textContaining('Advisory only'), findsOneWidget);
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('2/6 ready'), findsOneWidget);
     expect(find.text('Comparison manifest'), findsOneWidget);
     expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Primary'), findsOneWidget);

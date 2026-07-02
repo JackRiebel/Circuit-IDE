@@ -4448,6 +4448,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Decision posture',
             _metadataString(artifact, 'comparisonDecisionPosture'),
           ),
+        if (_metadataInt(artifact, 'comparisonCustomerHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'comparisonCustomerHandoffReadyCount')}/${_metadataInt(artifact, 'comparisonCustomerHandoffGateCount')} ready',
+          ),
         if (_metadataBool(artifact, 'hasComparisonQualityManifest'))
           (
             'Comparison manifest',

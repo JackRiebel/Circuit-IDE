@@ -617,6 +617,32 @@ Here is the data.
         artifact.metadata['comparisonPublishingMetadata'],
         anyElement(contains('External handoff')),
       );
+      expect(artifact.metadata['hasComparisonCustomerHandoffMatrix'], isTrue);
+      expect(artifact.metadata['comparisonCustomerHandoffGateCount'], 6);
+      expect(
+        artifact.metadata['comparisonCustomerHandoffReadyCount'],
+        greaterThanOrEqualTo(2),
+      );
+      expect(
+        artifact.metadata['comparisonCustomerHandoffMatrix'],
+        anyElement(
+          allOf(
+            isA<Map<String, Object?>>(),
+            containsPair('gate', 'Candidate set'),
+            containsPair('ready', true),
+          ),
+        ),
+      );
+      expect(
+        artifact.metadata['comparisonCustomerHandoffMatrix'],
+        anyElement(
+          allOf(
+            isA<Map<String, Object?>>(),
+            containsPair('gate', 'Hard-gate fit'),
+            containsPair('ready', false),
+          ),
+        ),
+      );
       expect(artifact.metadata['hasComparisonQualityManifest'], isTrue);
       expect(artifact.metadata['hasMustHaveComplianceScorecard'], isTrue);
       expect(artifact.metadata['hasComparisonEvidencePolicy'], isTrue);
@@ -655,6 +681,9 @@ Here is the data.
       expect(packageText, contains('Evidence Policy'));
       expect(packageText, contains('Visual QA'));
       expect(packageText, contains('Publishing Readiness'));
+      expect(packageText, contains('Customer Handoff Matrix'));
+      expect(packageText, contains('Hard-gate fit'));
+      expect(packageText, contains('Recommendation boundary'));
       expect(packageText, contains('Assumptions'));
       expect(packageText, contains('Source 1'));
       expect(packageText, contains('C9300-48P'));

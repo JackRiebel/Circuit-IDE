@@ -31,6 +31,7 @@ class ProductComparisonWorkbookBuilder {
       requirements: requirementRows,
       content: fullContent,
     );
+    final customerHandoffRows = _comparisonCustomerHandoffRows(profile);
     return [
       WorkbookTable(
         name: 'Executive Decision',
@@ -330,6 +331,13 @@ class ProductComparisonWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Customer Handoff Matrix',
+        rows: [
+          const ['Gate', 'Signal', 'Status', 'Owner Action', 'Ready'],
+          ...customerHandoffRows,
+        ],
+      ),
+      WorkbookTable(
         name: 'Assumptions',
         rows: [
           const ['Assumption', 'Impact'],
@@ -385,6 +393,13 @@ class ProductComparisonWorkbookBuilder {
       tables,
       'Publishing Readiness',
     ).skip(1).toList(growable: false);
+    final customerHandoffRows = _rowsFor(
+      tables,
+      'Customer Handoff Matrix',
+    ).skip(1).toList(growable: false);
+    final customerHandoffReadyCount = _comparisonCustomerHandoffReadyCount(
+      customerHandoffRows,
+    );
     final sourceSheetCount = tables
         .where((table) => table.name.toLowerCase().startsWith('source '))
         .length;
@@ -459,11 +474,17 @@ class ProductComparisonWorkbookBuilder {
       'comparisonVisualVerificationChecklistCount': visualQaRows.length,
       'comparisonPublishingMetadata': _stringRows(publishingRows),
       'comparisonPublishingMetadataCount': publishingRows.length,
+      'comparisonCustomerHandoffMatrix': _comparisonCustomerHandoffMetadata(
+        customerHandoffRows,
+      ),
+      'comparisonCustomerHandoffGateCount': customerHandoffRows.length,
+      'comparisonCustomerHandoffReadyCount': customerHandoffReadyCount,
       'hasComparisonQualityManifest': true,
       'hasMustHaveComplianceScorecard': mustHaveRows.isNotEmpty,
       'hasComparisonEvidencePolicy': evidencePolicyRows.isNotEmpty,
       'hasComparisonVisualVerificationChecklist': visualQaRows.isNotEmpty,
       'hasComparisonPublishingMetadata': publishingRows.isNotEmpty,
+      'hasComparisonCustomerHandoffMatrix': customerHandoffRows.isNotEmpty,
       'hasSourceEvidence': hasSourceEvidence,
     };
   }
@@ -1252,6 +1273,96 @@ class ProductComparisonWorkbookBuilder {
     ];
   }
 
+  List<List<String>> _comparisonCustomerHandoffRows(
+    _ComparisonProfile profile,
+  ) {
+    final hasCandidateSet = profile.candidates.length >= 2;
+    final hardGatesReady =
+        !profile.requiresHighPower &&
+        !profile.requiresMultiGig &&
+        !profile.requiresThroughput;
+    final alternativesReady = profile.runnerUp != null;
+    final replacementReady =
+        !profile.hasMigrationSignal && !profile.hasLifecycleConcern;
+    final recommendationReady =
+        profile.hasSourceEvidence &&
+        hasCandidateSet &&
+        hardGatesReady &&
+        replacementReady &&
+        profile.best != null;
+
+    String readyText(bool ready) => ready ? 'Ready' : 'Needs review';
+
+    return [
+      [
+        'Source evidence',
+        profile.hasSourceEvidence
+            ? 'Source or datasheet signal captured'
+            : 'Official source evidence missing',
+        profile.hasSourceEvidence ? 'Ready' : 'Needs evidence',
+        profile.hasSourceEvidence
+            ? 'Confirm checked dates and authoritative source links.'
+            : 'Attach official datasheets, lifecycle records, portfolio facts, and checked dates.',
+        readyText(profile.hasSourceEvidence),
+      ],
+      [
+        'Candidate set',
+        hasCandidateSet
+            ? '${profile.candidates.length} candidates captured'
+            : 'Comparison needs at least two candidates',
+        hasCandidateSet ? 'Ready' : 'Needs candidates',
+        hasCandidateSet
+            ? 'Confirm candidate roles and shortlist completeness.'
+            : 'Add primary candidate, runner-up, and relevant alternatives.',
+        readyText(hasCandidateSet),
+      ],
+      [
+        'Hard-gate fit',
+        hardGatesReady
+            ? 'No hard-gate pressure detected'
+            : profile.requirementPressure,
+        hardGatesReady ? 'Ready' : 'Needs validation',
+        hardGatesReady
+            ? 'Confirm no hidden power, throughput, lifecycle, or licensing gates.'
+            : 'Validate power/UPOE, mGig, throughput, lifecycle, licensing, and support gates before recommendation.',
+        readyText(hardGatesReady),
+      ],
+      [
+        'Rejected alternatives',
+        alternativesReady
+            ? 'Runner-up and alternatives captured'
+            : 'Rejected-alternative evidence missing',
+        alternativesReady ? 'Ready' : 'Needs rejection reasons',
+        alternativesReady
+            ? 'Review reject/reconsider rules for each non-selected model.'
+            : 'Document why each lower-fit or stale migration candidate fails.',
+        readyText(alternativesReady),
+      ],
+      [
+        'Replacement caveats',
+        replacementReady
+            ? 'No migration/EoX caveat detected'
+            : 'Migration/EoX signal requires caveat',
+        replacementReady ? 'Ready' : 'Needs lifecycle validation',
+        replacementReady
+            ? 'Confirm current portfolio fit still governs final selection.'
+            : 'Treat EoX replacement PID as a migration hint only; compare against current portfolio candidates.',
+        readyText(replacementReady),
+      ],
+      [
+        'Recommendation boundary',
+        recommendationReady
+            ? 'Evidence and hard gates support external recommendation'
+            : 'Advisory only before final recommendation',
+        recommendationReady ? 'Ready' : 'Needs review',
+        recommendationReady
+            ? 'Proceed to reviewer/customer handoff.'
+            : 'Close source, hard-gate, and lifecycle caveats before presenting as final model choice.',
+        readyText(recommendationReady),
+      ],
+    ];
+  }
+
   List<List<String>> _alternativeRows(
     ArtifactDocument document,
     String content,
@@ -1381,6 +1492,30 @@ class ProductComparisonWorkbookBuilder {
     final blocked = _mustHavePostureCount(rows, 'Blocked');
     final needsValidation = _mustHavePostureCount(rows, 'Needs validation');
     return '$eligible eligible, $needsValidation need validation, $blocked blocked candidate${rows.length == 1 ? '' : 's'}';
+  }
+
+  int _comparisonCustomerHandoffReadyCount(List<List<String>> rows) {
+    return rows.where((row) {
+      if (row.length < 5) return false;
+      return row[4].toLowerCase().contains('ready');
+    }).length;
+  }
+
+  List<Map<String, Object?>> _comparisonCustomerHandoffMetadata(
+    List<List<String>> rows,
+  ) {
+    return rows
+        .where((row) => row.length >= 5)
+        .map(
+          (row) => {
+            'gate': row[0],
+            'signal': row[1],
+            'status': row[2],
+            'ownerAction': row[3],
+            'ready': row[4].toLowerCase().contains('ready'),
+          },
+        )
+        .toList(growable: false);
   }
 
   String _executiveValue(List<List<String>> rows, String signal) {
