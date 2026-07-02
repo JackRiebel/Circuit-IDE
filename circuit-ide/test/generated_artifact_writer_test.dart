@@ -1819,6 +1819,48 @@ Evidence collected from the Studio UI review.
   );
 
   test(
+    'screenshot evidence pack promotes OCR sidecar text above metadata-only',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a screenshot evidence pack for this UI review',
+            content: '''
+# Screenshot Evidence
+
+Evidence collected from the Studio UI review.
+
+## Visual Evidence
+- Screenshot: checkout modal attached with OCR/description sidecar.
+- OCR/description sidecar status: attached from checkout.ocr.txt.
+- Attached visual text: Submit button is clipped at the bottom of the checkout modal.
+
+## Sources
+- Internal Studio screenshot attachment metadata — checked 2026-07-01
+''',
+            turnId: 'turn-visual-evidence-sidecar',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.docx);
+      expect(
+        artifact.metadata['visualEvidenceReliability'],
+        'metadata_plus_ocr_or_user_description',
+      );
+      final packageText = String.fromCharCodes(
+        File(artifact.filePath).readAsBytesSync(),
+      );
+      expect(packageText, contains('Visual Evidence Register'));
+      expect(packageText, contains('OCR/description sidecar'));
+      expect(packageText, contains('Validate sidecar accuracy'));
+    },
+  );
+
+  test(
     'explicit JSON evidence pack creates structured JSON artifact',
     () async {
       final root = await Directory.systemTemp.createTemp('circuit-artifacts-');

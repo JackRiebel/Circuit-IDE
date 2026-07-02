@@ -122,6 +122,41 @@ void main() {
     );
   });
 
+  test(
+    'ScreenshotContextAttachmentBuilder attaches OCR sidecar text when present',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-shot-ocr-');
+      addTearDown(() => root.delete(recursive: true));
+      final image = File('${root.path}/screen.png')
+        ..writeAsBytesSync(_pngBytes(width: 1366, height: 768));
+      File('${root.path}/screen.ocr.txt').writeAsStringSync(
+        'OCR text: Submit button is clipped at the bottom of the checkout modal.',
+      );
+
+      final attachment = await const ScreenshotContextAttachmentBuilder().build(
+        image.path,
+      );
+
+      expect(attachment, isNotNull);
+      expect(
+        attachment!.content,
+        contains('OCR/description sidecar status: attached'),
+      );
+      expect(attachment.content, contains('Attached visual text:'));
+      expect(attachment.content, contains('Submit button is clipped'));
+      expect(attachment.metadata['ocrStatus'], 'sidecar_attached');
+      expect(
+        attachment.metadata['visionInputStatus'],
+        'metadata_plus_sidecar_text',
+      );
+      expect(
+        attachment.metadata['analysisReliability'],
+        'metadata_plus_user_or_ocr_sidecar',
+      );
+      expect(attachment.metadata['sidecarPath'], endsWith('screen.ocr.txt'));
+    },
+  );
+
   test('ScreenshotContextAttachmentBuilder skips unsupported files', () async {
     final attachment = await const ScreenshotContextAttachmentBuilder().build(
       '/tmp/readme.md',

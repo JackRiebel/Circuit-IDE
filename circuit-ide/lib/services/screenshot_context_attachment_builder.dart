@@ -35,6 +35,8 @@ class ScreenshotContextAttachmentBuilder {
     final dimensions = _dimensionsFor(bytes);
     final extension = p.extension(path).replaceFirst('.', '').toUpperCase();
     final mimeType = _mimeTypeForExtension(p.extension(path));
+    final sidecar = await _sidecarTextFor(path);
+    final hasSidecar = sidecar != null && sidecar.text.trim().isNotEmpty;
     final facts = [
       'Image attachment for visual-evidence review.',
       'File: ${p.basename(path)}',
@@ -45,9 +47,16 @@ class ScreenshotContextAttachmentBuilder {
       else
         'Dimensions: not detected',
       'Visual evidence status: screenshot/image file is attached as context metadata.',
-      'OCR status: not extracted locally.',
+      if (hasSidecar)
+        'OCR/description sidecar status: attached from ${sidecar.pathLabel}.'
+      else
+        'OCR status: not extracted locally.',
       'Vision model status: not sent as pixel input by the current Circuit connector.',
-      'Visual analysis contract: do not claim to inspect pixels, read text, identify UI details, or infer layout from this image unless the user described those details in text.',
+      if (hasSidecar)
+        'Sidecar text can be used as extracted/user-provided visual evidence, but pixel-level claims still require OCR/vision validation.'
+      else
+        'Visual analysis contract: do not claim to inspect pixels, read text, identify UI details, or infer layout from this image unless the user described those details in text.',
+      if (hasSidecar) 'Attached visual text:\n${sidecar.text}',
       'Safe use: cite the screenshot as provided evidence, ask for a description or OCR/vision integration when pixel-level review is required, and preserve file metadata in any handoff artifact.',
       'Recommended artifact role: visual evidence appendix for UX reviews, bug reports, implementation plans, and customer handoff packages.',
     ];
@@ -67,10 +76,16 @@ class ScreenshotContextAttachmentBuilder {
         'byteSize': bytes.length,
         if (dimensions != null) 'width': dimensions.width,
         if (dimensions != null) 'height': dimensions.height,
-        'ocrStatus': 'not_extracted',
-        'visionInputStatus': 'metadata_only',
+        'ocrStatus': hasSidecar ? 'sidecar_attached' : 'not_extracted',
+        'visionInputStatus': hasSidecar
+            ? 'metadata_plus_sidecar_text'
+            : 'metadata_only',
         'providerPixelInputSupported': false,
-        'analysisReliability': 'metadata_only',
+        'analysisReliability': hasSidecar
+            ? 'metadata_plus_user_or_ocr_sidecar'
+            : 'metadata_only',
+        if (hasSidecar) 'sidecarPath': sidecar.path,
+        if (hasSidecar) 'sidecarByteSize': sidecar.byteSize,
         'visualAnalysisContract':
             'Do not infer screenshot contents from pixels; use metadata and user-provided description only.',
         'recommendedArtifactRole': 'visual_evidence_appendix',
@@ -81,6 +96,40 @@ class ScreenshotContextAttachmentBuilder {
       },
       createdAt: DateTime.now(),
     );
+  }
+
+  Future<_SidecarText?> _sidecarTextFor(String imagePath) async {
+    final withoutExtension = p.withoutExtension(imagePath);
+    final candidates = <String>[
+      '$imagePath.txt',
+      '$imagePath.ocr.txt',
+      '$withoutExtension.ocr.txt',
+      '$withoutExtension.txt',
+      '$withoutExtension.description.txt',
+    ];
+    final seen = <String>{};
+    for (final candidate in candidates) {
+      final normalized = p.normalize(candidate);
+      if (!seen.add(normalized)) continue;
+      final file = File(normalized);
+      if (!await file.exists()) continue;
+      final raw = await file.readAsString();
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) continue;
+      return _SidecarText(
+        path: normalized,
+        pathLabel: p.basename(normalized),
+        byteSize: await file.length(),
+        text: _truncateSidecarText(trimmed),
+      );
+    }
+    return null;
+  }
+
+  String _truncateSidecarText(String value) {
+    const maxChars = 2400;
+    if (value.length <= maxChars) return value;
+    return '${value.substring(0, maxChars).trimRight()}\n[Sidecar text truncated.]';
   }
 
   _ImageDimensions? _dimensionsFor(Uint8List bytes) {
@@ -166,4 +215,18 @@ class _ImageDimensions {
   final int height;
 
   const _ImageDimensions(this.width, this.height);
+}
+
+class _SidecarText {
+  final String path;
+  final String pathLabel;
+  final int byteSize;
+  final String text;
+
+  const _SidecarText({
+    required this.path,
+    required this.pathLabel,
+    required this.byteSize,
+    required this.text,
+  });
 }

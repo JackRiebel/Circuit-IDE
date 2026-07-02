@@ -203,8 +203,9 @@ class EvidencePackBuilder {
         'unsupportedClaimCount': unsupportedBullets.length,
         'visualEvidenceCount': visualEvidenceBullets.length,
         'hasVisualEvidenceRegister': true,
-        'visualEvidenceReliability':
-            'metadata_only_until_vision_or_user_description',
+        'visualEvidenceReliability': _visualEvidenceReliabilityStatus(
+          visualEvidenceBullets,
+        ),
         'visualEvidencePolicy':
             'Do not infer pixel-level screenshot details unless OCR/vision or a user-provided visual description is present.',
         'evidencePackTables': tables.length,
@@ -688,12 +689,50 @@ class EvidencePackBuilder {
         .map((item) {
           return [
             _cleanBullet(item),
-            'Metadata-only until OCR/vision or user description confirms details.',
-            'Reference as a visual appendix item, not as inspected pixel evidence.',
-            'Confirm UI text, layout, and visual defects before customer-facing claims.',
+            _visualEvidenceReliability(item),
+            _visualEvidenceSafeUse(item),
+            _visualEvidenceFollowUp(item),
           ];
         })
         .toList(growable: false);
+  }
+
+  String _visualEvidenceReliabilityStatus(List<String> items) {
+    if (items.any(_hasSidecarOrDescription)) {
+      return 'metadata_plus_ocr_or_user_description';
+    }
+    return 'metadata_only_until_vision_or_user_description';
+  }
+
+  String _visualEvidenceReliability(String item) {
+    if (_hasSidecarOrDescription(item)) {
+      return 'Metadata plus OCR/description sidecar; still not raw pixel inspection.';
+    }
+    return 'Metadata-only until OCR/vision or user description confirms details.';
+  }
+
+  String _visualEvidenceSafeUse(String item) {
+    if (_hasSidecarOrDescription(item)) {
+      return 'Use sidecar text as extracted/user-provided evidence and cite the image as visual context.';
+    }
+    return 'Reference as a visual appendix item, not as inspected pixel evidence.';
+  }
+
+  String _visualEvidenceFollowUp(String item) {
+    if (_hasSidecarOrDescription(item)) {
+      return 'Validate sidecar accuracy before customer-facing visual claims.';
+    }
+    return 'Confirm UI text, layout, and visual defects before customer-facing claims.';
+  }
+
+  bool _hasSidecarOrDescription(String item) {
+    final normalized = item.toLowerCase();
+    return normalized.contains('ocr') ||
+        normalized.contains('sidecar') ||
+        normalized.contains('attached visual text') ||
+        normalized.contains('user-provided description') ||
+        normalized.contains('visual description') ||
+        normalized.contains('description:');
   }
 
   List<List<String>> _unsupportedRows(List<String> unsupportedBullets) {
