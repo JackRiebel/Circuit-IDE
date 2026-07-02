@@ -783,39 +783,49 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(package.artifacts.map((artifact) => artifact.kind), [
       GeneratedArtifactKind.markdown,
       GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.pdf,
       GeneratedArtifactKind.json,
     ]);
     expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
-    expect(package.primary!.metadata['artifactCount'], 3);
-    expect(package.primary!.metadata['expectedArtifactCount'], 3);
-    expect(package.primary!.metadata['producedArtifactCount'], 3);
-    expect(package.primary!.metadata['readyArtifactCount'], 3);
+    expect(package.primary!.metadata['artifactCount'], 4);
+    expect(package.primary!.metadata['expectedArtifactCount'], 4);
+    expect(package.primary!.metadata['producedArtifactCount'], 4);
+    expect(package.primary!.metadata['readyArtifactCount'], 4);
     expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
     expect(package.primary!.metadata['hasCompletePackage'], isTrue);
     expect(package.primary!.metadata['expectedArtifactKinds'], [
       'Excel',
+      'PowerPoint',
       'PDF',
       'JSON',
     ]);
     expect(package.primary!.metadata['producedArtifactKinds'], [
       'Excel',
+      'PowerPoint',
       'PDF',
       'JSON',
     ]);
     expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
     expect(
       package.primary!.metadata['packageFileTypes'],
-      containsAll(['Excel', 'PDF', 'JSON']),
+      containsAll(['Excel', 'PowerPoint', 'PDF', 'JSON']),
     );
     expect(
       package.primary!.metadata['packagePreviewSurfaces'],
-      containsAll(['Lifecycle report', 'Workbook preview', 'PDF outline']),
+      containsAll([
+        'Lifecycle report',
+        'Workbook preview',
+        'Slide outline',
+        'PDF outline',
+      ]),
     );
     expect(
       package.primary!.metadata['packageVerificationChecks'],
       containsAll([
         'Lifecycle sheets parse',
+        'Lifecycle readout deck renders when packaged',
+        'Deck readiness metadata renders',
         'Evidence JSON register parses',
         'PDF outline preview renders',
       ]),
@@ -825,18 +835,28 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(manifestText, contains('Package Contract'));
     expect(
       manifestText,
-      contains('| Excel, PDF, JSON | Excel, PDF, JSON | None |'),
+      contains(
+        '| Excel, PowerPoint, PDF, JSON | Excel, PowerPoint, PDF, JSON | None |',
+      ),
     );
     expect(manifestText, contains('.xlsx'));
+    expect(manifestText, contains('.pptx'));
     expect(manifestText, contains('.pdf'));
     expect(manifestText, contains('.json'));
 
     final workbook = package.artifacts[1];
-    final pdf = package.artifacts[2];
-    final evidence = package.artifacts[3];
+    final deck = package.artifacts[2];
+    final pdf = package.artifacts[3];
+    final evidence = package.artifacts[4];
     expect(workbook.fileName, endsWith('.xlsx'));
+    expect(deck.fileName, endsWith('.pptx'));
     expect(pdf.fileName, endsWith('.pdf'));
     expect(evidence.fileName, endsWith('.json'));
+    expect(deck.sheetCount, greaterThanOrEqualTo(3));
+    expect(
+      deck.metadata['readinessSignals'],
+      contains('Readout framing'),
+    );
     expect(evidence.summary, contains('lifecycle evidence register'));
     expect(evidence.previewRows.first, ['Register', 'Count', 'Status']);
     expect(evidence.metadata['artifact'], 'lifecycle_evidence_register');
@@ -2745,6 +2765,16 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
         'Comparison readout deck and PDF companion render when packaged',
       ),
     );
+    expect(registry.descriptorForId('lifecycle_eox_report')?.packageKinds, [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+      GeneratedArtifactKind.json,
+    ]);
+    expect(
+      registry.descriptorForId('lifecycle_eox_report')?.verificationChecks,
+      contains('Lifecycle readout deck renders when packaged'),
+    );
     expect(registry.descriptorForId('business_use_case_brief')?.packageKinds, [
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
@@ -2930,6 +2960,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(lifecycle.descriptor?.id, 'lifecycle_eox_report');
     expect(lifecycle.targetKinds, [
       GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.pdf,
       GeneratedArtifactKind.json,
     ]);

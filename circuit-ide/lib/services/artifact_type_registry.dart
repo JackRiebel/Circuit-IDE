@@ -223,6 +223,7 @@ class ArtifactTypeRegistry {
       useCases: ['LDOS', 'EoL', 'support risk'],
       packageKinds: [
         GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.pdf,
         GeneratedArtifactKind.json,
       ],
@@ -231,6 +232,7 @@ class ArtifactTypeRegistry {
         'Lifecycle sheets parse',
         'EoX caveat metadata persists',
         'Replacement evidence preview renders',
+        'Lifecycle readout deck renders when packaged',
         'Evidence JSON register parses',
       ],
     ),

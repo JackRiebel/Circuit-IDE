@@ -400,6 +400,7 @@ Short executive summary for the customer.
             expectedKinds: [
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
               GeneratedArtifactKind.json,
             ],
@@ -640,6 +641,7 @@ Short executive summary for the customer.
             prompt: 'create an LDOS lifecycle report package',
             expectedTargets: [
               GeneratedArtifactKind.excel,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
               GeneratedArtifactKind.json,
             ],
