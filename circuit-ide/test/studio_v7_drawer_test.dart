@@ -2009,6 +2009,16 @@ void main() {
                 'Review findings, confirm assumptions, and approve the recommended architecture path.',
             'reviewPath':
                 'Architecture review -> risk validation -> implementation decision',
+            'docxInspectionStatus': 'Verified',
+            'docxStructuralValid': true,
+            'docxExpectedReportStructure': true,
+            'docxDeclaredWordCount': 860,
+            'docxParagraphCount': 78,
+            'docxHasTableOfContents': true,
+            'docxHasExplicitTableGeometry': true,
+            'docxHasRepeatingTableHeaders': true,
+            'docxHasAccessibilityManifest': true,
+            'docxInspectionFailedChecks': <String>[],
             'documentParts': [
               'Executive decision brief',
               'Recommendation summary',
@@ -2308,6 +2318,24 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('DOCX inspection'), findsOneWidget);
+    expect(find.text('Verified'), findsAtLeastNWidgets(1));
+    expect(find.text('DOCX package'), findsOneWidget);
+    expect(find.text('Structurally valid'), findsOneWidget);
+    expect(find.text('DOCX structure'), findsOneWidget);
+    expect(find.text('Customer-ready report'), findsOneWidget);
+    expect(find.text('Declared words'), findsOneWidget);
+    expect(find.text('860'), findsAtLeastNWidgets(1));
+    expect(find.text('Paragraphs'), findsOneWidget);
+    expect(find.text('78'), findsOneWidget);
+    expect(find.text('Table of contents'), findsOneWidget);
+    expect(find.text('Included'), findsOneWidget);
+    expect(find.text('Table geometry'), findsOneWidget);
+    expect(find.text('Fixed layout'), findsOneWidget);
+    expect(find.text('Table headers'), findsOneWidget);
+    expect(find.text('Repeating'), findsOneWidget);
+    expect(find.text('Accessibility'), findsAtLeastNWidgets(1));
+    expect(find.text('Manifest included'), findsOneWidget);
     expect(find.text('Parts'), findsOneWidget);
     expect(
       find.textContaining(

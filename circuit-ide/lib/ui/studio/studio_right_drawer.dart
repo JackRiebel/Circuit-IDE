@@ -3271,12 +3271,19 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       final wordCount = _metadataInt(artifact, 'wordCount');
       final reportType = _metadataString(artifact, 'reportType');
       final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      final inspectionStatus = _metadataString(
+        artifact,
+        'docxInspectionStatus',
+      );
       final visualEvidenceReliability = _metadataString(
         artifact,
         'visualEvidenceReliability',
       );
       if (reportType.isNotEmpty) parts.add(reportType);
       if (wordCount > 0) parts.add('$wordCount words');
+      if (inspectionStatus.isNotEmpty) {
+        parts.add('DOCX $inspectionStatus');
+      }
       if (visualEvidenceReliability.isNotEmpty) {
         parts.add(_visualEvidenceReliabilityLabel(visualEvidenceReliability));
       }
@@ -4809,6 +4816,50 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Ask', _metadataString(artifact, 'decisionAsk')),
         if (_metadataString(artifact, 'reviewPath').isNotEmpty)
           ('Review path', _metadataString(artifact, 'reviewPath')),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataString(artifact, 'docxInspectionStatus').isNotEmpty)
+          (
+            'DOCX inspection',
+            _metadataString(artifact, 'docxInspectionStatus'),
+          ),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxStructuralValid'))
+          ('DOCX package', 'Structurally valid'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxExpectedReportStructure'))
+          ('DOCX structure', 'Customer-ready report'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataInt(artifact, 'docxDeclaredWordCount') > 0)
+          (
+            'Declared words',
+            '${_metadataInt(artifact, 'docxDeclaredWordCount')}',
+          ),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataInt(artifact, 'docxParagraphCount') > 0)
+          ('Paragraphs', '${_metadataInt(artifact, 'docxParagraphCount')}'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxHasTableOfContents'))
+          ('Table of contents', 'Included'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxHasExplicitTableGeometry'))
+          ('Table geometry', 'Fixed layout'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxHasRepeatingTableHeaders'))
+          ('Table headers', 'Repeating'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataBool(artifact, 'docxHasAccessibilityManifest'))
+          ('Accessibility', 'Manifest included'),
+        if (artifact.kind == GeneratedArtifactKind.docx &&
+            _metadataStringList(
+              artifact,
+              'docxInspectionFailedChecks',
+            ).isNotEmpty)
+          (
+            'DOCX checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'docxInspectionFailedChecks'),
+            ),
+          ),
         if (_metadataBool(artifact, 'hasReportQualityManifest'))
           (
             'Quality',

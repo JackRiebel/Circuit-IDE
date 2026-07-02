@@ -127,6 +127,96 @@ class DocxArtifactInspection {
       hasRepeatingTableHeaders &&
       hasKeywordsMetadata &&
       hasAccessibilityManifest;
+
+  Map<String, Object?> toMetadata() {
+    final checks = <String, bool>{
+      'ZIP package header': hasZipHeader,
+      '[Content_Types].xml': hasContentTypes,
+      'word/document.xml': hasDocument,
+      'word/styles.xml': hasStyles,
+      'word/numbering.xml': hasNumbering,
+      'word/settings.xml': hasSettings,
+      'header': hasHeader,
+      'footer': hasFooter,
+      'core properties': hasCoreProperties,
+      'extended properties': hasExtendedProperties,
+      'custom properties': hasCustomProperties,
+      'report quality manifest': hasReportQualityManifest,
+      'external handoff manifest': hasExternalHandoffManifest,
+      'enterprise styles': hasEnterpriseStyles,
+      'table geometry': hasExplicitTableGeometry,
+      'repeating table headers': hasRepeatingTableHeaders,
+      'accessibility manifest': hasAccessibilityManifest,
+      'expected report structure': hasExpectedReportStructure,
+    };
+    final failedChecks = checks.entries
+        .where((entry) => !entry.value)
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    return {
+      'docxInspectionVersion': '1.0',
+      'docxInspectionStatus': failedChecks.isEmpty
+          ? 'Verified'
+          : 'Needs review',
+      'docxStructuralValid': isStructurallyValid,
+      'docxExpectedReportStructure': hasExpectedReportStructure,
+      'docxInspectionFailedChecks': failedChecks,
+      'docxInspectionFailedCheckCount': failedChecks.length,
+      'docxTitle': title,
+      'docxParagraphCount': paragraphCount,
+      'docxTableCount': tableCount,
+      'docxBulletCount': bulletCount,
+      'docxHeadingCount': headingCount,
+      'docxStyleCount': styleCount,
+      'docxDeclaredWordCount': declaredWordCount,
+      'docxDeclaredParagraphCount': declaredParagraphCount,
+      'docxHasContentTypes': hasContentTypes,
+      'docxHasDocumentXml': hasDocument,
+      'docxHasStylesXml': hasStyles,
+      'docxHasNumberingXml': hasNumbering,
+      'docxHasSettingsXml': hasSettings,
+      'docxHasHeader': hasHeader,
+      'docxHasFooter': hasFooter,
+      'docxHasCoreProps': hasCoreProperties,
+      'docxHasAppProps': hasExtendedProperties,
+      'docxHasCustomProps': hasCustomProperties,
+      'docxHasReportOverview': hasReportOverview,
+      'docxHasLeadDecisionCallout': hasLeadDecisionCallout,
+      'docxHasTableOfContents': hasTableOfContents,
+      'docxHasExecutiveDecisionBrief': hasExecutiveDecisionBrief,
+      'docxHasRecommendationSummary': hasRecommendationSummary,
+      'docxHasRiskRegister': hasRiskRegister,
+      'docxHasNextStepActionPlan': hasNextStepActionPlan,
+      'docxHasDocumentMap': hasDocumentMap,
+      'docxHasValidationChecklist': hasValidationChecklist,
+      'docxHasCustomerHandoffScorecard': hasCustomerHandoffScorecard,
+      'docxHasDecisionLog': hasDecisionLog,
+      'docxHasDecisionSignOff': hasDecisionSignOff,
+      'docxHasAssumptionsAppendix': hasAssumptionsAppendix,
+      'docxHasSourcesAppendix': hasSourcesAppendix,
+      'docxHasCircuitHeader': hasCircuitHeader,
+      'docxHasCircuitFooter': hasCircuitFooter,
+      'docxHasEnterpriseStyles': hasEnterpriseStyles,
+      'docxHasExplicitTableGeometry': hasExplicitTableGeometry,
+      'docxHasRepeatingTableHeaders': hasRepeatingTableHeaders,
+      'docxHasKeywordsMetadata': hasKeywordsMetadata,
+      'docxHasReportQualityManifest': hasReportQualityManifest,
+      'docxHasAccessibilityManifest': hasAccessibilityManifest,
+      'docxHasExternalHandoffManifest': hasExternalHandoffManifest,
+      'docxExpectedReportChrome': [
+        'Content types',
+        'Document XML',
+        'Styles',
+        'Numbering',
+        'Settings',
+        'Header/footer',
+        'Core/app/custom properties',
+        'Report quality manifest',
+        'Accessibility manifest',
+        'External handoff manifest',
+      ],
+    };
+  }
 }
 
 class DocxArtifactInspector {

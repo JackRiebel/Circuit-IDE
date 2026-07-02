@@ -1008,6 +1008,29 @@ Executive summary for a customer handoff.
       expect(artifact.metadata['citationCount'], 1);
       expect(artifact.metadata['wordCount'], greaterThan(20));
       expect(artifact.metadata['paragraphCount'], greaterThan(10));
+      expect(artifact.metadata['docxInspectionVersion'], '1.0');
+      expect(artifact.metadata['docxInspectionStatus'], 'Verified');
+      expect(artifact.metadata['docxStructuralValid'], isTrue);
+      expect(artifact.metadata['docxExpectedReportStructure'], isTrue);
+      expect(artifact.metadata['docxInspectionFailedCheckCount'], 0);
+      expect(artifact.metadata['docxInspectionFailedChecks'], isEmpty);
+      expect(
+        artifact.metadata['docxTitle'],
+        'Branch Network Architecture Report',
+      );
+      expect(artifact.metadata['docxDeclaredWordCount'], greaterThan(20));
+      expect(artifact.metadata['docxParagraphCount'], greaterThan(10));
+      expect(artifact.metadata['docxTableCount'], greaterThanOrEqualTo(1));
+      expect(artifact.metadata['docxHasDocumentXml'], isTrue);
+      expect(artifact.metadata['docxHasStylesXml'], isTrue);
+      expect(artifact.metadata['docxHasNumberingXml'], isTrue);
+      expect(artifact.metadata['docxHasSettingsXml'], isTrue);
+      expect(artifact.metadata['docxHasHeader'], isTrue);
+      expect(artifact.metadata['docxHasFooter'], isTrue);
+      expect(artifact.metadata['docxHasTableOfContents'], isTrue);
+      expect(artifact.metadata['docxHasExplicitTableGeometry'], isTrue);
+      expect(artifact.metadata['docxHasRepeatingTableHeaders'], isTrue);
+      expect(artifact.metadata['docxHasAccessibilityManifest'], isTrue);
       expect(artifact.metadata['hasTableOfContents'], isTrue);
       expect(artifact.metadata['hasRiskRegister'], isTrue);
       expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);

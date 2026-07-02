@@ -13,6 +13,7 @@ import 'business_use_case_brief_builder.dart';
 import 'change_summary_diff_report_builder.dart';
 import 'chart_artifact_renderer.dart';
 import 'diagram_artifact_renderer.dart';
+import 'docx_artifact_inspector.dart';
 import 'docx_artifact_renderer.dart';
 import 'evidence_pack_builder.dart';
 import 'implementation_plan_artifact_builder.dart';
@@ -32,6 +33,7 @@ class GeneratedArtifactWriter {
   final PdfArtifactRenderer pdfRenderer;
   final PdfArtifactInspector pdfInspector;
   final PowerPointArtifactInspector powerPointInspector;
+  final DocxArtifactInspector docxInspector;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
@@ -53,6 +55,7 @@ class GeneratedArtifactWriter {
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.pdfInspector = const PdfArtifactInspector(),
     this.powerPointInspector = const PowerPointArtifactInspector(),
+    this.docxInspector = const DocxArtifactInspector(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
@@ -388,6 +391,7 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.docx) {
       final bytes = docxRenderer.render(documentForOutput);
+      final inspection = docxInspector.inspect(bytes);
       final businessUseCase = businessUseCaseBuilder.matches(prompt);
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final evidencePack = evidencePackBuilder.matches(prompt);
@@ -417,6 +421,7 @@ class GeneratedArtifactWriter {
         metadata: {
           ...documentForOutput.metadata,
           ...docxRenderer.metadataFor(documentForOutput),
+          ...inspection.toMetadata(),
         },
       );
     }
