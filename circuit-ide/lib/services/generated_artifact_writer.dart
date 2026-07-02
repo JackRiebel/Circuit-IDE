@@ -404,7 +404,7 @@ class GeneratedArtifactWriter {
         extension: 'docx',
         bytes: bytes,
         summary: businessUseCase
-            ? 'Created a business use case brief with executive decision snapshot, prioritized use cases, value metrics, solution mapping, account motion, objection handling, next steps, assumptions, and sources.'
+            ? 'Created a business use case brief with executive decision snapshot, readiness scorecard, prioritized use cases, value metrics, solution mapping, account motion, objection handling, next steps, assumptions, and sources.'
             : architectureReview
             ? 'Created an architecture review pack with findings matrix, risk register, recommendation roadmap, validation checklist, decisions, assumptions, and sources.'
             : evidencePack

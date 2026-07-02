@@ -1717,10 +1717,17 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(artifact.fileName, endsWith('.docx'));
     expect(artifact.summary, contains('business use case brief'));
     expect(artifact.summary, contains('executive decision snapshot'));
+    expect(artifact.summary, contains('readiness scorecard'));
     expect(artifact.summary, contains('solution mapping'));
     expect(artifact.summary, contains('account motion'));
     expect(artifact.summary, contains('objection handling'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(9));
+    expect(artifact.metadata['hasBusinessCaseReadinessScorecard'], isTrue);
+    expect(artifact.metadata['businessCaseReadinessScorecardCount'], 2);
+    expect(
+      artifact.metadata['businessCaseExecutiveReadiness'],
+      contains('Discovery ready'),
+    );
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -1737,6 +1744,7 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Customer Discovery Questions'));
     expect(packageText, contains('Value And Impact'));
     expect(packageText, contains('Executive Decision Snapshot'));
+    expect(packageText, contains('Business Case Readiness Scorecard'));
     expect(packageText, contains('Use Case Prioritization Matrix'));
     expect(packageText, contains('Value Metrics Plan'));
     expect(packageText, contains('Solution Mapping'));
@@ -1748,6 +1756,9 @@ Acme needs an executive-ready brief that connects business signals to prioritize
     expect(packageText, contains('Stakeholder Readout'));
     expect(packageText, contains('Evidence Confidence Matrix'));
     expect(packageText, contains('Approval Gates'));
+    expect(packageText, contains('Business value signal'));
+    expect(packageText, contains('Overall readiness'));
+    expect(packageText, contains('Review ready after baseline confirmation'));
     expect(packageText, contains('Predictive maintenance telemetry'));
     expect(packageText, contains('Operations leader / plant manager'));
     expect(packageText, contains('Business sponsor and technical owner'));
@@ -3980,6 +3991,14 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
       GeneratedArtifactKind.chart,
       GeneratedArtifactKind.pdf,
     ]);
+    final docxArtifact = package.artifacts.firstWhere(
+      (artifact) => artifact.kind == GeneratedArtifactKind.docx,
+    );
+    expect(docxArtifact.metadata['hasBusinessCaseReadinessScorecard'], isTrue);
+    expect(
+      docxArtifact.metadata['businessCaseExecutiveReadiness'],
+      isA<String>(),
+    );
     expect(package.artifacts.map((artifact) => artifact.id).toSet().length, 5);
     for (final artifact in package.artifacts) {
       expect(artifact.status, GeneratedArtifactStatus.ready);

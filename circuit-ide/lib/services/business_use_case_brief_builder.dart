@@ -213,14 +213,16 @@ class BusinessUseCaseBriefBuilder {
             'Attach public research, customer-provided data, checked dates, and confidence notes for every material claim.',
       ),
     ];
-    final tables = [
-      ..._businessBriefTables(
-        prompt: prompt,
-        document: document,
-        sections: sections,
-      ),
-      ...document.tables,
-    ];
+    final businessTables = _businessBriefTables(
+      prompt: prompt,
+      document: document,
+      sections: sections,
+    );
+    final readinessRows = _tableRows(
+      businessTables,
+      'Business Case Readiness Scorecard',
+    ).skip(1).toList(growable: false);
+    final tables = [...businessTables, ...document.tables];
 
     return ArtifactDocument(
       title: _title(document.title, prompt),
@@ -234,6 +236,23 @@ class BusinessUseCaseBriefBuilder {
         'artifactTemplate': 'business_use_case_brief',
         'sourcePrompt': prompt,
         'businessBriefTables': tables.length,
+        'hasBusinessCaseReadinessScorecard': readinessRows.isNotEmpty,
+        'businessCaseReadinessScorecardCount': readinessRows.length,
+        'businessCaseReviewReadyCount': _readinessCount(
+          readinessRows,
+          'Review ready',
+        ),
+        'businessCaseDiscoveryReadyCount': _readinessCount(
+          readinessRows,
+          'Discovery ready',
+        ),
+        'businessCaseNeedsEvidenceCount': _readinessCount(
+          readinessRows,
+          'Evidence needed',
+        ),
+        'businessCaseExecutiveReadiness': _businessCaseExecutiveReadiness(
+          readinessRows,
+        ),
       },
     );
   }
@@ -304,6 +323,21 @@ class BusinessUseCaseBriefBuilder {
             'Required proof',
           ],
           ..._executiveDecisionRows(sections),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Business Case Readiness Scorecard',
+        rows: [
+          const [
+            'Use case',
+            'Business value signal',
+            'Feasibility posture',
+            'Evidence confidence',
+            'Stakeholder owner',
+            'Overall readiness',
+            'Next decision gate',
+          ],
+          ..._businessCaseReadinessRows(document, sections),
         ],
       ),
       ArtifactTable(
@@ -483,6 +517,62 @@ class BusinessUseCaseBriefBuilder {
         'Evidence pack, stakeholder owner, implementation dependency list, and next-meeting ask.',
       ],
     ];
+  }
+
+  List<List<String>> _businessCaseReadinessRows(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final useCases = _bulletsFor(sections, const [
+      'priority use cases',
+      'use cases',
+      'opportunities',
+    ]);
+    final pains = _bulletsFor(sections, const [
+      'pain',
+      'signals',
+      'challenges',
+      'current state',
+    ]);
+    final valueSignals = _bulletsFor(sections, const [
+      'value',
+      'impact',
+      'roi',
+      'benefits',
+      'outcomes',
+    ]);
+    final candidates = useCases.isEmpty
+        ? const ['Define a customer-validated business use case.']
+        : useCases.take(8);
+    final rows = <List<String>>[];
+    var index = 0;
+    for (final useCase in candidates) {
+      rows.add([
+        useCase,
+        _businessValueSignal(
+          useCase: useCase,
+          pain: pains.isEmpty ? '' : pains[index % pains.length],
+          value: valueSignals.isEmpty
+              ? ''
+              : valueSignals[index % valueSignals.length],
+        ),
+        _businessFeasibilityPosture(useCase),
+        document.citations.isEmpty
+            ? 'Low - source evidence missing'
+            : 'Medium - source evidence present; verify freshness and fit',
+        _personaFor(useCase),
+        _businessReadinessStatus(
+          hasSources: document.citations.isNotEmpty,
+          useCase: useCase,
+        ),
+        _businessNextGate(
+          hasSources: document.citations.isNotEmpty,
+          useCase: useCase,
+        ),
+      ]);
+      index++;
+    }
+    return rows;
   }
 
   List<List<String>> _solutionRows(List<ArtifactSection> sections) {
@@ -736,6 +826,95 @@ class BusinessUseCaseBriefBuilder {
         'Decision-ready roadmap and next-step proposal',
       ],
     ];
+  }
+
+  List<List<String>> _tableRows(List<ArtifactTable> tables, String title) {
+    for (final table in tables) {
+      if (table.title == title) return table.rows;
+    }
+    return const [];
+  }
+
+  int _readinessCount(List<List<String>> rows, String needle) {
+    final normalizedNeedle = needle.toLowerCase();
+    return rows.where((row) {
+      return row.any((cell) => cell.toLowerCase().contains(normalizedNeedle));
+    }).length;
+  }
+
+  String _businessCaseExecutiveReadiness(List<List<String>> rows) {
+    if (rows.isEmpty) return 'Needs discovery - no scored use cases';
+    final reviewReady = _readinessCount(rows, 'Review ready');
+    final discoveryReady = _readinessCount(rows, 'Discovery ready');
+    final evidenceNeeded = _readinessCount(rows, 'Evidence needed');
+    if (reviewReady == rows.length) {
+      return 'Review ready - every use case has evidence and owner posture';
+    }
+    if (reviewReady > 0 || discoveryReady > 0) {
+      return 'Discovery ready - validate evidence gaps before executive handoff';
+    }
+    if (evidenceNeeded > 0) {
+      return 'Evidence needed - attach sources and customer baselines';
+    }
+    return 'Needs discovery - scorecard requires customer confirmation';
+  }
+
+  String _businessValueSignal({
+    required String useCase,
+    required String pain,
+    required String value,
+  }) {
+    final combined = '$useCase $pain $value'.toLowerCase();
+    if (RegExp(
+      r'\b(revenue|margin|cost|downtime|risk|security|compliance|shipment|production|outage|incident)\b',
+    ).hasMatch(combined)) {
+      return 'High - directly tied to financial, risk, or operational impact';
+    }
+    if (RegExp(
+      r'\b(efficiency|visibility|automation|time|adoption)\b',
+    ).hasMatch(combined)) {
+      return 'Medium - measurable operational improvement likely';
+    }
+    return 'Unproven - quantify value before customer-facing use';
+  }
+
+  String _businessFeasibilityPosture(String useCase) {
+    final lower = useCase.toLowerCase();
+    if (RegExp(
+      r'\b(data|integration|telemetry|automation|ai|workflow)\b',
+    ).hasMatch(lower)) {
+      return 'Medium - confirm data ownership, integrations, and workflow adoption';
+    }
+    if (RegExp(
+      r'\b(network|wan|security|access|connectivity|wireless)\b',
+    ).hasMatch(lower)) {
+      return 'Medium/High - validate current environment and rollout scope';
+    }
+    return 'Medium - validate owner, scope, and delivery complexity';
+  }
+
+  String _businessReadinessStatus({
+    required bool hasSources,
+    required String useCase,
+  }) {
+    if (!hasSources) return 'Evidence needed before executive handoff';
+    final lower = useCase.toLowerCase();
+    if (RegExp(
+      r'\b(downtime|maintenance|risk|security|production|revenue|cost)\b',
+    ).hasMatch(lower)) {
+      return 'Review ready after baseline confirmation';
+    }
+    return 'Discovery ready with sourced context';
+  }
+
+  String _businessNextGate({
+    required bool hasSources,
+    required String useCase,
+  }) {
+    if (!hasSources) {
+      return 'Attach public/customer source evidence and checked dates.';
+    }
+    return 'Confirm baseline KPI, accountable owner, decision timeline, and proof artifact for ${_shorten(useCase, 56)}.';
   }
 
   List<String> _bulletsFor(List<ArtifactSection> sections, List<String> terms) {
