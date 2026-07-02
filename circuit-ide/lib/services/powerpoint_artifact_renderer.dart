@@ -160,6 +160,12 @@ class PowerPointArtifactRenderer {
         'Customer handoff readiness matrix',
         'Visible readiness/evidence status strip',
         'Closing decision ask',
+        if (slideTypeCounts.containsKey(_DeckSlideKind.chart.label))
+          'Chart summary slides',
+        if (slideTypeCounts.containsKey(_DeckSlideKind.diagram.label))
+          'Diagram source slides',
+        if (slideTypeCounts.containsKey(_DeckSlideKind.sourceData.label))
+          'Source data register slides',
         if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
           'Section divider slides',
         if (sectionContinuationSlideCount > 0) 'Section continuation slides',
@@ -232,6 +238,16 @@ class PowerPointArtifactRenderer {
           slideTypeCounts[_DeckSlideKind.deliveryBrief.label] ?? 0,
       'tableCount': document.tables.length,
       'tableSlideCount': slideTypeCounts[_DeckSlideKind.table.label] ?? 0,
+      'chartCount': document.charts.length,
+      'chartSlideCount': slideTypeCounts[_DeckSlideKind.chart.label] ?? 0,
+      'diagramCount': document.diagrams.length,
+      'diagramSlideCount': slideTypeCounts[_DeckSlideKind.diagram.label] ?? 0,
+      'sourceDataCount': document.sourceData.length,
+      'sourceDataSlideCount':
+          slideTypeCounts[_DeckSlideKind.sourceData.label] ?? 0,
+      'appendixCount': document.appendices.length,
+      'appendixDetailSlideCount':
+          slideTypeCounts[_DeckSlideKind.appendixDetail.label] ?? 0,
       'decisionMatrixSlideCount':
           slideTypeCounts[_DeckSlideKind.decisionMatrix.label] ?? 0,
       'stakeholderAlignmentSlideCount':
@@ -433,6 +449,18 @@ class PowerPointArtifactRenderer {
       for (final table in document.tables.take(_maxTablesInDeck)) {
         slides.addAll(_tableSlidesFor(table));
       }
+    }
+    if (document.charts.isNotEmpty) {
+      slides.addAll(_chartSlidesFor(document.charts.take(6)));
+    }
+    if (document.diagrams.isNotEmpty) {
+      slides.addAll(_diagramSlidesFor(document.diagrams.take(4)));
+    }
+    if (document.sourceData.isNotEmpty) {
+      slides.addAll(_sourceDataSlidesFor(document.sourceData.take(4)));
+    }
+    if (document.appendices.isNotEmpty) {
+      slides.addAll(_appendixDetailSlidesFor(document.appendices.take(4)));
     }
     slides.add(_assumptionsAndSources(document));
     slides.add(_customerHandoffReadiness(document, sections));
@@ -1208,6 +1236,12 @@ class PowerPointArtifactRenderer {
         'Closing ask',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Table slides',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.chart.label))
+        'Chart slides',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.diagram.label))
+        'Diagram source slides',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.sourceData.label))
+        'Source data slides',
       if (_tableContinuationSlideCount(document) > 0)
         'Table continuation slides',
       if (_sectionContinuationSlideCount(document) > 0)
@@ -1253,6 +1287,10 @@ class PowerPointArtifactRenderer {
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Data tables',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.chart.label)) 'Charts',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.diagram.label)) 'Diagrams',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.sourceData.label))
+        'Source data',
       if (slideTypeCounts.containsKey(_DeckSlideKind.sources.label))
         'Assumptions/sources',
       if (slideTypeCounts.containsKey(_DeckSlideKind.handoffReadiness.label))
@@ -1293,7 +1331,11 @@ class PowerPointArtifactRenderer {
         'Confirm evidence, assumptions, visual QA, and sharing gate',
       _DeckSlideKind.closing => 'Close with decision ask',
       _DeckSlideKind.table => 'Preview structured data',
+      _DeckSlideKind.chart => 'Summarize chart-ready signals',
+      _DeckSlideKind.diagram => 'Package editable diagram source',
+      _DeckSlideKind.sourceData => 'Preserve source data context',
       _DeckSlideKind.appendix => 'Package handoff checklist',
+      _DeckSlideKind.appendixDetail => 'Expose appendix detail',
       _DeckSlideKind.sources => 'Document assumptions and sources',
     };
   }
@@ -1630,6 +1672,12 @@ class PowerPointArtifactRenderer {
         '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} included'
       else
         'Supporting data missing',
+      if (document.charts.isNotEmpty)
+        '${document.charts.length} chart signal${document.charts.length == 1 ? '' : 's'} packaged',
+      if (document.diagrams.isNotEmpty)
+        '${document.diagrams.length} diagram source${document.diagrams.length == 1 ? '' : 's'} packaged',
+      if (document.sourceData.isNotEmpty)
+        '${document.sourceData.length} source data artifact${document.sourceData.length == 1 ? '' : 's'} packaged',
       if (document.assumptions.isNotEmpty)
         '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'
       else
@@ -1834,6 +1882,96 @@ class PowerPointArtifactRenderer {
         .where((line) => line.isNotEmpty);
   }
 
+  List<_DeckSlide> _chartSlidesFor(Iterable<ArtifactChart> charts) {
+    return [
+      for (final chart in charts)
+        _DeckSlide(
+          title: chart.title,
+          eyebrow: chart.type == 'unspecified'
+              ? 'Chart summary'
+              : '${_titleCase(chart.type)} chart',
+          kind: _DeckSlideKind.chart,
+          bullets: [
+            if (chart.type != 'unspecified') 'Chart type: ${chart.type}.',
+            if (chart.signals.isEmpty)
+              'No chart signals were extracted; validate the source table before presenting.'
+            else
+              for (final signal in chart.signals.take(6)) signal,
+          ],
+        ),
+    ];
+  }
+
+  List<_DeckSlide> _diagramSlidesFor(Iterable<ArtifactDiagram> diagrams) {
+    return [
+      for (final diagram in diagrams)
+        _DeckSlide(
+          title: diagram.title,
+          eyebrow: '${_titleCase(diagram.syntax)} diagram',
+          kind: _DeckSlideKind.diagram,
+          bullets: [
+            'Diagram syntax: ${diagram.syntax}.',
+            'Use the editable source artifact for detailed review and regeneration.',
+            ...diagram.source
+                .split('\n')
+                .map((line) => line.trim())
+                .where((line) => line.isNotEmpty)
+                .take(5),
+          ],
+        ),
+    ];
+  }
+
+  List<_DeckSlide> _sourceDataSlidesFor(
+    Iterable<ArtifactSourceData> sourceData,
+  ) {
+    return [
+      for (final entry in sourceData)
+        if (entry.rows.isNotEmpty)
+          ..._tableSlidesFor(
+            ArtifactTable(
+              title: 'Source Data: ${entry.title}',
+              rows: entry.rows,
+            ),
+            kind: _DeckSlideKind.sourceData,
+            eyebrow: 'Source data',
+          )
+        else
+          _DeckSlide(
+            title: entry.title,
+            eyebrow: 'Source data',
+            kind: _DeckSlideKind.sourceData,
+            bullets: entry.notes.isEmpty
+                ? const [
+                    'No source-data notes were extracted; attach the data set before final handoff.',
+                  ]
+                : entry.notes.take(7).toList(growable: false),
+          ),
+    ];
+  }
+
+  List<_DeckSlide> _appendixDetailSlidesFor(
+    Iterable<ArtifactAppendix> appendices,
+  ) {
+    return [
+      for (final appendix in appendices)
+        _DeckSlide(
+          title: appendix.title,
+          eyebrow: 'Appendix detail',
+          kind: _DeckSlideKind.appendixDetail,
+          bullets: appendix.bullets.isNotEmpty
+              ? appendix.bullets.take(7).toList(growable: false)
+              : _sentences(appendix.body).take(7).toList(growable: false),
+        ),
+    ];
+  }
+
+  String _titleCase(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return value;
+    return normalized[0].toUpperCase() + normalized.substring(1);
+  }
+
   List<String> _tableBulletsForRows(
     List<String> headers,
     Iterable<List<String>> rows,
@@ -1847,7 +1985,11 @@ class PowerPointArtifactRenderer {
     ];
   }
 
-  List<_DeckSlide> _tableSlidesFor(ArtifactTable table) {
+  List<_DeckSlide> _tableSlidesFor(
+    ArtifactTable table, {
+    _DeckSlideKind kind = _DeckSlideKind.table,
+    String eyebrow = 'Data table',
+  }) {
     if (table.rows.isEmpty) return const [];
     final headers = table.rows.first;
     final dataRows = table.rows.skip(1).toList(growable: false);
@@ -1855,8 +1997,8 @@ class PowerPointArtifactRenderer {
       return [
         _DeckSlide(
           title: table.title,
-          eyebrow: 'Data table',
-          kind: _DeckSlideKind.table,
+          eyebrow: eyebrow,
+          kind: kind,
           bullets: const ['No data rows were provided for this table.'],
           tableRows: [headers],
         ),
@@ -1875,8 +2017,8 @@ class PowerPointArtifactRenderer {
       slides.add(
         _DeckSlide(
           title: title,
-          eyebrow: chunkIndex == 0 ? 'Data table' : 'Data table continuation',
-          kind: _DeckSlideKind.table,
+          eyebrow: chunkIndex == 0 ? eyebrow : '$eyebrow continuation',
+          kind: kind,
           bullets: [
             'Rows ${start + 1}-$end of ${dataRows.length} from ${table.title}.',
             ..._tableBulletsForRows(headers, chunk).take(3),
@@ -2943,7 +3085,11 @@ enum _DeckSlideKind {
   handoffReadiness,
   publishingGate,
   table,
+  chart,
+  diagram,
+  sourceData,
   appendix,
+  appendixDetail,
   sources;
 
   String get label {
@@ -2965,7 +3111,11 @@ enum _DeckSlideKind {
       _DeckSlideKind.handoffReadiness => 'Handoff Readiness',
       _DeckSlideKind.publishingGate => 'Publishing Gate',
       _DeckSlideKind.table => 'Table',
+      _DeckSlideKind.chart => 'Chart',
+      _DeckSlideKind.diagram => 'Diagram',
+      _DeckSlideKind.sourceData => 'Source Data',
       _DeckSlideKind.appendix => 'Appendix',
+      _DeckSlideKind.appendixDetail => 'Appendix Detail',
       _DeckSlideKind.sources => 'Sources',
     };
   }
@@ -3050,7 +3200,11 @@ class _DeckTheme {
       _DeckSlideKind.handoffReadiness => '7FB7B2',
       _DeckSlideKind.publishingGate => 'C7A77B',
       _DeckSlideKind.table => 'B48EAD',
+      _DeckSlideKind.chart => 'A7C080',
+      _DeckSlideKind.diagram => '7A9CC6',
+      _DeckSlideKind.sourceData => 'B48EAD',
       _DeckSlideKind.appendix => '8A8F98',
+      _DeckSlideKind.appendixDetail => '8A8F98',
       _DeckSlideKind.sources => '7A9CC6',
       _DeckSlideKind.content => '7FB7B2',
     };

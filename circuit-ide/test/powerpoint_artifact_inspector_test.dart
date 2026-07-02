@@ -529,4 +529,95 @@ void main() {
     expect(pptxText, contains('points 15-16 of 16'));
     expect(pptxText, contains('Close the customer handoff loop with owners.'));
   });
+
+  test('PowerPoint renderer packages structured artifact blocks as slides', () {
+    const document = ArtifactDocument(
+      title: 'Artifact Workbench Readout',
+      summary: 'Customer-ready package with diagrams, charts, and source data.',
+      sections: [
+        ArtifactSection(
+          title: 'Recommendation',
+          bullets: [
+            'Use the artifact workbench for customer handoff packages.',
+          ],
+        ),
+      ],
+      tables: [
+        ArtifactTable(
+          title: 'Delivery Matrix',
+          rows: [
+            ['Artifact', 'Status'],
+            ['Deck', 'Ready'],
+            ['Report', 'Ready'],
+          ],
+        ),
+      ],
+      charts: [
+        ArtifactChart(
+          title: 'Delivery Readiness Timeline',
+          type: 'timeline',
+          signals: ['Discovery complete', 'Deck package ready'],
+        ),
+      ],
+      diagrams: [
+        ArtifactDiagram(
+          title: 'Workspace Flow',
+          syntax: 'mermaid',
+          source: 'graph TD\nPrompt --> Artifact\nArtifact --> Drawer',
+        ),
+      ],
+      sourceData: [
+        ArtifactSourceData(
+          title: 'Customer Inventory',
+          rows: [
+            ['Site', 'Devices'],
+            ['HQ', '12'],
+          ],
+        ),
+      ],
+      appendices: [
+        ArtifactAppendix(
+          title: 'Appendix: Raw Notes',
+          bullets: ['Validate source workbook before external handoff.'],
+        ),
+      ],
+      assumptions: ['Customer validates final device counts.'],
+      citations: ['Customer workshop notes.'],
+    );
+
+    final bytes = const PowerPointArtifactRenderer().render(document);
+    final inspection = const PowerPointArtifactInspector().inspect(bytes);
+    final metadata = const PowerPointArtifactRenderer().metadataFor(document);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(
+      inspection.slideTypes,
+      containsAll(['Chart', 'Diagram', 'Source Data', 'Appendix Detail']),
+    );
+    expect(metadata['chartCount'], 1);
+    expect(metadata['chartSlideCount'], 1);
+    expect(metadata['diagramCount'], 1);
+    expect(metadata['diagramSlideCount'], 1);
+    expect(metadata['sourceDataCount'], 1);
+    expect(metadata['sourceDataSlideCount'], 1);
+    expect(metadata['appendixCount'], 1);
+    expect(metadata['appendixDetailSlideCount'], 1);
+    expect(metadata['slideFamilies'], containsAll(['Charts', 'Diagrams']));
+    expect(
+      metadata['layoutFeatures'],
+      containsAll([
+        'Chart summary slides',
+        'Diagram source slides',
+        'Source data register slides',
+      ]),
+    );
+    expect(
+      metadata['deliveryReadinessDrivers'],
+      containsAll([
+        '1 chart signal packaged',
+        '1 diagram source packaged',
+        '1 source data artifact packaged',
+      ]),
+    );
+  });
 }
