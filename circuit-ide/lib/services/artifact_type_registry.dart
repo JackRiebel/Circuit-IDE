@@ -499,6 +499,13 @@ class ArtifactTypeRegistry {
         }
         return companionDescriptor.packageKinds;
       }
+      final requestedKinds = _explicitlyRequestedKinds(normalized);
+      final explicitKinds = companionDescriptor.packageKinds
+          .where(requestedKinds.contains)
+          .toList(growable: false);
+      if (explicitKinds.length > 1) {
+        return explicitKinds;
+      }
       final explicitKind = _explicitlyRequestedKind(normalized);
       if (explicitKind != null &&
           companionDescriptor.packageKinds.contains(explicitKind)) {
@@ -615,37 +622,53 @@ bool _descriptorDefaultsToPackage(
   return false;
 }
 
+List<GeneratedArtifactKind> _explicitlyRequestedKinds(String normalized) {
+  final kinds = <GeneratedArtifactKind>[];
+
+  void addIf(bool condition, GeneratedArtifactKind kind) {
+    if (condition && !kinds.contains(kind)) kinds.add(kind);
+  }
+
+  addIf(RegExp(r'\b(pdf)\b').hasMatch(normalized), GeneratedArtifactKind.pdf);
+  addIf(RegExp(r'\b(json)\b').hasMatch(normalized), GeneratedArtifactKind.json);
+  addIf(
+    RegExp(r'\b(excel|xlsx|spreadsheet|workbook)\b').hasMatch(normalized),
+    GeneratedArtifactKind.excel,
+  );
+  addIf(
+    RegExp(r'\b(csv|comma[- ]separated)\b').hasMatch(normalized),
+    GeneratedArtifactKind.csv,
+  );
+  addIf(
+    RegExp(
+      r'\b(powerpoint|pptx|presentation|slide deck|deck|slides?)\b',
+    ).hasMatch(normalized),
+    GeneratedArtifactKind.powerPoint,
+  );
+  addIf(
+    RegExp(
+      r'\b(docx|word document|word report|word doc|report|brief)\b',
+    ).hasMatch(normalized),
+    GeneratedArtifactKind.docx,
+  );
+  addIf(
+    RegExp(r'\b(diagram|mermaid)\b').hasMatch(normalized),
+    GeneratedArtifactKind.diagram,
+  );
+  addIf(
+    RegExp(
+      r'\b(chart|charts|graph|graphs|visualization)\b',
+    ).hasMatch(normalized),
+    GeneratedArtifactKind.chart,
+  );
+  addIf(
+    RegExp(r'\b(markdown|md|readme)\b').hasMatch(normalized),
+    GeneratedArtifactKind.markdown,
+  );
+  return kinds;
+}
+
 GeneratedArtifactKind? _explicitlyRequestedKind(String normalized) {
-  if (RegExp(r'\b(pdf)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.pdf;
-  }
-  if (RegExp(r'\b(json)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.json;
-  }
-  if (RegExp(r'\b(excel|xlsx|spreadsheet|workbook)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.excel;
-  }
-  if (RegExp(r'\b(csv|comma[- ]separated)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.csv;
-  }
-  if (RegExp(
-    r'\b(powerpoint|pptx|presentation|slide deck|deck|slides?)\b',
-  ).hasMatch(normalized)) {
-    return GeneratedArtifactKind.powerPoint;
-  }
-  if (RegExp(r'\b(docx|word document)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.docx;
-  }
-  if (RegExp(r'\b(diagram|mermaid|topology)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.diagram;
-  }
-  if (RegExp(
-    r'\b(chart|charts|graph|graphs|visualization)\b',
-  ).hasMatch(normalized)) {
-    return GeneratedArtifactKind.chart;
-  }
-  if (RegExp(r'\b(markdown|md|readme)\b').hasMatch(normalized)) {
-    return GeneratedArtifactKind.markdown;
-  }
-  return null;
+  final kinds = _explicitlyRequestedKinds(normalized);
+  return kinds.isEmpty ? null : kinds.first;
 }

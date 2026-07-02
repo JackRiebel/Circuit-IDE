@@ -292,6 +292,16 @@ graph LR
             ],
           ),
           _ArtifactPackageSmokeCase(
+            name: 'proposal deck and PDF report package',
+            prompt: 'create a deck and PDF report for this customer proposal',
+            expectedLabel: 'architecture review package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
             name: 'implementation plan package',
             prompt: 'create an implementation plan package for this project',
             expectedLabel: 'implementation plan package',

@@ -2824,6 +2824,24 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       );
       expect(proposalDeck.descriptor?.id, 'powerpoint_deck');
       expect(proposalDeck.targetKinds, [GeneratedArtifactKind.powerPoint]);
+
+      final proposalDeckAndPdf = registry.routeForPrompt(
+        'create a deck and PDF report for this customer proposal',
+      );
+      expect(proposalDeckAndPdf.descriptor?.id, 'powerpoint_deck');
+      expect(proposalDeckAndPdf.targetKinds, [
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ]);
+
+      final implementationPlanReadout = registry.routeForPrompt(
+        'create an implementation plan Word report and PowerPoint deck',
+      );
+      expect(implementationPlanReadout.descriptor?.id, 'implementation_plan');
+      expect(implementationPlanReadout.targetKinds, [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+      ]);
     },
   );
 
