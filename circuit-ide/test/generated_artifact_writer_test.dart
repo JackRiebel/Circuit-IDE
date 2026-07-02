@@ -2628,6 +2628,109 @@ Checkpoint:
     expect(text, contains('Verification Result Matrix'));
   });
 
+  test('change summary package creates DOCX deck and PDF artifacts', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-change-summary-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a post-work change summary package',
+          content: '''
+# CircuitCode Artifact Workspace Change Summary
+
+Implemented artifact package improvements and refreshed the desktop app.
+
+## Files changed
+- lib/services/artifact_type_registry.dart (+4 -1)
+- lib/services/generated_artifact_writer.dart (+3 -0)
+- test/generated_artifact_writer_test.dart (+45 -0)
+
+## Verification
+- flutter analyze passed
+- git diff --check passed
+- flutter test passed
+- flutter build macos passed
+
+## Commands run
+- flutter analyze
+- flutter test
+- flutter build macos
+
+## Checkpoint
+- Commit f83dcdc Add evidence pack deck companion
+
+## Risks
+- Run one manual artifact smoke test before broad release.
+
+## Next steps
+- Continue expanding artifact packages one renderer at a time.
+
+## Sources
+- Local git diff
+- Test output
+''',
+          turnId: 'turn-change-summary-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'change summary package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
+    expect(package.primary!.metadata['expectedArtifactKinds'], [
+      'Word',
+      'PowerPoint',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['producedArtifactKinds'], [
+      'Word',
+      'PowerPoint',
+      'PDF',
+    ]);
+    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
+    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Report outline', 'Slide outline', 'PDF outline']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      containsAll([
+        'Changed file inventory is present',
+        'Change readout deck renders when packaged',
+        'Deck readiness metadata renders',
+        'PDF header parses',
+      ]),
+    );
+    final manifestText = File(package.primary!.filePath).readAsStringSync();
+    expect(
+      manifestText,
+      contains('| Word, PowerPoint, PDF | Word, PowerPoint, PDF | None |'),
+    );
+    final report = package.artifacts[1];
+    final deck = package.artifacts[2];
+    final pdf = package.artifacts[3];
+    expect(report.fileName, endsWith('.docx'));
+    expect(deck.fileName, endsWith('.pptx'));
+    expect(pdf.fileName, endsWith('.pdf'));
+    expect(deck.summary, contains('change summary PowerPoint deck'));
+    expect(deck.metadata['artifactTemplate'], 'change_summary_diff_report');
+    expect(deck.metadata['slideCount'], greaterThanOrEqualTo(3));
+    expect(
+      String.fromCharCodes(File(pdf.filePath).readAsBytesSync().take(8)),
+      startsWith('%PDF-1.'),
+    );
+  });
+
   test(
     'topology package creates diagram, deck, and PDF brief artifacts',
     () async {
@@ -2781,6 +2884,20 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(
       registry.descriptorForId('business_use_case_brief')?.verificationChecks,
       contains('PDF executive handoff renders when requested'),
+    );
+    expect(
+      registry.descriptorForId('change_summary_diff_report')?.packageKinds,
+      [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
+    );
+    expect(
+      registry
+          .descriptorForId('change_summary_diff_report')
+          ?.verificationChecks,
+      contains('Change readout deck renders when packaged'),
     );
     expect(
       registry.descriptorForPrompt('make a topology diagram')?.id,

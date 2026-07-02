@@ -308,14 +308,20 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.pdf,
+        GeneratedArtifactKind.powerPoint,
       ],
       useCases: ['post-work summary', 'verification'],
-      packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.pdf],
+      packageKinds: [
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Change summary',
       verificationChecks: [
         'Changed file inventory is present',
         'Verification metadata persists',
         'Diff summary preview renders',
+        'Change readout deck renders when packaged',
       ],
     ),
     ArtifactTypeDescriptor(

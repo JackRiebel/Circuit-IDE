@@ -469,6 +469,7 @@ Short executive summary for the customer.
             expectedKinds: [
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
             ],
           ),
@@ -687,6 +688,7 @@ Short executive summary for the customer.
             prompt: 'create a post-work change summary package',
             expectedTargets: [
               GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
             ],
           ),
