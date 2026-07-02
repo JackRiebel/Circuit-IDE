@@ -197,6 +197,135 @@ graph LR
     );
 
     test(
+      'release prompts create Excel and PowerPoint artifacts with drawer metadata',
+      () async {
+        final root = await Directory.systemTemp.createTemp(
+          'circuit-artifact-release-smoke-',
+        );
+        addTearDown(() => root.delete(recursive: true));
+
+        const cases = <_ReleaseArtifactSmokeCase>[
+          _ReleaseArtifactSmokeCase(
+            name: 'exact Excel file prompt',
+            prompt: 'Create an Excel file from this inventory table.',
+            content: '''
+| Product SKU | Qty | Site | Notes |
+| --- | ---: | --- | --- |
+| C9300-48P | 6 | Campus | Access switching |
+| CW9176I | 90 | Campus | Wi-Fi 7 APs |
+| MX250 | 2 | Edge | Warm spare pair |
+''',
+            kind: GeneratedArtifactKind.excel,
+            extension: '.xlsx',
+            descriptorId: 'excel_workbook',
+            descriptorLabel: 'Excel Workbook',
+            previewSurface: 'Workbook preview',
+            packageNeedles: ['xl/workbook.xml', 'xl/worksheets/sheet1.xml'],
+          ),
+          _ReleaseArtifactSmokeCase(
+            name: 'exact PowerPoint deck prompt',
+            prompt: 'Create a PowerPoint deck from this architecture brief.',
+            content: '''
+# Campus Refresh Executive Deck
+
+Short executive summary for the customer.
+
+## Goals
+- Validate Wi-Fi 7 PoE and multigig access requirements.
+- Summarize architecture risks and recommendations.
+
+## Recommendations
+- Use current portfolio validation before selecting replacement models.
+- Confirm WAN, HA, and lifecycle assumptions before customer handoff.
+
+## Assumptions
+- Inventory counts are customer-provided and require final validation.
+
+## Sources
+- Customer workshop notes - checked 2026-07-01.
+''',
+            kind: GeneratedArtifactKind.powerPoint,
+            extension: '.pptx',
+            descriptorId: 'powerpoint_deck',
+            descriptorLabel: 'PowerPoint Deck',
+            previewSurface: 'Slide outline',
+            packageNeedles: ['ppt/presentation.xml', 'ppt/slides/slide1.xml'],
+          ),
+        ];
+
+        for (final smokeCase in cases) {
+          final artifact = await const GeneratedArtifactWriter()
+              .writeFromAssistantOutput(
+                rootPath: root.path,
+                prompt: smokeCase.prompt,
+                content: smokeCase.content,
+                turnId: 'turn-release-${smokeCase.kind.name}',
+                threadId: 'thread-release-smoke',
+                requestId: 'request-release-smoke',
+              );
+
+          expect(artifact, isNotNull, reason: smokeCase.name);
+          expect(artifact!.kind, smokeCase.kind, reason: smokeCase.name);
+          expect(artifact.status, GeneratedArtifactStatus.ready);
+          expect(artifact.fileName, endsWith(smokeCase.extension));
+          expect(artifact.summary, isNot(contains('| Product SKU |')));
+          expect(artifact.summary, isNot(contains('```')));
+          expect(artifact.previewRows, isNotEmpty, reason: smokeCase.name);
+          expect(
+            artifact.metadata['artifactDescriptorId'],
+            smokeCase.descriptorId,
+          );
+          expect(
+            artifact.metadata['artifactDescriptorLabel'],
+            smokeCase.descriptorLabel,
+          );
+          expect(
+            artifact.metadata['artifactPreviewSurface'],
+            smokeCase.previewSurface,
+          );
+          expect(
+            artifact.metadata['artifactDrawerActions'],
+            containsAll(['Open', 'Reveal in Finder', 'Copy path', 'Review']),
+            reason: smokeCase.name,
+          );
+          expect(
+            artifact.metadata['artifactProducedKind'],
+            smokeCase.kind.name,
+          );
+
+          final file = File(artifact.filePath);
+          expect(file.existsSync(), isTrue, reason: smokeCase.name);
+          expect(
+            file.path.startsWith(
+              '${root.path}${Platform.pathSeparator}outputs',
+            ),
+            isTrue,
+            reason: smokeCase.name,
+          );
+          final packageText = String.fromCharCodes(file.readAsBytesSync());
+          for (final needle in smokeCase.packageNeedles) {
+            expect(packageText, contains(needle), reason: smokeCase.name);
+          }
+
+          final sourceArtifact = artifact.toSourceArtifact();
+          expect(sourceArtifact.title, artifact.fileName);
+          expect(sourceArtifact.subtitle, contains(artifact.typeLabel));
+          expect(sourceArtifact.filePath, artifact.filePath);
+          final restored = GeneratedArtifact.fromSourceArtifact(sourceArtifact);
+          expect(restored, isNotNull, reason: smokeCase.name);
+          expect(
+            restored!.metadata['artifactDescriptorId'],
+            smokeCase.descriptorId,
+          );
+          expect(
+            restored.metadata['artifactPreviewSurface'],
+            smokeCase.previewSurface,
+          );
+        }
+      },
+    );
+
+    test(
       'creates enterprise artifact packages with persisted metadata',
       () async {
         final root = await Directory.systemTemp.createTemp(
@@ -643,6 +772,30 @@ class _ArtifactPackageSmokeCase {
     required this.expectedLabel,
     required this.expectedKinds,
     this.content,
+  });
+}
+
+class _ReleaseArtifactSmokeCase {
+  final String name;
+  final String prompt;
+  final String content;
+  final GeneratedArtifactKind kind;
+  final String extension;
+  final String descriptorId;
+  final String descriptorLabel;
+  final String previewSurface;
+  final List<String> packageNeedles;
+
+  const _ReleaseArtifactSmokeCase({
+    required this.name,
+    required this.prompt,
+    required this.content,
+    required this.kind,
+    required this.extension,
+    required this.descriptorId,
+    required this.descriptorLabel,
+    required this.previewSurface,
+    required this.packageNeedles,
   });
 }
 
