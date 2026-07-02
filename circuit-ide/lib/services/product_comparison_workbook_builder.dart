@@ -146,6 +146,21 @@ class ProductComparisonWorkbookBuilder {
         ],
       ),
       WorkbookTable(
+        name: 'Must-Have Compliance',
+        rows: [
+          const [
+            'Product / Model',
+            'Passed gates',
+            'At-risk gates',
+            'Needs validation',
+            'Compliance Score',
+            'Recommendation Posture',
+            'Next Evidence',
+          ],
+          ..._mustHaveComplianceRows(profile),
+        ],
+      ),
+      WorkbookTable(
         name: 'Source Confidence',
         rows: [
           const [
@@ -342,6 +357,10 @@ class ProductComparisonWorkbookBuilder {
       tables,
       'Hard Gate Evaluation',
     ).skip(1).toList(growable: false);
+    final mustHaveRows = _rowsFor(
+      tables,
+      'Must-Have Compliance',
+    ).skip(1).toList(growable: false);
     final sourceConfidenceRows = _rowsFor(
       tables,
       'Source Confidence',
@@ -401,6 +420,20 @@ class ProductComparisonWorkbookBuilder {
       'hardGateEvaluationCount': hardGateRows.length,
       'atRiskGateCount': atRiskGateCount,
       'needsValidationGateCount': needsValidationGateCount,
+      'mustHaveComplianceCount': mustHaveRows.length,
+      'mustHaveEligibleCandidateCount': _mustHavePostureCount(
+        mustHaveRows,
+        'Eligible',
+      ),
+      'mustHaveBlockedCandidateCount': _mustHavePostureCount(
+        mustHaveRows,
+        'Blocked',
+      ),
+      'mustHaveNeedsValidationCandidateCount': _mustHavePostureCount(
+        mustHaveRows,
+        'Needs validation',
+      ),
+      'mustHaveComplianceSummary': _mustHaveComplianceSummary(mustHaveRows),
       'sourceConfidenceCount': sourceConfidenceRows.length,
       'shortlistCount': shortlistRows.length,
       'validationCheckCount': validationRows.length,
@@ -427,6 +460,7 @@ class ProductComparisonWorkbookBuilder {
       'comparisonPublishingMetadata': _stringRows(publishingRows),
       'comparisonPublishingMetadataCount': publishingRows.length,
       'hasComparisonQualityManifest': true,
+      'hasMustHaveComplianceScorecard': mustHaveRows.isNotEmpty,
       'hasComparisonEvidencePolicy': evidencePolicyRows.isNotEmpty,
       'hasComparisonVisualVerificationChecklist': visualQaRows.isNotEmpty,
       'hasComparisonPublishingMetadata': publishingRows.isNotEmpty,
@@ -826,6 +860,82 @@ class ProductComparisonWorkbookBuilder {
     return rows;
   }
 
+  List<List<String>> _mustHaveComplianceRows(_ComparisonProfile profile) {
+    final rowsByProduct = <String, List<List<String>>>{};
+    for (final row in _hardGateRows(profile)) {
+      if (row.isEmpty) continue;
+      rowsByProduct.putIfAbsent(row.first, () => <List<String>>[]).add(row);
+    }
+    return rowsByProduct.entries
+        .map((entry) {
+          final rows = entry.value;
+          final passed = rows.where(_isGatePass).length;
+          final atRisk = rows.where(_isGateAtRisk).length;
+          final needsValidation = rows.where(_isGateNeedsValidation).length;
+          final total = rows.length;
+          final score = total == 0 ? 0 : ((passed / total) * 100).round();
+          return [
+            entry.key,
+            '$passed of $total',
+            '$atRisk',
+            '$needsValidation',
+            '$score%',
+            _mustHavePosture(
+              atRiskGateCount: atRisk,
+              needsValidationGateCount: needsValidation,
+            ),
+            _mustHaveNextEvidence(rows),
+          ];
+        })
+        .toList(growable: false);
+  }
+
+  static bool _isGatePass(List<String> row) {
+    return row.length > 3 && row[3].toLowerCase().contains('review pass');
+  }
+
+  static bool _isGateAtRisk(List<String> row) {
+    return row.length > 3 && row[3].toLowerCase().contains('at risk');
+  }
+
+  static bool _isGateNeedsValidation(List<String> row) {
+    if (row.length <= 3) return false;
+    final status = row[3].toLowerCase();
+    return status.contains('needs validation') ||
+        status.contains('needs input');
+  }
+
+  static String _mustHavePosture({
+    required int atRiskGateCount,
+    required int needsValidationGateCount,
+  }) {
+    if (atRiskGateCount > 0) {
+      return 'Blocked until hard gates pass';
+    }
+    if (needsValidationGateCount > 0) {
+      return 'Needs validation before recommendation';
+    }
+    return 'Eligible for shortlist review';
+  }
+
+  static String _mustHaveNextEvidence(List<List<String>> rows) {
+    final atRiskGates = rows
+        .where(_isGateAtRisk)
+        .map((row) => row.length > 1 ? row[1] : 'hard gate')
+        .toList(growable: false);
+    if (atRiskGates.isNotEmpty) {
+      return 'Attach official evidence for ${atRiskGates.join(', ')}.';
+    }
+    final needsValidationGates = rows
+        .where(_isGateNeedsValidation)
+        .map((row) => row.length > 1 ? row[1] : 'hard gate')
+        .toList(growable: false);
+    if (needsValidationGates.isNotEmpty) {
+      return 'Validate ${needsValidationGates.join(', ')} before customer handoff.';
+    }
+    return 'Confirm current datasheet and lifecycle evidence before final handoff.';
+  }
+
   List<List<String>> _sourceConfidenceRows(_ComparisonProfile profile) {
     final candidates = profile.candidates.isEmpty
         ? const [
@@ -1087,6 +1197,13 @@ class ProductComparisonWorkbookBuilder {
             : 'Required',
       ],
       [
+        'Review Must-Have Compliance before recommending a model.',
+        'The scorecard rolls hard gates into a per-candidate posture so blocked candidates do not survive on fit score alone.',
+        profile.requiresHighPower || profile.requiresMultiGig
+            ? 'High priority'
+            : 'Required',
+      ],
+      [
         'Check Replacement Cautions before external handoff.',
         'Migration hints and EoX replacement PIDs can be stale or electrically wrong for newer requirements.',
         profile.hasMigrationSignal ? 'High priority' : 'Required',
@@ -1249,6 +1366,21 @@ class ProductComparisonWorkbookBuilder {
         .where((row) => row.any((cell) => cell.trim().isNotEmpty))
         .map((row) => row.where((cell) => cell.trim().isNotEmpty).join(': '))
         .toList(growable: false);
+  }
+
+  int _mustHavePostureCount(List<List<String>> rows, String posture) {
+    final normalizedPosture = posture.toLowerCase();
+    return rows.where((row) {
+      return row.any((cell) => cell.toLowerCase().contains(normalizedPosture));
+    }).length;
+  }
+
+  String _mustHaveComplianceSummary(List<List<String>> rows) {
+    if (rows.isEmpty) return 'No candidate scorecard rows available';
+    final eligible = _mustHavePostureCount(rows, 'Eligible');
+    final blocked = _mustHavePostureCount(rows, 'Blocked');
+    final needsValidation = _mustHavePostureCount(rows, 'Needs validation');
+    return '$eligible eligible, $needsValidation need validation, $blocked blocked candidate${rows.length == 1 ? '' : 's'}';
   }
 
   String _executiveValue(List<List<String>> rows, String signal) {

@@ -516,11 +516,24 @@ Here is the data.
       expect(artifact.fileName, endsWith('.xlsx'));
       expect(artifact.summary, contains('product comparison matrix'));
       expect(artifact.summary, contains('executive decision'));
-      expect(artifact.sheetCount, greaterThanOrEqualTo(21));
+      expect(artifact.sheetCount, greaterThanOrEqualTo(22));
       expect(artifact.metadata['workbookKind'], 'product_comparison');
       expect(artifact.metadata['comparisonQualityManifestVersion'], '1.0');
       expect(artifact.metadata['candidateCount'], 3);
       expect(artifact.metadata['requirementCount'], greaterThanOrEqualTo(2));
+      expect(artifact.metadata['mustHaveComplianceCount'], 3);
+      expect(
+        artifact.metadata['mustHaveBlockedCandidateCount'],
+        greaterThanOrEqualTo(0),
+      );
+      expect(
+        artifact.metadata['mustHaveNeedsValidationCandidateCount'],
+        greaterThanOrEqualTo(0),
+      );
+      expect(
+        artifact.metadata['mustHaveComplianceSummary'],
+        contains('candidate'),
+      );
       expect(artifact.metadata['comparisonReadinessLevel'], isA<String>());
       expect(artifact.metadata['comparisonHandoffStatus'], isA<String>());
       expect(
@@ -543,11 +556,15 @@ Here is the data.
       );
       expect(
         artifact.metadata['comparisonVisualVerificationChecklistCount'],
-        5,
+        6,
       );
       expect(
         artifact.metadata['comparisonVisualVerificationChecklist'],
         anyElement(contains('Open workbook and confirm all comparison sheets')),
+      );
+      expect(
+        artifact.metadata['comparisonVisualVerificationChecklist'],
+        anyElement(contains('Review Must-Have Compliance')),
       );
       expect(artifact.metadata['comparisonPublishingMetadataCount'], 5);
       expect(
@@ -555,6 +572,7 @@ Here is the data.
         anyElement(contains('External handoff')),
       );
       expect(artifact.metadata['hasComparisonQualityManifest'], isTrue);
+      expect(artifact.metadata['hasMustHaveComplianceScorecard'], isTrue);
       expect(artifact.metadata['hasComparisonEvidencePolicy'], isTrue);
       expect(
         artifact.metadata['hasComparisonVisualVerificationChecklist'],
@@ -577,6 +595,7 @@ Here is the data.
       expect(packageText, contains('Requirements'));
       expect(packageText, contains('Requirement Gates'));
       expect(packageText, contains('Hard Gate Evaluation'));
+      expect(packageText, contains('Must-Have Compliance'));
       expect(packageText, contains('Source Confidence'));
       expect(packageText, contains('Scored Shortlist'));
       expect(packageText, contains('Migration Suitability'));
@@ -599,6 +618,8 @@ Here is the data.
       expect(packageText, contains('suggestedMigrationPid'));
       expect(packageText, contains('Power / UPOE'));
       expect(packageText, contains('Multigig access'));
+      expect(packageText, contains('Compliance Score'));
+      expect(packageText, contains('Recommendation Posture'));
       expect(packageText, contains('hard-gate compliance'));
       expect(packageText, contains('Official datasheet'));
       expect(
@@ -614,6 +635,10 @@ Here is the data.
       expect(
         packageText,
         contains('Open workbook and confirm all comparison sheets'),
+      );
+      expect(
+        packageText,
+        contains('Review Must-Have Compliance before recommending a model'),
       );
       expect(packageText, contains('Primary candidate'));
     },
