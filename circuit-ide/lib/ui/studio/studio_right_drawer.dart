@@ -4518,6 +4518,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ),
         if (_metadataString(artifact, 'chartQualityStatus').isNotEmpty)
           ('Quality', _metadataString(artifact, 'chartQualityStatus')),
+        if (_metadataInt(artifact, 'chartHandoffReadinessGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'chartHandoffReadinessReadyCount')}/${_metadataInt(artifact, 'chartHandoffReadinessGateCount')} ready',
+          ),
         if (_metadataBool(artifact, 'hasChartQualityManifest'))
           (
             'Quality manifest',

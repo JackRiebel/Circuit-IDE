@@ -2842,6 +2842,12 @@ VRF Corp - 10.10.0.0/16
       );
       expect(artifact.metadata['hasDecisionMatrix'], isTrue);
       expect(artifact.metadata['decisionActionCount'], greaterThanOrEqualTo(1));
+      expect(artifact.metadata['hasChartHandoffReadinessMatrix'], isTrue);
+      expect(artifact.metadata['chartHandoffReadinessGateCount'], 6);
+      expect(
+        artifact.metadata['chartHandoffReadinessReadyCount'],
+        greaterThanOrEqualTo(1),
+      );
       expect(
         artifact.metadata['decisionOwners'],
         contains('Network architect'),
@@ -2851,6 +2857,8 @@ VRF Corp - 10.10.0.0/16
       expect(svg, startsWith('<svg'));
       expect(svg, contains('PoE Budget Risk'));
       expect(svg, contains('Decision matrix'));
+      expect(svg, contains('Customer handoff readiness'));
+      expect(svg, contains('id="chart-handoff-readiness"'));
       expect(svg, contains('Branch 3'));
       expect(svg, contains('5100'));
     },
@@ -2951,6 +2959,12 @@ VRF Corp - 10.10.0.0/16
     expect(artifact.metadata['chartReadinessScore'], lessThan(100));
     expect(artifact.metadata['chartCount'], 6);
     expect(artifact.metadata['pointCount'], 17);
+    expect(artifact.metadata['hasChartHandoffReadinessMatrix'], isTrue);
+    expect(artifact.metadata['chartHandoffReadinessGateCount'], 6);
+    expect(
+      artifact.metadata['chartHandoffReadinessReadyCount'],
+      greaterThanOrEqualTo(1),
+    );
     expect(artifact.metadata['highRiskCount'], greaterThanOrEqualTo(1));
     expect(artifact.metadata['mediumRiskCount'], greaterThanOrEqualTo(2));
     expect(artifact.metadata['lowRiskCount'], greaterThanOrEqualTo(2));
@@ -3081,6 +3095,7 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('id="chart-recommended-actions"'));
     expect(svg, contains('id="chart-decision-matrix"'));
     expect(svg, contains('id="chart-capacity-thresholds"'));
+    expect(svg, contains('id="chart-handoff-readiness"'));
     expect(svg, contains('id="chart-risk-legend"'));
     expect(svg, contains('&quot;highRiskCount&quot;'));
     expect(svg, contains('&quot;insightCount&quot;'));
@@ -3090,6 +3105,8 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('&quot;criticalDecisionCount&quot;'));
     expect(svg, contains('&quot;capacityThresholdWarningCount&quot;:2'));
     expect(svg, contains('&quot;capacityThresholdBreachCount&quot;:0'));
+    expect(svg, contains('&quot;chartHandoffReadinessMatrix&quot;:'));
+    expect(svg, contains('&quot;chartHandoffReadinessGateCount&quot;:6'));
     expect(svg, contains('&quot;hasPoe&quot;'));
     expect(svg, contains('&quot;hasWan&quot;'));
     expect(svg, contains('&quot;hasLifecycle&quot;'));
@@ -3102,6 +3119,7 @@ VRF Corp - 10.10.0.0/16
     expect(svg, contains('sequencing signals'));
     expect(svg, contains('Decision matrix'));
     expect(svg, contains('Capacity threshold readout'));
+    expect(svg, contains('Customer handoff readiness'));
     expect(svg, contains('Low headroom: Branch 2'));
     expect(svg, contains('Risk ownership'));
     expect(svg, contains('Lifecycle evidence'));

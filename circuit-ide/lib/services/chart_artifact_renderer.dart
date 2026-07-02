@@ -25,6 +25,14 @@ typedef _CapacityThresholdRow = ({
   bool warning,
 });
 
+typedef _ChartHandoffGate = ({
+  String gate,
+  String signal,
+  String status,
+  String ownerAction,
+  bool ready,
+});
+
 class ChartRenderResult {
   final Uint8List bytes;
   final int chartCount;
@@ -70,17 +78,26 @@ class ChartArtifactRenderer {
     final thresholdItems = _thresholdGuidanceItems(charts, profile);
     final capacityRows = _capacityThresholdRows(charts);
     final decisionRows = _decisionActionRows(profile);
-    final decisionQuestions = _decisionQuestionsFor(profile, validationGaps);
-    final handoffChecklist = _handoffChecklistFor(
-      profile: profile,
-      document: document,
-      validationGaps: validationGaps,
-    );
     final riskPosture = _riskPostureFor(profile, validationGaps);
     final readinessScore = _readinessScoreFor(
       profile: profile,
       validationGaps: validationGaps,
       document: document,
+    );
+    final handoffReadinessMatrix = _chartHandoffReadinessMatrixFor(
+      profile: profile,
+      document: document,
+      validationGaps: validationGaps,
+      dataQualityItems: dataQualityItems,
+      capacityRows: capacityRows,
+      decisionRows: decisionRows,
+      chartReadinessLevel: _chartReadinessLevelFor(readinessScore, riskPosture),
+    );
+    final decisionQuestions = _decisionQuestionsFor(profile, validationGaps);
+    final handoffChecklist = _handoffChecklistFor(
+      profile: profile,
+      document: document,
+      validationGaps: validationGaps,
     );
     final reviewerNextSteps = _reviewerNextStepsFor(
       profile: profile,
@@ -138,6 +155,21 @@ class ChartArtifactRenderer {
       'decisionQuestionCount': decisionQuestions.length,
       'handoffChecklist': handoffChecklist,
       'handoffChecklistCount': handoffChecklist.length,
+      'chartHandoffReadinessMatrix': [
+        for (final gate in handoffReadinessMatrix)
+          {
+            'gate': gate.gate,
+            'signal': gate.signal,
+            'status': gate.status,
+            'ownerAction': gate.ownerAction,
+            'ready': gate.ready,
+          },
+      ],
+      'chartHandoffReadinessGateCount': handoffReadinessMatrix.length,
+      'chartHandoffReadinessReadyCount': handoffReadinessMatrix
+          .where((gate) => gate.ready)
+          .length,
+      'hasChartHandoffReadinessMatrix': handoffReadinessMatrix.isNotEmpty,
       'reviewerNextSteps': reviewerNextSteps,
       'reviewerNextStepCount': reviewerNextSteps.length,
       'chartCount': charts.length,
@@ -577,7 +609,7 @@ class ChartArtifactRenderer {
     const chartHeight = 330;
     const chartTop = 330;
     final footerTop = chartTop + (charts.length * chartHeight);
-    final height = math.max(720, footerTop + 510);
+    final height = math.max(720, footerTop + 590);
     const width = 1040;
     final insights = _executiveInsights(profile);
     final gates = _validationGates(profile);
@@ -587,6 +619,7 @@ class ChartArtifactRenderer {
     final capacityRows = _capacityThresholdRows(charts);
     final decisionRows = _decisionActionRows(profile);
     final metadata = _metadataFor(charts, profile, document);
+    final handoffRows = _chartHandoffRowsFromMetadata(metadata);
     final buffer = StringBuffer()
       ..writeln(
         '<svg xmlns="http://www.w3.org/2000/svg" width="$width" height="$height" viewBox="0 0 $width $height" role="img">',
@@ -658,6 +691,12 @@ class ChartArtifactRenderer {
       buffer,
       capacityRows,
       top: footerTop + 404,
+      width: width,
+    );
+    _writeChartHandoffReadinessMatrix(
+      buffer,
+      handoffRows,
+      top: footerTop + 492,
       width: width,
     );
     buffer.writeln('</svg>');
@@ -1071,6 +1110,7 @@ class ChartArtifactRenderer {
       if (thresholdItems.isNotEmpty) 'Threshold guidance embedded',
       if (capacityRows.isNotEmpty) 'Capacity threshold readout embedded',
       if (decisionRows.isNotEmpty) 'Decision matrix embedded',
+      'Customer handoff readiness matrix embedded',
       if (document.assumptions.isNotEmpty) 'Assumptions embedded',
       if (document.citations.isNotEmpty) 'Source citations embedded',
     ];
@@ -1081,6 +1121,7 @@ class ChartArtifactRenderer {
       'SVG has title, description, viewBox, and embedded metadata',
       'Summary, risk legend, chart panels, and point labels are visible',
       'Executive insights, validation gates, actions, and decision matrix are visible',
+      'Customer handoff readiness matrix is visible',
       if (profile.hasPoe || profile.hasWan)
         'Capacity and threshold guidance is visible',
       if (profile.hasPoe || profile.hasWan)
@@ -1135,6 +1176,98 @@ class ChartArtifactRenderer {
       steps.add('Add source evidence, assumptions, and decision thresholds.');
     }
     return steps.toSet().take(5).toList(growable: false);
+  }
+
+  List<_ChartHandoffGate> _chartHandoffReadinessMatrixFor({
+    required _ChartPackProfile profile,
+    required ArtifactDocument document,
+    required List<String> validationGaps,
+    required List<({String label, String value, String guidance, bool ready})>
+    dataQualityItems,
+    required List<_CapacityThresholdRow> capacityRows,
+    required List<_DecisionActionRow> decisionRows,
+    required String chartReadinessLevel,
+  }) {
+    final dataReady =
+        document.tables.isNotEmpty &&
+        dataQualityItems.isNotEmpty &&
+        dataQualityItems.every((item) => item.ready);
+    final thresholdReady =
+        capacityRows.isEmpty || capacityRows.every((row) => !row.breach);
+    final ownerReady =
+        decisionRows.isNotEmpty &&
+        decisionRows.every((row) => row.owner.trim().isNotEmpty) &&
+        decisionRows.every((row) => !row.critical);
+    final publishingReady =
+        validationGaps.isEmpty &&
+        profile.highRiskCount == 0 &&
+        chartReadinessLevel != 'Discovery inputs required';
+    return [
+      (
+        gate: 'Source evidence',
+        signal: document.citations.isEmpty
+            ? 'No cited sources attached'
+            : '${document.citations.length} source${document.citations.length == 1 ? '' : 's'} attached',
+        status: document.citations.isEmpty ? 'Needs evidence' : 'Ready',
+        ownerAction: document.citations.isEmpty
+            ? 'Attach source data, checked dates, or customer evidence.'
+            : 'Keep source evidence with the chart readout package.',
+        ready: document.citations.isNotEmpty,
+      ),
+      (
+        gate: 'Assumptions',
+        signal: document.assumptions.isEmpty
+            ? 'No assumptions captured'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured',
+        status: document.assumptions.isEmpty ? 'Needs owner review' : 'Ready',
+        ownerAction: document.assumptions.isEmpty
+            ? 'Capture interpretation assumptions and accountable owner.'
+            : 'Review assumptions with the stakeholder before handoff.',
+        ready: document.assumptions.isNotEmpty,
+      ),
+      (
+        gate: 'Data quality',
+        signal: dataReady
+            ? '${profile.pointCount} data points validated'
+            : 'Source rows, citations, assumptions, or risk labels incomplete',
+        status: dataReady ? 'Ready' : 'Needs data review',
+        ownerAction: dataReady
+            ? 'Confirm units and source dates match the audience.'
+            : 'Add missing source tables, citations, assumptions, or risk labels.',
+        ready: dataReady,
+      ),
+      (
+        gate: 'Thresholds',
+        signal: capacityRows.isEmpty
+            ? 'No capacity threshold rows'
+            : '${capacityRows.where((row) => row.breach).length} breach / ${capacityRows.where((row) => row.warning).length} warning',
+        status: thresholdReady ? 'Ready' : 'Needs capacity review',
+        ownerAction: thresholdReady
+            ? 'Validate thresholds, units, and growth assumptions.'
+            : 'Resolve over-budget rows or record accepted risk.',
+        ready: thresholdReady,
+      ),
+      (
+        gate: 'Decision ownership',
+        signal: decisionRows.isEmpty
+            ? 'No owner rows'
+            : '${decisionRows.where((row) => row.critical).length} blocker / ${decisionRows.length} owner rows',
+        status: ownerReady ? 'Ready' : 'Needs owner review',
+        ownerAction: ownerReady
+            ? 'Confirm decision owners and next actions.'
+            : 'Assign owners and dates for critical/review decisions.',
+        ready: ownerReady,
+      ),
+      (
+        gate: 'Publishing gate',
+        signal: chartReadinessLevel,
+        status: publishingReady ? 'Ready' : 'Needs review',
+        ownerAction: publishingReady
+            ? 'Proceed to stakeholder/customer readout.'
+            : 'Resolve validation gaps, high-risk signals, or missing inputs.',
+        ready: publishingReady,
+      ),
+    ];
   }
 
   List<_DecisionActionRow> _decisionActionRows(_ChartPackProfile profile) {
@@ -1640,6 +1773,70 @@ class ChartArtifactRenderer {
         )
         ..writeln(
           '<text x="${(x + 10).toStringAsFixed(1)}" y="${top + 55}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml('Headroom ${row.headroom} • Utilization ${row.utilization}')}</text>',
+        );
+    }
+    buffer.writeln('</g>');
+  }
+
+  List<_ChartHandoffGate> _chartHandoffRowsFromMetadata(
+    Map<String, Object?> metadata,
+  ) {
+    final raw = metadata['chartHandoffReadinessMatrix'];
+    if (raw is! List) return const [];
+    return [
+      for (final item in raw)
+        if (item is Map)
+          (
+            gate: item['gate']?.toString() ?? '',
+            signal: item['signal']?.toString() ?? '',
+            status: item['status']?.toString() ?? '',
+            ownerAction: item['ownerAction']?.toString() ?? '',
+            ready: item['ready'] == true,
+          ),
+    ].where((item) => item.gate.isNotEmpty).toList(growable: false);
+  }
+
+  void _writeChartHandoffReadinessMatrix(
+    StringBuffer buffer,
+    List<_ChartHandoffGate> gates, {
+    required int top,
+    required int width,
+  }) {
+    if (gates.isEmpty) return;
+    final visible = gates.take(4).toList(growable: false);
+    final readyCount = gates.where((gate) => gate.ready).length;
+    buffer
+      ..writeln(
+        '<g id="chart-handoff-readiness" data-chart-handoff-gate-count="${gates.length}" data-chart-handoff-ready-count="$readyCount">',
+      )
+      ..writeln(
+        '<rect x="34" y="$top" width="${width - 68}" height="64" rx="16" fill="#121615" stroke="#2b3835" stroke-width="1"/>',
+      )
+      ..writeln(
+        '<text x="42" y="${top + 24}" fill="#f4f1eb" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="14" font-weight="700">Customer handoff readiness</text>',
+      )
+      ..writeln(
+        '<text x="42" y="${top + 44}" fill="#78aaa5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="10" font-weight="700">$readyCount/${gates.length} gates ready</text>',
+      );
+    var x = 254.0;
+    final cardWidth =
+        (width - x - 54 - ((visible.length - 1) * 8)) /
+        math.max(1, visible.length);
+    for (var index = 0; index < visible.length; index++) {
+      final gate = visible[index];
+      final cardX = x + (index * (cardWidth + 8));
+      buffer
+        ..writeln(
+          '<rect class="chart-handoff-card" x="${cardX.toStringAsFixed(1)}" y="${top + 12}" width="${cardWidth.toStringAsFixed(1)}" height="40" rx="10" fill="${gate.ready ? '#182621' : '#2a241b'}" stroke="${gate.ready ? '#2e5148' : '#59482b'}"/>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 10).toStringAsFixed(1)}" y="${top + 27}" fill="${gate.ready ? '#8dd3bd' : '#e1bb6d'}" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="9" font-weight="700">${_xml(_shorten('${gate.gate}: ${gate.status}', 34))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 10).toStringAsFixed(1)}" y="${top + 42}" fill="#d2d8d5" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(gate.signal, 38))}</text>',
+        )
+        ..writeln(
+          '<text x="${(cardX + 10).toStringAsFixed(1)}" y="${top + 54}" fill="#8f9695" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="8">${_xml(_shorten(gate.ownerAction, 44))}</text>',
         );
     }
     buffer.writeln('</g>');

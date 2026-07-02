@@ -2695,6 +2695,9 @@ void main() {
         'chartQualityStatus': 'Needs validation',
         'riskPosture': 'High risk - owner review required',
         'hasChartQualityManifest': true,
+        'hasChartHandoffReadinessMatrix': true,
+        'chartHandoffReadinessGateCount': 6,
+        'chartHandoffReadinessReadyCount': 4,
         'chartVisualVerificationChecklist': [
           'SVG has title, description, viewBox, and embedded metadata',
           'Summary, risk legend, chart panels, and point labels are visible',
@@ -2791,6 +2794,8 @@ void main() {
     expect(find.text('74/100'), findsOneWidget);
     expect(find.text('Quality'), findsOneWidget);
     expect(find.text('Needs validation'), findsOneWidget);
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('4/6 ready'), findsOneWidget);
     expect(find.text('Quality manifest'), findsOneWidget);
     expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Risk posture'), findsOneWidget);

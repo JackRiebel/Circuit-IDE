@@ -20,6 +20,7 @@ class ChartArtifactInspection {
   final bool hasChartQualityGate;
   final bool hasChartEvidencePolicy;
   final bool hasChartVisualVerificationChecklist;
+  final bool hasChartHandoffReadinessMatrix;
   final int chartCount;
   final int pointCount;
   final int noteCount;
@@ -33,6 +34,8 @@ class ChartArtifactInspection {
   final int chartQualityChecklistCount;
   final int chartEvidencePolicyCount;
   final int chartVisualVerificationChecklistCount;
+  final int chartHandoffReadinessGateCount;
+  final int chartHandoffReadinessReadyCount;
   final int highRiskCount;
   final int mediumRiskCount;
   final int lowRiskCount;
@@ -72,6 +75,7 @@ class ChartArtifactInspection {
     required this.hasChartQualityGate,
     required this.hasChartEvidencePolicy,
     required this.hasChartVisualVerificationChecklist,
+    required this.hasChartHandoffReadinessMatrix,
     required this.chartCount,
     required this.pointCount,
     required this.noteCount,
@@ -85,6 +89,8 @@ class ChartArtifactInspection {
     required this.chartQualityChecklistCount,
     required this.chartEvidencePolicyCount,
     required this.chartVisualVerificationChecklistCount,
+    required this.chartHandoffReadinessGateCount,
+    required this.chartHandoffReadinessReadyCount,
     required this.highRiskCount,
     required this.mediumRiskCount,
     required this.lowRiskCount,
@@ -124,6 +130,7 @@ class ChartArtifactInspection {
       hasChartQualityGate &&
       hasChartEvidencePolicy &&
       hasChartVisualVerificationChecklist &&
+      hasChartHandoffReadinessMatrix &&
       chartCount > 0 &&
       pointCount > 0;
 
@@ -197,6 +204,14 @@ class ChartArtifactInspector {
         _metadataInt(metadata, 'chartQualityChecklistCount') ??
         _dataInt(svg, 'data-quality-check-count') ??
         0;
+    final chartHandoffReadinessGateCount =
+        _metadataInt(metadata, 'chartHandoffReadinessGateCount') ??
+        _dataInt(svg, 'data-chart-handoff-gate-count') ??
+        0;
+    final chartHandoffReadinessReadyCount =
+        _metadataInt(metadata, 'chartHandoffReadinessReadyCount') ??
+        _dataInt(svg, 'data-chart-handoff-ready-count') ??
+        0;
 
     return ChartArtifactInspection(
       hasSvgRoot: RegExp(r'^<svg\b').hasMatch(svg.trimLeft()),
@@ -229,6 +244,11 @@ class ChartArtifactInspector {
           (_metadataInt(metadata, 'chartVisualVerificationChecklistCount') ??
                   0) >
               0,
+      hasChartHandoffReadinessMatrix:
+          metadata['hasChartHandoffReadinessMatrix'] == true &&
+          chartHandoffReadinessGateCount > 0 &&
+          svg.contains('id="chart-handoff-readiness"') &&
+          svg.contains('Customer handoff readiness'),
       chartCount: chartCount,
       pointCount: pointCount,
       noteCount: RegExp(r'class="chart-note"').allMatches(svg).length,
@@ -244,6 +264,8 @@ class ChartArtifactInspector {
           _metadataInt(metadata, 'chartEvidencePolicyCount') ?? 0,
       chartVisualVerificationChecklistCount:
           _metadataInt(metadata, 'chartVisualVerificationChecklistCount') ?? 0,
+      chartHandoffReadinessGateCount: chartHandoffReadinessGateCount,
+      chartHandoffReadinessReadyCount: chartHandoffReadinessReadyCount,
       highRiskCount: highRiskCount,
       mediumRiskCount: mediumRiskCount,
       lowRiskCount: lowRiskCount,

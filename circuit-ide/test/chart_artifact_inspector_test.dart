@@ -42,6 +42,7 @@ void main() {
     expect(inspection.hasChartQualityGate, isTrue);
     expect(inspection.hasChartEvidencePolicy, isTrue);
     expect(inspection.hasChartVisualVerificationChecklist, isTrue);
+    expect(inspection.hasChartHandoffReadinessMatrix, isTrue);
     expect(inspection.hasPoeSignal, isTrue);
     expect(inspection.noteCount, greaterThanOrEqualTo(1));
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
@@ -57,6 +58,8 @@ void main() {
       inspection.chartVisualVerificationChecklistCount,
       greaterThanOrEqualTo(3),
     );
+    expect(inspection.chartHandoffReadinessGateCount, 6);
+    expect(inspection.chartHandoffReadinessReadyCount, 3);
     expect(inspection.chartQualityStatus, isNotEmpty);
     expect(inspection.sourceTableCount, 1);
     expect(inspection.citationCount, 0);
@@ -87,6 +90,25 @@ void main() {
     expect(result.metadata['sourceTableCount'], 1);
     expect(result.metadata['citationCount'], 0);
     expect(result.metadata['assumptionCount'], 1);
+    expect(result.metadata['hasChartHandoffReadinessMatrix'], isTrue);
+    expect(result.metadata['chartHandoffReadinessGateCount'], 6);
+    expect(result.metadata['chartHandoffReadinessReadyCount'], 3);
+    final handoffMatrix =
+        (result.metadata['chartHandoffReadinessMatrix'] as List).cast<Map>();
+    expect(
+      handoffMatrix.map((gate) => gate['gate']),
+      containsAll([
+        'Source evidence',
+        'Assumptions',
+        'Data quality',
+        'Thresholds',
+        'Decision ownership',
+        'Publishing gate',
+      ]),
+    );
+    final svg = String.fromCharCodes(result.bytes);
+    expect(svg, contains('Customer handoff readiness'));
+    expect(svg, contains('id="chart-handoff-readiness"'));
   });
 
   test('chart inspector verifies enterprise multi-panel chart packs', () {
@@ -170,6 +192,7 @@ void main() {
     expect(inspection.hasDecisionMatrix, isTrue);
     expect(inspection.hasDataQualityPanel, isTrue);
     expect(inspection.hasThresholdGuidance, isTrue);
+    expect(inspection.hasChartHandoffReadinessMatrix, isTrue);
     expect(inspection.insightCount, greaterThanOrEqualTo(3));
     expect(inspection.validationGateCount, 4);
     expect(inspection.recommendedActionCount, greaterThanOrEqualTo(4));
@@ -177,6 +200,8 @@ void main() {
     expect(inspection.criticalDecisionCount, greaterThanOrEqualTo(3));
     expect(inspection.dataQualityItemCount, 4);
     expect(inspection.thresholdGuidanceCount, greaterThanOrEqualTo(4));
+    expect(inspection.chartHandoffReadinessGateCount, 6);
+    expect(inspection.chartHandoffReadinessReadyCount, 4);
     expect(inspection.highRiskCount, greaterThanOrEqualTo(1));
     expect(inspection.mediumRiskCount, greaterThanOrEqualTo(2));
     expect(inspection.lowRiskCount, greaterThanOrEqualTo(2));
@@ -229,6 +254,9 @@ void main() {
     expect(result.metadata['hasChartEvidencePolicy'], isTrue);
     expect(result.metadata['hasChartVisualVerificationChecklist'], isTrue);
     expect(result.metadata['hasChartDecisionReadinessGate'], isTrue);
+    expect(result.metadata['hasChartHandoffReadinessMatrix'], isTrue);
+    expect(result.metadata['chartHandoffReadinessGateCount'], 6);
+    expect(result.metadata['chartHandoffReadinessReadyCount'], 4);
     expect(result.metadata['chartQualityChecklistCount'], greaterThan(7));
     expect(result.metadata['chartEvidencePolicyCount'], greaterThan(2));
     expect(
@@ -302,5 +330,9 @@ void main() {
     expect(result.metadata['hasCustomerReadyChartPack'], isFalse);
     final svg = String.fromCharCodes(result.bytes);
     expect(svg, contains('Decision readiness'));
+    expect(svg, contains('Customer handoff readiness'));
+    expect(svg, contains('id="chart-handoff-readiness"'));
+    expect(svg, contains('&quot;chartHandoffReadinessMatrix&quot;:'));
+    expect(svg, contains('&quot;chartHandoffReadinessGateCount&quot;:6'));
   });
 }
