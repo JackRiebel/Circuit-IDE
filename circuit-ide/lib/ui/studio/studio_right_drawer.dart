@@ -3264,16 +3264,30 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       final wordCount = _metadataInt(artifact, 'wordCount');
       final reportType = _metadataString(artifact, 'reportType');
       final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      final visualEvidenceReliability = _metadataString(
+        artifact,
+        'visualEvidenceReliability',
+      );
       if (reportType.isNotEmpty) parts.add(reportType);
       if (wordCount > 0) parts.add('$wordCount words');
+      if (visualEvidenceReliability.isNotEmpty) {
+        parts.add(_visualEvidenceReliabilityLabel(visualEvidenceReliability));
+      }
       if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.kind == GeneratedArtifactKind.pdf) {
       final bookmarkCount = _metadataInt(artifact, 'bookmarkCount');
       final reportType = _metadataString(artifact, 'reportType');
       final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      final visualEvidenceReliability = _metadataString(
+        artifact,
+        'visualEvidenceReliability',
+      );
       if (reportType.isNotEmpty) parts.add(reportType);
       if (bookmarkCount > 0) parts.add('$bookmarkCount bookmarks');
+      if (visualEvidenceReliability.isNotEmpty) {
+        parts.add(_visualEvidenceReliabilityLabel(visualEvidenceReliability));
+      }
       if (handoffStatus.isNotEmpty) parts.add(handoffStatus);
     }
     if (artifact.sheetCount > 1) {
@@ -4820,6 +4834,13 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Evidence confidence',
             _metadataString(artifact, 'evidenceConfidence'),
           ),
+        if (_metadataString(artifact, 'visualEvidenceReliability').isNotEmpty)
+          (
+            'Visual evidence',
+            _visualEvidenceReliabilityLabel(
+              _metadataString(artifact, 'visualEvidenceReliability'),
+            ),
+          ),
         if (_metadataStringList(artifact, 'reportEvidencePolicy').isNotEmpty)
           (
             'Evidence policy',
@@ -5195,6 +5216,22 @@ List<String> _metadataStringList(GeneratedArtifact artifact, String key) {
 String _compactSignalList(List<String> signals) {
   if (signals.length <= 2) return signals.join(', ');
   return '${signals.take(2).join(', ')} +${signals.length - 2}';
+}
+
+String _visualEvidenceReliabilityLabel(String value) {
+  return switch (value.trim()) {
+    'metadata_plus_ocr_or_user_description' => 'Screenshot text attached',
+    'metadata_only_until_vision_or_user_description' =>
+      'Metadata-only screenshots',
+    final other when other.isNotEmpty =>
+      other
+          .replaceAll('_', ' ')
+          .replaceFirstMapped(
+            RegExp(r'^\w'),
+            (match) => match[0]!.toUpperCase(),
+          ),
+    _ => 'Visual evidence captured',
+  };
 }
 
 class _BinaryArtifactPreview extends ConsumerWidget {

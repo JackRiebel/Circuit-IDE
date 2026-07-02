@@ -2038,6 +2038,8 @@ void main() {
             'tableCoverage': '3 tables packaged',
             'evidenceCoverage': '6 source items captured',
             'evidenceConfidence': 'High - sources and assumptions captured',
+            'visualEvidenceReliability':
+                'metadata_plus_ocr_or_user_description',
             'visualVerificationChecklist': [
               'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
               'Confirm table headers repeat and columns remain readable in print layout.',
@@ -2101,6 +2103,7 @@ void main() {
       find.textContaining('Word • Architecture report • 860 words'),
       findsOneWidget,
     );
+    expect(find.textContaining('Screenshot text attached'), findsOneWidget);
     expect(
       find.textContaining('Ready for stakeholder review'),
       findsAtLeastNWidgets(1),
@@ -2315,6 +2318,8 @@ void main() {
       find.text('High - sources and assumptions captured'),
       findsOneWidget,
     );
+    expect(find.text('Visual evidence'), findsOneWidget);
+    expect(find.text('Screenshot text attached'), findsAtLeastNWidgets(1));
     expect(find.text('Visual checks'), findsOneWidget);
     expect(
       find.textContaining('Open the DOCX in Word and verify headings'),
