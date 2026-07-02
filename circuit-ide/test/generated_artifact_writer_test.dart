@@ -96,6 +96,18 @@ Short executive summary for the customer.
       );
       expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
       expect(artifact.metadata['externalHandoffManifestCount'], 7);
+      expect(artifact.metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
+      expect(artifact.metadata['hasHandoffReadinessSlide'], isTrue);
+      expect(artifact.metadata['handoffReadinessSlideCount'], 1);
+      expect(artifact.metadata['customerHandoffGateCount'], 5);
+      expect(
+        artifact.metadata['customerHandoffGateStatus'],
+        'Ready for reviewer approval',
+      );
+      expect(
+        artifact.metadata['customerHandoffGateRows'],
+        contains(contains('Evidence package | 1 source item attached | Ready')),
+      );
       expect(
         artifact.metadata['externalHandoffManifest'],
         containsAll([
@@ -139,6 +151,7 @@ Short executive summary for the customer.
           'Opening',
           'Agenda',
           'Decision snapshot',
+          'Customer handoff',
           'Publishing gate',
         ]),
       );
@@ -204,9 +217,13 @@ Short executive summary for the customer.
       expect(packageText, contains('Recommendation card'));
       expect(packageText, contains('Roadmap timeline'));
       expect(packageText, contains('Assumptions &amp; Sources'));
+      expect(packageText, contains('Customer Handoff Readiness'));
+      expect(packageText, contains('External sharing gate'));
+      expect(packageText, contains('Evidence package'));
       expect(packageText, contains('Review &amp; Publishing Gate'));
       expect(packageText, contains('Customer-ready checkpoint'));
       expect(packageText, contains('CircuitPublishingGate'));
+      expect(packageText, contains('CircuitCustomerHandoffReadiness'));
       expect(packageText, contains('Appendix: Handoff Checklist'));
       expect(packageText, contains('Slide 1 of'));
       expect(packageText, contains('Customer workshop notes'));

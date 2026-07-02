@@ -95,6 +95,8 @@ class PowerPointArtifactRenderer {
       validationGaps: validationGaps,
       evidenceConfidence: evidenceConfidence,
     );
+    final customerHandoffRows = _customerHandoffRowsFor(document, sections);
+    final customerHandoffGateStatus = _customerHandoffGateStatus(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -139,6 +141,7 @@ class PowerPointArtifactRenderer {
         'Recommendation cards',
         'Roadmap timeline',
         'Publishing gate slide',
+        'Customer handoff readiness matrix',
         'Visible readiness/evidence status strip',
         'Closing decision ask',
         if (slideTypeCounts.containsKey(_DeckSlideKind.sectionDivider.label))
@@ -169,6 +172,13 @@ class PowerPointArtifactRenderer {
       'externalHandoffManifest': externalHandoffManifest,
       'externalHandoffManifestCount': externalHandoffManifest.length,
       'hasExternalHandoffManifest': externalHandoffManifest.isNotEmpty,
+      'customerHandoffGateStatus': customerHandoffGateStatus,
+      'customerHandoffGateRows': customerHandoffRows
+          .skip(1)
+          .map((row) => row.join(' | '))
+          .toList(growable: false),
+      'customerHandoffGateCount': math.max(0, customerHandoffRows.length - 1),
+      'hasCustomerHandoffReadinessMatrix': true,
       'deckHandoffActions': handoffActions,
       'deckHandoffActionCount': handoffActions.length,
       'presentationRiskFlags': _presentationRiskFlagsFor(
@@ -202,6 +212,8 @@ class PowerPointArtifactRenderer {
           slideTypeCounts[_DeckSlideKind.closing.label] ?? 0,
       'publishingGateSlideCount':
           slideTypeCounts[_DeckSlideKind.publishingGate.label] ?? 0,
+      'handoffReadinessSlideCount':
+          slideTypeCounts[_DeckSlideKind.handoffReadiness.label] ?? 0,
       'recommendationSlideCount':
           slideTypeCounts[_DeckSlideKind.recommendation.label] ?? 0,
       'assumptionCount': document.assumptions.length,
@@ -240,6 +252,9 @@ class PowerPointArtifactRenderer {
       ),
       'hasPublishingGateSlide': slideTypeCounts.containsKey(
         _DeckSlideKind.publishingGate.label,
+      ),
+      'hasHandoffReadinessSlide': slideTypeCounts.containsKey(
+        _DeckSlideKind.handoffReadiness.label,
       ),
       'hasRoadmap': slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label),
       'hasTableSlides': slideTypeCounts.containsKey(_DeckSlideKind.table.label),
@@ -412,6 +427,7 @@ class PowerPointArtifactRenderer {
       }
     }
     slides.add(_assumptionsAndSources(document));
+    slides.add(_customerHandoffReadiness(document, sections));
     slides.add(_publishingGate(document, sections));
     slides.add(_closingDecisionAsk(document, sections));
     slides.add(_appendixHandoff(document));
@@ -928,6 +944,91 @@ class PowerPointArtifactRenderer {
     );
   }
 
+  _DeckSlide _customerHandoffReadiness(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    return _DeckSlide(
+      title: 'Customer Handoff Readiness',
+      eyebrow: 'External sharing gate',
+      kind: _DeckSlideKind.handoffReadiness,
+      bullets: [
+        'Use this matrix before sending the deck externally: every gate should have evidence, an accountable owner, and a clear next action.',
+      ],
+      tableRows: _customerHandoffRowsFor(document, sections),
+    );
+  }
+
+  List<List<String>> _customerHandoffRowsFor(
+    ArtifactDocument document,
+    List<ArtifactSection> sections,
+  ) {
+    final hasEvidence = document.citations.isNotEmpty;
+    final hasAssumptions = document.assumptions.isNotEmpty;
+    final hasData = document.tables.isNotEmpty;
+    final ask = _decisionAskFor(document, sections);
+    final owner = _primarySponsorFor(document);
+    return [
+      const ['Gate', 'Signal', 'Status', 'Owner action'],
+      [
+        'Evidence package',
+        hasEvidence
+            ? '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached'
+            : 'No cited source package attached',
+        hasEvidence ? 'Ready' : 'Needs evidence',
+        hasEvidence
+            ? 'Keep evidence pack linked to the customer handoff.'
+            : 'Attach source links, checked dates, or evidence notes.',
+      ],
+      [
+        'Assumptions',
+        hasAssumptions
+            ? '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured'
+            : 'No assumptions captured',
+        hasAssumptions ? 'Ready' : 'Needs owner',
+        hasAssumptions
+            ? 'Confirm each assumption with the named stakeholder.'
+            : 'Capture assumptions, caveats, and accountable owner.',
+      ],
+      [
+        'Data support',
+        hasData
+            ? '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged'
+            : 'No supporting data table packaged',
+        hasData ? 'Ready' : 'Needs support',
+        hasData
+            ? 'Validate numbers and scope before external send.'
+            : 'Attach sizing, inventory, comparison, or source data.',
+      ],
+      [
+        'Decision ask',
+        _truncate(ask, 74),
+        ask.toLowerCase().contains('review') ||
+                ask.toLowerCase().contains('approve')
+            ? 'Ready'
+            : 'Clarify ask',
+        'Confirm the requested decision, deadline, and follow-up owner.',
+      ],
+      [
+        'Sharing owner',
+        owner,
+        owner.toLowerCase().contains('sponsor') ? 'Ready' : 'Assign owner',
+        'Record who approves the deck before customer delivery.',
+      ],
+    ];
+  }
+
+  String _customerHandoffGateStatus(ArtifactDocument document) {
+    final readyCount = [
+      document.citations.isNotEmpty,
+      document.assumptions.isNotEmpty,
+      document.tables.isNotEmpty,
+    ].where((ready) => ready).length;
+    if (readyCount == 3) return 'Ready for reviewer approval';
+    if (readyCount >= 2) return 'Internal review before external handoff';
+    return 'Draft - add evidence before external sharing';
+  }
+
   _DeckSlide _appendixHandoff(ArtifactDocument document) {
     final artifactTypes = <String>[
       if (document.tables.isNotEmpty)
@@ -1086,6 +1187,8 @@ class PowerPointArtifactRenderer {
       ))
         'Stakeholder alignment',
       if (slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label)) 'Roadmap',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.handoffReadiness.label))
+        'Customer handoff readiness',
       if (slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
         'Closing ask',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
@@ -1133,6 +1236,8 @@ class PowerPointArtifactRenderer {
         'Data tables',
       if (slideTypeCounts.containsKey(_DeckSlideKind.sources.label))
         'Assumptions/sources',
+      if (slideTypeCounts.containsKey(_DeckSlideKind.handoffReadiness.label))
+        'Customer handoff',
       if (slideTypeCounts.containsKey(_DeckSlideKind.publishingGate.label))
         'Publishing gate',
       if (slideTypeCounts.containsKey(_DeckSlideKind.appendix.label))
@@ -1164,6 +1269,7 @@ class PowerPointArtifactRenderer {
       _DeckSlideKind.content => 'Explain supporting detail',
       _DeckSlideKind.recommendation => 'Show recommendation or action plan',
       _DeckSlideKind.roadmap => 'Sequence phases and verification',
+      _DeckSlideKind.handoffReadiness => 'Validate external sharing readiness',
       _DeckSlideKind.publishingGate =>
         'Confirm evidence, assumptions, visual QA, and sharing gate',
       _DeckSlideKind.closing => 'Close with decision ask',
@@ -1198,6 +1304,8 @@ class PowerPointArtifactRenderer {
         'Roadmap slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.publishingGate.label))
         'Publishing gate slide missing',
+      if (!slideTypeCounts.containsKey(_DeckSlideKind.handoffReadiness.label))
+        'Customer handoff readiness slide missing',
       if (!slideTypeCounts.containsKey(_DeckSlideKind.closing.label))
         'Closing decision ask missing',
       if (document.assumptions.isEmpty) 'Assumptions need confirmation',
@@ -1555,6 +1663,7 @@ class PowerPointArtifactRenderer {
           _DeckSlideKind.stakeholderAlignment.label,
         ) &&
         slideTypeCounts.containsKey(_DeckSlideKind.roadmap.label) &&
+        slideTypeCounts.containsKey(_DeckSlideKind.handoffReadiness.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.publishingGate.label) &&
         slideTypeCounts.containsKey(_DeckSlideKind.sources.label);
   }
@@ -1751,6 +1860,7 @@ class PowerPointArtifactRenderer {
         validationGaps: validationGaps,
         evidenceConfidence: evidenceConfidence,
       ).join(' | '),
+      'CircuitCustomerHandoffReadiness': _customerHandoffGateStatus(document),
       'CircuitDeckTheme': theme.label,
       'CircuitSlideFamilies': slideFamilies,
       'CircuitPublishingGate':
@@ -2654,6 +2764,7 @@ enum _DeckSlideKind {
   recommendation,
   roadmap,
   closing,
+  handoffReadiness,
   publishingGate,
   table,
   appendix,
@@ -2675,6 +2786,7 @@ enum _DeckSlideKind {
       _DeckSlideKind.recommendation => 'Recommendation',
       _DeckSlideKind.roadmap => 'Roadmap',
       _DeckSlideKind.closing => 'Close',
+      _DeckSlideKind.handoffReadiness => 'Handoff Readiness',
       _DeckSlideKind.publishingGate => 'Publishing Gate',
       _DeckSlideKind.table => 'Table',
       _DeckSlideKind.appendix => 'Appendix',
@@ -2759,6 +2871,7 @@ class _DeckTheme {
       _DeckSlideKind.stakeholderAlignment => '7A9CC6',
       _DeckSlideKind.roadmap => 'A7C080',
       _DeckSlideKind.closing => '7FB7B2',
+      _DeckSlideKind.handoffReadiness => '7FB7B2',
       _DeckSlideKind.publishingGate => 'C7A77B',
       _DeckSlideKind.table => 'B48EAD',
       _DeckSlideKind.appendix => '8A8F98',
@@ -2777,6 +2890,7 @@ class _DeckTheme {
         _DeckSlideKind.takeaways ||
         _DeckSlideKind.decisionMatrix ||
         _DeckSlideKind.stakeholderAlignment ||
+        _DeckSlideKind.handoffReadiness ||
         _DeckSlideKind.roadmap => 'F1F5F9',
         _ => canvas,
       };
@@ -2789,6 +2903,7 @@ class _DeckTheme {
       _DeckSlideKind.takeaways ||
       _DeckSlideKind.decisionMatrix ||
       _DeckSlideKind.stakeholderAlignment ||
+      _DeckSlideKind.handoffReadiness ||
       _DeckSlideKind.roadmap => '121715',
       _ => canvas,
     };

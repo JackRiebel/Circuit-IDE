@@ -261,6 +261,7 @@ void main() {
         'Recommendation cards',
         'Roadmap timeline',
         'Publishing gate slide',
+        'Customer handoff readiness matrix',
         'Visible readiness/evidence status strip',
         'Closing decision ask',
         'Speaker notes',
@@ -271,6 +272,13 @@ void main() {
     expect(metadata['closingDecisionSlideCount'], 1);
     expect(metadata['publishingGateSlideCount'], 1);
     expect(metadata['hasPublishingGateSlide'], isTrue);
+    expect(metadata['handoffReadinessSlideCount'], 1);
+    expect(metadata['hasHandoffReadinessSlide'], isTrue);
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
+    expect(
+      metadata['customerHandoffGateStatus'],
+      'Ready for reviewer approval',
+    );
     expect(metadata['recommendationSlideCount'], greaterThanOrEqualTo(2));
     expect(metadata['assumptionCount'], 1);
     expect(metadata['citationCount'], 1);
@@ -285,13 +293,14 @@ void main() {
         'Stakeholder alignment',
         'Recommendation slides',
         'Roadmap',
+        'Customer handoff readiness',
         'Closing ask',
         'Table slides',
         'Assumptions/sources',
         'Speaker notes',
       ]),
     );
-    expect(metadata['readinessSignalCount'], 12);
+    expect(metadata['readinessSignalCount'], 13);
     expect(metadata['hasAgenda'], isTrue);
     expect(metadata['hasPresenterTalkTrack'], isTrue);
     expect(metadata['presenterTalkTrackSlideCount'], 1);
