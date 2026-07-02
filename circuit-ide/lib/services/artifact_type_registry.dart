@@ -199,12 +199,18 @@ class ArtifactTypeRegistry {
       label: 'Solution Sizing Workbook',
       supportedKinds: [GeneratedArtifactKind.excel],
       useCases: ['users', 'PoE', 'WAN', 'model sizing'],
-      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.chart],
+      packageKinds: [
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Sizing workbook',
       verificationChecks: [
         'Sizing sheets parse',
         'PoE/WAN validation metadata persists',
         'Sizing audit preview renders',
+        'Sizing readout deck and PDF companion render when packaged',
       ],
     ),
     ArtifactTypeDescriptor(

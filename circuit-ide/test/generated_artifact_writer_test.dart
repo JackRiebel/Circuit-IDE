@@ -2720,6 +2720,16 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       registry.descriptorForId('chart_pack')?.verificationChecks,
       contains('Chart readout deck and PDF companion render when packaged'),
     );
+    expect(registry.descriptorForId('solution_sizing_workbook')?.packageKinds, [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(
+      registry.descriptorForId('solution_sizing_workbook')?.verificationChecks,
+      contains('Sizing readout deck and PDF companion render when packaged'),
+    );
     expect(registry.descriptorForId('business_use_case_brief')?.packageKinds, [
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
@@ -2895,6 +2905,8 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(sizing.targetKinds, [
       GeneratedArtifactKind.excel,
       GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
     ]);
 
     final lifecycle = registry.routeForPrompt(
@@ -3226,18 +3238,20 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     expect(String.fromCharCodes(pdfHeader), startsWith('%PDF-1.'));
   });
 
-  test('solution sizing package creates workbook and chart artifacts', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'circuit-sizing-package-',
-    );
-    addTearDown(() => root.delete(recursive: true));
+  test(
+    'solution sizing package creates workbook chart deck and PDF artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-sizing-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
 
-    final package = await const GeneratedArtifactPackageWriter()
-        .writePackageFromAssistantOutput(
-          rootPath: root.path,
-          prompt:
-              'create a solution sizing package for 500 users, 90 APs, PoE budget, and 2 Gbps WAN',
-          content: '''
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt:
+                'create a solution sizing package for 500 users, 90 APs, PoE budget, and 2 Gbps WAN',
+            content: '''
 # Campus Sizing Package
 
 ## Summary
@@ -3254,76 +3268,110 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
 - Validate UPOE budget before selecting access switches.
 - Size firewall throughput with services enabled.
 ''',
-          turnId: 'turn-sizing-package',
-          threadId: 'thread-1',
-          requestId: 'request-1',
-        );
+            turnId: 'turn-sizing-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
 
-    expect(package, isNotNull);
-    expect(package!.label, 'solution sizing package');
-    expect(package.artifacts.map((artifact) => artifact.kind), [
-      GeneratedArtifactKind.markdown,
-      GeneratedArtifactKind.excel,
-      GeneratedArtifactKind.chart,
-    ]);
-    for (final artifact in package.artifacts) {
-      expect(artifact.status, GeneratedArtifactStatus.ready);
-      expect(File(artifact.filePath).existsSync(), isTrue);
-      expect(artifact.metadata['qualityStatus'], isNotNull);
-    }
-    expect(package.primary!.fileName, endsWith('-package.md'));
-    expect(package.primary!.metadata['artifactCount'], 2);
-    expect(package.primary!.metadata['expectedArtifactCount'], 2);
-    expect(package.primary!.metadata['producedArtifactCount'], 2);
-    expect(package.primary!.metadata['readyArtifactCount'], 2);
-    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
-    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
-    expect(package.primary!.metadata['expectedArtifactKinds'], [
-      'Excel',
-      'Chart',
-    ]);
-    expect(package.primary!.metadata['producedArtifactKinds'], [
-      'Excel',
-      'Chart',
-    ]);
-    expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
-    expect(
-      package.primary!.metadata['packageReviewWorkflow'],
-      containsAll([
-        'XLSX package opens/parses',
-        'SVG chart root parses',
-        'Open each generated artifact from the Artifacts drawer before sharing.',
-      ]),
-    );
-    expect(
-      package.primary!.metadata['packagePreviewSurfaces'],
-      containsAll(['Workbook preview', 'Chart summary']),
-    );
-    expect(
-      package.primary!.metadata['packageVerificationChecks'],
-      containsAll([
-        'Sheet count metadata persists',
-        'Chart signal metadata persists',
-      ]),
-    );
-    expect(
-      package.primary!.metadata['packageFileTypes'],
-      containsAll(['Excel', 'Chart']),
-    );
-    final manifestText = File(package.primary!.filePath).readAsStringSync();
-    expect(manifestText, contains('Solution Sizing Package'));
-    expect(manifestText, contains('Package Readiness'));
-    expect(manifestText, contains('Package Contract'));
-    expect(manifestText, contains('| Excel, Chart | Excel, Chart | None |'));
-    expect(manifestText, contains('Review Workflow'));
-    expect(manifestText, contains('Sizing sheets parse'));
-    expect(manifestText, contains('Chart signal metadata persists'));
-    expect(manifestText, contains('.xlsx'));
-    expect(manifestText, contains('.svg'));
-    expect(package.artifacts[1].fileName, endsWith('.xlsx'));
-    expect(package.artifacts[1].sheetCount, greaterThanOrEqualTo(18));
-    expect(package.artifacts[2].fileName, endsWith('.svg'));
-  });
+      expect(package, isNotNull);
+      expect(package!.label, 'solution sizing package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ]);
+      for (final artifact in package.artifacts) {
+        expect(artifact.status, GeneratedArtifactStatus.ready);
+        expect(File(artifact.filePath).existsSync(), isTrue);
+        expect(artifact.metadata['qualityStatus'], isNotNull);
+      }
+      expect(package.primary!.fileName, endsWith('-package.md'));
+      expect(package.primary!.metadata['artifactCount'], 4);
+      expect(package.primary!.metadata['expectedArtifactCount'], 4);
+      expect(package.primary!.metadata['producedArtifactCount'], 4);
+      expect(package.primary!.metadata['readyArtifactCount'], 4);
+      expect(
+        package.primary!.metadata['packageCompletenessStatus'],
+        'Complete',
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+      expect(package.primary!.metadata['expectedArtifactKinds'], [
+        'Excel',
+        'Chart',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(package.primary!.metadata['producedArtifactKinds'], [
+        'Excel',
+        'Chart',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
+      expect(
+        package.primary!.metadata['packageReviewWorkflow'],
+        containsAll([
+          'XLSX package opens/parses',
+          'SVG chart root parses',
+          'PPTX package opens/parses',
+          'PDF header parses',
+          'Open each generated artifact from the Artifacts drawer before sharing.',
+        ]),
+      );
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll([
+          'Workbook preview',
+          'Chart summary',
+          'Slide outline',
+          'PDF outline',
+        ]),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        containsAll([
+          'Sheet count metadata persists',
+          'Chart signal metadata persists',
+          'Sizing readout deck and PDF companion render when packaged',
+          'Deck readiness metadata renders',
+          'PDF outline preview renders',
+        ]),
+      );
+      expect(
+        package.primary!.metadata['packageFileTypes'],
+        containsAll(['Excel', 'Chart', 'PowerPoint', 'PDF']),
+      );
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Solution Sizing Package'));
+      expect(manifestText, contains('Package Readiness'));
+      expect(manifestText, contains('Package Contract'));
+      expect(
+        manifestText,
+        contains(
+          '| Excel, Chart, PowerPoint, PDF | Excel, Chart, PowerPoint, PDF | None |',
+        ),
+      );
+      expect(manifestText, contains('Review Workflow'));
+      expect(manifestText, contains('Sizing sheets parse'));
+      expect(manifestText, contains('Chart signal metadata persists'));
+      expect(manifestText, contains('Sizing readout deck and PDF companion'));
+      expect(manifestText, contains('.xlsx'));
+      expect(manifestText, contains('.svg'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
+      expect(package.artifacts[1].fileName, endsWith('.xlsx'));
+      expect(package.artifacts[1].sheetCount, greaterThanOrEqualTo(18));
+      expect(package.artifacts[2].fileName, endsWith('.svg'));
+      expect(package.artifacts[3].fileName, endsWith('.pptx'));
+      expect(package.artifacts[4].fileName, endsWith('.pdf'));
+      final pdfHeader = File(
+        package.artifacts[4].filePath,
+      ).readAsBytesSync().take(8).toList();
+      expect(String.fromCharCodes(pdfHeader), startsWith('%PDF-1.'));
+    },
+  );
 
   test(
     'product comparison package creates workbook and chart artifacts',
