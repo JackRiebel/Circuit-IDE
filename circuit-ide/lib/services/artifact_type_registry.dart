@@ -333,7 +333,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.report,
         GeneratedArtifactKind.json,
       ],
-      useCases: ['citations', 'checked dates', 'confidence'],
+      useCases: [
+        'citations',
+        'checked dates',
+        'confidence',
+        'visual evidence',
+        'screenshot evidence',
+        'UI review evidence',
+      ],
       packageKinds: [GeneratedArtifactKind.docx, GeneratedArtifactKind.json],
       previewSurface: 'Evidence register',
       verificationChecks: [
@@ -366,7 +373,7 @@ class ArtifactTypeRegistry {
     // "topology PDF" should produce a topology artifact rendered as PDF, not
     // a generic PDF report. Generic formats are resolved after domain routes.
     if (RegExp(
-      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?|visual evidence|screenshot evidence|screenshot review|screen capture evidence|ui evidence|ux evidence|image evidence|visual qa evidence)\b',
     ).hasMatch(normalized)) {
       return descriptors.firstWhere(
         (descriptor) => descriptor.id == 'evidence_pack',
@@ -511,7 +518,7 @@ class ArtifactTypeRegistry {
       add(GeneratedArtifactKind.excel);
       add(GeneratedArtifactKind.chart);
     } else if (RegExp(
-      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+      r'\b(evidence pack|citation pack|source pack|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?|visual evidence|screenshot evidence|screenshot review|screen capture evidence|ui evidence|ux evidence|image evidence|visual qa evidence)\b',
     ).hasMatch(normalized)) {
       add(primary ?? GeneratedArtifactKind.docx);
       add(GeneratedArtifactKind.json);

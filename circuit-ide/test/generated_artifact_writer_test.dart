@@ -1435,6 +1435,7 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Claim Register'));
     expect(packageText, contains('Claim Disposition Workflow'));
     expect(packageText, contains('Source Inventory'));
+    expect(packageText, contains('Visual Evidence Register'));
     expect(packageText, contains('Citation Quality Rules'));
     expect(packageText, contains('Checked Dates'));
     expect(packageText, contains('Confidence And Risk'));
@@ -1469,6 +1470,55 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('word/numbering.xml'));
     expect(packageText, contains('CircuitCode - Generated artifact'));
   });
+
+  test(
+    'screenshot evidence prompt creates visual evidence pack metadata',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a screenshot evidence pack for this UI review',
+            content: '''
+# Screenshot Evidence
+
+Evidence collected from the Studio UI review.
+
+## Visual Evidence
+- Screenshot: checkout modal shows clipped primary CTA.
+- UX evidence: right drawer source dots are empty placeholders.
+- Visual evidence: 1366x768 screenshot attached via /screenshot.
+
+## Sources
+- Internal Studio screenshot attachment metadata — checked 2026-07-01
+
+## Assumptions
+- Pixel-level details require user description or OCR/vision before customer-facing claims.
+''',
+            turnId: 'turn-visual-evidence',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.docx);
+      expect(artifact.fileName, endsWith('.docx'));
+      expect(artifact.metadata['artifactTemplate'], 'evidence_pack');
+      expect(artifact.metadata['hasVisualEvidenceRegister'], isTrue);
+      expect(artifact.metadata['visualEvidenceCount'], greaterThanOrEqualTo(3));
+      expect(
+        artifact.metadata['visualEvidenceReliability'],
+        'metadata_only_until_vision_or_user_description',
+      );
+      final packageText = String.fromCharCodes(
+        File(artifact.filePath).readAsBytesSync(),
+      );
+      expect(packageText, contains('Visual Evidence Register'));
+      expect(packageText, contains('Metadata-only'));
+      expect(packageText, contains('OCR/vision'));
+    },
+  );
 
   test(
     'explicit JSON evidence pack creates structured JSON artifact',
@@ -2584,11 +2634,21 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       'evidence_pack',
     );
     expect(
+      registry.descriptorForPrompt('create a screenshot evidence pack')?.id,
+      'evidence_pack',
+    );
+    expect(
       detectGeneratedArtifactKind('create a business case brief for Acme'),
       GeneratedArtifactKind.docx,
     );
     expect(
       detectGeneratedArtifactKind('create an evidence pack for this claim'),
+      GeneratedArtifactKind.docx,
+    );
+    expect(
+      detectGeneratedArtifactKind(
+        'create a visual evidence pack from screenshots',
+      ),
       GeneratedArtifactKind.docx,
     );
     expect(

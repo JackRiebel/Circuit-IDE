@@ -8,7 +8,7 @@ class EvidencePackBuilder {
   bool matches(String prompt) {
     final normalized = prompt.toLowerCase();
     return RegExp(
-      r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+      r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?|visual evidence|screenshot evidence|screenshot review|screen capture evidence|ui evidence|ux evidence|image evidence|visual qa evidence)\b',
     ).hasMatch(normalized);
   }
 
@@ -19,6 +19,7 @@ class EvidencePackBuilder {
   }) {
     final sourceBullets = _sourceBullets(document, content);
     final unsupportedBullets = _unsupportedBullets(document, content);
+    final visualEvidenceBullets = _visualEvidenceBullets(document, content);
     final sections = <ArtifactSection>[
       _section(
         document,
@@ -72,6 +73,22 @@ class EvidencePackBuilder {
         fallbackBody:
             'Authoritative sources, URLs, checked dates, and source notes used for this output.',
         fallbackBullets: sourceBullets,
+      ),
+      _section(
+        document,
+        title: 'Visual Evidence Register',
+        patterns: const [
+          'visual evidence',
+          'screenshot',
+          'screen capture',
+          'ui evidence',
+          'ux evidence',
+          'image evidence',
+          'visual qa',
+        ],
+        fallbackBody:
+            'Screenshot and image evidence is tracked as metadata-only unless OCR/vision analysis is enabled or the user provides a description of the visual details.',
+        fallbackBullets: visualEvidenceBullets,
       ),
       _section(
         document,
@@ -164,6 +181,7 @@ class EvidencePackBuilder {
       ..._evidencePackTables(
         sourceBullets: sourceBullets,
         unsupportedBullets: unsupportedBullets,
+        visualEvidenceBullets: visualEvidenceBullets,
         document: document,
         sections: sections,
       ),
@@ -183,6 +201,12 @@ class EvidencePackBuilder {
         'sourcePrompt': prompt,
         'sourceCount': sourceBullets.length,
         'unsupportedClaimCount': unsupportedBullets.length,
+        'visualEvidenceCount': visualEvidenceBullets.length,
+        'hasVisualEvidenceRegister': true,
+        'visualEvidenceReliability':
+            'metadata_only_until_vision_or_user_description',
+        'visualEvidencePolicy':
+            'Do not infer pixel-level screenshot details unless OCR/vision or a user-provided visual description is present.',
         'evidencePackTables': tables.length,
         'hasClaimDispositionRegister': true,
         'claimDispositionCount': _claimDispositionRows(
@@ -302,6 +326,43 @@ class EvidencePackBuilder {
     return lines;
   }
 
+  List<String> _visualEvidenceBullets(
+    ArtifactDocument document,
+    String content,
+  ) {
+    final section = _matchingSection(document.sections, const [
+      'visual evidence',
+      'screenshot',
+      'screen capture',
+      'ui evidence',
+      'ux evidence',
+      'image evidence',
+      'visual qa',
+    ]);
+    if (section != null && section.bullets.isNotEmpty) {
+      return section.bullets.take(20).toList(growable: false);
+    }
+    final lines = content
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) {
+          final normalized = line.toLowerCase();
+          return normalized.contains('screenshot') ||
+              normalized.contains('screen capture') ||
+              normalized.contains('visual evidence') ||
+              normalized.contains('ui evidence') ||
+              normalized.contains('ux evidence') ||
+              normalized.contains('image evidence') ||
+              normalized.contains('visual qa');
+        })
+        .map((line) => line.replaceFirst(RegExp(r'^[-*]\s*'), ''))
+        .where((line) => line.isNotEmpty)
+        .toSet()
+        .take(20)
+        .toList(growable: false);
+    return lines;
+  }
+
   Iterable<String> _urlMatches(String content) {
     return RegExp(r'https?://[^\s\])>]+')
         .allMatches(content)
@@ -312,6 +373,7 @@ class EvidencePackBuilder {
   List<ArtifactTable> _evidencePackTables({
     required List<String> sourceBullets,
     required List<String> unsupportedBullets,
+    required List<String> visualEvidenceBullets,
     required ArtifactDocument document,
     required List<ArtifactSection> sections,
   }) {
@@ -369,6 +431,18 @@ class EvidencePackBuilder {
             'Caveat',
           ],
           ..._citationAuthorityRows(sourceBullets),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Visual Evidence Register',
+        rows: [
+          const [
+            'Evidence item',
+            'Reliability',
+            'Safe use',
+            'Required follow-up',
+          ],
+          ..._visualEvidenceRows(visualEvidenceBullets),
         ],
       ),
       ArtifactTable(
@@ -593,6 +667,30 @@ class EvidencePackBuilder {
             _scopeFit(source),
             _customerReadyUse(source),
             _authorityCaveat(source),
+          ];
+        })
+        .toList(growable: false);
+  }
+
+  List<List<String>> _visualEvidenceRows(List<String> visualEvidenceBullets) {
+    if (visualEvidenceBullets.isEmpty) {
+      return const [
+        [
+          'No screenshot or image evidence detected',
+          'Missing',
+          'Do not claim visual findings from unseen pixels.',
+          'Attach screenshots with /screenshot and add a short description, or enable OCR/vision analysis.',
+        ],
+      ];
+    }
+    return visualEvidenceBullets
+        .take(20)
+        .map((item) {
+          return [
+            _cleanBullet(item),
+            'Metadata-only until OCR/vision or user description confirms details.',
+            'Reference as a visual appendix item, not as inspected pixel evidence.',
+            'Confirm UI text, layout, and visual defects before customer-facing claims.',
           ];
         })
         .toList(growable: false);

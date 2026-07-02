@@ -186,7 +186,7 @@ GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
     return GeneratedArtifactKind.json;
   }
   if (RegExp(
-    r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?)\b',
+    r'\b(evidence pack|citation pack|source pack|sources report|source report|evidence review|fact check|fact-check|source validation|claim validation|unsupported claims?|checked dates?|confidence notes?|visual evidence|screenshot evidence|screenshot review|screen capture evidence|ui evidence|ux evidence|image evidence|visual qa evidence)\b',
   ).hasMatch(normalized)) {
     return GeneratedArtifactKind.docx;
   }
