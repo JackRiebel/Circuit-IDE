@@ -22,6 +22,7 @@ class SolutionSizingWorkbookBuilder {
     final recommendations = _recommendationRows(document);
     final assumptions = _assumptionRows(document, content);
     final sourceTables = _sourceTables(document);
+    final siteDistribution = _siteDistributionRows(profile, document);
     return [
       WorkbookTable(
         name: 'Executive Summary',
@@ -60,7 +61,7 @@ class SolutionSizingWorkbookBuilder {
             'Estimated AP PoE W',
             'Notes',
           ],
-          ..._siteDistributionRows(profile, document),
+          ...siteDistribution,
         ],
       ),
       WorkbookTable(
@@ -101,6 +102,22 @@ class SolutionSizingWorkbookBuilder {
             'Validation Needed',
           ],
           ..._closetPowerRows(profile),
+        ],
+      ),
+      WorkbookTable(
+        name: 'Closet Load Matrix',
+        rows: [
+          const [
+            'Closet / Site',
+            'AP Count',
+            'AP Watts',
+            'Planning Load W',
+            'Reserve W',
+            'Minimum PoE Budget W',
+            'Access Port Speed Gate',
+            'Power Status',
+          ],
+          ..._closetLoadMatrixRows(profile, siteDistribution),
         ],
       ),
       WorkbookTable(
@@ -294,6 +311,10 @@ class SolutionSizingWorkbookBuilder {
     final validationRows = _rowsFor(tables, 'Validation').skip(1).toList();
     final assumptionRows = _rowsFor(tables, 'Assumptions').skip(1).toList();
     final decisionRows = _rowsFor(tables, 'Decision Summary').skip(1).toList();
+    final closetLoadRows = _rowsFor(
+      tables,
+      'Closet Load Matrix',
+    ).skip(1).toList();
     final sizingAuditRows = _rowsFor(tables, 'Sizing Audit').skip(1).toList();
     final evidencePolicyRows = _rowsFor(
       tables,
@@ -317,6 +338,7 @@ class SolutionSizingWorkbookBuilder {
       gateRows: gateRows,
       candidateRows: candidateRows,
       validationRows: validationRows,
+      closetLoadRows: closetLoadRows,
     );
     final customerQuestions = _customerQuestionRows(
       requirementRows: requirementRows,
@@ -374,6 +396,16 @@ class SolutionSizingWorkbookBuilder {
         _severityCount(riskRows, 'High'),
         sourceSheetCount,
       ),
+      'closetLoadRowCount': closetLoadRows.length,
+      'closetLoadReadyCount': _closetLoadReadyCount(closetLoadRows),
+      'closetLoadNeedsDistributionCount': _closetLoadNeedsDistributionCount(
+        closetLoadRows,
+      ),
+      'totalClosetPlanningWatts': _sumColumnAsInt(closetLoadRows, 3),
+      'totalClosetMinimumBudgetWatts': _sumColumnAsInt(closetLoadRows, 5),
+      'closetPowerDistributionStatus': _closetPowerDistributionStatus(
+        closetLoadRows,
+      ),
       'hasSizingAudit': _hasSheet(tables, 'Sizing Audit'),
       'hasSizingQualityManifest': true,
       'hasSizingEvidencePolicy': evidencePolicyRows.isNotEmpty,
@@ -390,6 +422,7 @@ class SolutionSizingWorkbookBuilder {
       'hasPoeBudget': _hasSheet(tables, 'PoE Budget'),
       'hasWanThroughput': _hasSheet(tables, 'WAN Throughput'),
       'hasClosetPower': _hasSheet(tables, 'Closet Power Plan'),
+      'hasClosetLoadMatrix': _hasSheet(tables, 'Closet Load Matrix'),
       'hasCandidateValidation': candidateRows.isNotEmpty,
       'hasLifecycleValidation': _containsText(tables, 'lifecycle'),
       'hasHighPowerApSignal':
@@ -447,6 +480,7 @@ class SolutionSizingWorkbookBuilder {
     required List<List<String>> gateRows,
     required List<List<String>> candidateRows,
     required List<List<String>> validationRows,
+    required List<List<String>> closetLoadRows,
   }) {
     final failures = <String>[];
     for (final row in gateRows) {
@@ -476,6 +510,11 @@ class SolutionSizingWorkbookBuilder {
           row.any((cell) => cell.toLowerCase().contains('needs validation')),
     )) {
       failures.add('Validation checks: open workbook validation items remain');
+    }
+    if (_closetLoadNeedsDistributionCount(closetLoadRows) > 0) {
+      failures.add(
+        'Closet load matrix: AP distribution or per-closet power budget still needs validation',
+      );
     }
     return failures.toSet().take(8).toList(growable: false);
   }
@@ -609,6 +648,39 @@ class SolutionSizingWorkbookBuilder {
         .where((row) => row.any((cell) => cell.trim().isNotEmpty))
         .map((row) => row.where((cell) => cell.trim().isNotEmpty).join(': '))
         .toList(growable: false);
+  }
+
+  int _sumColumnAsInt(List<List<String>> rows, int column) {
+    var total = 0;
+    for (final row in rows) {
+      if (column >= row.length) continue;
+      total += _SizingProfile._firstInt(row[column]) ?? 0;
+    }
+    return total;
+  }
+
+  int _closetLoadReadyCount(List<List<String>> rows) {
+    return rows.where((row) {
+      if (row.length < 8) return false;
+      return row[7].toLowerCase().contains('ready for budget review');
+    }).length;
+  }
+
+  int _closetLoadNeedsDistributionCount(List<List<String>> rows) {
+    return rows.where((row) {
+      if (row.length < 8) return true;
+      final text = row.join(' ').toLowerCase();
+      return text.contains('tbd') || text.contains('needs distribution');
+    }).length;
+  }
+
+  String _closetPowerDistributionStatus(List<List<String>> rows) {
+    if (rows.isEmpty) return 'No closet load rows';
+    final needsDistribution = _closetLoadNeedsDistributionCount(rows);
+    if (needsDistribution > 0) {
+      return 'Needs AP distribution for $needsDistribution closet/site row${needsDistribution == 1 ? '' : 's'}';
+    }
+    return 'Per-site AP power loads calculated';
   }
 
   List<List<String>> _executiveSummaryRows(_SizingProfile profile) {
@@ -848,6 +920,45 @@ class SolutionSizingWorkbookBuilder {
         'Capture AP/user distribution and available power per closet.',
       ],
     ];
+  }
+
+  List<List<String>> _closetLoadMatrixRows(
+    _SizingProfile profile,
+    List<List<String>> siteDistribution,
+  ) {
+    final rows = <List<String>>[];
+    for (final source in siteDistribution) {
+      if (source.isEmpty) continue;
+      final site = source[0].trim().isEmpty ? 'Unnamed site' : source[0].trim();
+      final aps = source.length > 2 ? source[2].trim() : 'TBD';
+      final apCount = _SizingProfile._firstInt(aps);
+      final planningLoad = apCount == null
+          ? null
+          : (apCount * profile.apWatts * profile.growthMultiplier).ceil();
+      final reserve = planningLoad == null ? null : (planningLoad * 0.2).ceil();
+      final minimumBudget = planningLoad == null || reserve == null
+          ? null
+          : planningLoad + reserve;
+      final speedGate = profile.requiresMultiGig
+          ? 'mGig/UPOE access validation required'
+          : 'Validate AP port speed and PoE class';
+      final powerStatus = apCount == null
+          ? 'Needs distribution - AP count missing'
+          : profile.requiresHighPowerAp
+          ? 'Ready for budget review - validate UPOE'
+          : 'Ready for budget review - validate PoE';
+      rows.add([
+        site,
+        apCount?.toString() ?? 'TBD',
+        profile.apWatts.toString(),
+        planningLoad?.toString() ?? 'TBD',
+        reserve?.toString() ?? 'TBD',
+        minimumBudget?.toString() ?? 'TBD',
+        speedGate,
+        powerStatus,
+      ]);
+    }
+    return rows;
   }
 
   List<List<String>> _capacityRows(_SizingProfile profile) {
@@ -1542,6 +1653,11 @@ class SolutionSizingWorkbookBuilder {
         'Review PoE Budget, Closet Power Plan, and WAN Throughput sheets.',
         'Power and inspected-throughput assumptions drive model suitability.',
         profile.requiresHighPowerAp ? 'High priority' : 'Required',
+      ],
+      [
+        'Review Closet Load Matrix per-site power rows.',
+        'Per-site AP loads prevent aggregate-only PoE sizing mistakes.',
+        profile.accessPoints == null ? 'Needs AP distribution' : 'Required',
       ],
       [
         'Confirm Candidate Validation and Requirement Gates show open risks.',

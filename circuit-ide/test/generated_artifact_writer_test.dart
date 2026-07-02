@@ -293,7 +293,7 @@ Here is the data.
     expect(artifact.status, GeneratedArtifactStatus.ready);
     expect(artifact.fileName, endsWith('.xlsx'));
     expect(artifact.summary, contains('solution sizing workbook'));
-    expect(artifact.sheetCount, greaterThanOrEqualTo(18));
+    expect(artifact.sheetCount, greaterThanOrEqualTo(19));
     expect(artifact.metadata['artifact'], 'solution_sizing_workbook');
     expect(artifact.metadata['workbookKind'], 'solution_sizing');
     expect(artifact.metadata['sheetCount'], artifact.sheetCount);
@@ -365,7 +365,7 @@ Here is the data.
       artifact.metadata['sizingEvidencePolicy'],
       anyElement(contains('EoX replacement PIDs')),
     );
-    expect(artifact.metadata['sizingVisualVerificationChecklistCount'], 5);
+    expect(artifact.metadata['sizingVisualVerificationChecklistCount'], 6);
     expect(
       artifact.metadata['sizingVisualVerificationChecklist'],
       anyElement(contains('Open workbook and confirm all sizing sheets')),
@@ -389,6 +389,16 @@ Here is the data.
     expect(artifact.metadata['hasPoeBudget'], isTrue);
     expect(artifact.metadata['hasWanThroughput'], isTrue);
     expect(artifact.metadata['hasClosetPower'], isTrue);
+    expect(artifact.metadata['hasClosetLoadMatrix'], isTrue);
+    expect(artifact.metadata['closetLoadRowCount'], 2);
+    expect(artifact.metadata['closetLoadReadyCount'], 2);
+    expect(artifact.metadata['closetLoadNeedsDistributionCount'], 0);
+    expect(artifact.metadata['totalClosetPlanningWatts'], 6750);
+    expect(artifact.metadata['totalClosetMinimumBudgetWatts'], 8100);
+    expect(
+      artifact.metadata['closetPowerDistributionStatus'],
+      'Per-site AP power loads calculated',
+    );
     expect(artifact.metadata['hasCandidateValidation'], isTrue);
     expect(artifact.metadata['hasLifecycleValidation'], isTrue);
     expect(artifact.metadata['hasHighPowerApSignal'], isTrue);
@@ -422,6 +432,10 @@ Here is the data.
     expect(packageText, contains('Capacity Model'));
     expect(packageText, contains('PoE Budget'));
     expect(packageText, contains('Closet Power Plan'));
+    expect(packageText, contains('Closet Load Matrix'));
+    expect(packageText, contains('Minimum PoE Budget W'));
+    expect(packageText, contains('Ready for budget review'));
+    expect(packageText, contains('mGig/UPOE access validation required'));
     expect(packageText, contains('WAN Throughput'));
     expect(packageText, contains('HA Growth'));
     expect(packageText, contains('Licensing Support'));
@@ -454,6 +468,10 @@ Here is the data.
     expect(
       packageText,
       contains('Open workbook and confirm all sizing sheets'),
+    );
+    expect(
+      packageText,
+      contains('Review Closet Load Matrix per-site power rows'),
     );
     expect(
       packageText,
