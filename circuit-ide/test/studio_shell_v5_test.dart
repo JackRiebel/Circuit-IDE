@@ -3461,6 +3461,46 @@ void main() {
     expect(find.textContaining('Failed for'), findsNothing);
   });
 
+  testWidgets('Empty failed thread updates from generic empty text to error', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(title: 'hi');
+    container.read(studioThreadProvider.notifier).fail(thread.id, '');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+
+    expect(
+      find.text('No saved turns yet. Start a follow-up below.'),
+      findsOneWidget,
+    );
+
+    container
+        .read(studioThreadProvider.notifier)
+        .fail(thread.id, 'AI is not connected. Reconnect before sending.');
+    await tester.pump();
+
+    expect(
+      find.text('AI is not connected. Reconnect before sending.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('No saved turns yet. Start a follow-up below.'),
+      findsNothing,
+    );
+  });
+
   testWidgets('Selected thread renders even when a legacy task is selected', (
     tester,
   ) async {

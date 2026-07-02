@@ -1166,7 +1166,14 @@ Future<StudioSendResult?> _handleActivePlanContinuation(
     const message =
         'A request is already running. Wait for it to finish or cancel it before implementing this plan.';
     if (thread != null) {
-      ref.read(studioThreadProvider.notifier).block(thread.id, message);
+      _recordBlockedSendTurn(
+        ref,
+        thread: thread,
+        taskId: resolvedTaskId,
+        prompt: text,
+        message: message,
+        intent: TurnIntent.code,
+      );
     }
     return StudioSendResult.blocked(
       message,
@@ -1182,6 +1189,45 @@ Future<StudioSendResult?> _handleActivePlanContinuation(
     plan,
     taskId: resolvedTaskId,
     finishTask: finishTask || resolvedTaskId != null,
+  );
+}
+
+void _recordBlockedSendTurn(
+  WidgetRef ref, {
+  required StudioThread thread,
+  required String? taskId,
+  required String prompt,
+  required String message,
+  required TurnIntent intent,
+}) {
+  final rootPath = ref.read(fileTreeProvider).rootPath;
+  final requestId = _uuid.v4();
+  final userMessageId = _uuid.v4();
+  ref
+      .read(studioTurnProvider.notifier)
+      .registerTurn(
+        requestId: requestId,
+        threadId: thread.id,
+        taskId: taskId,
+        userMessageId: userMessageId,
+        prompt: prompt,
+        model: thread.model ?? ref.read(settingsProvider).ciscoModel,
+        contextSummary:
+            thread.contextSummary ?? _fallbackContextSummary(rootPath),
+        intent: intent,
+      );
+  ref.read(studioTurnProvider.notifier).fail(requestId, message);
+}
+
+StudioContextSummary _fallbackContextSummary(String? rootPath) {
+  final estimatedTokens = rootPath == null ? 0 : (rootPath.length / 4).ceil();
+  return StudioContextSummary(
+    projectLabel: rootPath == null
+        ? 'No project selected'
+        : p.basename(rootPath),
+    rootPath: rootPath,
+    includedItemCount: rootPath == null ? 0 : 1,
+    estimatedTokens: estimatedTokens,
   );
 }
 

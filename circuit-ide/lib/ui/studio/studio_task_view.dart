@@ -554,6 +554,7 @@ class _TaskTranscriptIndex {
         effectiveTaskId == other.effectiveTaskId &&
         statusLabel == other.statusLabel &&
         statusActive == other.statusActive &&
+        lastError == other.lastError &&
         listEquals(turnIds, other.turnIds);
   }
 
@@ -563,6 +564,7 @@ class _TaskTranscriptIndex {
     effectiveTaskId,
     statusLabel,
     statusActive,
+    lastError,
     Object.hashAll(turnIds),
   );
 }
