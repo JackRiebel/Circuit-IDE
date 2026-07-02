@@ -4241,6 +4241,11 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Decision posture',
             _metadataString(artifact, 'sizingDecisionPosture'),
           ),
+        if (_metadataInt(artifact, 'sizingCustomerHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'sizingCustomerHandoffReadyCount')}/${_metadataInt(artifact, 'sizingCustomerHandoffGateCount')} ready',
+          ),
         if (_metadataBool(artifact, 'hasSizingQualityManifest'))
           (
             'Sizing manifest',

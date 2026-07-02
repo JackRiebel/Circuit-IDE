@@ -1473,6 +1473,25 @@ void main() {
         'sizingHandoffStatus': 'Requirements review workbook',
         'sizingDecisionPosture':
             'Advisory only - close hard gates before BOM recommendation',
+        'hasSizingCustomerHandoffMatrix': true,
+        'sizingCustomerHandoffGateCount': 6,
+        'sizingCustomerHandoffReadyCount': 4,
+        'sizingCustomerHandoffMatrix': [
+          {
+            'gate': 'Source evidence',
+            'signal': 'Source workbook/table captured',
+            'status': 'Ready',
+            'ownerAction': 'Confirm source freshness and owner.',
+            'ready': true,
+          },
+          {
+            'gate': 'Power and access constraints',
+            'signal': 'UPOE/mGig validation required',
+            'status': 'Needs datasheet validation',
+            'ownerAction': 'Validate AP draw, UPOE, mGig, and uplinks.',
+            'ready': false,
+          },
+        ],
         'sizingQualityManifestVersion': '1.0',
         'sizingEvidencePolicy': [
           'Sizing workbook is advisory until source evidence is attached.: Source sheets are attached: Confirm source freshness and authority before recommendation.',
@@ -1581,6 +1600,8 @@ void main() {
       find.text('Advisory only - close hard gates before BOM recommendation'),
       findsOneWidget,
     );
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('4/6 ready'), findsOneWidget);
     expect(find.text('Sizing manifest'), findsOneWidget);
     expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Evidence policy'), findsOneWidget);

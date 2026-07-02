@@ -392,6 +392,32 @@ Here is the data.
       artifact.metadata['sizingPublishingMetadata'],
       anyElement(contains('External handoff')),
     );
+    expect(artifact.metadata['hasSizingCustomerHandoffMatrix'], isTrue);
+    expect(artifact.metadata['sizingCustomerHandoffGateCount'], 6);
+    expect(
+      artifact.metadata['sizingCustomerHandoffReadyCount'],
+      greaterThanOrEqualTo(4),
+    );
+    expect(
+      artifact.metadata['sizingCustomerHandoffMatrix'],
+      anyElement(
+        allOf(
+          isA<Map<String, Object?>>(),
+          containsPair('gate', 'Source evidence'),
+          containsPair('ready', true),
+        ),
+      ),
+    );
+    expect(
+      artifact.metadata['sizingCustomerHandoffMatrix'],
+      anyElement(
+        allOf(
+          isA<Map<String, Object?>>(),
+          containsPair('gate', 'Power and access constraints'),
+          containsPair('ready', false),
+        ),
+      ),
+    );
     expect(artifact.metadata['hasSizingQualityManifest'], isTrue);
     expect(artifact.metadata['hasSizingEvidencePolicy'], isTrue);
     expect(artifact.metadata['hasSizingVisualVerificationChecklist'], isTrue);
@@ -468,6 +494,9 @@ Here is the data.
     expect(packageText, contains('Evidence Policy'));
     expect(packageText, contains('Visual QA'));
     expect(packageText, contains('Publishing Readiness'));
+    expect(packageText, contains('Customer Handoff Matrix'));
+    expect(packageText, contains('Power and access constraints'));
+    expect(packageText, contains('Recommendation boundary'));
     expect(packageText, contains('Source 1'));
     expect(packageText, contains('500'));
     expect(packageText, contains('90'));

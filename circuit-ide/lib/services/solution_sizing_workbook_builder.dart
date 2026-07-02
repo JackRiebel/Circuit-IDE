@@ -23,6 +23,12 @@ class SolutionSizingWorkbookBuilder {
     final assumptions = _assumptionRows(document, content);
     final sourceTables = _sourceTables(document);
     final siteDistribution = _siteDistributionRows(profile, document);
+    final customerHandoffRows = _sizingCustomerHandoffRows(
+      profile: profile,
+      hasSourceEvidence: sourceTables.isNotEmpty,
+      hasAssumptions: assumptions.isNotEmpty,
+      siteDistribution: siteDistribution,
+    );
     return [
       WorkbookTable(
         name: 'Executive Summary',
@@ -292,6 +298,13 @@ class SolutionSizingWorkbookBuilder {
           ),
         ],
       ),
+      WorkbookTable(
+        name: 'Customer Handoff Matrix',
+        rows: [
+          const ['Gate', 'Signal', 'Status', 'Owner Action', 'Ready'],
+          ...customerHandoffRows,
+        ],
+      ),
       if (sourceTables.isNotEmpty) ...sourceTables,
     ];
   }
@@ -325,6 +338,13 @@ class SolutionSizingWorkbookBuilder {
       tables,
       'Publishing Readiness',
     ).skip(1).toList();
+    final customerHandoffRows = _rowsFor(
+      tables,
+      'Customer Handoff Matrix',
+    ).skip(1).toList();
+    final customerHandoffReadyCount = _sizingCustomerHandoffReadyCount(
+      customerHandoffRows,
+    );
     final sourceSheetCount = tables
         .where((table) => table.name.toLowerCase().startsWith('source '))
         .length;
@@ -385,6 +405,11 @@ class SolutionSizingWorkbookBuilder {
       'sizingVisualVerificationChecklistCount': visualQaRows.length,
       'sizingPublishingMetadata': _stringRows(publishingRows),
       'sizingPublishingMetadataCount': publishingRows.length,
+      'sizingCustomerHandoffMatrix': _sizingCustomerHandoffMetadata(
+        customerHandoffRows,
+      ),
+      'sizingCustomerHandoffGateCount': customerHandoffRows.length,
+      'sizingCustomerHandoffReadyCount': customerHandoffReadyCount,
       'hardGateFailures': hardGateRows,
       'hardGateFailureCount': hardGateRows.length,
       'customerFollowUpQuestions': customerQuestions,
@@ -411,6 +436,7 @@ class SolutionSizingWorkbookBuilder {
       'hasSizingEvidencePolicy': evidencePolicyRows.isNotEmpty,
       'hasSizingVisualVerificationChecklist': visualQaRows.isNotEmpty,
       'hasSizingPublishingMetadata': publishingRows.isNotEmpty,
+      'hasSizingCustomerHandoffMatrix': customerHandoffRows.isNotEmpty,
       'hasSourceEvidence': sourceSheetCount > 0,
       'hasAssumptionCoverage': assumptionRows.isNotEmpty,
       'users': _requirementValue(requirementRows, 'Users'),
@@ -672,6 +698,30 @@ class SolutionSizingWorkbookBuilder {
       final text = row.join(' ').toLowerCase();
       return text.contains('tbd') || text.contains('needs distribution');
     }).length;
+  }
+
+  int _sizingCustomerHandoffReadyCount(List<List<String>> rows) {
+    return rows.where((row) {
+      if (row.length < 5) return false;
+      return row[4].toLowerCase().contains('ready');
+    }).length;
+  }
+
+  List<Map<String, Object?>> _sizingCustomerHandoffMetadata(
+    List<List<String>> rows,
+  ) {
+    return rows
+        .where((row) => row.length >= 5)
+        .map(
+          (row) => {
+            'gate': row[0],
+            'signal': row[1],
+            'status': row[2],
+            'ownerAction': row[3],
+            'ready': row[4].toLowerCase().contains('ready'),
+          },
+        )
+        .toList(growable: false);
   }
 
   String _closetPowerDistributionStatus(List<List<String>> rows) {
@@ -1704,6 +1754,107 @@ class SolutionSizingWorkbookBuilder {
         'Assumptions',
         'Sizing assumptions and unknowns are explicit.',
         hasAssumptions ? 'Captured' : 'Missing',
+      ],
+    ];
+  }
+
+  List<List<String>> _sizingCustomerHandoffRows({
+    required _SizingProfile profile,
+    required bool hasSourceEvidence,
+    required bool hasAssumptions,
+    required List<List<String>> siteDistribution,
+  }) {
+    final baselineReady =
+        profile.users != null &&
+        profile.accessPoints != null &&
+        profile.switches != null &&
+        profile.wanMbps != null &&
+        profile.growthPercent != null;
+    final siteReady =
+        siteDistribution.isNotEmpty &&
+        siteDistribution.every(
+          (row) => !row.join(' ').toLowerCase().contains('tbd'),
+        );
+    final powerReady =
+        !profile.requiresHighPowerAp &&
+        !profile.requiresMultiGig &&
+        profile.accessPoints != null;
+    final wanReady =
+        profile.wanMbps != null && profile.requiresHighAvailability;
+    final recommendationReady =
+        hasSourceEvidence &&
+        hasAssumptions &&
+        baselineReady &&
+        siteReady &&
+        powerReady &&
+        wanReady;
+
+    String readyText(bool ready) => ready ? 'Ready' : 'Needs review';
+
+    return [
+      [
+        'Source evidence',
+        hasSourceEvidence
+            ? 'Source workbook/table captured'
+            : 'No source table attached',
+        hasSourceEvidence ? 'Ready' : 'Needs evidence',
+        hasSourceEvidence
+            ? 'Confirm source freshness and owner before external sharing.'
+            : 'Attach inventory, datasheets, WAN/service data, and checked dates.',
+        readyText(hasSourceEvidence),
+      ],
+      [
+        'Assumptions',
+        hasAssumptions ? 'Assumptions captured' : 'No assumptions captured',
+        hasAssumptions ? 'Ready' : 'Needs owner input',
+        hasAssumptions
+            ? 'Review assumptions with the customer or architecture owner.'
+            : 'Capture growth, HA, power, lifecycle, and licensing assumptions.',
+        readyText(hasAssumptions),
+      ],
+      [
+        'Requirement baseline',
+        baselineReady
+            ? 'Users/APs/switches/WAN/growth captured'
+            : 'Sizing inputs incomplete',
+        baselineReady ? 'Ready' : 'Needs discovery',
+        baselineReady
+            ? 'Validate counts by site and closet.'
+            : 'Collect users, APs, switches, WAN speed, and growth horizon.',
+        readyText(baselineReady),
+      ],
+      [
+        'Site and closet distribution',
+        siteReady
+            ? '${siteDistribution.length} site/closet rows captured'
+            : 'Per-site AP/power distribution incomplete',
+        siteReady ? 'Ready for budget review' : 'Needs distribution',
+        siteReady
+            ? 'Review Closet Load Matrix with the site owner.'
+            : 'Split APs and power loads by MDF/IDF/site before BOM sizing.',
+        readyText(siteReady),
+      ],
+      [
+        'Power and access constraints',
+        powerReady
+            ? 'No high-power/mGig blocker detected'
+            : 'UPOE/mGig validation required',
+        powerReady ? 'Ready' : 'Needs datasheet validation',
+        powerReady
+            ? 'Confirm standard PoE class and access speeds.'
+            : 'Validate AP draw, UPOE/UPOE+, mGig ports, uplinks, and power supplies.',
+        readyText(powerReady),
+      ],
+      [
+        'Recommendation boundary',
+        recommendationReady
+            ? 'Evidence and hard gates support external recommendation'
+            : 'Advisory only before BOM recommendation',
+        recommendationReady ? 'Ready' : 'Needs review',
+        recommendationReady
+            ? 'Proceed to reviewer/customer handoff.'
+            : 'Close hard gates before presenting final model/BOM recommendations.',
+        readyText(recommendationReady),
       ],
     ];
   }
