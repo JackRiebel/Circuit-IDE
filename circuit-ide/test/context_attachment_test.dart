@@ -96,6 +96,14 @@ void main() {
       attachment.content,
       contains('Visual evidence status: screenshot/image file is attached'),
     );
+    expect(
+      attachment.content,
+      contains('Visual analysis contract: do not claim to inspect pixels'),
+    );
+    expect(
+      attachment.content,
+      contains('Recommended artifact role: visual evidence appendix'),
+    );
     expect(attachment.metadata['artifactRole'], 'visual_evidence');
     expect(attachment.metadata['mimeType'], 'image/png');
     expect(attachment.metadata['width'], 1440);
@@ -103,6 +111,15 @@ void main() {
     expect(attachment.metadata['ocrStatus'], 'not_extracted');
     expect(attachment.metadata['visionInputStatus'], 'metadata_only');
     expect(attachment.metadata['providerPixelInputSupported'], isFalse);
+    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+    expect(
+      attachment.metadata['visualAnalysisContract'],
+      contains('Do not infer screenshot contents from pixels'),
+    );
+    expect(
+      attachment.metadata['recommendedArtifactRole'],
+      'visual_evidence_appendix',
+    );
   });
 
   test('ScreenshotContextAttachmentBuilder skips unsupported files', () async {

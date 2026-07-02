@@ -36,7 +36,7 @@ class ScreenshotContextAttachmentBuilder {
     final extension = p.extension(path).replaceFirst('.', '').toUpperCase();
     final mimeType = _mimeTypeForExtension(p.extension(path));
     final facts = [
-      'Image attachment for visual review.',
+      'Image attachment for visual-evidence review.',
       'File: ${p.basename(path)}',
       'Format: ${extension.isEmpty ? 'Unknown' : extension}',
       'Size: ${_formatBytes(bytes.length)}',
@@ -47,7 +47,9 @@ class ScreenshotContextAttachmentBuilder {
       'Visual evidence status: screenshot/image file is attached as context metadata.',
       'OCR status: not extracted locally.',
       'Vision model status: not sent as pixel input by the current Circuit connector.',
-      'Use this attachment as visual evidence metadata only unless the user also describes the screenshot contents.',
+      'Visual analysis contract: do not claim to inspect pixels, read text, identify UI details, or infer layout from this image unless the user described those details in text.',
+      'Safe use: cite the screenshot as provided evidence, ask for a description or OCR/vision integration when pixel-level review is required, and preserve file metadata in any handoff artifact.',
+      'Recommended artifact role: visual evidence appendix for UX reviews, bug reports, implementation plans, and customer handoff packages.',
     ];
 
     return ContextAttachment(
@@ -68,6 +70,12 @@ class ScreenshotContextAttachmentBuilder {
         'ocrStatus': 'not_extracted',
         'visionInputStatus': 'metadata_only',
         'providerPixelInputSupported': false,
+        'analysisReliability': 'metadata_only',
+        'visualAnalysisContract':
+            'Do not infer screenshot contents from pixels; use metadata and user-provided description only.',
+        'recommendedArtifactRole': 'visual_evidence_appendix',
+        'recommendedFollowUp':
+            'Ask for OCR/vision integration or a user description before making pixel-level claims.',
         'handoffUse':
             'Attach as visual evidence metadata; request OCR/vision integration before relying on unseen pixels.',
       },

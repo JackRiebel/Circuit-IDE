@@ -32,9 +32,18 @@ void main() {
     expect(attachment.type, ContextAttachmentType.image);
     expect(attachment.path, screenshot.path);
     expect(attachment.content, contains('Dimensions: 1440 x 900px'));
+    expect(
+      attachment.content,
+      contains('Safe use: cite the screenshot as provided evidence'),
+    );
     expect(attachment.metadata['artifactRole'], 'visual_evidence');
     expect(attachment.metadata['ocrStatus'], 'not_extracted');
     expect(attachment.metadata['providerPixelInputSupported'], isFalse);
+    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+    expect(
+      attachment.metadata['recommendedFollowUp'],
+      contains('OCR/vision integration'),
+    );
   });
 }
 
