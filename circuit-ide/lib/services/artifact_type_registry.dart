@@ -192,6 +192,7 @@ class ArtifactTypeRegistry {
         'Findings matrix is present',
         'Risk and validation metadata persists',
         'Review workflow renders',
+        'Architecture readout deck and PDF companion render when packaged',
       ],
     ),
     ArtifactTypeDescriptor(
@@ -299,6 +300,7 @@ class ArtifactTypeRegistry {
         'Plan phases are present',
         'Verification and rollback metadata persists',
         'Approval gates preview renders',
+        'Implementation readout deck and PDF companion render when packaged',
       ],
     ),
     ArtifactTypeDescriptor(

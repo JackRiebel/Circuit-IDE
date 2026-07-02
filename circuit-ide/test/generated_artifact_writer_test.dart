@@ -1137,6 +1137,139 @@ Architecture review for a campus refresh with WAN, access, wireless, and securit
     },
   );
 
+  test(
+    'architecture review package creates DOCX deck and PDF artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-architecture-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create an architecture review package for this design',
+            content: '''
+# Campus Architecture Review
+
+Architecture review for a campus refresh with WAN, access, wireless, and security scope.
+
+## Current State
+- Dual WAN exists but failover evidence is incomplete.
+- Access switching needs PoE and uplink validation.
+
+## Design Objectives
+- Improve resiliency across WAN and campus access.
+- Support Wi-Fi 7 growth with validated power and uplink budgets.
+
+## Findings
+- WAN failover has not been tested with business-critical applications.
+- PoE budget could constrain Wi-Fi 7 AP deployment.
+- Security segmentation needs confirmation before rollout.
+
+## Risks
+- Unknown PoE headroom can delay access-layer readiness.
+- Missing failover validation creates availability risk.
+
+## Recommendations
+- Run WAN failover testing and capture results.
+- Validate PoE, multigig, and uplink capacity before final model choice.
+- Confirm segmentation and logging requirements with security owner.
+
+## Validation
+- Test WAN failover during a maintenance window.
+- Review switch power budgets against AP inventory.
+- Confirm security policy and audit evidence.
+
+## Decisions
+- Use phased rollout with MDF first, then IDFs.
+
+## Assumptions
+- Customer AP count is current.
+
+## Sources
+- Workshop notes checked 2026-07-01.
+''',
+            turnId: 'turn-architecture-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      expect(package!.label, 'architecture review package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ]);
+      expect(
+        package.artifacts.map((artifact) => artifact.id).toSet().length,
+        4,
+      );
+      for (final artifact in package.artifacts) {
+        expect(artifact.status, GeneratedArtifactStatus.ready);
+        expect(File(artifact.filePath).existsSync(), isTrue);
+        expect(artifact.threadId, 'thread-1');
+        expect(artifact.requestId, 'request-1');
+      }
+
+      final report = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.docx,
+      );
+      final deck = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
+      );
+      final pdf = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
+      );
+
+      expect(report.summary, contains('architecture review pack'));
+      expect(report.metadata['artifactTemplate'], 'architecture_review_pack');
+      expect(deck.summary, contains('architecture review PowerPoint deck'));
+      expect(deck.metadata['artifactTemplate'], 'architecture_review_pack');
+      expect(deck.metadata['slideCount'], greaterThanOrEqualTo(10));
+      expect(pdf.summary, contains('architecture review PDF'));
+      expect(pdf.metadata['artifactTemplate'], 'architecture_review_pack');
+      expect(File(pdf.filePath).readAsStringSync(), startsWith('%PDF-1.'));
+
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Architecture Review Package'));
+      expect(manifestText, contains('.docx'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
+      expect(package.primary!.metadata['expectedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(package.primary!.metadata['producedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(
+        package.primary!.metadata['packageCompletenessStatus'],
+        'Complete',
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll(['Review package', 'Report outline', 'Slide outline']),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        contains(
+          'Architecture readout deck and PDF companion render when packaged',
+        ),
+      );
+      expect(
+        manifestText,
+        contains('| Word, PowerPoint, PDF | Word, PowerPoint, PDF | None |'),
+      );
+    },
+  );
+
   test('implementation plan prompt creates a shaped DOCX artifact', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
@@ -1312,6 +1445,137 @@ Implementation plan for a customer-ready artifact workspace.
       expect(pdfText, startsWith('%PDF-1.'));
       expect(pdfText, contains('Implementation Overview'));
       expect(pdfText, contains('Verification Checklist'));
+    },
+  );
+
+  test(
+    'implementation plan package creates DOCX deck and PDF artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-implementation-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt:
+                'create an implementation plan package for the artifact workspace upgrade',
+            content: '''
+# Artifact Workspace Implementation Plan
+
+Build the next artifact platform pass with reviewable batches and strong verification.
+
+## Scope
+- Add artifact composer templates for implementation plans.
+- Keep Studio outcome-focused and avoid transcript noise.
+
+## Workstreams
+- Create implementation plan DOCX/PDF/deck outputs.
+- Add drawer metadata and review previews.
+- Preserve existing plan, patch, approval, and context flows.
+
+## Phases
+- Inspect current artifact writer and registry.
+- Implement the template builder.
+- Add focused tests and run verification.
+
+## Dependencies
+- Current artifact writer and DOCX/PDF/PPTX renderers.
+- Workspace output directory.
+- Reviewer approval for generated customer-facing plans.
+
+## Verification
+- Confirm generated file exists and parses as an Office package.
+- Confirm preview metadata lists implementation sections.
+- Confirm artifact card summary names the implementation plan.
+
+## Rollback
+- Restore the prior commit or remove the generated artifact template.
+
+## Assumptions
+- Existing artifact renderers remain the output engine.
+
+## Sources
+- CircuitCode artifact platform plan checked 2026-07-01.
+''',
+            turnId: 'turn-implementation-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(package, isNotNull);
+      expect(package!.label, 'implementation plan package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ]);
+      expect(
+        package.artifacts.map((artifact) => artifact.id).toSet().length,
+        4,
+      );
+      for (final artifact in package.artifacts) {
+        expect(artifact.status, GeneratedArtifactStatus.ready);
+        expect(File(artifact.filePath).existsSync(), isTrue);
+        expect(artifact.threadId, 'thread-1');
+        expect(artifact.requestId, 'request-1');
+      }
+
+      final report = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.docx,
+      );
+      final deck = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.powerPoint,
+      );
+      final pdf = package.artifacts.firstWhere(
+        (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
+      );
+
+      expect(report.summary, contains('implementation plan'));
+      expect(report.metadata['artifactTemplate'], 'implementation_plan');
+      expect(deck.summary, contains('implementation plan PowerPoint deck'));
+      expect(deck.metadata['artifactTemplate'], 'implementation_plan');
+      expect(deck.metadata['slideCount'], greaterThanOrEqualTo(10));
+      expect(pdf.summary, contains('implementation plan PDF'));
+      expect(pdf.metadata['artifactTemplate'], 'implementation_plan');
+      expect(File(pdf.filePath).readAsStringSync(), startsWith('%PDF-1.'));
+
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Implementation Plan Package'));
+      expect(manifestText, contains('.docx'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
+      expect(package.primary!.metadata['expectedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(package.primary!.metadata['producedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'PDF',
+      ]);
+      expect(
+        package.primary!.metadata['packageCompletenessStatus'],
+        'Complete',
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll(['Implementation plan', 'Report outline', 'Slide outline']),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        contains(
+          'Implementation readout deck and PDF companion render when packaged',
+        ),
+      );
+      expect(
+        manifestText,
+        contains('| Word, PowerPoint, PDF | Word, PowerPoint, PDF | None |'),
+      );
     },
   );
 
@@ -2884,6 +3148,18 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(
       registry.descriptorForId('business_use_case_brief')?.verificationChecks,
       contains('PDF executive handoff renders when requested'),
+    );
+    expect(
+      registry.descriptorForId('architecture_review_pack')?.verificationChecks,
+      contains(
+        'Architecture readout deck and PDF companion render when packaged',
+      ),
+    );
+    expect(
+      registry.descriptorForId('implementation_plan')?.verificationChecks,
+      contains(
+        'Implementation readout deck and PDF companion render when packaged',
+      ),
     );
     expect(
       registry.descriptorForId('change_summary_diff_report')?.packageKinds,
