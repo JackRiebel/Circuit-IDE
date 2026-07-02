@@ -1137,6 +1137,17 @@ void main() {
         ],
         'pageCount': 2,
         'bookmarkCount': 8,
+        'pdfInspectionStatus': 'Verified',
+        'pdfStructuralValid': true,
+        'pdfExpectedReportChrome': true,
+        'pdfParsedPageCount': 2,
+        'pdfObjectCount': 24,
+        'pdfHasOutlineTree': true,
+        'pdfHasResolvableBookmarkDestinations': true,
+        'pdfHasRenderSafeTextFrame': true,
+        'pdfHasPageCountConsistency': true,
+        'pdfHasVisualVerificationManifest': true,
+        'pdfInspectionFailedChecks': <String>[],
         'reportSectionCount': 12,
         'sectionCount': 4,
         'tableCount': 1,
@@ -1176,6 +1187,7 @@ void main() {
       find.textContaining('PDF • Architecture report • 8 bookmarks'),
       findsOneWidget,
     );
+    expect(find.textContaining('PDF Verified'), findsOneWidget);
     expect(find.textContaining('Ready for stakeholder review'), findsOneWidget);
     expect(find.text('PDF outline'), findsOneWidget);
     expect(find.text('2 pages'), findsOneWidget);
@@ -1234,6 +1246,23 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('PDF inspection'), findsOneWidget);
+    expect(find.text('Verified'), findsAtLeastNWidgets(1));
+    expect(find.text('PDF package'), findsOneWidget);
+    expect(find.text('Structurally valid'), findsOneWidget);
+    expect(find.text('PDF chrome'), findsOneWidget);
+    expect(find.text('Customer-ready report'), findsOneWidget);
+    expect(find.text('Parsed pages'), findsOneWidget);
+    expect(find.text('PDF objects'), findsOneWidget);
+    expect(find.text('24'), findsOneWidget);
+    expect(find.text('Bookmark links'), findsOneWidget);
+    expect(find.text('Resolvable'), findsOneWidget);
+    expect(find.text('Text frame'), findsOneWidget);
+    expect(find.text('Render-safe'), findsOneWidget);
+    expect(find.text('Page count'), findsOneWidget);
+    expect(find.text('Consistent'), findsOneWidget);
+    expect(find.text('Visual manifest'), findsOneWidget);
+    expect(find.text('Included'), findsOneWidget);
     expect(find.text('Quality'), findsOneWidget);
     expect(find.text('Manifest v1.0'), findsOneWidget);
     expect(find.text('Publishing'), findsOneWidget);
@@ -1273,7 +1302,7 @@ void main() {
     expect(find.text('Status'), findsOneWidget);
     expect(find.text('Format'), findsOneWidget);
     expect(find.text('Pages'), findsOneWidget);
-    expect(find.text('Bookmarks'), findsOneWidget);
+    expect(find.text('Bookmarks'), findsAtLeastNWidgets(1));
     expect(find.text('Report parts'), findsOneWidget);
     expect(find.text('Sections'), findsOneWidget);
     expect(find.text('Tables'), findsOneWidget);

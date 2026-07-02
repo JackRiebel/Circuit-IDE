@@ -3293,12 +3293,16 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       final bookmarkCount = _metadataInt(artifact, 'bookmarkCount');
       final reportType = _metadataString(artifact, 'reportType');
       final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      final inspectionStatus = _metadataString(artifact, 'pdfInspectionStatus');
       final visualEvidenceReliability = _metadataString(
         artifact,
         'visualEvidenceReliability',
       );
       if (reportType.isNotEmpty) parts.add(reportType);
       if (bookmarkCount > 0) parts.add('$bookmarkCount bookmarks');
+      if (inspectionStatus.isNotEmpty) {
+        parts.add('PDF $inspectionStatus');
+      }
       if (visualEvidenceReliability.isNotEmpty) {
         parts.add(_visualEvidenceReliabilityLabel(visualEvidenceReliability));
       }
@@ -4858,6 +4862,47 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'DOCX checks',
             _compactSignalList(
               _metadataStringList(artifact, 'docxInspectionFailedChecks'),
+            ),
+          ),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataString(artifact, 'pdfInspectionStatus').isNotEmpty)
+          ('PDF inspection', _metadataString(artifact, 'pdfInspectionStatus')),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfStructuralValid'))
+          ('PDF package', 'Structurally valid'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfExpectedReportChrome'))
+          ('PDF chrome', 'Customer-ready report'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataInt(artifact, 'pdfParsedPageCount') > 0)
+          ('Parsed pages', '${_metadataInt(artifact, 'pdfParsedPageCount')}'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataInt(artifact, 'pdfObjectCount') > 0)
+          ('PDF objects', '${_metadataInt(artifact, 'pdfObjectCount')}'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfHasOutlineTree'))
+          ('Bookmarks', 'Outline tree'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfHasResolvableBookmarkDestinations'))
+          ('Bookmark links', 'Resolvable'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfHasRenderSafeTextFrame'))
+          ('Text frame', 'Render-safe'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfHasPageCountConsistency'))
+          ('Page count', 'Consistent'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataBool(artifact, 'pdfHasVisualVerificationManifest'))
+          ('Visual manifest', 'Included'),
+        if (artifact.kind == GeneratedArtifactKind.pdf &&
+            _metadataStringList(
+              artifact,
+              'pdfInspectionFailedChecks',
+            ).isNotEmpty)
+          (
+            'PDF checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'pdfInspectionFailedChecks'),
             ),
           ),
         if (_metadataBool(artifact, 'hasReportQualityManifest'))
