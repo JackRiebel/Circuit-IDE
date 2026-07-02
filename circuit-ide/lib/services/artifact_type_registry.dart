@@ -374,6 +374,12 @@ class ArtifactTypeRegistry {
         'screenshot evidence',
         'UI review evidence',
       ],
+      requiredInputs: [
+        'claims or findings',
+        'sources / checked dates',
+        'assumptions',
+        'screenshot metadata plus OCR, vision output, or user description for pixel-level visual claims',
+      ],
       packageKinds: [
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.powerPoint,
@@ -385,6 +391,7 @@ class ArtifactTypeRegistry {
         'Claim/source register is present',
         'Checked-date and confidence metadata persists',
         'Unsupported-claim preview renders',
+        'Visual evidence trust boundary persists',
         'Evidence readout deck renders when packaged',
         'PDF handoff companion renders when requested',
       ],

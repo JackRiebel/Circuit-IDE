@@ -216,6 +216,7 @@ class GeneratedArtifactWriter {
         route: route,
         kind: resolved.kind,
       ),
+      ..._artifactSpecializationMetadata(resolved.metadata),
       ...quality,
     };
   }
@@ -265,6 +266,38 @@ class GeneratedArtifactWriter {
       'artifactRequestedKind': route.requestedKind?.name,
       'artifactProducedKind': kind.name,
     };
+  }
+
+  Map<String, Object?> _artifactSpecializationMetadata(
+    Map<String, Object?> metadata,
+  ) {
+    if (metadata['artifactTemplate'] == 'evidence_pack' &&
+        metadata['hasVisualEvidenceRegister'] == true &&
+        _metadataIntFrom(metadata['visualEvidenceCount']) > 0) {
+      final reliability =
+          metadata['visualEvidenceReliability']?.toString().trim() ?? '';
+      final requiresVisionReview =
+          metadata['visualEvidenceRequiresVisionReview'] == true ||
+          reliability == 'metadata_only_until_vision_or_user_description';
+      return {
+        'artifactPreviewSurface': 'Visual evidence review',
+        'artifactSpecialization': 'visual_evidence',
+        'artifactTrustBoundary': requiresVisionReview
+            ? 'Metadata-only screenshots: add OCR, vision analysis, or a user description before relying on pixel-level visual claims.'
+            : 'OCR or user-provided visual text is attached; validate it before customer-facing handoff.',
+        'artifactPrimaryAction': metadata['visualEvidenceReviewAction'],
+        'artifactEvidenceReadiness': requiresVisionReview
+            ? 'Needs OCR/vision/user description'
+            : 'Visual text attached - validate',
+      };
+    }
+    return const {};
+  }
+
+  int _metadataIntFrom(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _generatedArtifactKindLabel(GeneratedArtifactKind kind) {

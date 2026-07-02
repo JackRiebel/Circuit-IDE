@@ -5427,6 +5427,12 @@ class _BinaryArtifactPreview extends ConsumerWidget {
       if (artifact.byteSize > 0) _formatBytes(artifact.byteSize),
       if (artifact.sheetCount > 0) _binaryCountLabel(artifact),
     ];
+    final trustBoundary = _metadataString(artifact, 'artifactTrustBoundary');
+    final evidenceReadiness = _metadataString(
+      artifact,
+      'artifactEvidenceReadiness',
+    );
+    final primaryAction = _metadataString(artifact, 'artifactPrimaryAction');
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
       padding: const EdgeInsets.all(9),
@@ -5463,7 +5469,9 @@ class _BinaryArtifactPreview extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Open to inspect the full document in its native app.',
+                  trustBoundary.isEmpty
+                      ? 'Open to inspect the full document in its native app.'
+                      : trustBoundary,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -5472,6 +5480,24 @@ class _BinaryArtifactPreview extends ConsumerWidget {
                     height: 1.2,
                   ),
                 ),
+                if (evidenceReadiness.isNotEmpty ||
+                    primaryAction.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    [
+                      if (evidenceReadiness.isNotEmpty) evidenceReadiness,
+                      if (primaryAction.isNotEmpty) primaryAction,
+                    ].join(' • '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: tokens.textMuted,
+                      fontSize: FontSizes.xxs,
+                      height: 1.2,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
                 if (parts.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Wrap(

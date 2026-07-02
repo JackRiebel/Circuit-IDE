@@ -1928,6 +1928,23 @@ Evidence collected from the Studio UI review.
         artifact.metadata['visualEvidenceReviewAction'],
         contains('Add OCR, vision analysis'),
       );
+      expect(
+        artifact.metadata['artifactPreviewSurface'],
+        'Visual evidence review',
+      );
+      expect(artifact.metadata['artifactSpecialization'], 'visual_evidence');
+      expect(
+        artifact.metadata['artifactEvidenceReadiness'],
+        'Needs OCR/vision/user description',
+      );
+      expect(
+        artifact.metadata['artifactTrustBoundary'],
+        contains('Metadata-only screenshots'),
+      );
+      expect(
+        artifact.metadata['artifactPrimaryAction'],
+        contains('Add OCR, vision analysis'),
+      );
       final packageText = String.fromCharCodes(
         File(artifact.filePath).readAsBytesSync(),
       );
@@ -1977,6 +1994,18 @@ Evidence collected from the Studio UI review.
       expect(
         artifact.metadata['visualEvidenceReviewAction'],
         contains('Validate OCR/description sidecar accuracy'),
+      );
+      expect(
+        artifact.metadata['artifactPreviewSurface'],
+        'Visual evidence review',
+      );
+      expect(
+        artifact.metadata['artifactEvidenceReadiness'],
+        'Visual text attached - validate',
+      );
+      expect(
+        artifact.metadata['artifactTrustBoundary'],
+        contains('OCR or user-provided visual text is attached'),
       );
       final packageText = String.fromCharCodes(
         File(artifact.filePath).readAsBytesSync(),
@@ -3605,8 +3634,18 @@ VRF Corp - 10.10.0.0/16
       GeneratedArtifactKind.pdf,
     ]);
     expect(
+      registry.descriptorForId('evidence_pack')?.requiredInputs,
+      contains(
+        'screenshot metadata plus OCR, vision output, or user description for pixel-level visual claims',
+      ),
+    );
+    expect(
       registry.descriptorForId('evidence_pack')?.verificationChecks,
       contains('Evidence readout deck renders when packaged'),
+    );
+    expect(
+      registry.descriptorForId('evidence_pack')?.verificationChecks,
+      contains('Visual evidence trust boundary persists'),
     );
     expect(
       detectGeneratedArtifactKind('create a business case brief for Acme'),
