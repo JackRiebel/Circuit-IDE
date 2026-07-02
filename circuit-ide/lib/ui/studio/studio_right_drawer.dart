@@ -4969,6 +4969,24 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Visual items',
             '${_metadataInt(artifact, 'visualEvidenceCount')} captured',
           ),
+        if (_metadataInt(artifact, 'visualEvidenceAttachmentCount') > 0)
+          (
+            'Visual intake',
+            '${_metadataInt(artifact, 'visualEvidenceAttachmentCount')} item${_metadataInt(artifact, 'visualEvidenceAttachmentCount') == 1 ? '' : 's'} registered',
+          ),
+        if (_metadataString(
+          artifact,
+          'visualEvidenceFormatCoverage',
+        ).isNotEmpty)
+          (
+            'Image formats',
+            _metadataString(artifact, 'visualEvidenceFormatCoverage'),
+          ),
+        if (_metadataInt(artifact, 'visualEvidenceDimensionCount') > 0)
+          (
+            'Dimensions',
+            '${_metadataInt(artifact, 'visualEvidenceDimensionCount')} detected',
+          ),
         if (_metadataInt(artifact, 'visualEvidenceSidecarCount') > 0)
           (
             'OCR/sidecar',

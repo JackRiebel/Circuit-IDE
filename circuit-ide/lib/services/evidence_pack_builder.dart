@@ -20,6 +20,9 @@ class EvidencePackBuilder {
     final sourceBullets = _sourceBullets(document, content);
     final unsupportedBullets = _unsupportedBullets(document, content);
     final visualEvidenceBullets = _visualEvidenceBullets(document, content);
+    final visualEvidenceIntakeRows = _visualEvidenceIntakeRows(
+      visualEvidenceBullets,
+    );
     final visualEvidenceSidecarCount = visualEvidenceBullets
         .where(_hasSidecarOrDescription)
         .length;
@@ -210,8 +213,22 @@ class EvidencePackBuilder {
         'sourceCount': sourceBullets.length,
         'unsupportedClaimCount': unsupportedBullets.length,
         'visualEvidenceCount': visualEvidenceBullets.length,
+        'visualEvidenceAttachmentCount': _visualEvidenceAttachmentCount(
+          visualEvidenceIntakeRows,
+        ),
+        'visualEvidenceDimensionCount': visualEvidenceIntakeRows
+            .where(
+              (row) =>
+                  row[3] != 'Not detected' &&
+                  (row[1] != 'Unknown' || row[2] != 'Unknown'),
+            )
+            .length,
         'visualEvidenceSidecarCount': visualEvidenceSidecarCount,
         'visualEvidenceMetadataOnlyCount': visualEvidenceMetadataOnlyCount,
+        'visualEvidenceFormatCoverage': _visualEvidenceFormatCoverage(
+          visualEvidenceIntakeRows,
+          visualEvidenceBullets,
+        ),
         'hasVisualEvidenceRegister': true,
         'visualEvidenceReliability': visualEvidenceReliability,
         'visualEvidenceRequiresVisionReview':
@@ -355,8 +372,12 @@ class EvidencePackBuilder {
       'visual qa',
     ]);
     if (section != null && section.bullets.isNotEmpty) {
-      return section.bullets.take(20).toList(growable: false);
+      return {
+        ...section.bullets,
+        ..._visualEvidenceAttachmentBlockLines(content),
+      }.take(20).toList(growable: false);
     }
+    final attachmentBlockLines = _visualEvidenceAttachmentBlockLines(content);
     final lines = content
         .split('\n')
         .map((line) => line.trim())
@@ -373,9 +394,59 @@ class EvidencePackBuilder {
         .map((line) => line.replaceFirst(RegExp(r'^[-*]\s*'), ''))
         .where((line) => line.isNotEmpty)
         .toSet()
+        .followedBy(attachmentBlockLines)
+        .toSet()
         .take(20)
         .toList(growable: false);
     return lines;
+  }
+
+  List<String> _visualEvidenceAttachmentBlockLines(String content) {
+    final lines = content.split('\n').map((line) => line.trim()).toList();
+    final result = <String>[];
+    var insideVisualBlock = false;
+    var remainingLines = 0;
+    for (final line in lines) {
+      if (line.isEmpty) {
+        if (insideVisualBlock) {
+          insideVisualBlock = false;
+          remainingLines = 0;
+        }
+        continue;
+      }
+      final cleanedLine = _cleanBullet(line);
+      final normalized = cleanedLine.toLowerCase();
+      if (normalized.contains('image attachment for visual-evidence review')) {
+        insideVisualBlock = true;
+        remainingLines = 14;
+        result.add(cleanedLine);
+        continue;
+      }
+      if (!insideVisualBlock) continue;
+      final capturesVisualFact =
+          normalized.startsWith('file:') ||
+          normalized.startsWith('format:') ||
+          normalized.startsWith('size:') ||
+          normalized.startsWith('dimensions:') ||
+          normalized.startsWith('ocr status:') ||
+          normalized.startsWith('ocr/description sidecar status:') ||
+          normalized.startsWith('vision model status:') ||
+          normalized.startsWith('attached visual text:') ||
+          normalized.startsWith('visual evidence status:') ||
+          normalized.startsWith('visual analysis contract:') ||
+          normalized.startsWith('safe use:') ||
+          normalized.startsWith('recommended artifact role:');
+      if (capturesVisualFact) {
+        result.add(cleanedLine);
+      }
+      remainingLines--;
+      if (remainingLines <= 0 ||
+          normalized.startsWith('recommended artifact role:')) {
+        insideVisualBlock = false;
+        remainingLines = 0;
+      }
+    }
+    return result.toSet().take(20).toList(growable: false);
   }
 
   Iterable<String> _urlMatches(String content) {
@@ -458,6 +529,20 @@ class EvidencePackBuilder {
             'Required follow-up',
           ],
           ..._visualEvidenceRows(visualEvidenceBullets),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Visual Evidence Intake Register',
+        rows: [
+          const [
+            'Evidence item',
+            'Format',
+            'Size',
+            'Dimensions',
+            'OCR / sidecar',
+            'Pixel-input readiness',
+          ],
+          ..._visualEvidenceIntakeRows(visualEvidenceBullets),
         ],
       ),
       ArtifactTable(
@@ -711,6 +796,154 @@ class EvidencePackBuilder {
         .toList(growable: false);
   }
 
+  List<List<String>> _visualEvidenceIntakeRows(
+    List<String> visualEvidenceBullets,
+  ) {
+    if (visualEvidenceBullets.isEmpty) {
+      return const [
+        [
+          'No screenshot or image evidence detected',
+          'Missing',
+          'Unknown',
+          'Not detected',
+          'Missing',
+          'Attach screenshot plus OCR/vision or user description.',
+        ],
+      ];
+    }
+
+    final rows = <List<String>>[];
+    var current = _VisualEvidenceIntakeRow.empty();
+
+    void flush() {
+      if (!current.hasSignal) return;
+      rows.add(current.toRow());
+      current = _VisualEvidenceIntakeRow.empty();
+    }
+
+    for (final raw in visualEvidenceBullets) {
+      final item = _cleanBullet(raw);
+      final normalized = item.toLowerCase();
+      if (normalized.contains('image attachment for visual-evidence review')) {
+        flush();
+        current.item = 'Screenshot/image attachment';
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('file:')) {
+        current.item = item.substring('file:'.length).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('format:')) {
+        current.format = item.substring('format:'.length).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('size:')) {
+        current.size = item.substring('size:'.length).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('dimensions:')) {
+        current.dimensions = item.substring('dimensions:'.length).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('ocr status:') ||
+          normalized.startsWith('ocr/description sidecar status:')) {
+        current.ocr = item.substring(item.indexOf(':') + 1).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('vision model status:')) {
+        current.pixelReadiness = item.substring(item.indexOf(':') + 1).trim();
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.startsWith('attached visual text:')) {
+        current.ocr = 'Sidecar text attached';
+        current.hasSignal = true;
+        continue;
+      }
+      if (normalized.contains('screenshot') ||
+          normalized.contains('screen capture') ||
+          normalized.contains('visual evidence') ||
+          normalized.contains('image evidence')) {
+        flush();
+        rows.add([
+          item,
+          'Unknown',
+          'Unknown',
+          _dimensionHint(item),
+          _hasSidecarOrDescription(item)
+              ? 'OCR/description present'
+              : 'Not attached',
+          _hasSidecarOrDescription(item)
+              ? 'Validate sidecar before pixel-level claims.'
+              : 'Metadata-only; do not infer pixel details.',
+        ]);
+      }
+    }
+    flush();
+
+    if (rows.isEmpty) {
+      return visualEvidenceBullets
+          .take(12)
+          .map(
+            (item) => [
+              _cleanBullet(item),
+              'Unknown',
+              'Unknown',
+              _dimensionHint(item),
+              _hasSidecarOrDescription(item)
+                  ? 'OCR/description present'
+                  : 'Not attached',
+              _hasSidecarOrDescription(item)
+                  ? 'Validate sidecar before pixel-level claims.'
+                  : 'Metadata-only; do not infer pixel details.',
+            ],
+          )
+          .toList(growable: false);
+    }
+    return rows.take(20).toList(growable: false);
+  }
+
+  String _visualEvidenceFormatCoverage(
+    List<List<String>> rows,
+    List<String> visualEvidenceBullets,
+  ) {
+    final formats = {
+      ...rows
+          .map((row) => row.length > 1 ? row[1].trim() : '')
+          .where((value) => value.isNotEmpty && value != 'Unknown'),
+      ...visualEvidenceBullets
+          .map(_cleanBullet)
+          .where((value) => value.toLowerCase().startsWith('format:'))
+          .map((value) => value.substring(value.indexOf(':') + 1).trim())
+          .where((value) => value.isNotEmpty),
+    }.toList()..sort();
+    if (formats.isEmpty) return 'unknown';
+    return formats.join(', ');
+  }
+
+  int _visualEvidenceAttachmentCount(List<List<String>> rows) {
+    return rows.where((row) {
+      final format = row.length > 1 ? row[1] : 'Unknown';
+      final size = row.length > 2 ? row[2] : 'Unknown';
+      return format != 'Unknown' || size != 'Unknown';
+    }).length;
+  }
+
+  String _dimensionHint(String item) {
+    final match = RegExp(
+      r'(\d{3,5})\s*[x×]\s*(\d{3,5})',
+      caseSensitive: false,
+    ).firstMatch(item);
+    if (match == null) return 'Not detected';
+    return '${match.group(1)} x ${match.group(2)}px';
+  }
+
   String _visualEvidenceReliabilityStatus(List<String> items) {
     if (items.any(_hasSidecarOrDescription)) {
       return 'metadata_plus_ocr_or_user_description';
@@ -741,6 +974,16 @@ class EvidencePackBuilder {
 
   bool _hasSidecarOrDescription(String item) {
     final normalized = item.toLowerCase();
+    if (normalized.contains('not extracted') ||
+        normalized.contains('not attached') ||
+        normalized.contains('missing') ||
+        normalized.contains('ask for') ||
+        normalized.contains('requires') ||
+        normalized.contains('require ') ||
+        normalized.contains('required') ||
+        normalized.contains('metadata-only')) {
+      return false;
+    }
     return normalized.contains('ocr') ||
         normalized.contains('sidecar') ||
         normalized.contains('attached visual text') ||
@@ -1196,5 +1439,50 @@ class EvidencePackBuilder {
     final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (normalized.length <= maxLength) return normalized;
     return '${normalized.substring(0, maxLength - 1).trim()}...';
+  }
+}
+
+class _VisualEvidenceIntakeRow {
+  String item;
+  String format;
+  String size;
+  String dimensions;
+  String ocr;
+  String pixelReadiness;
+  bool hasSignal;
+
+  _VisualEvidenceIntakeRow({
+    required this.item,
+    required this.format,
+    required this.size,
+    required this.dimensions,
+    required this.ocr,
+    required this.pixelReadiness,
+    required this.hasSignal,
+  });
+
+  factory _VisualEvidenceIntakeRow.empty() {
+    return _VisualEvidenceIntakeRow(
+      item: 'Screenshot/image attachment',
+      format: 'Unknown',
+      size: 'Unknown',
+      dimensions: 'Not detected',
+      ocr: 'Not attached',
+      pixelReadiness: 'Metadata-only; do not infer pixel details.',
+      hasSignal: false,
+    );
+  }
+
+  List<String> toRow() {
+    return [
+      item.isEmpty ? 'Screenshot/image attachment' : item,
+      format.isEmpty ? 'Unknown' : format,
+      size.isEmpty ? 'Unknown' : size,
+      dimensions.isEmpty ? 'Not detected' : dimensions,
+      ocr.isEmpty ? 'Not attached' : ocr,
+      pixelReadiness.isEmpty
+          ? 'Metadata-only; do not infer pixel details.'
+          : pixelReadiness,
+    ];
   }
 }

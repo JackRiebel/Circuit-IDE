@@ -1830,6 +1830,15 @@ Evidence collected from the Studio UI review.
 - Screenshot: checkout modal shows clipped primary CTA.
 - UX evidence: right drawer source dots are empty placeholders.
 - Visual evidence: 1366x768 screenshot attached via /screenshot.
+- Image attachment for visual-evidence review.
+- File: checkout-modal.png
+- Format: PNG
+- Size: 42 KB
+- Dimensions: 1366 x 768px
+- Visual evidence status: screenshot/image file is attached as context metadata.
+- OCR status: not extracted locally.
+- Vision model status: not sent as pixel input by the current Circuit connector.
+- Safe use: cite the screenshot as provided evidence, ask for a description or OCR/vision integration when pixel-level review is required.
 
 ## Sources
 - Internal Studio screenshot attachment metadata — checked 2026-07-01
@@ -1853,6 +1862,9 @@ Evidence collected from the Studio UI review.
         artifact.metadata['visualEvidenceMetadataOnlyCount'],
         greaterThanOrEqualTo(3),
       );
+      expect(artifact.metadata['visualEvidenceAttachmentCount'], 1);
+      expect(artifact.metadata['visualEvidenceDimensionCount'], 1);
+      expect(artifact.metadata['visualEvidenceFormatCoverage'], 'PNG');
       expect(
         artifact.metadata['visualEvidenceReliability'],
         'metadata_only_until_vision_or_user_description',
@@ -1866,6 +1878,9 @@ Evidence collected from the Studio UI review.
         File(artifact.filePath).readAsBytesSync(),
       );
       expect(packageText, contains('Visual Evidence Register'));
+      expect(packageText, contains('Visual Evidence Intake Register'));
+      expect(packageText, contains('checkout-modal.png'));
+      expect(packageText, contains('1366 x 768px'));
       expect(packageText, contains('Metadata-only'));
       expect(packageText, contains('OCR/vision'));
     },
