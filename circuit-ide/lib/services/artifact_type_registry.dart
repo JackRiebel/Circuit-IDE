@@ -310,6 +310,7 @@ class ArtifactTypeRegistry {
       supportedKinds: [
         GeneratedArtifactKind.chart,
         GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
       ],
       useCases: [
         'PoE budget',
@@ -320,11 +321,17 @@ class ArtifactTypeRegistry {
         'risk scoring',
         'roadmap',
       ],
+      packageKinds: [
+        GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Chart summary',
       verificationChecks: [
         'SVG chart root parses',
         'Chart signal metadata persists',
         'Decision and threshold preview renders',
+        'Chart readout deck and PDF companion render when packaged',
       ],
     ),
     ArtifactTypeDescriptor(
@@ -511,6 +518,13 @@ class ArtifactTypeRegistry {
       final evidencePackageNeedsPdf =
           companionDescriptor.id == 'evidence_pack' &&
           _evidencePackageNeedsPdf(normalized);
+      final requestedKinds = _explicitlyRequestedKinds(normalized);
+      if (companionDescriptor.id == 'evidence_pack' &&
+          requestedKinds.length == 1 &&
+          requestedKinds.single == GeneratedArtifactKind.json &&
+          !evidencePackageNeedsPdf) {
+        return [GeneratedArtifactKind.json];
+      }
       if (_requestsArtifactPackage(normalized) ||
           _descriptorDefaultsToPackage(companionDescriptor, normalized)) {
         if (evidencePackageNeedsPdf) {
@@ -521,7 +535,6 @@ class ArtifactTypeRegistry {
         }
         return companionDescriptor.packageKinds;
       }
-      final requestedKinds = _explicitlyRequestedKinds(normalized);
       final explicitKinds = companionDescriptor.packageKinds
           .where(requestedKinds.contains)
           .toList(growable: false);
@@ -640,7 +653,7 @@ String _artifactKindLabel(GeneratedArtifactKind kind) {
 
 bool _requestsArtifactPackage(String normalized) {
   return RegExp(
-    r'\b(package|bundle|deliverables?|artifact set|handoff set|customer handoff package|proposal package|review pack)\b',
+    r'\b(package|pack|bundle|deliverables?|artifact set|handoff set|customer handoff package|proposal package|review pack)\b',
   ).hasMatch(normalized);
 }
 

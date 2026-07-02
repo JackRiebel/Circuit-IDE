@@ -2356,6 +2356,93 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(svg, contains('C9300X-48HX'));
   });
 
+  test('chart package creates chart deck and PDF artifacts', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-chart-package-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+
+    final package = await const GeneratedArtifactPackageWriter()
+        .writePackageFromAssistantOutput(
+          rootPath: root.path,
+          prompt: 'create a chart package for PoE budget risk and WAN capacity',
+          content: '''
+# Enterprise Readiness Charts
+
+## PoE Budget
+
+| Site | Required Watts | Available Watts | Risk |
+| --- | ---: | ---: | --- |
+| MDF | 2700 | 5100 | Low |
+| IDF 1 | 1800 | 2100 | Review |
+
+## WAN Capacity
+
+| Site | Demand Mbps | Circuit Mbps | Risk |
+| --- | ---: | ---: | --- |
+| HQ | 1800 | 2000 | Review |
+| Branch 1 | 450 | 1000 | Low |
+
+## Lifecycle Risk
+
+| Product | Lifecycle Status | LDOS | Risk |
+| --- | --- | --- | --- |
+| AIR-AP2802I | End of Support | 2026 | High |
+
+## Assumptions
+- Validate PoE budget before handoff.
+- Confirm WAN utilization with current telemetry.
+
+## Sources
+- Customer inventory export
+''',
+          turnId: 'turn-chart-package',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+        );
+
+    expect(package, isNotNull);
+    expect(package!.label, 'chart package');
+    expect(package.artifacts.map((artifact) => artifact.kind), [
+      GeneratedArtifactKind.markdown,
+      GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(package.primary!.metadata['expectedArtifactCount'], 3);
+    expect(package.primary!.metadata['producedArtifactCount'], 3);
+    expect(
+      package.primary!.metadata['packageFileTypes'],
+      containsAll(['Chart', 'PowerPoint', 'PDF']),
+    );
+    expect(
+      package.primary!.metadata['packagePreviewSurfaces'],
+      containsAll(['Chart summary', 'Slide outline', 'PDF outline']),
+    );
+    expect(
+      package.primary!.metadata['packageVerificationChecks'],
+      contains('Chart readout deck and PDF companion render when packaged'),
+    );
+
+    final chart = package.artifacts[1];
+    final deck = package.artifacts[2];
+    final pdf = package.artifacts[3];
+    expect(chart.kind, GeneratedArtifactKind.chart);
+    expect(deck.kind, GeneratedArtifactKind.powerPoint);
+    expect(pdf.kind, GeneratedArtifactKind.pdf);
+    expect(chart.fileName, endsWith('.svg'));
+    expect(deck.fileName, endsWith('.pptx'));
+    expect(pdf.fileName, endsWith('.pdf'));
+    expect(chart.summary, contains('chart pack'));
+    expect(deck.summary, contains('PowerPoint deck'));
+    expect(pdf.summary, contains('PDF report'));
+    expect(File(chart.filePath).readAsStringSync(), contains('PoE Budget'));
+    expect(
+      String.fromCharCodes(File(pdf.filePath).readAsBytesSync().take(8)),
+      startsWith('%PDF-1.'),
+    );
+  });
+
   test('CSV prompt creates a CSV artifact from markdown table', () async {
     final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
     addTearDown(() => root.delete(recursive: true));
@@ -2624,6 +2711,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       registry.descriptorForId('chart_pack')?.previewSurface,
       'Chart summary',
     );
+    expect(registry.descriptorForId('chart_pack')?.packageKinds, [
+      GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(
+      registry.descriptorForId('chart_pack')?.verificationChecks,
+      contains('Chart readout deck and PDF companion render when packaged'),
+    );
     expect(registry.descriptorForId('business_use_case_brief')?.packageKinds, [
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
@@ -2820,6 +2916,18 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.pdf,
     ]);
+
+    final chartPackage = registry.routeForPrompt(
+      'create a chart package for PoE budget risk',
+    );
+    expect(chartPackage.descriptor?.id, 'chart_pack');
+    expect(chartPackage.requestedKind, GeneratedArtifactKind.chart);
+    expect(chartPackage.targetKinds, [
+      GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(chartPackage.contractLabel, 'Chart Pack package');
 
     final evidence = registry.routeForPrompt(
       'create a final evidence pack for customer handoff',

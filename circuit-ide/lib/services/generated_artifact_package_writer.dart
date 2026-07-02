@@ -538,6 +538,11 @@ class GeneratedArtifactPackageWriter {
         normalized.contains('diff report')) {
       return 'change summary package';
     }
+    if (normalized.contains('chart pack') ||
+        normalized.contains('chart package') ||
+        normalized.contains('charts package')) {
+      return 'chart package';
+    }
     return artifacts.length == 1 ? 'artifact' : 'artifact package';
   }
 }

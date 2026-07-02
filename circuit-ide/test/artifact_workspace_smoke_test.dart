@@ -378,6 +378,17 @@ Short executive summary for the customer.
             ],
           ),
           _ArtifactPackageSmokeCase(
+            name: 'chart package',
+            prompt: 'create a chart package for PoE budget risk',
+            expectedLabel: 'chart package',
+            expectedKinds: [
+              GeneratedArtifactKind.markdown,
+              GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
+          ),
+          _ArtifactPackageSmokeCase(
             name: 'lifecycle package',
             prompt:
                 'create an LDOS lifecycle review package for this inventory',
@@ -665,7 +676,11 @@ Short executive summary for the customer.
           _PriorityDescriptorSmokeCase(
             descriptorId: 'chart_pack',
             prompt: 'create a chart pack for PoE budget risk',
-            expectedTargets: [GeneratedArtifactKind.chart],
+            expectedTargets: [
+              GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
+            ],
           ),
           _PriorityDescriptorSmokeCase(
             descriptorId: 'evidence_pack',
