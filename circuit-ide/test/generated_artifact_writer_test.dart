@@ -2845,6 +2845,44 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     },
   );
 
+  test(
+    'single artifact writer uses registry primary kind for mixed deliverables',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-artifact-primary-route-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a deck and PDF report for this customer proposal',
+            content: '''
+# Customer Proposal
+
+## Summary
+Create a concise executive readout and implementation recommendation.
+
+## Recommendation
+- Lead with the architecture decision.
+- Include risk and validation checkpoints.
+- Package the handoff for customer review.
+
+## Sources
+- Customer workshop notes checked 2026-07-01.
+''',
+            turnId: 'turn-mixed-primary',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.powerPoint);
+      expect(artifact.fileName, endsWith('.pptx'));
+      expect(artifact.summary, contains('Created a PowerPoint deck'));
+    },
+  );
+
   test('CSV artifacts can export to a real XLSX workbook', () async {
     final root = await Directory.systemTemp.createTemp(
       'circuit-artifact-export-',

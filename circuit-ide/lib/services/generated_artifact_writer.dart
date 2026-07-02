@@ -8,6 +8,7 @@ import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
 import 'architecture_review_pack_builder.dart';
 import 'artifact_readiness_evaluator.dart';
+import 'artifact_type_registry.dart';
 import 'business_use_case_brief_builder.dart';
 import 'change_summary_diff_report_builder.dart';
 import 'chart_artifact_renderer.dart';
@@ -39,6 +40,7 @@ class GeneratedArtifactWriter {
   final ImplementationPlanArtifactBuilder implementationPlanBuilder;
   final ChangeSummaryDiffReportBuilder changeSummaryBuilder;
   final ArtifactReadinessEvaluator readinessEvaluator;
+  final ArtifactTypeRegistry artifactTypeRegistry;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
@@ -57,6 +59,7 @@ class GeneratedArtifactWriter {
     this.implementationPlanBuilder = const ImplementationPlanArtifactBuilder(),
     this.changeSummaryBuilder = const ChangeSummaryDiffReportBuilder(),
     this.readinessEvaluator = const ArtifactReadinessEvaluator(),
+    this.artifactTypeRegistry = const ArtifactTypeRegistry(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -67,7 +70,8 @@ class GeneratedArtifactWriter {
     required String? threadId,
     required String? requestId,
   }) async {
-    final requestedKind = detectGeneratedArtifactKind(prompt);
+    final route = artifactTypeRegistry.routeForPrompt(prompt);
+    final requestedKind = route.primaryKind;
     if (requestedKind == null || content.trim().isEmpty) return null;
     final root = p.normalize(rootPath);
     final outputDir = Directory(p.join(root, 'outputs'));

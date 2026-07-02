@@ -513,6 +513,15 @@ class ArtifactTypeRegistry {
       }
       return companionDescriptor.packageKinds;
     }
+    if (resolvedDescriptor != null) {
+      final explicitKinds = _explicitlyRequestedKinds(normalized)
+          .where(resolvedDescriptor.supportedKinds.contains)
+          .toList(growable: false);
+      if (explicitKinds.isNotEmpty) {
+        return [explicitKinds.first];
+      }
+      return [resolvedDescriptor.primaryKind];
+    }
     final targets = <GeneratedArtifactKind>[];
 
     void add(GeneratedArtifactKind kind) {
