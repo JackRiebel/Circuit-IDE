@@ -61,6 +61,7 @@ void main() {
     expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasCustomerHandoffReadinessMatrix, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasAssumptionsAppendix, isTrue);
@@ -79,7 +80,9 @@ void main() {
     expect(packageText, contains('CircuitDecisionAsk'));
     expect(packageText, contains('CircuitReviewPath'));
     expect(packageText, contains('CircuitHandoffReadiness'));
+    expect(packageText, contains('CircuitCustomerHandoffReadiness'));
     expect(packageText, contains('CircuitExternalHandoffManifest'));
+    expect(packageText, contains('Customer Handoff Readiness Matrix'));
     expect(
       packageText,
       contains('Review owner: Architecture owner / customer sponsor'),
@@ -127,6 +130,7 @@ void main() {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off page',
         'Data tables',
@@ -146,6 +150,7 @@ void main() {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'Data tables',
@@ -157,6 +162,16 @@ void main() {
     expect(metadata['handoffScore'], 100);
     expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
     expect(metadata['handoffScorecardItemCount'], 5);
+    expect(
+      metadata['customerHandoffGateStatus'],
+      'Ready for stakeholder approval',
+    );
+    expect(metadata['customerHandoffGateCount'], 5);
+    expect(
+      metadata['customerHandoffGateRows'].toString(),
+      contains('Evidence package, 1 source item attached, Ready'),
+    );
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(metadata['decisionLogCount'], 4);
     expect(metadata['decisionSignOffGateCount'], 4);
     expect(metadata['tableCoverage'], '1 table packaged');
@@ -275,6 +290,7 @@ void main() {
         'Next steps',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'Data tables',
@@ -291,6 +307,7 @@ void main() {
     expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
     expect(metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(metadata['hasDecisionLog'], isTrue);
     expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasExplicitTableGeometry'], isTrue);
@@ -336,6 +353,7 @@ void main() {
     expect(inspection.hasNextStepActionPlan, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasCustomerHandoffReadinessMatrix, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasCircuitHeader, isTrue);
@@ -359,6 +377,16 @@ void main() {
     expect(metadata['evidenceGapCount'], 2);
     expect(metadata['handoffScore'], 50);
     expect(metadata['handoffReadinessLevel'], 'Needs evidence before handoff');
+    expect(
+      metadata['customerHandoffGateStatus'],
+      'Resolve 2 validation gaps before handoff',
+    );
+    expect(metadata['customerHandoffGateCount'], 5);
+    expect(
+      metadata['customerHandoffGateRows'].toString(),
+      contains('Evidence package, No cited sources attached, Needs evidence'),
+    );
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(metadata['readinessSignals'], contains('Evidence gaps'));
     expect(
       metadata['evidenceConfidence'],
@@ -424,6 +452,7 @@ void main() {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off page',
       ]),

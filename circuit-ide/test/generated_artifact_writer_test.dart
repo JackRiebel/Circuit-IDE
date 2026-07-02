@@ -1031,6 +1031,7 @@ Executive summary for a customer handoff.
           'Approval gates',
           'Validation checklist',
           'Customer handoff scorecard',
+          'Customer handoff readiness matrix',
           'Decision log',
           'Decision sign-off',
           'Data tables',
@@ -1046,6 +1047,20 @@ Executive summary for a customer handoff.
         '1 assumption, 1 source item in appendices',
       );
       expect(artifact.metadata['validationGapCount'], 0);
+      expect(
+        artifact.metadata['customerHandoffGateStatus'],
+        'Ready for stakeholder approval',
+      );
+      expect(artifact.metadata['customerHandoffGateCount'], 5);
+      expect(
+        artifact.metadata['customerHandoffGateRows'].toString(),
+        contains('Evidence package, 1 source item attached, Ready'),
+      );
+      expect(
+        artifact.metadata['customerHandoffGateRows'].toString(),
+        contains('Data support, 1 supporting table packaged, Ready'),
+      );
+      expect(artifact.metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
       expect(artifact.metadata['hasCustomerReadyReport'], isTrue);
       expect(artifact.metadata['hasExternalHandoffManifest'], isTrue);
       expect(artifact.metadata['externalHandoffManifestCount'], 9);
@@ -1088,12 +1103,17 @@ Executive summary for a customer handoff.
       expect(artifact.metadata['docxHasHeader'], isTrue);
       expect(artifact.metadata['docxHasFooter'], isTrue);
       expect(artifact.metadata['docxHasTableOfContents'], isTrue);
+      expect(
+        artifact.metadata['docxHasCustomerHandoffReadinessMatrix'],
+        isTrue,
+      );
       expect(artifact.metadata['docxHasExplicitTableGeometry'], isTrue);
       expect(artifact.metadata['docxHasRepeatingTableHeaders'], isTrue);
       expect(artifact.metadata['docxHasAccessibilityManifest'], isTrue);
       expect(artifact.metadata['hasTableOfContents'], isTrue);
       expect(artifact.metadata['hasRiskRegister'], isTrue);
       expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);
+      expect(artifact.metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
       expect(artifact.metadata['hasDecisionLog'], isTrue);
       expect(artifact.metadata['hasDecisionSignOffPage'], isTrue);
       expect(artifact.metadata['decisionSignOffGateCount'], 4);
@@ -1119,6 +1139,9 @@ Executive summary for a customer handoff.
       expect(packageText, contains('Approval Gates'));
       expect(packageText, contains('Validation Checklist'));
       expect(packageText, contains('Customer Handoff Scorecard'));
+      expect(packageText, contains('Customer Handoff Readiness Matrix'));
+      expect(packageText, contains('Evidence package'));
+      expect(packageText, contains('CircuitCustomerHandoffReadiness'));
       expect(packageText, contains('Decision Log'));
       expect(packageText, contains('Decision Sign-Off'));
       expect(packageText, contains('Signature / Date'));

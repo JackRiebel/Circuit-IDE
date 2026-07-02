@@ -45,23 +45,28 @@ class DocxArtifactRenderer {
       ],
       [
         '${document.sections.length + 12}',
+        'Customer Handoff Readiness Matrix',
+        '${_customerHandoffReadinessRows(document).length}',
+      ],
+      [
+        '${document.sections.length + 13}',
         'Decision Log',
         '${_decisionLogRows(document).length}',
       ],
       [
-        '${document.sections.length + 13}',
+        '${document.sections.length + 14}',
         'Decision Sign-Off',
         '${_decisionSignOffRows(document).length - 1} gates',
       ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 14}',
+          '${document.sections.length + 15}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 15}',
+          '${document.sections.length + 16}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -74,6 +79,9 @@ class DocxArtifactRenderer {
     final validationGaps = _validationGapsFor(document);
     final documentParts = _documentPartsFor(document);
     final scorecardRows = _handoffScorecardRows(document).skip(1).toList();
+    final handoffReadinessRows = _customerHandoffReadinessRows(
+      document,
+    ).skip(1).toList();
     final handoffScore = _handoffScoreFor(scorecardRows);
     final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
     final handoffActions = _reportHandoffActionsFor(document);
@@ -98,6 +106,12 @@ class DocxArtifactRenderer {
       'handoffStatus': _handoffStatus(document),
       'handoffScore': handoffScore,
       'handoffReadinessLevel': _handoffReadinessLevelFor(handoffScore),
+      'customerHandoffGateStatus': _customerHandoffGateStatusFor(
+        document,
+        validationGaps,
+      ),
+      'customerHandoffGateRows': handoffReadinessRows,
+      'customerHandoffGateCount': handoffReadinessRows.length,
       'decisionOwner': _decisionOwner(document),
       'decisionAsk': _decisionAskFor(document),
       'reviewPath': _reviewPathFor(document),
@@ -117,6 +131,7 @@ class DocxArtifactRenderer {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off page',
         if (document.tables.isNotEmpty) 'Data tables',
@@ -161,6 +176,7 @@ class DocxArtifactRenderer {
       'evidenceItemCount': _evidenceConfidenceRows(document).length,
       'evidenceGapCount': _evidenceGapCount(document),
       'handoffScorecardItemCount': scorecardRows.length,
+      'hasCustomerHandoffReadinessMatrix': true,
       'decisionLogCount': _decisionLogRows(document).length - 1,
       'decisionSignOffGateCount': _decisionSignOffRows(document).length - 1,
       'approvalGateCount': 4,
@@ -270,6 +286,9 @@ class DocxArtifactRenderer {
       'CircuitDecisionAsk': _decisionAskFor(document),
       'CircuitReviewPath': _reviewPathFor(document),
       'CircuitHandoffReadiness': _handoffReadinessLevelFor(handoffScore),
+      'CircuitCustomerHandoffReadiness': _customerHandoffReadinessRows(
+        document,
+      ).map((row) => row.join(' / ')).join(' | '),
       'CircuitEvidenceConfidence': _evidenceConfidenceFor(document),
       'CircuitDocumentParts': _documentPartsFor(document).join(', '),
       'CircuitAccessibilityPolicy':
@@ -407,6 +426,10 @@ class DocxArtifactRenderer {
       ..write(_validationChecklistTable(document))
       ..write(_paragraph('Customer Handoff Scorecard', style: 'Heading1'))
       ..write(_handoffScorecardTable(document))
+      ..write(
+        _paragraph('Customer Handoff Readiness Matrix', style: 'Heading1'),
+      )
+      ..write(_customerHandoffReadinessTable(document))
       ..write(_paragraph('Decision Log', style: 'Heading1'))
       ..write(_decisionLogTable(document))
       ..write(_paragraph('Decision Sign-Off', style: 'Heading1'))
@@ -466,6 +489,7 @@ class DocxArtifactRenderer {
       'Approval Gates',
       'Validation Checklist',
       'Customer Handoff Scorecard',
+      'Customer Handoff Readiness Matrix',
       'Decision Log',
       'Decision Sign-Off',
       if (document.assumptions.isNotEmpty) 'Appendix A: Assumptions',
@@ -542,6 +566,10 @@ class DocxArtifactRenderer {
       [
         'Customer Handoff Scorecard',
         'Handoff readiness score, status signals, and owner follow-up.',
+      ],
+      [
+        'Customer Handoff Readiness Matrix',
+        'External handoff gates, signals, status, and owner actions.',
       ],
       [
         'Decision Log',
@@ -933,6 +961,67 @@ class DocxArtifactRenderer {
     );
   }
 
+  String _customerHandoffReadinessTable(ArtifactDocument document) {
+    return _table(
+      ArtifactTable(
+        title: 'Customer Handoff Readiness Matrix',
+        rows: _customerHandoffReadinessRows(document),
+      ),
+    );
+  }
+
+  List<List<String>> _customerHandoffReadinessRows(ArtifactDocument document) {
+    return [
+      ['Gate', 'Signal', 'Status', 'Owner Action'],
+      [
+        'Evidence package',
+        document.citations.isEmpty
+            ? 'No cited sources attached'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached',
+        document.citations.isEmpty ? 'Needs evidence' : 'Ready',
+        document.citations.isEmpty
+            ? 'Attach source evidence before external handoff.'
+            : 'Keep cited sources with the handoff package.',
+      ],
+      [
+        'Assumptions',
+        document.assumptions.isEmpty
+            ? 'No assumptions captured'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured',
+        document.assumptions.isEmpty ? 'Needs owner review' : 'Ready',
+        document.assumptions.isEmpty
+            ? 'Capture unknowns and accountable owner confirmation.'
+            : 'Review assumptions with the accountable owner.',
+      ],
+      [
+        'Data support',
+        document.tables.isEmpty
+            ? 'No structured supporting tables'
+            : '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} packaged',
+        document.tables.isEmpty ? 'Needs support' : 'Ready',
+        document.tables.isEmpty
+            ? 'Attach source data or state why no table is required.'
+            : 'Validate units, dates, and sensitive data before sharing.',
+      ],
+      [
+        'Decision ask',
+        _decisionAskFor(document),
+        'Ready',
+        'Confirm this is the decision the stakeholder is expected to make.',
+      ],
+      [
+        'Sign-off owner',
+        _decisionOwner(document),
+        _validationGapsFor(document).isEmpty
+            ? 'Ready'
+            : 'Resolve ${_validationGapsFor(document).length} gap${_validationGapsFor(document).length == 1 ? '' : 's'}',
+        _validationGapsFor(document).isEmpty
+            ? 'Collect approval signature and date.'
+            : 'Resolve validation gaps before customer approval.',
+      ],
+    ];
+  }
+
   List<List<String>> _handoffScorecardRows(ArtifactDocument document) {
     return [
       ['Area', 'Status', 'Score', 'Required Follow-Up'],
@@ -1115,6 +1204,19 @@ class DocxArtifactRenderer {
     return 'Needs more content';
   }
 
+  String _customerHandoffGateStatusFor(
+    ArtifactDocument document,
+    List<String> validationGaps,
+  ) {
+    if (validationGaps.isEmpty && document.tables.isNotEmpty) {
+      return 'Ready for stakeholder approval';
+    }
+    if (validationGaps.isEmpty) {
+      return 'Ready with optional data support';
+    }
+    return 'Resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'} before handoff';
+  }
+
   List<String> _keywords(ArtifactDocument document) {
     final keywords = <String>{
       'artifact',
@@ -1279,6 +1381,7 @@ class DocxArtifactRenderer {
       'Next steps',
       'Validation checklist',
       'Customer handoff scorecard',
+      'Customer handoff readiness matrix',
       'Decision log',
       'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',
@@ -1299,6 +1402,7 @@ class DocxArtifactRenderer {
       'Approval gates',
       'Validation checklist',
       'Customer handoff scorecard',
+      'Customer handoff readiness matrix',
       'Decision log',
       'Decision sign-off',
       if (document.tables.isNotEmpty) 'Data tables',

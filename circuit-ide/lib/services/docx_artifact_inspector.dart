@@ -30,6 +30,7 @@ class DocxArtifactInspection {
   final bool hasDocumentMap;
   final bool hasValidationChecklist;
   final bool hasCustomerHandoffScorecard;
+  final bool hasCustomerHandoffReadinessMatrix;
   final bool hasDecisionLog;
   final bool hasDecisionSignOff;
   final bool hasAssumptionsAppendix;
@@ -74,6 +75,7 @@ class DocxArtifactInspection {
     required this.hasDocumentMap,
     required this.hasValidationChecklist,
     required this.hasCustomerHandoffScorecard,
+    required this.hasCustomerHandoffReadinessMatrix,
     required this.hasDecisionLog,
     required this.hasDecisionSignOff,
     required this.hasAssumptionsAppendix,
@@ -118,6 +120,7 @@ class DocxArtifactInspection {
       hasDocumentMap &&
       hasValidationChecklist &&
       hasCustomerHandoffScorecard &&
+      hasCustomerHandoffReadinessMatrix &&
       hasDecisionLog &&
       hasDecisionSignOff &&
       hasCircuitHeader &&
@@ -190,6 +193,8 @@ class DocxArtifactInspection {
       'docxHasDocumentMap': hasDocumentMap,
       'docxHasValidationChecklist': hasValidationChecklist,
       'docxHasCustomerHandoffScorecard': hasCustomerHandoffScorecard,
+      'docxHasCustomerHandoffReadinessMatrix':
+          hasCustomerHandoffReadinessMatrix,
       'docxHasDecisionLog': hasDecisionLog,
       'docxHasDecisionSignOff': hasDecisionSignOff,
       'docxHasAssumptionsAppendix': hasAssumptionsAppendix,
@@ -275,6 +280,9 @@ class DocxArtifactInspector {
       hasDocumentMap: text.contains('Document Map'),
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasCustomerHandoffScorecard: text.contains('Customer Handoff Scorecard'),
+      hasCustomerHandoffReadinessMatrix: text.contains(
+        'Customer Handoff Readiness Matrix',
+      ),
       hasDecisionLog: text.contains('Decision Log'),
       hasDecisionSignOff:
           text.contains('Decision Sign-Off') &&
