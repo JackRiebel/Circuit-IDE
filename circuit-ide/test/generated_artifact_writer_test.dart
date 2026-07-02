@@ -3819,12 +3819,13 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
 
       expect(package, isNotNull);
       expect(package!.label, 'topology package');
-      expect(package.artifacts, hasLength(4));
+      expect(package.artifacts, hasLength(5));
       expect(package.primary!.kind, GeneratedArtifactKind.markdown);
       expect(
         package.artifacts.map((artifact) => artifact.kind),
         containsAll([
           GeneratedArtifactKind.diagram,
+          GeneratedArtifactKind.markdown,
           GeneratedArtifactKind.powerPoint,
           GeneratedArtifactKind.pdf,
         ]),
@@ -3839,8 +3840,18 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       final pdf = package.artifacts.firstWhere(
         (artifact) => artifact.kind == GeneratedArtifactKind.pdf,
       );
+      final mermaid = package.artifacts.firstWhere(
+        (artifact) =>
+            artifact.kind == GeneratedArtifactKind.markdown &&
+            artifact.metadata['artifact'] == 'network_topology_mermaid_source',
+      );
 
       expect(diagram.metadata['topologySpecVersion'], '1.0');
+      expect(diagram.metadata['hasEditableDiagramSource'], isTrue);
+      expect(diagram.metadata['editableDiagramSourceFormat'], 'Mermaid');
+      expect(mermaid.summary, contains('editable Mermaid topology source'));
+      expect(mermaid.metadata['hasEditableDiagramSource'], isTrue);
+      expect(mermaid.metadata['editableSourceFormat'], 'Mermaid');
       expect(deck.metadata['artifactTemplate'], 'network_topology_brief');
       expect(deck.metadata['topologySpecVersion'], '1.0');
       expect(deck.summary, contains('topology PowerPoint deck'));
@@ -3856,9 +3867,15 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(pdf.summary, contains('topology PDF report'));
 
       final manifestText = File(package.primary!.filePath).readAsStringSync();
+      final mermaidText = File(mermaid.filePath).readAsStringSync();
       expect(manifestText, contains('.svg'));
+      expect(manifestText, contains('.md'));
       expect(manifestText, contains('.pptx'));
       expect(manifestText, contains('.pdf'));
+      expect(mermaidText, contains('```mermaid'));
+      expect(mermaidText, contains('flowchart LR'));
+      expect(mermaidText, contains('WAN / ISP'));
+      expect(mermaidText, contains('Handoff Checklist'));
       expect(
         package.primary!.metadata['packagePreviewSurfaces'],
         containsAll(['Topology readiness', 'Slide outline', 'PDF outline']),
@@ -3867,6 +3884,11 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
         package.primary!.metadata['packageVerificationChecks'],
         contains('Topology brief deck/report renders'),
       );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        contains('Editable Mermaid source is packaged'),
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
     },
   );
 
@@ -4033,6 +4055,7 @@ VRF Corp - 10.10.0.0/16
     );
     expect(registry.descriptorForId('network_topology_diagram')?.packageKinds, [
       GeneratedArtifactKind.diagram,
+      GeneratedArtifactKind.markdown,
       GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.pdf,
     ]);
@@ -4227,6 +4250,7 @@ VRF Corp - 10.10.0.0/16
     expect(topology.descriptor?.id, 'network_topology_diagram');
     expect(topology.targetKinds, [
       GeneratedArtifactKind.diagram,
+      GeneratedArtifactKind.markdown,
       GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.pdf,
     ]);

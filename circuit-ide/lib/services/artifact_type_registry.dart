@@ -162,12 +162,14 @@ class ArtifactTypeRegistry {
       useCases: ['topology', 'architecture visual'],
       packageKinds: [
         GeneratedArtifactKind.diagram,
+        GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Topology readiness',
       verificationChecks: [
         'SVG root parses',
+        'Editable Mermaid source is packaged',
         'Topology metadata persists',
         'Topology brief deck/report renders',
         'Readiness and assumptions preview renders',

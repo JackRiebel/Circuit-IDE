@@ -30,6 +30,7 @@ typedef _TopologyHandoffGate = ({
 
 class DiagramRenderResult {
   final Uint8List bytes;
+  final String mermaidSource;
   final int nodeCount;
   final int edgeCount;
   final List<List<String>> previewRows;
@@ -37,6 +38,7 @@ class DiagramRenderResult {
 
   const DiagramRenderResult({
     required this.bytes,
+    required this.mermaidSource,
     required this.nodeCount,
     required this.edgeCount,
     required this.previewRows,
@@ -51,14 +53,10 @@ class DiagramArtifactRenderer {
     required ArtifactDocument document,
     required String content,
   }) {
-    final graph = _graphFromMermaid(content);
-    final proseGraph = graph.nodes.isEmpty || graph.edges.isEmpty
-        ? _graphFromNetworkText(content)
-        : const _DiagramGraph(nodes: {}, edges: []);
-    final networkGraph = proseGraph.nodes.isEmpty ? graph : proseGraph;
-    final resolvedGraph = networkGraph.nodes.isEmpty
-        ? _graphFromDocument(document)
-        : networkGraph;
+    final resolvedGraph = _resolvedGraphFor(
+      document: document,
+      content: content,
+    );
     final assumptions = document.assumptions.isNotEmpty
         ? document.assumptions
         : _extractAssumptions(content);
@@ -92,6 +90,7 @@ class DiagramArtifactRenderer {
     );
     return DiagramRenderResult(
       bytes: Uint8List.fromList(utf8.encode(svg)),
+      mermaidSource: _mermaidFor(resolvedGraph),
       nodeCount: resolvedGraph.nodes.length,
       edgeCount: resolvedGraph.edges.length,
       previewRows: _previewRowsFor(
@@ -104,6 +103,64 @@ class DiagramArtifactRenderer {
       ),
       metadata: metadata,
     );
+  }
+
+  String mermaidSourceFor({
+    required ArtifactDocument document,
+    required String content,
+  }) {
+    return _mermaidFor(_resolvedGraphFor(document: document, content: content));
+  }
+
+  _DiagramGraph _resolvedGraphFor({
+    required ArtifactDocument document,
+    required String content,
+  }) {
+    final graph = _graphFromMermaid(content);
+    final proseGraph = graph.nodes.isEmpty || graph.edges.isEmpty
+        ? _graphFromNetworkText(content)
+        : const _DiagramGraph(nodes: {}, edges: []);
+    final networkGraph = proseGraph.nodes.isEmpty ? graph : proseGraph;
+    return networkGraph.nodes.isEmpty
+        ? _graphFromDocument(document)
+        : networkGraph;
+  }
+
+  String _mermaidFor(_DiagramGraph graph) {
+    final buffer = StringBuffer('flowchart LR\n');
+    final nodes = graph.nodes.values.toList(growable: false);
+    for (final node in nodes) {
+      buffer.writeln('  ${_mermaidId(node.id)}["${_mermaidText(node.label)}"]');
+    }
+    for (final edge in graph.edges) {
+      final label = edge.label.trim();
+      final connector = label.isEmpty
+          ? '-->'
+          : '-->|${_mermaidText(label).replaceAll('|', '/')}|';
+      buffer.writeln(
+        '  ${_mermaidId(edge.from)} $connector ${_mermaidId(edge.to)}',
+      );
+    }
+    if (nodes.isEmpty) {
+      buffer.writeln('  topology["Topology"]');
+    }
+    return buffer.toString().trimRight();
+  }
+
+  String _mermaidId(String value) {
+    final sanitized = value.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '_');
+    final collapsed = sanitized.replaceAll(RegExp(r'_+'), '_');
+    final trimmed = collapsed.replaceAll(RegExp(r'^_+|_+$'), '');
+    final id = trimmed.isEmpty ? 'node' : trimmed;
+    return RegExp(r'^[A-Za-z_]').hasMatch(id) ? id : 'node_$id';
+  }
+
+  String _mermaidText(String value) {
+    return value
+        .replaceAll('&', '&amp;')
+        .replaceAll('"', '#quot;')
+        .replaceAll('\n', ' ')
+        .trim();
   }
 
   Map<String, Object?> _metadataFor({
@@ -212,6 +269,8 @@ class DiagramArtifactRenderer {
       'generator': 'CircuitCode',
       'artifact': 'network_topology_diagram',
       'topologySpecVersion': '1.0',
+      'editableSourceFormat': 'Mermaid',
+      'hasEditableDiagramSource': true,
       'topologyType': _topologyTypeFor(profile),
       'handoffStatus': customerReady
           ? 'Ready for architecture review'

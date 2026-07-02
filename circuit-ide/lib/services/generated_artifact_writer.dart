@@ -509,7 +509,13 @@ class GeneratedArtifactWriter {
         summary:
             'Created an SVG topology diagram with ${diagram.nodeCount} nodes and ${diagram.edgeCount} links.',
         previewRows: diagram.previewRows,
-        metadata: diagram.metadata,
+        metadata: {
+          ...diagram.metadata,
+          'editableDiagramSourceFormat': 'Mermaid',
+          'editableDiagramSourceLineCount': const LineSplitter()
+              .convert(diagram.mermaidSource)
+              .length,
+        },
       );
     }
 
@@ -698,6 +704,59 @@ class GeneratedArtifactWriter {
       );
     }
 
+    if (requestedKind == GeneratedArtifactKind.markdown &&
+        networkTopologyBuilder.matches(prompt)) {
+      final topologyDocument = networkTopologyBuilder.build(
+        prompt: prompt,
+        content: content,
+        document: documentForOutput,
+      );
+      final diagram = diagramRenderer.render(
+        document: topologyDocument,
+        content: content,
+      );
+      final markdown = _topologyMermaidMarkdown(
+        document: topologyDocument,
+        diagram: diagram,
+      );
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.markdown,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'md',
+        bytes: utf8.encode(markdown),
+        summary:
+            'Created an editable Mermaid topology source companion with ${diagram.nodeCount} nodes and ${diagram.edgeCount} links.',
+        previewRows: [
+          const ['Source', 'Value'],
+          ['Format', 'Mermaid'],
+          ['Nodes', '${diagram.nodeCount}'],
+          ['Links', '${diagram.edgeCount}'],
+          ['Sections', '${topologyDocument.sections.length}'],
+        ],
+        sheetCount: diagram.nodeCount,
+        metadata: {
+          ...topologyDocument.metadata,
+          ...diagram.metadata,
+          'artifact': 'network_topology_mermaid_source',
+          'artifactTemplate': 'network_topology_brief',
+          'editableSourceFormat': 'Mermaid',
+          'hasEditableDiagramSource': true,
+          'editableDiagramSourceLineCount': const LineSplitter()
+              .convert(diagram.mermaidSource)
+              .length,
+          'qualityGates': [
+            'Mermaid source generated from topology graph',
+            'Rendered SVG companion should match source topology',
+            'Review labels and link annotations before handoff',
+          ],
+          'readinessSignals': [
+            'Editable topology source packaged',
+            'Topology graph metadata preserved',
+          ],
+        },
+      );
+    }
+
     return _ResolvedArtifact(
       kind: requestedKind,
       status: GeneratedArtifactStatus.ready,
@@ -705,6 +764,68 @@ class GeneratedArtifactWriter {
       bytes: utf8.encode(content.trim()),
       summary: 'Created a Markdown artifact.',
     );
+  }
+
+  String _topologyMermaidMarkdown({
+    required ArtifactDocument document,
+    required DiagramRenderResult diagram,
+  }) {
+    final buffer = StringBuffer()
+      ..writeln('# ${document.title} - Editable Topology Source')
+      ..writeln()
+      ..writeln(
+        document.summary.trim().isEmpty
+            ? 'Editable Mermaid source generated from the resolved CircuitCode topology graph.'
+            : document.summary.trim(),
+      )
+      ..writeln()
+      ..writeln('## Mermaid Source')
+      ..writeln()
+      ..writeln('```mermaid')
+      ..writeln(diagram.mermaidSource)
+      ..writeln('```')
+      ..writeln()
+      ..writeln('## Diagram Metadata')
+      ..writeln()
+      ..writeln('| Signal | Value |')
+      ..writeln('| --- | --- |')
+      ..writeln('| Nodes | ${diagram.nodeCount} |')
+      ..writeln('| Links | ${diagram.edgeCount} |')
+      ..writeln(
+        '| Topology type | ${_markdownCell(diagram.metadata['topologyType']?.toString() ?? 'Topology')} |',
+      )
+      ..writeln(
+        '| Readiness | ${_markdownCell(diagram.metadata['topologyReadinessLevel']?.toString() ?? 'Needs review')} |',
+      )
+      ..writeln(
+        '| Editable source | ${diagram.metadata['editableSourceFormat'] ?? 'Mermaid'} |',
+      )
+      ..writeln()
+      ..writeln('## Handoff Checklist')
+      ..writeln()
+      ..writeln(
+        '- Confirm the Mermaid source matches the rendered SVG diagram.',
+      )
+      ..writeln(
+        '- Validate node labels, redundancy, WAN links, and site counts.',
+      )
+      ..writeln(
+        '- Keep this source file with the deck/PDF so the topology can be revised without regenerating from scratch.',
+      );
+    if (document.assumptions.isNotEmpty) {
+      buffer
+        ..writeln()
+        ..writeln('## Assumptions')
+        ..writeln();
+      for (final assumption in document.assumptions) {
+        buffer.writeln('- $assumption');
+      }
+    }
+    return buffer.toString().trimRight();
+  }
+
+  String _markdownCell(String value) {
+    return value.replaceAll('|', '\\|').replaceAll('\n', ' ').trim();
   }
 
   List<_TableData> _extractTables(String content) {

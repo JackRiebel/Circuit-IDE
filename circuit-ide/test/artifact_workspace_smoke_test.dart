@@ -341,6 +341,7 @@ Short executive summary for the customer.
             expectedKinds: [
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.diagram,
+              GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
             ],
@@ -643,6 +644,7 @@ Short executive summary for the customer.
             prompt: 'create a network topology package for this Cisco campus',
             expectedTargets: [
               GeneratedArtifactKind.diagram,
+              GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.pdf,
             ],
