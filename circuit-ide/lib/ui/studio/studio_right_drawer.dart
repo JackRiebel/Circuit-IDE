@@ -4994,6 +4994,12 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
             'Evidence confidence',
             _metadataString(artifact, 'evidenceConfidence'),
           ),
+        if (_metadataString(artifact, 'artifactTemplate') == 'evidence_pack' &&
+            _metadataInt(artifact, 'evidenceCustomerHandoffGateCount') > 0)
+          (
+            'Handoff gates',
+            '${_metadataInt(artifact, 'evidenceCustomerHandoffReadyCount')}/${_metadataInt(artifact, 'evidenceCustomerHandoffGateCount')} ready',
+          ),
         if (_metadataString(artifact, 'visualEvidenceReliability').isNotEmpty)
           (
             'Visual evidence',

@@ -1955,6 +1955,25 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(artifact.summary, contains('claim-to-source matrix'));
     expect(artifact.summary, contains('source freshness register'));
     expect(artifact.sheetCount, greaterThanOrEqualTo(6));
+    expect(artifact.metadata['evidenceCustomerHandoffGateCount'], 6);
+    expect(artifact.metadata['evidenceCustomerHandoffReadyCount'], 2);
+    expect(
+      artifact.metadata['evidenceCustomerHandoffMatrix'],
+      anyElement(contains('1 unsupported claim flagged: Blocked')),
+    );
+    expect(
+      artifact.metadata['evidenceCustomerHandoffMatrix'],
+      anyElement(contains('Source authority')),
+    );
+    expect(
+      artifact.metadata['evidenceCustomerHandoffMatrix'],
+      anyElement(contains('Checked-date traceability')),
+    );
+    expect(
+      artifact.metadata['evidenceCustomerHandoffMatrix'],
+      anyElement(contains('Unsupported-claim disposition')),
+    );
+    expect(artifact.metadata['hasEvidenceCustomerHandoffMatrix'], isTrue);
     expect(File(artifact.filePath).existsSync(), isTrue);
     final bytes = File(artifact.filePath).readAsBytesSync();
     expect(bytes.take(4), [0x50, 0x4b, 0x03, 0x04]);
@@ -1980,6 +1999,10 @@ Evidence supporting the lifecycle and replacement recommendation.
     expect(packageText, contains('Evidence Confidence Scorecard'));
     expect(packageText, contains('Customer-Ready Claim Gates'));
     expect(packageText, contains('Customer Follow-Up Checklist'));
+    expect(packageText, contains('Customer Handoff Matrix'));
+    expect(packageText, contains('Source authority'));
+    expect(packageText, contains('Checked-date traceability'));
+    expect(packageText, contains('Unsupported-claim disposition'));
     expect(packageText, contains('Stakeholder Readout'));
     expect(packageText, contains('Evidence Confidence Matrix'));
     expect(packageText, contains('Approval Gates'));

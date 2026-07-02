@@ -31,6 +31,13 @@ class EvidencePackBuilder {
     final visualEvidenceReliability = _visualEvidenceReliabilityStatus(
       visualEvidenceBullets,
     );
+    final customerHandoffRows = _evidenceHandoffRows(
+      sourceBullets: sourceBullets,
+      unsupportedBullets: unsupportedBullets,
+      assumptions: document.assumptions,
+      visualEvidenceBullets: visualEvidenceBullets,
+      visualEvidenceReliability: visualEvidenceReliability,
+    );
     final sections = <ArtifactSection>[
       _section(
         document,
@@ -246,6 +253,12 @@ class EvidencePackBuilder {
           unsupportedBullets,
           sections,
         ).length,
+        'evidenceCustomerHandoffGateCount': customerHandoffRows.length,
+        'evidenceCustomerHandoffReadyCount': _handoffReadyCount(
+          customerHandoffRows,
+        ),
+        'evidenceCustomerHandoffMatrix': _stringRows(customerHandoffRows),
+        'hasEvidenceCustomerHandoffMatrix': customerHandoffRows.isNotEmpty,
       },
     );
   }
@@ -592,6 +605,28 @@ class EvidencePackBuilder {
         rows: [
           const ['Question', 'Owner', 'Needed before final?'],
           ..._followUpRows(unsupportedBullets, document.assumptions),
+        ],
+      ),
+      ArtifactTable(
+        title: 'Customer Handoff Matrix',
+        rows: [
+          const [
+            'Gate',
+            'Customer-facing requirement',
+            'Current signal',
+            'Status',
+            'Owner action',
+            'Handoff rule',
+          ],
+          ..._evidenceHandoffRows(
+            sourceBullets: sourceBullets,
+            unsupportedBullets: unsupportedBullets,
+            assumptions: document.assumptions,
+            visualEvidenceBullets: visualEvidenceBullets,
+            visualEvidenceReliability: _visualEvidenceReliabilityStatus(
+              visualEvidenceBullets,
+            ),
+          ),
         ],
       ),
     ];
@@ -1129,6 +1164,115 @@ class EvidencePackBuilder {
         'Add or confirm assumptions with the customer/account team.',
       ],
     ];
+  }
+
+  List<List<String>> _evidenceHandoffRows({
+    required List<String> sourceBullets,
+    required List<String> unsupportedBullets,
+    required List<String> assumptions,
+    required List<String> visualEvidenceBullets,
+    required String visualEvidenceReliability,
+  }) {
+    final hasSources = sourceBullets.isNotEmpty;
+    final hasCheckedDates =
+        hasSources &&
+        sourceBullets.every((source) => _checkedDate(source) != 'Not provided');
+    final hasOfficialOrReliableSource = sourceBullets.any((source) {
+      final tier = _authorityTier(source);
+      return tier == 'Official' || tier == 'Reliable';
+    });
+    final hasVisualEvidence = visualEvidenceBullets.isNotEmpty;
+    final visualRequiresReview =
+        hasVisualEvidence &&
+        visualEvidenceReliability ==
+            'metadata_only_until_vision_or_user_description';
+    return [
+      [
+        'Source authority',
+        'Customer-facing claims are backed by official, customer-provided, or clearly reliable evidence.',
+        hasSources
+            ? hasOfficialOrReliableSource
+                  ? 'Authoritative source signal attached'
+                  : 'Sources attached but authority needs review'
+            : 'No cited sources attached',
+        hasSources && hasOfficialOrReliableSource ? 'Ready' : 'Blocked',
+        'Attach official/customer/reliable source evidence for each material claim.',
+        'Do not publish material claims without traceable source authority.',
+      ],
+      [
+        'Checked-date traceability',
+        'Every time-sensitive claim has a visible checked date and refresh owner.',
+        hasCheckedDates
+            ? 'Checked dates present'
+            : hasSources
+            ? 'Some checked dates missing'
+            : 'No source dates available',
+        hasCheckedDates ? 'Ready' : 'Needs review',
+        'Add checked date, freshness window, and accountable evidence owner.',
+        'Lifecycle, pricing, capability, market, and support claims require checked dates.',
+      ],
+      [
+        'Unsupported-claim disposition',
+        'Unsupported claims are verified, qualified, rewritten, or removed before customer handoff.',
+        unsupportedBullets.isEmpty
+            ? 'No unsupported claims explicitly flagged'
+            : '${unsupportedBullets.length} unsupported claim${unsupportedBullets.length == 1 ? '' : 's'} flagged',
+        unsupportedBullets.isEmpty ? 'Ready' : 'Blocked',
+        'Resolve every flagged claim and update customer-safe wording.',
+        'Unsupported claims cannot remain in final customer artifacts.',
+      ],
+      [
+        'Assumption separation',
+        'Assumptions and unknowns are separated from validated evidence and owner-reviewable.',
+        assumptions.isEmpty
+            ? 'No assumptions captured'
+            : '${assumptions.length} assumption${assumptions.length == 1 ? '' : 's'} captured',
+        assumptions.isEmpty ? 'Needs review' : 'Ready',
+        'Confirm assumptions with the account team or customer sponsor.',
+        'Do not present assumptions as sourced facts.',
+      ],
+      [
+        'Visual evidence reliability',
+        'Screenshot/image claims include OCR, vision output, or user-provided visual description when pixel-level details matter.',
+        hasVisualEvidence
+            ? visualRequiresReview
+                  ? 'Metadata-only visual evidence'
+                  : 'Visual text / description attached'
+            : 'No visual evidence attached',
+        hasVisualEvidence
+            ? visualRequiresReview
+                  ? 'Needs review'
+                  : 'Ready'
+            : 'Not applicable',
+        hasVisualEvidence
+            ? 'Validate OCR/description or add vision review before pixel-level visual claims.'
+            : 'Attach screenshots only when visual evidence is needed.',
+        'Do not infer UI/pixel details from metadata-only screenshots.',
+      ],
+      [
+        'Final customer-safe wording',
+        'The final artifact states confidence, caveats, source limits, and follow-up asks plainly.',
+        hasSources && unsupportedBullets.isEmpty
+            ? 'Customer-safe claim wording can be drafted'
+            : 'Customer-safe wording needs evidence cleanup',
+        hasSources && unsupportedBullets.isEmpty ? 'Ready' : 'Needs review',
+        'Review final wording for overclaims, stale evidence, and missing caveats.',
+        'Final handoff must distinguish validated facts, assumptions, and open evidence gaps.',
+      ],
+    ];
+  }
+
+  int _handoffReadyCount(List<List<String>> rows) {
+    return rows.where((row) {
+      return row.length > 3 && row[3].toLowerCase().contains('ready');
+    }).length;
+  }
+
+  List<String> _stringRows(List<List<String>> rows) {
+    return rows
+        .where((row) => row.any((cell) => cell.trim().isNotEmpty))
+        .map((row) => row.map((cell) => cell.trim()).join(': '))
+        .toList(growable: false);
   }
 
   List<String> _bulletsFor(List<ArtifactSection> sections, List<String> terms) {

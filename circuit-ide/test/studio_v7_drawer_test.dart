@@ -2591,6 +2591,69 @@ void main() {
     expect(find.text('Stakeholder-ready Word report'), findsOneWidget);
   });
 
+  testWidgets('Artifacts drawer shows evidence pack handoff gates', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final artifact = GeneratedArtifact(
+      id: 'evidence-pack-1',
+      kind: GeneratedArtifactKind.docx,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'lifecycle-evidence-pack.docx',
+      filePath: '/tmp/lifecycle-evidence-pack.docx',
+      summary: 'Created an evidence pack.',
+      byteSize: 12288,
+      sheetCount: 9,
+      metadata: const {
+        'artifactTemplate': 'evidence_pack',
+        'reportType': 'Evidence pack',
+        'handoffStatus': 'Evidence review required',
+        'evidenceConfidence': 'Medium - source review required',
+        'evidenceCustomerHandoffGateCount': 6,
+        'evidenceCustomerHandoffReadyCount': 3,
+        'evidenceCustomerHandoffMatrix': [
+          'Source authority: Customer-facing claims are backed by official, customer-provided, or clearly reliable evidence.: Authoritative source signal attached: Ready: Attach official/customer/reliable source evidence for each material claim.: Do not publish material claims without traceable source authority.',
+          'Checked-date traceability: Every time-sensitive claim has a visible checked date and refresh owner.: Checked dates present: Ready: Add checked date, freshness window, and accountable evidence owner.: Lifecycle, pricing, capability, market, and support claims require checked dates.',
+          'Unsupported-claim disposition: Unsupported claims are verified, qualified, rewritten, or removed before customer handoff.: 1 unsupported claim flagged: Blocked: Resolve every flagged claim and update customer-safe wording.: Unsupported claims cannot remain in final customer artifacts.',
+        ],
+        'hasEvidenceCustomerHandoffMatrix': true,
+        'visualEvidenceReliability':
+            'metadata_only_until_vision_or_user_description',
+        'visualEvidenceCount': 2,
+        'visualEvidenceMetadataOnlyCount': 2,
+        'visualEvidenceRequiresVisionReview': true,
+      },
+      createdAt: DateTime(2026, 7, 2, 11),
+    );
+    container
+        .read(studioSourceArtifactProvider.notifier)
+        .add(artifact.toSourceArtifact());
+    container
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.artifacts);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('lifecycle-evidence-pack.docx'), findsOneWidget);
+    await tester.tap(find.text('lifecycle-evidence-pack.docx'));
+    await tester.pump();
+
+    expect(find.text('Evidence confidence'), findsOneWidget);
+    expect(find.text('Medium - source review required'), findsOneWidget);
+    expect(find.text('Handoff gates'), findsOneWidget);
+    expect(find.text('3/6 ready'), findsOneWidget);
+    expect(find.text('Visual evidence'), findsOneWidget);
+    expect(find.text('Metadata-only screenshots'), findsOneWidget);
+    expect(find.text('Vision review'), findsOneWidget);
+  });
+
   testWidgets('Artifacts drawer shows business use case handoff gates', (
     tester,
   ) async {
