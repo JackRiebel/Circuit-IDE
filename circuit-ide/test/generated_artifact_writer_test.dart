@@ -853,10 +853,7 @@ Source checked 2026-06-30 from Cisco EoX/API.
     expect(pdf.fileName, endsWith('.pdf'));
     expect(evidence.fileName, endsWith('.json'));
     expect(deck.sheetCount, greaterThanOrEqualTo(3));
-    expect(
-      deck.metadata['readinessSignals'],
-      contains('Readout framing'),
-    );
+    expect(deck.metadata['readinessSignals'], contains('Readout framing'));
     expect(evidence.summary, contains('lifecycle evidence register'));
     expect(evidence.previewRows.first, ['Register', 'Count', 'Status']);
     expect(evidence.metadata['artifact'], 'lifecycle_evidence_register');
@@ -2812,12 +2809,13 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     );
     expect(registry.descriptorForId('evidence_pack')?.packageKinds, [
       GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.json,
       GeneratedArtifactKind.pdf,
     ]);
     expect(
       registry.descriptorForId('evidence_pack')?.verificationChecks,
-      contains('PDF handoff companion renders when requested'),
+      contains('Evidence readout deck renders when packaged'),
     );
     expect(
       detectGeneratedArtifactKind('create a business case brief for Acme'),
@@ -2903,6 +2901,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       ),
       [
         GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.json,
         GeneratedArtifactKind.pdf,
       ],
@@ -2913,6 +2912,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       ),
       [
         GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.json,
         GeneratedArtifactKind.pdf,
       ],
@@ -2923,6 +2923,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       ),
       [
         GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.json,
         GeneratedArtifactKind.pdf,
       ],
@@ -3010,6 +3011,7 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
     expect(evidence.requestedKind, GeneratedArtifactKind.docx);
     expect(evidence.targetKinds, [
       GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.json,
       GeneratedArtifactKind.pdf,
     ]);
@@ -3545,17 +3547,19 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
     },
   );
 
-  test('final evidence package creates DOCX JSON and PDF artifacts', () async {
-    final root = await Directory.systemTemp.createTemp(
-      'circuit-evidence-package-',
-    );
-    addTearDown(() => root.delete(recursive: true));
+  test(
+    'final evidence package creates DOCX PPTX JSON and PDF artifacts',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-evidence-package-',
+      );
+      addTearDown(() => root.delete(recursive: true));
 
-    final package = await const GeneratedArtifactPackageWriter()
-        .writePackageFromAssistantOutput(
-          rootPath: root.path,
-          prompt: 'create a final evidence pack for customer handoff',
-          content: '''
+      final package = await const GeneratedArtifactPackageWriter()
+          .writePackageFromAssistantOutput(
+            rootPath: root.path,
+            prompt: 'create a final evidence pack for customer handoff',
+            content: '''
 # Cisco Lifecycle Evidence Pack
 
 ## Claims
@@ -3574,60 +3578,96 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
 ## Unsupported Claims
 - Exact replacement model needs validation against current portfolio facts.
 ''',
-          turnId: 'turn-final-evidence-package',
-          threadId: 'thread-1',
-          requestId: 'request-1',
-        );
+            turnId: 'turn-final-evidence-package',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
 
-    expect(package, isNotNull);
-    expect(package!.label, 'evidence pack package');
-    expect(package.artifacts.map((artifact) => artifact.kind), [
-      GeneratedArtifactKind.markdown,
-      GeneratedArtifactKind.docx,
-      GeneratedArtifactKind.json,
-      GeneratedArtifactKind.pdf,
-    ]);
-    expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
-    expect(package.primary!.metadata['expectedArtifactKinds'], [
-      'Word',
-      'JSON',
-      'PDF',
-    ]);
-    expect(package.primary!.metadata['producedArtifactKinds'], [
-      'Word',
-      'JSON',
-      'PDF',
-    ]);
-    expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
-    expect(package.primary!.metadata['hasCompletePackage'], isTrue);
-    expect(
-      package.primary!.metadata['packagePreviewSurfaces'],
-      containsAll(['Report outline', 'Evidence register', 'PDF outline']),
-    );
-    expect(
-      package.primary!.metadata['packageVerificationChecks'],
-      containsAll([
-        'DOCX package opens/parses',
-        'Claim/source register is present',
-        'PDF header parses',
-      ]),
-    );
-    final manifestText = File(package.primary!.filePath).readAsStringSync();
-    expect(manifestText, contains('Evidence Pack Package'));
-    expect(
-      manifestText,
-      contains('| Word, JSON, PDF | Word, JSON, PDF | None |'),
-    );
-    expect(manifestText, contains('.docx'));
-    expect(manifestText, contains('.json'));
-    expect(manifestText, contains('.pdf'));
-    expect(package.artifacts[1].fileName, endsWith('.docx'));
-    expect(package.artifacts[1].metadata['artifactTemplate'], 'evidence_pack');
-    expect(package.artifacts[2].fileName, endsWith('.json'));
-    expect(package.artifacts[2].metadata['artifact'], 'json_evidence_pack');
-    expect(package.artifacts[3].fileName, endsWith('.pdf'));
-    expect(package.artifacts[3].metadata['artifactTemplate'], 'evidence_pack');
-  });
+      expect(package, isNotNull);
+      expect(package!.label, 'evidence pack package');
+      expect(package.artifacts.map((artifact) => artifact.kind), [
+        GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.json,
+        GeneratedArtifactKind.pdf,
+      ]);
+      expect(
+        package.primary!.metadata['artifact'],
+        'artifact_package_manifest',
+      );
+      expect(package.primary!.metadata['expectedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'JSON',
+        'PDF',
+      ]);
+      expect(package.primary!.metadata['producedArtifactKinds'], [
+        'Word',
+        'PowerPoint',
+        'JSON',
+        'PDF',
+      ]);
+      expect(
+        package.primary!.metadata['packageCompletenessStatus'],
+        'Complete',
+      );
+      expect(package.primary!.metadata['hasCompletePackage'], isTrue);
+      expect(
+        package.primary!.metadata['packagePreviewSurfaces'],
+        containsAll([
+          'Report outline',
+          'Slide outline',
+          'Evidence register',
+          'PDF outline',
+        ]),
+      );
+      expect(
+        package.primary!.metadata['packageVerificationChecks'],
+        containsAll([
+          'DOCX package opens/parses',
+          'Evidence readout deck renders when packaged',
+          'Deck readiness metadata renders',
+          'Claim/source register is present',
+          'PDF header parses',
+        ]),
+      );
+      final manifestText = File(package.primary!.filePath).readAsStringSync();
+      expect(manifestText, contains('Evidence Pack Package'));
+      expect(
+        manifestText,
+        contains(
+          '| Word, PowerPoint, JSON, PDF | Word, PowerPoint, JSON, PDF | None |',
+        ),
+      );
+      expect(manifestText, contains('.docx'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.json'));
+      expect(manifestText, contains('.pdf'));
+      expect(package.artifacts[1].fileName, endsWith('.docx'));
+      expect(
+        package.artifacts[1].metadata['artifactTemplate'],
+        'evidence_pack',
+      );
+      expect(package.artifacts[2].fileName, endsWith('.pptx'));
+      expect(package.artifacts[2].summary, contains('evidence readout'));
+      expect(
+        package.artifacts[2].metadata['artifactTemplate'],
+        'evidence_pack',
+      );
+      expect(
+        package.artifacts[2].metadata['slideCount'],
+        greaterThanOrEqualTo(3),
+      );
+      expect(package.artifacts[3].fileName, endsWith('.json'));
+      expect(package.artifacts[3].metadata['artifact'], 'json_evidence_pack');
+      expect(package.artifacts[4].fileName, endsWith('.pdf'));
+      expect(
+        package.artifacts[4].metadata['artifactTemplate'],
+        'evidence_pack',
+      );
+    },
+  );
 
   test('visual evidence package creates PDF handoff companion', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -3663,34 +3703,47 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
     expect(package.artifacts.map((artifact) => artifact.kind), [
       GeneratedArtifactKind.markdown,
       GeneratedArtifactKind.docx,
+      GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.json,
       GeneratedArtifactKind.pdf,
     ]);
     expect(package.primary!.metadata['expectedArtifactKinds'], [
       'Word',
+      'PowerPoint',
       'JSON',
       'PDF',
     ]);
     expect(package.primary!.metadata['producedArtifactKinds'], [
       'Word',
+      'PowerPoint',
       'JSON',
       'PDF',
     ]);
     expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
     expect(
       package.primary!.metadata['packagePreviewSurfaces'],
-      containsAll(['Report outline', 'Evidence register', 'PDF outline']),
+      containsAll([
+        'Report outline',
+        'Slide outline',
+        'Evidence register',
+        'PDF outline',
+      ]),
     );
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(
       manifestText,
-      contains('| Word, JSON, PDF | Word, JSON, PDF | None |'),
+      contains(
+        '| Word, PowerPoint, JSON, PDF | Word, PowerPoint, JSON, PDF | None |',
+      ),
     );
+    expect(manifestText, contains('.pptx'));
     expect(manifestText, contains('.pdf'));
     expect(package.artifacts[1].metadata['hasVisualEvidenceRegister'], isTrue);
     expect(package.artifacts[2].metadata['hasVisualEvidenceRegister'], isTrue);
-    expect(package.artifacts[3].fileName, endsWith('.pdf'));
-    expect(package.artifacts[3].metadata['artifactTemplate'], 'evidence_pack');
+    expect(package.artifacts[2].fileName, endsWith('.pptx'));
     expect(package.artifacts[3].metadata['hasVisualEvidenceRegister'], isTrue);
+    expect(package.artifacts[4].fileName, endsWith('.pdf'));
+    expect(package.artifacts[4].metadata['artifactTemplate'], 'evidence_pack');
+    expect(package.artifacts[4].metadata['hasVisualEvidenceRegister'], isTrue);
   });
 }

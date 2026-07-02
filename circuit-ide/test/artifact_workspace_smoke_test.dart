@@ -412,6 +412,7 @@ Short executive summary for the customer.
             expectedKinds: [
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.json,
               GeneratedArtifactKind.pdf,
             ],
@@ -424,6 +425,7 @@ Short executive summary for the customer.
             expectedKinds: [
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.json,
               GeneratedArtifactKind.pdf,
             ],
@@ -563,11 +565,16 @@ Short executive summary for the customer.
               package.artifacts[2].metadata['hasVisualEvidenceRegister'],
               isTrue,
             );
+            expect(package.artifacts[2].fileName, endsWith('.pptx'));
             expect(
               package.artifacts[3].metadata['hasVisualEvidenceRegister'],
               isTrue,
             );
-            expect(package.artifacts[3].fileName, endsWith('.pdf'));
+            expect(
+              package.artifacts[4].metadata['hasVisualEvidenceRegister'],
+              isTrue,
+            );
+            expect(package.artifacts[4].fileName, endsWith('.pdf'));
           }
         }
       },
@@ -697,6 +704,7 @@ Short executive summary for the customer.
             prompt: 'create a final evidence pack for customer handoff',
             expectedTargets: [
               GeneratedArtifactKind.docx,
+              GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.json,
               GeneratedArtifactKind.pdf,
             ],

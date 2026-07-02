@@ -353,6 +353,7 @@ class ArtifactTypeRegistry {
       label: 'Evidence Pack',
       supportedKinds: [
         GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.report,
         GeneratedArtifactKind.json,
         GeneratedArtifactKind.pdf,
@@ -367,6 +368,7 @@ class ArtifactTypeRegistry {
       ],
       packageKinds: [
         GeneratedArtifactKind.docx,
+        GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.json,
         GeneratedArtifactKind.pdf,
       ],
@@ -375,6 +377,7 @@ class ArtifactTypeRegistry {
         'Claim/source register is present',
         'Checked-date and confidence metadata persists',
         'Unsupported-claim preview renders',
+        'Evidence readout deck renders when packaged',
         'PDF handoff companion renders when requested',
       ],
     ),

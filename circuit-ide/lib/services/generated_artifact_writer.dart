@@ -352,6 +352,7 @@ class GeneratedArtifactWriter {
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
       final topologyBrief = networkTopologyBuilder.matches(prompt);
+      final evidencePack = evidencePackBuilder.matches(prompt);
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
         status: GeneratedArtifactStatus.ready,
@@ -365,6 +366,8 @@ class GeneratedArtifactWriter {
             ? 'Created a change summary PowerPoint deck with $slideCount slides, edited files, verification results, command log, checkpoints, risks, and next steps.'
             : topologyBrief
             ? 'Created a topology PowerPoint deck with $slideCount slides, inventory, validated links, capacity checks, failure domains, assumptions, and sources.'
+            : evidencePack
+            ? 'Created an evidence readout PowerPoint deck with $slideCount slides, claim/source matrix, checked-date register, confidence gates, unsupported-claim triage, assumptions, and follow-up actions.'
             : 'Created a PowerPoint deck with $slideCount slides from the response structure.',
         previewRows: powerPointRenderer.previewRowsFor(documentForOutput),
         sheetCount: slideCount,
