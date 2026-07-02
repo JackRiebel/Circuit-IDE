@@ -130,6 +130,81 @@ class PowerPointArtifactInspection {
       hasEnterpriseStyling &&
       hasSpeakerNotes &&
       hasSlideNumbers;
+
+  Map<String, Object?> toMetadata({int? expectedSlideCount}) {
+    final checks = <String, bool>{
+      'ZIP package header': hasZipHeader,
+      '[Content_Types].xml': hasContentTypes,
+      'ppt/presentation.xml': hasPresentation,
+      'ppt/theme/theme1.xml': hasTheme,
+      'slide master': hasSlideMaster,
+      'core properties': hasCoreProperties,
+      'extended properties': hasExtendedProperties,
+      'custom properties': hasCustomProperties,
+      'narrative manifest': hasNarrativeManifest,
+      'external handoff manifest': hasExternalHandoffManifest,
+      'slide files': slideCount > 0,
+      'declared slide count': declaredSlideCount == slideCount,
+      'speaker notes': hasSpeakerNotes,
+      'slide numbers': hasSlideNumbers,
+      'enterprise styling': hasEnterpriseStyling,
+      'readiness status strip': hasReadinessStatusStrip,
+      'expected deck structure': hasExpectedDeckStructure,
+      if (expectedSlideCount != null)
+        'expected slide count': expectedSlideCount == slideCount,
+    };
+    final failedChecks = checks.entries
+        .where((entry) => !entry.value)
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    return {
+      'pptxInspectionVersion': '1.0',
+      'pptxInspectionStatus': failedChecks.isEmpty
+          ? 'Verified'
+          : 'Needs review',
+      'pptxStructuralValid': isStructurallyValid,
+      'pptxExpectedDeckStructure': hasExpectedDeckStructure,
+      'pptxInspectionFailedChecks': failedChecks,
+      'pptxInspectionFailedCheckCount': failedChecks.length,
+      'pptxParsedSlideCount': declaredSlideCount,
+      'pptxSlideFileCount': slideCount,
+      'pptxNotesFileCount': notesSlideCount,
+      'pptxHasContentTypes': hasContentTypes,
+      'pptxHasPresentationXml': hasPresentation,
+      'pptxHasPresentationRels': hasPresentation,
+      'pptxHasTheme': hasTheme,
+      'pptxHasCoreProps': hasCoreProperties,
+      'pptxHasAppProps': hasExtendedProperties,
+      'pptxHasCustomProps': hasCustomProperties,
+      'pptxHasSpeakerNotes': hasSpeakerNotes,
+      'pptxHas16x9Layout': hasPresentation,
+      'pptxHasAgendaSlide': hasAgenda || hasAgendaLayout,
+      'pptxHasRecommendationSlide':
+          hasExecutiveRecommendation || hasRecommendationCards,
+      'pptxHasSourcesSlide': hasSourcesSlide || hasAssumptionsSourcesSlide,
+      'pptxHasTableSlide': hasTableSlide,
+      'pptxHasSectionDivider': hasSectionDivider || hasSectionDividerLayout,
+      'pptxHasDecisionMatrix': hasDecisionMatrix,
+      'pptxHasDeliveryBrief': hasDeliveryBrief,
+      'pptxHasRoadmapTimeline': hasRoadmapTimeline,
+      'pptxHasPublishingGate': hasPublishingGate,
+      'pptxHasReadinessStatusStrip': hasReadinessStatusStrip,
+      'pptxHasEnterpriseStyling': hasEnterpriseStyling,
+      'pptxUsesLightTheme': usesLightTheme,
+      'pptxUsesDarkTheme': usesDarkTheme,
+      'pptxSlideTypes': slideTypes,
+      'pptxExpectedDeckChrome': [
+        'Content types',
+        'Presentation XML',
+        'Theme',
+        'Core/app/custom properties',
+        'Slide XML',
+        'Speaker notes',
+        'Readiness strip',
+        'Enterprise styling',
+      ],
+    };
+  }
 }
 
 class PowerPointArtifactInspector {

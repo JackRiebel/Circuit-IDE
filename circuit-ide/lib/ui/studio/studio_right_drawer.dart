@@ -3249,12 +3249,19 @@ class _ArtifactDrawerCard extends ConsumerWidget {
       final theme = _metadataString(artifact, 'theme');
       final deckType = _metadataString(artifact, 'deckType');
       final handoffStatus = _metadataString(artifact, 'handoffStatus');
+      final inspectionStatus = _metadataString(
+        artifact,
+        'pptxInspectionStatus',
+      );
       final readinessSignals = _metadataStringList(
         artifact,
         'readinessSignals',
       );
       if (deckType.isNotEmpty) parts.add(deckType);
       if (theme.isNotEmpty) parts.add('$theme theme');
+      if (inspectionStatus.isNotEmpty) {
+        parts.add('PPTX $inspectionStatus');
+      }
       if (readinessSignals.isNotEmpty) {
         parts.add(_compactSignalList(readinessSignals));
       }
@@ -4612,6 +4619,26 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
           ('Audience', _metadataString(artifact, 'audience')),
         if (_metadataString(artifact, 'deckPurpose').isNotEmpty)
           ('Purpose', _metadataString(artifact, 'deckPurpose')),
+        if (_metadataString(artifact, 'pptxInspectionStatus').isNotEmpty)
+          (
+            'PPTX inspection',
+            _metadataString(artifact, 'pptxInspectionStatus'),
+          ),
+        if (_metadataInt(artifact, 'pptxSlideFileCount') > 0)
+          ('Slide files', '${_metadataInt(artifact, 'pptxSlideFileCount')}'),
+        if (_metadataInt(artifact, 'pptxNotesFileCount') > 0)
+          ('Speaker notes', '${_metadataInt(artifact, 'pptxNotesFileCount')}'),
+        if (_metadataBool(artifact, 'pptxHas16x9Layout')) ('Layout', '16:9'),
+        if (_metadataStringList(
+          artifact,
+          'pptxInspectionFailedChecks',
+        ).isNotEmpty)
+          (
+            'PPTX checks',
+            _compactSignalList(
+              _metadataStringList(artifact, 'pptxInspectionFailedChecks'),
+            ),
+          ),
         if (_metadataString(artifact, 'deliveryReadinessLevel').isNotEmpty)
           (
             'Delivery readiness',

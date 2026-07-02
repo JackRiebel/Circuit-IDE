@@ -1866,6 +1866,11 @@ void main() {
             'decisionAsk':
                 'Review the recommendation, confirm assumptions, and approve the next implementation step.',
             'theme': 'Light',
+            'pptxInspectionStatus': 'Verified',
+            'pptxSlideFileCount': 6,
+            'pptxNotesFileCount': 6,
+            'pptxHas16x9Layout': true,
+            'pptxInspectionFailedChecks': <String>[],
             'audience': 'Executive stakeholders',
             'deckPurpose': 'Support a decision',
             'deliveryReadinessScore': 94,
@@ -2150,6 +2155,12 @@ void main() {
     expect(find.text('Executive stakeholders'), findsOneWidget);
     expect(find.text('Purpose'), findsOneWidget);
     expect(find.text('Support a decision'), findsOneWidget);
+    expect(find.text('PPTX inspection'), findsOneWidget);
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('Slide files'), findsOneWidget);
+    expect(find.text('Speaker notes'), findsAtLeastNWidgets(1));
+    expect(find.text('Layout'), findsOneWidget);
+    expect(find.text('16:9'), findsOneWidget);
     expect(find.text('Delivery readiness'), findsOneWidget);
     expect(find.text('Customer handoff ready'), findsOneWidget);
     expect(find.text('Delivery score'), findsOneWidget);
@@ -2261,7 +2272,7 @@ void main() {
     expect(find.text('Stakeholder-review deck'), findsOneWidget);
     expect(find.text('Notes'), findsOneWidget);
     expect(find.text('Speaker notes included'), findsOneWidget);
-    expect(find.text('Speaker notes'), findsOneWidget);
+    expect(find.text('Speaker notes'), findsAtLeastNWidgets(1));
     expect(find.text('6'), findsAtLeastNWidgets(1));
     expect(find.text('5'), findsAtLeastNWidgets(1));
     expect(find.textContaining('6 slide deck ready'), findsNothing);

@@ -108,6 +108,26 @@ Short executive summary for the customer.
         ]),
       );
       expect(artifact.metadata['slideCount'], artifact.sheetCount);
+      expect(artifact.metadata['pptxInspectionVersion'], '1.0');
+      expect(artifact.metadata['pptxInspectionStatus'], 'Verified');
+      expect(artifact.metadata['pptxStructuralValid'], isTrue);
+      expect(artifact.metadata['pptxInspectionFailedCheckCount'], 0);
+      expect(artifact.metadata['pptxInspectionFailedChecks'], isEmpty);
+      expect(artifact.metadata['pptxParsedSlideCount'], artifact.sheetCount);
+      expect(artifact.metadata['pptxSlideFileCount'], artifact.sheetCount);
+      expect(artifact.metadata['pptxNotesFileCount'], artifact.sheetCount);
+      expect(artifact.metadata['pptxHasContentTypes'], isTrue);
+      expect(artifact.metadata['pptxHasPresentationXml'], isTrue);
+      expect(artifact.metadata['pptxHasPresentationRels'], isTrue);
+      expect(artifact.metadata['pptxHasTheme'], isTrue);
+      expect(artifact.metadata['pptxHasCoreProps'], isTrue);
+      expect(artifact.metadata['pptxHasAppProps'], isTrue);
+      expect(artifact.metadata['pptxHasCustomProps'], isTrue);
+      expect(artifact.metadata['pptxHasSpeakerNotes'], isTrue);
+      expect(artifact.metadata['pptxHas16x9Layout'], isTrue);
+      expect(artifact.metadata['pptxHasAgendaSlide'], isTrue);
+      expect(artifact.metadata['pptxHasRecommendationSlide'], isTrue);
+      expect(artifact.metadata['pptxHasSourcesSlide'], isTrue);
       expect(artifact.metadata['sectionCount'], greaterThanOrEqualTo(4));
       expect(artifact.metadata['tableCount'], 1);
       expect(artifact.metadata['assumptionCount'], 1);

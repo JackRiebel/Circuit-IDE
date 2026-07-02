@@ -20,6 +20,7 @@ import 'lifecycle_eox_workbook_builder.dart';
 import 'network_topology_brief_builder.dart';
 import 'pdf_artifact_inspector.dart';
 import 'pdf_artifact_renderer.dart';
+import 'powerpoint_artifact_inspector.dart';
 import 'powerpoint_artifact_renderer.dart';
 import 'product_comparison_workbook_builder.dart';
 import 'solution_sizing_workbook_builder.dart';
@@ -30,6 +31,7 @@ class GeneratedArtifactWriter {
   final DocxArtifactRenderer docxRenderer;
   final PdfArtifactRenderer pdfRenderer;
   final PdfArtifactInspector pdfInspector;
+  final PowerPointArtifactInspector powerPointInspector;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
@@ -50,6 +52,7 @@ class GeneratedArtifactWriter {
     this.docxRenderer = const DocxArtifactRenderer(),
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.pdfInspector = const PdfArtifactInspector(),
+    this.powerPointInspector = const PowerPointArtifactInspector(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
@@ -351,6 +354,7 @@ class GeneratedArtifactWriter {
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
       final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
       final bytes = powerPointRenderer.render(documentForOutput);
+      final inspection = powerPointInspector.inspect(bytes);
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
@@ -377,6 +381,7 @@ class GeneratedArtifactWriter {
         metadata: {
           ...documentForOutput.metadata,
           ...powerPointRenderer.metadataFor(documentForOutput),
+          ...inspection.toMetadata(expectedSlideCount: slideCount),
         },
       );
     }
