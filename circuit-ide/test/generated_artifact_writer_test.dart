@@ -2730,6 +2730,21 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       registry.descriptorForId('solution_sizing_workbook')?.verificationChecks,
       contains('Sizing readout deck and PDF companion render when packaged'),
     );
+    expect(
+      registry.descriptorForId('product_comparison_matrix')?.packageKinds,
+      [
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
+    );
+    expect(
+      registry.descriptorForId('product_comparison_matrix')?.verificationChecks,
+      contains(
+        'Comparison readout deck and PDF companion render when packaged',
+      ),
+    );
     expect(registry.descriptorForId('business_use_case_brief')?.packageKinds, [
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
@@ -2940,6 +2955,22 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       GeneratedArtifactKind.pdf,
     ]);
     expect(chartPackage.contractLabel, 'Chart Pack package');
+
+    final productComparison = registry.routeForPrompt(
+      'create a product comparison package for C9300 and MS355',
+    );
+    expect(productComparison.descriptor?.id, 'product_comparison_matrix');
+    expect(productComparison.primaryKind, GeneratedArtifactKind.excel);
+    expect(productComparison.targetKinds, [
+      GeneratedArtifactKind.excel,
+      GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.powerPoint,
+      GeneratedArtifactKind.pdf,
+    ]);
+    expect(
+      productComparison.contractLabel,
+      'Product Comparison Matrix package',
+    );
 
     final evidence = registry.routeForPrompt(
       'create a final evidence pack for customer handoff',
@@ -3374,7 +3405,7 @@ Size access, WAN, PoE, and growth headroom for a campus refresh.
   );
 
   test(
-    'product comparison package creates workbook and chart artifacts',
+    'product comparison package creates workbook chart deck and PDF artifacts',
     () async {
       final root = await Directory.systemTemp.createTemp(
         'circuit-comparison-package-',
@@ -3413,6 +3444,8 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
         GeneratedArtifactKind.markdown,
         GeneratedArtifactKind.excel,
         GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
       ]);
       expect(
         package.primary!.metadata['artifact'],
@@ -3421,10 +3454,14 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
       expect(package.primary!.metadata['expectedArtifactKinds'], [
         'Excel',
         'Chart',
+        'PowerPoint',
+        'PDF',
       ]);
       expect(package.primary!.metadata['producedArtifactKinds'], [
         'Excel',
         'Chart',
+        'PowerPoint',
+        'PDF',
       ]);
       expect(
         package.primary!.metadata['packageCompletenessStatus'],
@@ -3433,26 +3470,47 @@ Compare current access switching options for Wi-Fi 7 APs, UPOE, multigig access,
       expect(package.primary!.metadata['hasCompletePackage'], isTrue);
       expect(
         package.primary!.metadata['packagePreviewSurfaces'],
-        containsAll(['Comparison matrix', 'Chart summary']),
+        containsAll([
+          'Comparison matrix',
+          'Chart summary',
+          'Slide outline',
+          'PDF outline',
+        ]),
       );
       expect(
         package.primary!.metadata['packageVerificationChecks'],
         containsAll([
           'Comparison sheets parse',
           'Chart signal metadata persists',
+          'Comparison readout deck and PDF companion render when packaged',
+          'Deck readiness metadata renders',
+          'PDF outline preview renders',
         ]),
       );
       final manifestText = File(package.primary!.filePath).readAsStringSync();
       expect(manifestText, contains('Product Comparison Package'));
-      expect(manifestText, contains('| Excel, Chart | Excel, Chart | None |'));
+      expect(
+        manifestText,
+        contains(
+          '| Excel, Chart, PowerPoint, PDF | Excel, Chart, PowerPoint, PDF | None |',
+        ),
+      );
       expect(manifestText, contains('.xlsx'));
       expect(manifestText, contains('.svg'));
+      expect(manifestText, contains('.pptx'));
+      expect(manifestText, contains('.pdf'));
       expect(package.artifacts[1].fileName, endsWith('.xlsx'));
       expect(
         package.artifacts[1].metadata['workbookKind'],
         'product_comparison',
       );
       expect(package.artifacts[2].fileName, endsWith('.svg'));
+      expect(package.artifacts[3].fileName, endsWith('.pptx'));
+      expect(package.artifacts[4].fileName, endsWith('.pdf'));
+      final pdfHeader = File(
+        package.artifacts[4].filePath,
+      ).readAsBytesSync().take(8).toList();
+      expect(String.fromCharCodes(pdfHeader), startsWith('%PDF-1.'));
     },
   );
 

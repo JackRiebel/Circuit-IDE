@@ -240,12 +240,18 @@ class ArtifactTypeRegistry {
       supportedKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.csv],
       useCases: ['model comparison', 'fit scoring'],
       requiredInputs: ['candidate models', 'capabilities', 'requirements'],
-      packageKinds: [GeneratedArtifactKind.excel, GeneratedArtifactKind.chart],
+      packageKinds: [
+        GeneratedArtifactKind.excel,
+        GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.powerPoint,
+        GeneratedArtifactKind.pdf,
+      ],
       previewSurface: 'Comparison matrix',
       verificationChecks: [
         'Comparison sheets parse',
         'Fit-score metadata persists',
         'Rejected alternatives preview renders',
+        'Comparison readout deck and PDF companion render when packaged',
       ],
     ),
     ArtifactTypeDescriptor(

@@ -377,6 +377,8 @@ Short executive summary for the customer.
               GeneratedArtifactKind.markdown,
               GeneratedArtifactKind.excel,
               GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
             ],
           ),
           _ArtifactPackageSmokeCase(
@@ -648,6 +650,8 @@ Short executive summary for the customer.
             expectedTargets: [
               GeneratedArtifactKind.excel,
               GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.powerPoint,
+              GeneratedArtifactKind.pdf,
             ],
           ),
           _PriorityDescriptorSmokeCase(
