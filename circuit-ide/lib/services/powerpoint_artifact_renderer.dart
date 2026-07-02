@@ -8,6 +8,8 @@ class PowerPointArtifactRenderer {
   const PowerPointArtifactRenderer();
 
   static const int _maxSlides = 32;
+  static const int _maxTablesInDeck = 4;
+  static const int _tableDataRowsPerSlide = 6;
 
   int slideCountFor(ArtifactDocument document) {
     return _slidesFor(document).take(_maxSlides).length;
@@ -100,6 +102,9 @@ class PowerPointArtifactRenderer {
       customerHandoffRows,
     );
     final customerHandoffGateStatus = _customerHandoffGateStatus(document);
+    final tableContinuationSlideCount = _tableContinuationSlideCount(document);
+    final tableOverflowRowCount = _tableOverflowRowCount(document);
+    final tableContinuationSummaries = _tableContinuationSummaries(document);
     return {
       'generator': 'CircuitCode',
       'artifact': 'powerpoint_deck',
@@ -156,6 +161,11 @@ class PowerPointArtifactRenderer {
       'tableCoverage': document.tables.isEmpty
           ? 'No supporting tables'
           : '${document.tables.length} table${document.tables.length == 1 ? '' : 's'} packaged',
+      'hasTableContinuationSlides': tableContinuationSlideCount > 0,
+      'tableContinuationSlideCount': tableContinuationSlideCount,
+      'tableOverflowRowCount': tableOverflowRowCount,
+      'tableContinuationSummaries': tableContinuationSummaries,
+      'tableContinuationSummaryCount': tableContinuationSummaries.length,
       'sourceCoverage': document.citations.isEmpty
           ? 'No citations attached'
           : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} captured',
@@ -418,16 +428,8 @@ class PowerPointArtifactRenderer {
     }
     if (document.tables.isNotEmpty) {
       slides.add(_dataSnapshot(document));
-      for (final table in document.tables.take(4)) {
-        slides.add(
-          _DeckSlide(
-            title: table.title,
-            eyebrow: 'Data table',
-            kind: _DeckSlideKind.table,
-            bullets: _tableBullets(table).take(4).toList(growable: false),
-            tableRows: table.rows.take(7).toList(growable: false),
-          ),
-        );
+      for (final table in document.tables.take(_maxTablesInDeck)) {
+        slides.addAll(_tableSlidesFor(table));
       }
     }
     slides.add(_assumptionsAndSources(document));
@@ -1204,6 +1206,8 @@ class PowerPointArtifactRenderer {
         'Closing ask',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
         'Table slides',
+      if (_tableContinuationSlideCount(document) > 0)
+        'Table continuation slides',
       if (document.assumptions.isNotEmpty || document.citations.isNotEmpty)
         'Assumptions/sources',
       'Speaker notes',
@@ -1389,7 +1393,9 @@ class PowerPointArtifactRenderer {
       else
         'Add a decision matrix before customer handoff.',
       if (document.tables.isNotEmpty)
-        'Review table slides for sensitive data, stale values, and column readability.'
+        _tableContinuationSlideCount(document) > 0
+            ? 'Review table continuation slides for row order, readability, sensitive data, and clipped values.'
+            : 'Review table slides for sensitive data, stale values, and column readability.'
       else
         'Attach supporting data or explain why no data table is required.',
       if (document.assumptions.isNotEmpty)
@@ -1429,7 +1435,9 @@ class PowerPointArtifactRenderer {
       'Open the deck at 16:9 and verify title, agenda, decision, roadmap, assumptions, sources, and appendix slides are readable.',
       'Confirm visible slide copy is audience-facing; implementation detail belongs in speaker notes or appendix slides.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.table.label))
-        'Review table slides for readable row count, clipped values, and column alignment.'
+        _tableContinuationSlideCount(document) > 0
+            ? 'Review table continuation slides at 16:9 and confirm row ranges, headers, and column alignment stay readable.'
+            : 'Review table slides for readable row count, clipped values, and column alignment.'
       else
         'Confirm no table slide is needed, or attach the supporting data artifact.',
       if (slideTypeCounts.containsKey(_DeckSlideKind.recommendation.label))
@@ -1764,15 +1772,86 @@ class PowerPointArtifactRenderer {
         .where((line) => line.isNotEmpty);
   }
 
-  List<String> _tableBullets(ArtifactTable table) {
-    if (table.rows.isEmpty) return const [];
-    final headers = table.rows.first;
+  List<String> _tableBulletsForRows(
+    List<String> headers,
+    Iterable<List<String>> rows,
+  ) {
     return [
-      for (final row in table.rows.skip(1).take(8))
+      for (final row in rows.take(8))
         [
           for (var i = 0; i < row.length && i < headers.length; i++)
             '${headers[i]}: ${row[i]}',
         ].join(' | '),
+    ];
+  }
+
+  List<_DeckSlide> _tableSlidesFor(ArtifactTable table) {
+    if (table.rows.isEmpty) return const [];
+    final headers = table.rows.first;
+    final dataRows = table.rows.skip(1).toList(growable: false);
+    if (dataRows.isEmpty) {
+      return [
+        _DeckSlide(
+          title: table.title,
+          eyebrow: 'Data table',
+          kind: _DeckSlideKind.table,
+          bullets: const ['No data rows were provided for this table.'],
+          tableRows: [headers],
+        ),
+      ];
+    }
+
+    final slides = <_DeckSlide>[];
+    final chunkCount = (dataRows.length / _tableDataRowsPerSlide).ceil();
+    for (var chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+      final start = chunkIndex * _tableDataRowsPerSlide;
+      final end = math.min(start + _tableDataRowsPerSlide, dataRows.length);
+      final chunk = dataRows.sublist(start, end);
+      final title = chunkCount == 1
+          ? table.title
+          : '${table.title} (${chunkIndex + 1}/$chunkCount)';
+      slides.add(
+        _DeckSlide(
+          title: title,
+          eyebrow: chunkIndex == 0 ? 'Data table' : 'Data table continuation',
+          kind: _DeckSlideKind.table,
+          bullets: [
+            'Rows ${start + 1}-$end of ${dataRows.length} from ${table.title}.',
+            ..._tableBulletsForRows(headers, chunk).take(3),
+          ],
+          tableRows: [headers, ...chunk],
+        ),
+      );
+    }
+    return slides;
+  }
+
+  int _tableContinuationSlideCount(ArtifactDocument document) {
+    var count = 0;
+    for (final table in document.tables.take(_maxTablesInDeck)) {
+      final dataRowCount = math.max(0, table.rows.length - 1);
+      if (dataRowCount <= _tableDataRowsPerSlide) continue;
+      count += (dataRowCount / _tableDataRowsPerSlide).ceil() - 1;
+    }
+    return count;
+  }
+
+  int _tableOverflowRowCount(ArtifactDocument document) {
+    return document.tables
+        .take(_maxTablesInDeck)
+        .map((table) => math.max(0, table.rows.length - 1))
+        .where((rowCount) => rowCount > _tableDataRowsPerSlide)
+        .fold<int>(
+          0,
+          (sum, rowCount) => sum + rowCount - _tableDataRowsPerSlide,
+        );
+  }
+
+  List<String> _tableContinuationSummaries(ArtifactDocument document) {
+    return [
+      for (final table in document.tables.take(_maxTablesInDeck))
+        if (math.max(0, table.rows.length - 1) > _tableDataRowsPerSlide)
+          '${table.title}: ${math.max(0, table.rows.length - 1)} rows split across ${(math.max(0, table.rows.length - 1) / _tableDataRowsPerSlide).ceil()} slides',
     ];
   }
 

@@ -244,6 +244,87 @@ Short executive summary for the customer.
   );
 
   test(
+    'PowerPoint tables continue across slides instead of truncating rows',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final artifact = await const GeneratedArtifactWriter()
+          .writeFromAssistantOutput(
+            rootPath: root.path,
+            prompt:
+                'create a PowerPoint deck for this customer inventory table',
+            content: '''
+# Customer Inventory Review
+
+Review inventory coverage and create a customer readout deck.
+
+| Site | Device | Status |
+| --- | --- | --- |
+| HQ | Core 1 | Ready |
+| HQ | Core 2 | Ready |
+| IDF 1 | Access 1 | Ready |
+| IDF 1 | Access 2 | Ready |
+| IDF 2 | Access 3 | Ready |
+| IDF 2 | Access 4 | Ready |
+| IDF 3 | Access 5 | Review |
+| IDF 3 | Access 6 | Review |
+| Branch 1 | Edge 1 | Ready |
+| Branch 1 | Edge 2 | Ready |
+| Branch 2 | Edge 3 | Review |
+| Branch 2 | Edge 4 | Review |
+| Branch 3 | AP Stack | Validate |
+| Branch 4 | WAN Edge | Validate |
+
+## Assumptions
+- Customer validates final inventory before sharing.
+
+## Sources
+- Customer inventory export
+''',
+            turnId: 'turn-pptx-table-continuation',
+            threadId: 'thread-1',
+            requestId: 'request-1',
+          );
+
+      expect(artifact, isNotNull);
+      expect(artifact!.kind, GeneratedArtifactKind.powerPoint);
+      expect(artifact.metadata['hasTableContinuationSlides'], isTrue);
+      expect(artifact.metadata['tableContinuationSlideCount'], 2);
+      expect(artifact.metadata['tableOverflowRowCount'], 8);
+      expect(
+        artifact.metadata['tableContinuationSummaries'],
+        contains(contains('14 rows split across 3 slides')),
+      );
+      expect(
+        artifact.metadata['deckReviewChecklist'],
+        contains(
+          'Review table continuation slides for row order, readability, sensitive data, and clipped values.',
+        ),
+      );
+      expect(
+        artifact.metadata['deckVisualVerificationChecklist'],
+        contains(
+          'Review table continuation slides at 16:9 and confirm row ranges, headers, and column alignment stay readable.',
+        ),
+      );
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Customer Inventory Review (2/3)')),
+      );
+      expect(
+        artifact.previewRows.map((row) => row.join(' / ')),
+        contains(contains('Customer Inventory Review (3/3)')),
+      );
+      final packageText = String.fromCharCodes(
+        File(artifact.filePath).readAsBytesSync(),
+      );
+      expect(packageText, contains('Data table continuation'));
+      expect(packageText, contains('Rows 7-12 of 14'));
+      expect(packageText, contains('Rows 13-14 of 14'));
+    },
+  );
+
+  test(
     'Excel prompt creates a real xlsx artifact from markdown table',
     () async {
       final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
