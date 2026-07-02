@@ -64,6 +64,7 @@ void main() {
     expect(inspection.hasApprovalGates, isTrue);
     expect(inspection.hasValidationChecklist, isTrue);
     expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasCustomerHandoffReadinessMatrix, isTrue);
     expect(inspection.hasDecisionLog, isTrue);
     expect(inspection.hasDecisionSignOff, isTrue);
     expect(inspection.hasVisibleExternalHandoffManifest, isTrue);
@@ -100,6 +101,10 @@ void main() {
     expect(text, contains('Document Map'));
     expect(text, contains('Validation Checklist'));
     expect(text, contains('Customer Handoff Scorecard'));
+    expect(text, contains('Customer Handoff Readiness Matrix'));
+    expect(text, contains('/Title (Customer Handoff Readiness Matrix)'));
+    expect(text, contains('/CircuitCustomerHandoffReadiness'));
+    expect(text, contains('Evidence package'));
     expect(text, contains('Decision Log'));
     expect(text, contains('Decision Sign-Off'));
     expect(text, contains('External Handoff Manifest'));
@@ -163,6 +168,7 @@ void main() {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off page',
         'External handoff manifest',
@@ -184,6 +190,7 @@ void main() {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'External handoff manifest',
@@ -196,6 +203,16 @@ void main() {
     expect(metadata['handoffScore'], 100);
     expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
     expect(metadata['handoffScorecardItemCount'], 5);
+    expect(
+      metadata['customerHandoffGateStatus'],
+      'Ready for stakeholder approval',
+    );
+    expect(metadata['customerHandoffGateCount'], 5);
+    expect(
+      metadata['customerHandoffGateRows'].toString(),
+      contains('Evidence package, 1 source item attached, Ready'),
+    );
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(metadata['decisionLogCount'], 4);
     expect(metadata['decisionSignOffGateCount'], 4);
     expect(metadata['externalHandoffManifestRowCount'], 9);
@@ -304,6 +321,7 @@ void main() {
         'Next steps',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'Data tables',
@@ -320,6 +338,7 @@ void main() {
     expect(metadata['hasApprovalGates'], isTrue);
     expect(metadata['hasValidationChecklist'], isTrue);
     expect(metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(metadata['hasDecisionLog'], isTrue);
     expect(metadata['hasDecisionSignOffPage'], isTrue);
     expect(metadata['hasVisibleExternalHandoffManifest'], isTrue);

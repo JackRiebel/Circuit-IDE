@@ -2187,6 +2187,7 @@ Executive-ready summary for a final customer handoff.
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'External handoff manifest',
@@ -2202,6 +2203,20 @@ Executive-ready summary for a final customer handoff.
       'Customer handoff ready',
     );
     expect(artifact.metadata['handoffScorecardItemCount'], 5);
+    expect(
+      artifact.metadata['customerHandoffGateStatus'],
+      'Ready for stakeholder approval',
+    );
+    expect(artifact.metadata['customerHandoffGateCount'], 5);
+    expect(
+      artifact.metadata['customerHandoffGateRows'].toString(),
+      contains('Evidence package, 1 source item attached, Ready'),
+    );
+    expect(
+      artifact.metadata['customerHandoffGateRows'].toString(),
+      contains('Data support, 1 supporting table packaged, Ready'),
+    );
+    expect(artifact.metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(artifact.metadata['decisionLogCount'], 4);
     expect(artifact.metadata['decisionSignOffGateCount'], 4);
     expect(artifact.metadata['externalHandoffManifestRowCount'], 9);
@@ -2244,6 +2259,7 @@ Executive-ready summary for a final customer handoff.
         'Next steps',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off',
         'Data tables',
@@ -2286,6 +2302,7 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['pdfHasApprovalGates'], isTrue);
     expect(artifact.metadata['pdfHasValidationChecklist'], isTrue);
     expect(artifact.metadata['pdfHasCustomerHandoffScorecard'], isTrue);
+    expect(artifact.metadata['pdfHasCustomerHandoffReadinessMatrix'], isTrue);
     expect(artifact.metadata['pdfHasDecisionLog'], isTrue);
     expect(artifact.metadata['pdfHasDecisionSignOff'], isTrue);
     expect(artifact.metadata['pdfHasExternalHandoffManifest'], isTrue);
@@ -2297,6 +2314,7 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['hasApprovalGates'], isTrue);
     expect(artifact.metadata['hasValidationChecklist'], isTrue);
     expect(artifact.metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(artifact.metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
     expect(artifact.metadata['hasDecisionLog'], isTrue);
     expect(artifact.metadata['hasDecisionSignOffPage'], isTrue);
     expect(artifact.metadata['hasVisibleExternalHandoffManifest'], isTrue);
@@ -2313,6 +2331,10 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('/Title (Report Overview)'));
     expect(pdfText, contains('/Title (Executive Decision Brief)'));
     expect(pdfText, contains('/Title (Validation Checklist)'));
+    expect(pdfText, contains('/Title (Customer Handoff Readiness Matrix)'));
+    expect(pdfText, contains('Customer Handoff Readiness Matrix'));
+    expect(pdfText, contains('/CircuitCustomerHandoffReadiness'));
+    expect(pdfText, contains('Evidence package'));
     expect(pdfText, contains('/Type /Page'));
     expect(pdfText, contains('/Info 6 0 R'));
     expect(pdfText, contains('/Title (Campus Refresh Handoff)'));

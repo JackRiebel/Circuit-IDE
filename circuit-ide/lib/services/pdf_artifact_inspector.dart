@@ -29,6 +29,7 @@ class PdfArtifactInspection {
   final bool hasApprovalGates;
   final bool hasValidationChecklist;
   final bool hasCustomerHandoffScorecard;
+  final bool hasCustomerHandoffReadinessMatrix;
   final bool hasDecisionLog;
   final bool hasDecisionSignOff;
   final bool hasVisibleExternalHandoffManifest;
@@ -71,6 +72,7 @@ class PdfArtifactInspection {
     required this.hasApprovalGates,
     required this.hasValidationChecklist,
     required this.hasCustomerHandoffScorecard,
+    required this.hasCustomerHandoffReadinessMatrix,
     required this.hasDecisionLog,
     required this.hasDecisionSignOff,
     required this.hasVisibleExternalHandoffManifest,
@@ -116,6 +118,7 @@ class PdfArtifactInspection {
       hasApprovalGates &&
       hasValidationChecklist &&
       hasCustomerHandoffScorecard &&
+      hasCustomerHandoffReadinessMatrix &&
       hasDecisionLog &&
       hasDecisionSignOff &&
       hasVisibleExternalHandoffManifest &&
@@ -179,6 +182,9 @@ class PdfArtifactInspector {
       hasApprovalGates: text.contains('Approval Gates'),
       hasValidationChecklist: text.contains('Validation Checklist'),
       hasCustomerHandoffScorecard: text.contains('Customer Handoff Scorecard'),
+      hasCustomerHandoffReadinessMatrix:
+          text.contains('Customer Handoff Readiness Matrix') &&
+          text.contains('/CircuitCustomerHandoffReadiness'),
       hasDecisionLog: text.contains('Decision Log'),
       hasDecisionSignOff:
           text.contains('Decision Sign-Off') &&
@@ -202,7 +208,8 @@ class PdfArtifactInspector {
       hasCustomQualityInfo:
           text.contains('/CircuitReportQualityManifest') &&
           text.contains('/CircuitPublishingStatus') &&
-          text.contains('/CircuitReviewPath'),
+          text.contains('/CircuitReviewPath') &&
+          text.contains('/CircuitCustomerHandoffReadiness'),
       hasVisualVerificationManifest:
           text.contains('/CircuitVisualVerification') &&
           text.contains('Render-safe text frame') &&

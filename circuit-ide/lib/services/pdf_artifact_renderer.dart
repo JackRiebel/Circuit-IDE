@@ -53,28 +53,33 @@ class PdfArtifactRenderer {
       ],
       [
         '${document.sections.length + 13}',
+        'Customer Handoff Readiness Matrix',
+        '${_customerHandoffReadinessRows(document).length}',
+      ],
+      [
+        '${document.sections.length + 14}',
         'Decision Log',
         '${_decisionLogRows(document).length}',
       ],
       [
-        '${document.sections.length + 14}',
+        '${document.sections.length + 15}',
         'Decision Sign-Off',
         '${_decisionSignOffRows(document).length - 1} gates',
       ],
       [
-        '${document.sections.length + 15}',
+        '${document.sections.length + 16}',
         'External Handoff Manifest',
         '${_externalHandoffManifestRows(document).length - 1}',
       ],
       if (document.assumptions.isNotEmpty)
         [
-          '${document.sections.length + 16}',
+          '${document.sections.length + 17}',
           'Assumptions',
           '${document.assumptions.length}',
         ],
       if (document.citations.isNotEmpty)
         [
-          '${document.sections.length + 17}',
+          '${document.sections.length + 18}',
           'Sources / Evidence',
           '${document.citations.length}',
         ],
@@ -89,6 +94,9 @@ class PdfArtifactRenderer {
     final validationGaps = _validationGapsFor(document);
     final documentParts = _documentPartsFor(document);
     final scorecardRows = _handoffScorecardRows(document).skip(1).toList();
+    final handoffReadinessRows = _customerHandoffReadinessRows(
+      document,
+    ).skip(1).toList();
     final handoffScore = _handoffScoreFor(scorecardRows);
     final reviewChecklist = _reportReviewChecklistFor(document, validationGaps);
     final handoffActions = _reportHandoffActionsFor(document);
@@ -112,6 +120,12 @@ class PdfArtifactRenderer {
       'handoffStatus': _handoffStatus(document),
       'handoffScore': handoffScore,
       'handoffReadinessLevel': _handoffReadinessLevelFor(handoffScore),
+      'customerHandoffGateStatus': _customerHandoffGateStatusFor(
+        document,
+        validationGaps,
+      ),
+      'customerHandoffGateRows': handoffReadinessRows,
+      'customerHandoffGateCount': handoffReadinessRows.length,
       'decisionOwner': _decisionOwner(document),
       'decisionAsk': _decisionAskFor(document),
       'reviewPath': _reviewPathFor(document),
@@ -132,6 +146,7 @@ class PdfArtifactRenderer {
         'Approval gates',
         'Validation checklist',
         'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
         'Decision log',
         'Decision sign-off page',
         'External handoff manifest',
@@ -175,6 +190,7 @@ class PdfArtifactRenderer {
       'evidenceItemCount': _evidenceConfidenceRows(document).length,
       'evidenceGapCount': _evidenceGapCount(document),
       'handoffScorecardItemCount': scorecardRows.length,
+      'hasCustomerHandoffReadinessMatrix': true,
       'decisionLogCount': _decisionLogRows(document).length - 1,
       'decisionSignOffGateCount': _decisionSignOffRows(document).length - 1,
       'externalHandoffManifestRowCount':
@@ -237,6 +253,7 @@ class PdfArtifactRenderer {
       '/CircuitReportEvidencePolicy (${_pdfText(_reportEvidencePolicyFor(document).join('; '))}) '
       '/CircuitAccessibilityPolicy (${_pdfText('Readable type scale, explicit table grid, bookmark outline, page footer, source appendix support.')}) '
       '/CircuitPublishingStatus (${_pdfText(_handoffStatus(document))}) '
+      '/CircuitCustomerHandoffReadiness (${_pdfText(_customerHandoffReadinessRows(document).map((row) => row.join(' / ')).join('; '))}) '
       '/CircuitReviewPath (${_pdfText(_reviewPathFor(document))}) '
       '/CircuitExternalHandoffManifest (${_pdfText(_externalHandoffManifestFor(document, handoffScore: handoffScore, validationGaps: validationGaps).join('; '))}) >>',
     );
@@ -482,6 +499,16 @@ class PdfArtifactRenderer {
       ..add(_PdfTable(_handoffScorecardRows(document)))
       ..add(
         const _PdfText(
+          'Customer Handoff Readiness Matrix',
+          size: 13.5,
+          bold: true,
+          gapBefore: 12,
+          gapAfter: 6,
+        ),
+      )
+      ..add(_PdfTable(_customerHandoffReadinessRows(document)))
+      ..add(
+        const _PdfText(
           'Decision Log',
           size: 13.5,
           bold: true,
@@ -558,6 +585,7 @@ class PdfArtifactRenderer {
       const _PdfOutlineEntry('Approval Gates'),
       const _PdfOutlineEntry('Validation Checklist'),
       const _PdfOutlineEntry('Customer Handoff Scorecard'),
+      const _PdfOutlineEntry('Customer Handoff Readiness Matrix'),
       const _PdfOutlineEntry('Decision Log'),
       const _PdfOutlineEntry('Decision Sign-Off'),
       const _PdfOutlineEntry('External Handoff Manifest'),
@@ -605,6 +633,7 @@ class PdfArtifactRenderer {
       'Approval Gates - final review checkpoints before handoff',
       'Validation Checklist - quality and handoff readiness checks',
       'Customer Handoff Scorecard - readiness score, status signals, and owner follow-up',
+      'Customer Handoff Readiness Matrix - external handoff gates, signals, status, and owner actions',
       'Decision Log - decision, owner, evidence, and next-action record',
       'Decision Sign-Off - final approval fields, signature owners, and dates',
       'External Handoff Manifest - review owner, publishing gate, evidence package, and assumption package',
@@ -984,6 +1013,58 @@ class PdfArtifactRenderer {
     ];
   }
 
+  List<List<String>> _customerHandoffReadinessRows(ArtifactDocument document) {
+    return [
+      ['Gate', 'Signal', 'Status', 'Owner Action'],
+      [
+        'Evidence package',
+        document.citations.isEmpty
+            ? 'No cited sources attached'
+            : '${document.citations.length} source item${document.citations.length == 1 ? '' : 's'} attached',
+        document.citations.isEmpty ? 'Needs evidence' : 'Ready',
+        document.citations.isEmpty
+            ? 'Attach source evidence before external handoff.'
+            : 'Keep cited sources with the handoff package.',
+      ],
+      [
+        'Assumptions',
+        document.assumptions.isEmpty
+            ? 'No assumptions captured'
+            : '${document.assumptions.length} assumption${document.assumptions.length == 1 ? '' : 's'} captured',
+        document.assumptions.isEmpty ? 'Needs owner review' : 'Ready',
+        document.assumptions.isEmpty
+            ? 'Capture unknowns and accountable owner confirmation.'
+            : 'Review assumptions with the accountable owner.',
+      ],
+      [
+        'Data support',
+        document.tables.isEmpty
+            ? 'No structured supporting tables'
+            : '${document.tables.length} supporting table${document.tables.length == 1 ? '' : 's'} packaged',
+        document.tables.isEmpty ? 'Needs support' : 'Ready',
+        document.tables.isEmpty
+            ? 'Attach source data or state why no table is required.'
+            : 'Validate units, dates, and sensitive data before sharing.',
+      ],
+      [
+        'Decision ask',
+        _decisionAskFor(document),
+        'Ready',
+        'Confirm this is the decision the stakeholder is expected to make.',
+      ],
+      [
+        'Sign-off owner',
+        _decisionOwner(document),
+        _validationGapsFor(document).isEmpty
+            ? 'Ready'
+            : 'Resolve ${_validationGapsFor(document).length} gap${_validationGapsFor(document).length == 1 ? '' : 's'}',
+        _validationGapsFor(document).isEmpty
+            ? 'Collect approval signature and date.'
+            : 'Resolve validation gaps before customer approval.',
+      ],
+    ];
+  }
+
   List<List<String>> _decisionLogRows(ArtifactDocument document) {
     final recommendation = _firstMatchingBullet(document, [
       'recommend',
@@ -1095,6 +1176,19 @@ class PdfArtifactRenderer {
     if (score >= 70) return 'Review-ready draft';
     if (score >= 45) return 'Needs evidence before handoff';
     return 'Needs more content';
+  }
+
+  String _customerHandoffGateStatusFor(
+    ArtifactDocument document,
+    List<String> validationGaps,
+  ) {
+    if (validationGaps.isEmpty && document.tables.isNotEmpty) {
+      return 'Ready for stakeholder approval';
+    }
+    if (validationGaps.isEmpty) {
+      return 'Ready with optional data support';
+    }
+    return 'Resolve ${validationGaps.length} validation gap${validationGaps.length == 1 ? '' : 's'} before handoff';
   }
 
   List<String> _keywords(ArtifactDocument document) {
@@ -1281,6 +1375,7 @@ class PdfArtifactRenderer {
       'Next steps',
       'Validation checklist',
       'Customer handoff scorecard',
+      'Customer handoff readiness matrix',
       'Decision log',
       'Decision sign-off',
       'External handoff manifest',
@@ -1303,6 +1398,7 @@ class PdfArtifactRenderer {
       'Approval gates',
       'Validation checklist',
       'Customer handoff scorecard',
+      'Customer handoff readiness matrix',
       'Decision log',
       'Decision sign-off',
       'External handoff manifest',

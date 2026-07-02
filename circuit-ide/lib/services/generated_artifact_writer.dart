@@ -1112,6 +1112,8 @@ class GeneratedArtifactWriter {
       'pdfHasApprovalGates': inspection.hasApprovalGates,
       'pdfHasValidationChecklist': inspection.hasValidationChecklist,
       'pdfHasCustomerHandoffScorecard': inspection.hasCustomerHandoffScorecard,
+      'pdfHasCustomerHandoffReadinessMatrix':
+          inspection.hasCustomerHandoffReadinessMatrix,
       'pdfHasDecisionLog': inspection.hasDecisionLog,
       'pdfHasDecisionSignOff': inspection.hasDecisionSignOff,
       'pdfHasExternalHandoffManifest':
