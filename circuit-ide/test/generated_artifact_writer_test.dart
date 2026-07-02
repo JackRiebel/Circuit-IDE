@@ -2628,7 +2628,12 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.pdf,
     ]);
+    expect(
+      registry.descriptorForId('business_use_case_brief')?.verificationChecks,
+      contains('PDF executive handoff renders when requested'),
+    );
     expect(
       registry.descriptorForPrompt('make a topology diagram')?.id,
       'network_topology_diagram',
@@ -2853,6 +2858,14 @@ Customer has 3 branches, dual WAN, warm spare MX250 firewalls, 1 MDF with C9500 
       expect(businessDeck.targetKinds, [GeneratedArtifactKind.powerPoint]);
       expect(businessDeck.contractLabel, 'Business Use Case Brief');
 
+      final businessPdf = registry.routeForPrompt(
+        'create a business case PDF for Acme',
+      );
+      expect(businessPdf.descriptor?.id, 'business_use_case_brief');
+      expect(businessPdf.requestedKind, GeneratedArtifactKind.pdf);
+      expect(businessPdf.targetKinds, [GeneratedArtifactKind.pdf]);
+      expect(businessPdf.contractLabel, 'Business Use Case Brief');
+
       final proposalDeck = registry.routeForPrompt(
         'create a PowerPoint deck for this customer proposal',
       );
@@ -2958,7 +2971,7 @@ Create a concise executive readout and implementation recommendation.
     expect(exported.previewRows.first, ['Product', 'Count']);
   });
 
-  test('business case package creates DOCX, deck, and chart artifacts', () async {
+  test('business case package creates DOCX deck chart and PDF artifacts', () async {
     final root = await Directory.systemTemp.createTemp(
       'circuit-artifact-package-',
     );
@@ -3001,8 +3014,9 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
       GeneratedArtifactKind.docx,
       GeneratedArtifactKind.powerPoint,
       GeneratedArtifactKind.chart,
+      GeneratedArtifactKind.pdf,
     ]);
-    expect(package.artifacts.map((artifact) => artifact.id).toSet().length, 4);
+    expect(package.artifacts.map((artifact) => artifact.id).toSet().length, 5);
     for (final artifact in package.artifacts) {
       expect(artifact.status, GeneratedArtifactStatus.ready);
       expect(File(artifact.filePath).existsSync(), isTrue);
@@ -3012,10 +3026,10 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     }
     expect(package.primary!.fileName, endsWith('-package.md'));
     expect(package.primary!.metadata['artifact'], 'artifact_package_manifest');
-    expect(package.primary!.metadata['artifactCount'], 3);
-    expect(package.primary!.metadata['expectedArtifactCount'], 3);
-    expect(package.primary!.metadata['producedArtifactCount'], 3);
-    expect(package.primary!.metadata['readyArtifactCount'], 3);
+    expect(package.primary!.metadata['artifactCount'], 4);
+    expect(package.primary!.metadata['expectedArtifactCount'], 4);
+    expect(package.primary!.metadata['producedArtifactCount'], 4);
+    expect(package.primary!.metadata['readyArtifactCount'], 4);
     expect(package.primary!.metadata['failedArtifactCount'], 0);
     expect(package.primary!.metadata['packageCompletenessStatus'], 'Complete');
     expect(package.primary!.metadata['hasCompletePackage'], isTrue);
@@ -3023,11 +3037,13 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
       'Word',
       'PowerPoint',
       'Chart',
+      'PDF',
     ]);
     expect(package.primary!.metadata['producedArtifactKinds'], [
       'Word',
       'PowerPoint',
       'Chart',
+      'PDF',
     ]);
     expect(package.primary!.metadata['missingArtifactKinds'], isEmpty);
     expect(package.primary!.metadata['packageQualityStatus'], isNotNull);
@@ -3038,12 +3054,18 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
         'DOCX package opens/parses',
         'PPTX package opens/parses',
         'SVG chart root parses',
+        'PDF header parses',
         'Open each generated artifact from the Artifacts drawer before sharing.',
       ]),
     );
     expect(
       package.primary!.metadata['packagePreviewSurfaces'],
-      containsAll(['Report outline', 'Slide outline', 'Chart summary']),
+      containsAll([
+        'Report outline',
+        'Slide outline',
+        'Chart summary',
+        'PDF outline',
+      ]),
     );
     expect(
       package.primary!.metadata['packageVerificationChecks'],
@@ -3051,6 +3073,7 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
         'Report outline metadata persists',
         'Deck readiness metadata renders',
         'Decision and threshold preview renders',
+        'PDF header parses',
       ]),
     );
     expect(
@@ -3059,18 +3082,20 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     );
     expect(
       package.primary!.metadata['packageFileTypes'],
-      containsAll(['Word', 'PowerPoint', 'Chart']),
+      containsAll(['Word', 'PowerPoint', 'Chart', 'PDF']),
     );
     final manifestText = File(package.primary!.filePath).readAsStringSync();
     expect(manifestText, contains('Business Use Case Package'));
     expect(manifestText, contains('Package Readiness'));
     expect(manifestText, contains('Package Contract'));
     expect(manifestText, contains('| Completeness | Complete |'));
-    expect(manifestText, contains('| Expected deliverables | 3 |'));
-    expect(manifestText, contains('| Produced deliverables | 3 |'));
+    expect(manifestText, contains('| Expected deliverables | 4 |'));
+    expect(manifestText, contains('| Produced deliverables | 4 |'));
     expect(
       manifestText,
-      contains('| Word, PowerPoint, Chart | Word, PowerPoint, Chart | None |'),
+      contains(
+        '| Word, PowerPoint, Chart, PDF | Word, PowerPoint, Chart, PDF | None |',
+      ),
     );
     expect(manifestText, contains('Package Contents'));
     expect(manifestText, contains('Review Workflow'));
@@ -3082,9 +3107,15 @@ modernizing access switching, wireless telemetry, and lifecycle reporting.
     expect(manifestText, contains('.docx'));
     expect(manifestText, contains('.pptx'));
     expect(manifestText, contains('.svg'));
+    expect(manifestText, contains('.pdf'));
     expect(package.artifacts[1].fileName, endsWith('.docx'));
     expect(package.artifacts[2].fileName, endsWith('.pptx'));
     expect(package.artifacts[3].fileName, endsWith('.svg'));
+    expect(package.artifacts[4].fileName, endsWith('.pdf'));
+    final pdfHeader = File(
+      package.artifacts[4].filePath,
+    ).readAsBytesSync().take(8).toList();
+    expect(String.fromCharCodes(pdfHeader), startsWith('%PDF-1.'));
   });
 
   test('solution sizing package creates workbook and chart artifacts', () async {

@@ -354,6 +354,7 @@ Short executive summary for the customer.
               GeneratedArtifactKind.docx,
               GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.pdf,
             ],
           ),
           _ArtifactPackageSmokeCase(
@@ -641,6 +642,7 @@ Short executive summary for the customer.
               GeneratedArtifactKind.docx,
               GeneratedArtifactKind.powerPoint,
               GeneratedArtifactKind.chart,
+              GeneratedArtifactKind.pdf,
             ],
           ),
           _PriorityDescriptorSmokeCase(

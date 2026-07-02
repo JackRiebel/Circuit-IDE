@@ -255,12 +255,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.chart,
+        GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Business brief package',
       verificationChecks: [
         'Brief narrative renders',
         'Use-case and evidence metadata persists',
         'Package review workflow renders',
+        'PDF executive handoff renders when requested',
       ],
     ),
     ArtifactTypeDescriptor(
