@@ -18,6 +18,7 @@ import 'evidence_pack_builder.dart';
 import 'implementation_plan_artifact_builder.dart';
 import 'lifecycle_eox_workbook_builder.dart';
 import 'network_topology_brief_builder.dart';
+import 'pdf_artifact_inspector.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_renderer.dart';
 import 'product_comparison_workbook_builder.dart';
@@ -28,6 +29,7 @@ class GeneratedArtifactWriter {
   final PowerPointArtifactRenderer powerPointRenderer;
   final DocxArtifactRenderer docxRenderer;
   final PdfArtifactRenderer pdfRenderer;
+  final PdfArtifactInspector pdfInspector;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
@@ -47,6 +49,7 @@ class GeneratedArtifactWriter {
     this.powerPointRenderer = const PowerPointArtifactRenderer(),
     this.docxRenderer = const DocxArtifactRenderer(),
     this.pdfRenderer = const PdfArtifactRenderer(),
+    this.pdfInspector = const PdfArtifactInspector(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
@@ -415,7 +418,10 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.pdf) {
       final bytes = pdfRenderer.render(documentForOutput);
-      final pageCount = _pdfPageCount(bytes);
+      final inspection = pdfInspector.inspect(bytes);
+      final pageCount = inspection.pageCount > 0
+          ? inspection.pageCount
+          : _pdfPageCount(bytes);
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
@@ -442,6 +448,7 @@ class GeneratedArtifactWriter {
         metadata: {
           ...documentForOutput.metadata,
           ...pdfRenderer.metadataFor(documentForOutput),
+          ..._pdfInspectionMetadata(inspection),
         },
       );
     }
@@ -1003,6 +1010,75 @@ class GeneratedArtifactWriter {
     final text = latin1.decode(bytes, allowInvalid: true);
     final count = RegExp(r'/Type /Page\b').allMatches(text).length;
     return count <= 0 ? 1 : count;
+  }
+
+  Map<String, Object?> _pdfInspectionMetadata(
+    PdfArtifactInspection inspection,
+  ) {
+    final failedChecks = <String>[
+      if (!inspection.hasPdfHeader) 'PDF header missing',
+      if (!inspection.hasCatalog) 'Catalog missing',
+      if (!inspection.hasXref) 'xref missing',
+      if (!inspection.hasTrailer) 'Trailer/startxref missing',
+      if (!inspection.hasPageCountConsistency) 'Page count mismatch',
+      if (!inspection.hasResolvableBookmarkDestinations)
+        'Bookmark destinations do not resolve',
+      if (!inspection.hasExpectedReportChrome)
+        'Expected report chrome incomplete',
+      if (!inspection.hasRenderSafeTextFrame)
+        'Text frame is outside safe bounds',
+    ];
+    return {
+      'pdfInspectionVersion': '1.0',
+      'pdfInspectionStatus': inspection.isStructurallyValid
+          ? (inspection.hasExpectedReportChrome
+                ? 'Verified'
+                : 'Structurally valid - review chrome')
+          : 'Failed',
+      'pdfStructuralValid': inspection.isStructurallyValid,
+      'pdfExpectedReportChrome': inspection.hasExpectedReportChrome,
+      'pdfInspectionFailedChecks': failedChecks,
+      'pdfInspectionFailedCheckCount': failedChecks.length,
+      'pdfParsedTitle': inspection.title,
+      'pdfParsedPageCount': inspection.pageCount,
+      'pdfObjectCount': inspection.objectCount,
+      'pdfHasHeader': inspection.hasPdfHeader,
+      'pdfHasCatalog': inspection.hasCatalog,
+      'pdfHasXref': inspection.hasXref,
+      'pdfHasTrailer': inspection.hasTrailer,
+      'pdfHasOutlineTree': inspection.hasOutlineTree,
+      'pdfHasReportOverviewBookmark': inspection.hasReportOverviewBookmark,
+      'pdfHasLeadDecisionBookmark': inspection.hasLeadDecisionBookmark,
+      'pdfHasExecutiveDecisionBookmark':
+          inspection.hasExecutiveDecisionBookmark,
+      'pdfHasValidationBookmark': inspection.hasValidationBookmark,
+      'pdfHasResolvableBookmarkDestinations':
+          inspection.hasResolvableBookmarkDestinations,
+      'pdfHasPageCountConsistency': inspection.hasPageCountConsistency,
+      'pdfHasRenderSafeTextFrame': inspection.hasRenderSafeTextFrame,
+      'pdfHasCircuitHeader': inspection.hasCircuitHeader,
+      'pdfHasCircuitFooter': inspection.hasCircuitFooter,
+      'pdfHasPageNumberFooter': inspection.hasPageNumberFooter,
+      'pdfHasLeadDecisionCallout': inspection.hasLeadDecisionCallout,
+      'pdfHasExecutiveDecisionBrief': inspection.hasExecutiveDecisionBrief,
+      'pdfHasRecommendationSummary': inspection.hasRecommendationSummary,
+      'pdfHasRiskRegister': inspection.hasRiskRegister,
+      'pdfHasNextStepActionPlan': inspection.hasNextStepActionPlan,
+      'pdfHasStakeholderReadout': inspection.hasStakeholderReadout,
+      'pdfHasEvidenceConfidenceMatrix': inspection.hasEvidenceConfidenceMatrix,
+      'pdfHasApprovalGates': inspection.hasApprovalGates,
+      'pdfHasValidationChecklist': inspection.hasValidationChecklist,
+      'pdfHasCustomerHandoffScorecard': inspection.hasCustomerHandoffScorecard,
+      'pdfHasDecisionLog': inspection.hasDecisionLog,
+      'pdfHasDecisionSignOff': inspection.hasDecisionSignOff,
+      'pdfHasExternalHandoffManifest':
+          inspection.hasVisibleExternalHandoffManifest &&
+          inspection.hasExternalHandoffManifest,
+      'pdfHasCustomQualityInfo': inspection.hasCustomQualityInfo,
+      'pdfHasVisualVerificationManifest':
+          inspection.hasVisualVerificationManifest,
+      'pdfHasExplicitTableGeometry': inspection.hasExplicitTableGeometry,
+    };
   }
 }
 
