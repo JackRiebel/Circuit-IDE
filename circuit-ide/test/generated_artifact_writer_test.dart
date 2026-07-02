@@ -1848,9 +1848,19 @@ Evidence collected from the Studio UI review.
       expect(artifact.metadata['artifactTemplate'], 'evidence_pack');
       expect(artifact.metadata['hasVisualEvidenceRegister'], isTrue);
       expect(artifact.metadata['visualEvidenceCount'], greaterThanOrEqualTo(3));
+      expect(artifact.metadata['visualEvidenceSidecarCount'], 0);
+      expect(
+        artifact.metadata['visualEvidenceMetadataOnlyCount'],
+        greaterThanOrEqualTo(3),
+      );
       expect(
         artifact.metadata['visualEvidenceReliability'],
         'metadata_only_until_vision_or_user_description',
+      );
+      expect(artifact.metadata['visualEvidenceRequiresVisionReview'], isTrue);
+      expect(
+        artifact.metadata['visualEvidenceReviewAction'],
+        contains('Add OCR, vision analysis'),
       );
       final packageText = String.fromCharCodes(
         File(artifact.filePath).readAsBytesSync(),
@@ -1893,6 +1903,11 @@ Evidence collected from the Studio UI review.
       expect(
         artifact.metadata['visualEvidenceReliability'],
         'metadata_plus_ocr_or_user_description',
+      );
+      expect(artifact.metadata['visualEvidenceSidecarCount'], greaterThan(0));
+      expect(
+        artifact.metadata['visualEvidenceReviewAction'],
+        contains('Validate OCR/description sidecar accuracy'),
       );
       final packageText = String.fromCharCodes(
         File(artifact.filePath).readAsBytesSync(),

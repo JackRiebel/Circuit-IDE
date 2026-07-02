@@ -4964,6 +4964,28 @@ class _ArtifactDrawerDetailGrid extends ConsumerWidget {
               _metadataString(artifact, 'visualEvidenceReliability'),
             ),
           ),
+        if (_metadataInt(artifact, 'visualEvidenceCount') > 0)
+          (
+            'Visual items',
+            '${_metadataInt(artifact, 'visualEvidenceCount')} captured',
+          ),
+        if (_metadataInt(artifact, 'visualEvidenceSidecarCount') > 0)
+          (
+            'OCR/sidecar',
+            '${_metadataInt(artifact, 'visualEvidenceSidecarCount')} attached',
+          ),
+        if (_metadataInt(artifact, 'visualEvidenceMetadataOnlyCount') > 0)
+          (
+            'Metadata-only',
+            '${_metadataInt(artifact, 'visualEvidenceMetadataOnlyCount')} need validation',
+          ),
+        if (_metadataBool(artifact, 'visualEvidenceRequiresVisionReview'))
+          ('Vision review', 'Required before pixel-level claims'),
+        if (_metadataString(artifact, 'visualEvidenceReviewAction').isNotEmpty)
+          (
+            'Visual next step',
+            _metadataString(artifact, 'visualEvidenceReviewAction'),
+          ),
         if (_metadataStringList(artifact, 'reportEvidencePolicy').isNotEmpty)
           (
             'Evidence policy',

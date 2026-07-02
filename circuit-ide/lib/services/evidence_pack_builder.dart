@@ -20,6 +20,14 @@ class EvidencePackBuilder {
     final sourceBullets = _sourceBullets(document, content);
     final unsupportedBullets = _unsupportedBullets(document, content);
     final visualEvidenceBullets = _visualEvidenceBullets(document, content);
+    final visualEvidenceSidecarCount = visualEvidenceBullets
+        .where(_hasSidecarOrDescription)
+        .length;
+    final visualEvidenceMetadataOnlyCount =
+        visualEvidenceBullets.length - visualEvidenceSidecarCount;
+    final visualEvidenceReliability = _visualEvidenceReliabilityStatus(
+      visualEvidenceBullets,
+    );
     final sections = <ArtifactSection>[
       _section(
         document,
@@ -202,12 +210,18 @@ class EvidencePackBuilder {
         'sourceCount': sourceBullets.length,
         'unsupportedClaimCount': unsupportedBullets.length,
         'visualEvidenceCount': visualEvidenceBullets.length,
+        'visualEvidenceSidecarCount': visualEvidenceSidecarCount,
+        'visualEvidenceMetadataOnlyCount': visualEvidenceMetadataOnlyCount,
         'hasVisualEvidenceRegister': true,
-        'visualEvidenceReliability': _visualEvidenceReliabilityStatus(
-          visualEvidenceBullets,
-        ),
+        'visualEvidenceReliability': visualEvidenceReliability,
+        'visualEvidenceRequiresVisionReview':
+            visualEvidenceReliability ==
+            'metadata_only_until_vision_or_user_description',
         'visualEvidencePolicy':
             'Do not infer pixel-level screenshot details unless OCR/vision or a user-provided visual description is present.',
+        'visualEvidenceReviewAction': visualEvidenceSidecarCount > 0
+            ? 'Validate OCR/description sidecar accuracy before customer-facing visual claims.'
+            : 'Add OCR, vision analysis, or a user-provided visual description before making pixel-level screenshot claims.',
         'evidencePackTables': tables.length,
         'hasClaimDispositionRegister': true,
         'claimDispositionCount': _claimDispositionRows(

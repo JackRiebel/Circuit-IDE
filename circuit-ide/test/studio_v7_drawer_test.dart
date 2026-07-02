@@ -2084,6 +2084,11 @@ void main() {
             'evidenceConfidence': 'High - sources and assumptions captured',
             'visualEvidenceReliability':
                 'metadata_plus_ocr_or_user_description',
+            'visualEvidenceCount': 4,
+            'visualEvidenceSidecarCount': 2,
+            'visualEvidenceMetadataOnlyCount': 2,
+            'visualEvidenceReviewAction':
+                'Validate OCR/description sidecar accuracy before customer-facing visual claims.',
             'visualVerificationChecklist': [
               'Open the DOCX in Word and verify headings, tables, appendices, header/footer, and sign-off sections render without clipping.',
               'Confirm table headers repeat and columns remain readable in print layout.',
@@ -2388,6 +2393,17 @@ void main() {
     );
     expect(find.text('Visual evidence'), findsOneWidget);
     expect(find.text('Screenshot text attached'), findsAtLeastNWidgets(1));
+    expect(find.text('Visual items'), findsOneWidget);
+    expect(find.text('4 captured'), findsOneWidget);
+    expect(find.text('OCR/sidecar'), findsOneWidget);
+    expect(find.text('2 attached'), findsOneWidget);
+    expect(find.text('Metadata-only'), findsOneWidget);
+    expect(find.text('2 need validation'), findsOneWidget);
+    expect(find.text('Visual next step'), findsOneWidget);
+    expect(
+      find.textContaining('Validate OCR/description sidecar accuracy'),
+      findsOneWidget,
+    );
     expect(find.text('Visual checks'), findsOneWidget);
     expect(
       find.textContaining('Open the DOCX in Word and verify headings'),
