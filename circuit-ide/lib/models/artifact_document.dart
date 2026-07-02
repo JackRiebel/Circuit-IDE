@@ -3,8 +3,13 @@ class ArtifactDocument {
   final String summary;
   final List<ArtifactSection> sections;
   final List<ArtifactTable> tables;
+  final List<ArtifactChart> charts;
+  final List<ArtifactDiagram> diagrams;
+  final List<ArtifactAppendix> appendices;
+  final List<ArtifactSourceData> sourceData;
   final List<String> assumptions;
   final List<String> citations;
+  final ArtifactExportMetadata exportMetadata;
   final Map<String, Object?> metadata;
 
   const ArtifactDocument({
@@ -12,8 +17,13 @@ class ArtifactDocument {
     required this.summary,
     this.sections = const [],
     this.tables = const [],
+    this.charts = const [],
+    this.diagrams = const [],
+    this.appendices = const [],
+    this.sourceData = const [],
     this.assumptions = const [],
     this.citations = const [],
+    this.exportMetadata = const ArtifactExportMetadata(),
     this.metadata = const {},
   });
 
@@ -44,6 +54,74 @@ class ArtifactTable {
   const ArtifactTable({required this.title, required this.rows});
 }
 
+class ArtifactChart {
+  final String title;
+  final String type;
+  final List<String> signals;
+
+  const ArtifactChart({
+    required this.title,
+    this.type = 'unspecified',
+    this.signals = const [],
+  });
+}
+
+class ArtifactDiagram {
+  final String title;
+  final String syntax;
+  final String source;
+
+  const ArtifactDiagram({
+    required this.title,
+    required this.source,
+    this.syntax = 'mermaid',
+  });
+}
+
+class ArtifactAppendix {
+  final String title;
+  final String body;
+  final List<String> bullets;
+
+  const ArtifactAppendix({
+    required this.title,
+    this.body = '',
+    this.bullets = const [],
+  });
+}
+
+class ArtifactSourceData {
+  final String title;
+  final List<List<String>> rows;
+  final List<String> notes;
+
+  const ArtifactSourceData({
+    required this.title,
+    this.rows = const [],
+    this.notes = const [],
+  });
+}
+
+class ArtifactExportMetadata {
+  final List<String> requestedFormats;
+  final String? audience;
+  final String? checkedDate;
+  final Map<String, Object?> fields;
+
+  const ArtifactExportMetadata({
+    this.requestedFormats = const [],
+    this.audience,
+    this.checkedDate,
+    this.fields = const {},
+  });
+
+  bool get hasData =>
+      requestedFormats.isNotEmpty ||
+      audience != null ||
+      checkedDate != null ||
+      fields.isNotEmpty;
+}
+
 class ArtifactComposer {
   const ArtifactComposer();
 
@@ -55,6 +133,26 @@ class ArtifactComposer {
     final title = _titleFromMarkdown(cleanContent) ?? _titleFromPrompt(prompt);
     final tables = _extractTables(cleanContent);
     final sections = _extractSections(cleanContent);
+    final assumptions = _extractFirstListAfterAnyHeading(cleanContent, const [
+      'assumptions',
+      'unknowns',
+      'caveats',
+      'dependencies',
+    ]);
+    final citations = _extractFirstListAfterAnyHeading(cleanContent, const [
+      'sources',
+      'citations',
+      'references',
+      'evidence',
+    ]);
+    final charts = _extractCharts(sections, tables);
+    final diagrams = _extractDiagrams(cleanContent);
+    final appendices = _extractAppendices(sections);
+    final sourceData = _extractSourceData(sections, tables);
+    final exportMetadata = _extractExportMetadata(
+      prompt: prompt,
+      content: cleanContent,
+    );
     return ArtifactDocument(
       title: title,
       summary: _summaryFromContent(cleanContent),
@@ -62,9 +160,35 @@ class ArtifactComposer {
           ? [ArtifactSection(title: title, body: cleanContent)]
           : sections,
       tables: tables,
-      assumptions: _extractListAfterHeading(cleanContent, 'assumptions'),
-      citations: _extractListAfterHeading(cleanContent, 'sources'),
-      metadata: {'prompt': prompt},
+      charts: charts,
+      diagrams: diagrams,
+      appendices: appendices,
+      sourceData: sourceData,
+      assumptions: assumptions,
+      citations: citations,
+      exportMetadata: exportMetadata,
+      metadata: {
+        'prompt': prompt,
+        'artifactBlockCounts': {
+          'sections': sections.length,
+          'tables': tables.length,
+          'charts': charts.length,
+          'diagrams': diagrams.length,
+          'appendices': appendices.length,
+          'sourceData': sourceData.length,
+          'assumptions': assumptions.length,
+          'citations': citations.length,
+        },
+        if (exportMetadata.hasData)
+          'exportMetadata': {
+            'requestedFormats': exportMetadata.requestedFormats,
+            if (exportMetadata.audience != null)
+              'audience': exportMetadata.audience,
+            if (exportMetadata.checkedDate != null)
+              'checkedDate': exportMetadata.checkedDate,
+            ...exportMetadata.fields,
+          },
+      },
     );
   }
 
@@ -167,6 +291,204 @@ class ArtifactComposer {
         ? tail
         : tail.substring(0, nextHeading.start);
     return _extractBullets(block);
+  }
+
+  List<String> _extractFirstListAfterAnyHeading(
+    String content,
+    List<String> headingNames,
+  ) {
+    for (final heading in headingNames) {
+      final result = _extractListAfterHeading(content, heading);
+      if (result.isNotEmpty) return result;
+    }
+    return const [];
+  }
+
+  List<ArtifactChart> _extractCharts(
+    List<ArtifactSection> sections,
+    List<ArtifactTable> tables,
+  ) {
+    final charts = <ArtifactChart>[];
+    for (final section in sections) {
+      final normalized = section.title.toLowerCase();
+      if (!_looksLikeChartTitle(normalized)) continue;
+      charts.add(
+        ArtifactChart(
+          title: section.title,
+          type: _chartTypeFor('${section.title}\n${section.body}'),
+          signals: section.bullets.isNotEmpty
+              ? section.bullets
+              : _firstSentences(section.body, limit: 4),
+        ),
+      );
+    }
+    for (final table in tables) {
+      final normalized = table.title.toLowerCase();
+      if (!_looksLikeChartTitle(normalized)) continue;
+      charts.add(
+        ArtifactChart(
+          title: table.title,
+          type: _chartTypeFor(table.title),
+          signals: table.rows
+              .skip(1)
+              .take(4)
+              .map((row) => row.join(' | '))
+              .toList(),
+        ),
+      );
+    }
+    return charts;
+  }
+
+  bool _looksLikeChartTitle(String value) {
+    return value.contains('chart') ||
+        value.contains('graph') ||
+        value.contains('timeline') ||
+        value.contains('trend') ||
+        value.contains('scorecard') ||
+        value.contains('roadmap view');
+  }
+
+  String _chartTypeFor(String value) {
+    final normalized = value.toLowerCase();
+    if (normalized.contains('timeline')) return 'timeline';
+    if (normalized.contains('bar')) return 'bar';
+    if (normalized.contains('line') || normalized.contains('trend')) {
+      return 'line';
+    }
+    if (normalized.contains('pie') || normalized.contains('donut')) {
+      return 'pie';
+    }
+    if (normalized.contains('score')) return 'scorecard';
+    return 'unspecified';
+  }
+
+  List<ArtifactDiagram> _extractDiagrams(String content) {
+    final diagrams = <ArtifactDiagram>[];
+    final fenced = RegExp(
+      r'```([a-zA-Z0-9_-]+)?\s*\n([\s\S]*?)```',
+      multiLine: true,
+    ).allMatches(content);
+    for (final match in fenced) {
+      final syntax = (match.group(1) ?? '').trim().toLowerCase();
+      final source = (match.group(2) ?? '').trim();
+      if (source.isEmpty) continue;
+      final looksLikeDiagram =
+          syntax == 'mermaid' ||
+          syntax == 'plantuml' ||
+          syntax == 'dot' ||
+          syntax == 'graphviz' ||
+          RegExp(
+            r'\b(graph\s+(TD|LR|BT|RL)|sequenceDiagram|flowchart|digraph)\b',
+            caseSensitive: false,
+          ).hasMatch(source);
+      if (!looksLikeDiagram) continue;
+      diagrams.add(
+        ArtifactDiagram(
+          title: 'Diagram ${diagrams.length + 1}',
+          syntax: syntax.isEmpty ? 'mermaid' : syntax,
+          source: source,
+        ),
+      );
+    }
+    return diagrams;
+  }
+
+  List<ArtifactAppendix> _extractAppendices(List<ArtifactSection> sections) {
+    return sections
+        .where((section) {
+          final normalized = section.title.toLowerCase();
+          return normalized.contains('appendix') ||
+              normalized.contains('supporting material') ||
+              normalized.contains('raw notes') ||
+              normalized.contains('source notes');
+        })
+        .map(
+          (section) => ArtifactAppendix(
+            title: section.title,
+            body: section.body,
+            bullets: section.bullets,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  List<ArtifactSourceData> _extractSourceData(
+    List<ArtifactSection> sections,
+    List<ArtifactTable> tables,
+  ) {
+    final sourceData = <ArtifactSourceData>[];
+    for (final table in tables) {
+      final normalized = table.title.toLowerCase();
+      if (normalized.contains('source data') ||
+          normalized.contains('raw data') ||
+          normalized.contains('dataset') ||
+          normalized.contains('inventory')) {
+        sourceData.add(
+          ArtifactSourceData(title: table.title, rows: table.rows),
+        );
+      }
+    }
+    for (final section in sections) {
+      final normalized = section.title.toLowerCase();
+      if (!(normalized.contains('source data') ||
+          normalized.contains('raw data') ||
+          normalized.contains('dataset'))) {
+        continue;
+      }
+      if (sourceData.any((entry) => entry.title == section.title)) continue;
+      sourceData.add(
+        ArtifactSourceData(title: section.title, notes: section.bullets),
+      );
+    }
+    return sourceData;
+  }
+
+  ArtifactExportMetadata _extractExportMetadata({
+    required String prompt,
+    required String content,
+  }) {
+    final combined = '$prompt\n$content';
+    final normalized = combined.toLowerCase();
+    final requestedFormats = <String>[
+      if (RegExp(r'\b(pptx|powerpoint|deck|slides?)\b').hasMatch(normalized))
+        'pptx',
+      if (RegExp(r'\b(docx|word document|word report)\b').hasMatch(normalized))
+        'docx',
+      if (RegExp(r'\b(pdf)\b').hasMatch(normalized)) 'pdf',
+      if (RegExp(r'\b(xlsx|excel|workbook)\b').hasMatch(normalized)) 'xlsx',
+      if (RegExp(r'\b(csv)\b').hasMatch(normalized)) 'csv',
+      if (RegExp(r'\b(json)\b').hasMatch(normalized)) 'json',
+      if (RegExp(r'\b(markdown|md)\b').hasMatch(normalized)) 'md',
+      if (RegExp(r'\b(svg|diagram|topology)\b').hasMatch(normalized)) 'svg',
+    ];
+    return ArtifactExportMetadata(
+      requestedFormats: requestedFormats.toSet().toList(growable: false),
+      audience: _fieldValue(content, const ['audience', 'target audience']),
+      checkedDate: _fieldValue(content, const ['checked date', 'checked']),
+    );
+  }
+
+  String? _fieldValue(String content, List<String> labels) {
+    for (final label in labels) {
+      final match = RegExp(
+        '^\\s*(?:[-*]\\s*)?$label\\s*:\\s*(.+)\$',
+        caseSensitive: false,
+        multiLine: true,
+      ).firstMatch(content);
+      final value = match?.group(1)?.trim();
+      if (value != null && value.isNotEmpty) return value;
+    }
+    return null;
+  }
+
+  List<String> _firstSentences(String value, {required int limit}) {
+    return value
+        .split(RegExp(r'(?<=[.!?])\s+|\n+'))
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .take(limit)
+        .toList(growable: false);
   }
 
   List<ArtifactTable> _extractTables(String content) {

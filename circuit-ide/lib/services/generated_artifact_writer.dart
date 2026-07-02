@@ -211,6 +211,7 @@ class GeneratedArtifactWriter {
     );
     return {
       ...resolved.metadata,
+      ..._documentStructureMetadata(document),
       ..._descriptorMetadata(
         descriptor: descriptor,
         route: route,
@@ -218,6 +219,26 @@ class GeneratedArtifactWriter {
       ),
       ..._artifactSpecializationMetadata(resolved.metadata),
       ...quality,
+    };
+  }
+
+  Map<String, Object?> _documentStructureMetadata(ArtifactDocument document) {
+    return {
+      'artifactSectionCount': document.sections.length,
+      'artifactTableCount': document.tables.length,
+      'artifactChartCount': document.charts.length,
+      'artifactDiagramCount': document.diagrams.length,
+      'artifactAppendixCount': document.appendices.length,
+      'artifactSourceDataCount': document.sourceData.length,
+      if (document.exportMetadata.hasData)
+        'artifactExportMetadata': {
+          'requestedFormats': document.exportMetadata.requestedFormats,
+          if (document.exportMetadata.audience != null)
+            'audience': document.exportMetadata.audience,
+          if (document.exportMetadata.checkedDate != null)
+            'checkedDate': document.exportMetadata.checkedDate,
+          ...document.exportMetadata.fields,
+        },
     };
   }
 
