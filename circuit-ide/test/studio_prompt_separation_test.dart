@@ -83,7 +83,8 @@ void main() {
           (entity) =>
               entity is File &&
               entity.path.endsWith('.dart') &&
-              !entity.path.endsWith('studio_message_sender.dart'),
+              !entity.path.endsWith('studio_message_sender.dart') &&
+              !entity.path.endsWith('studio_patch_verification_runner.dart'),
         )
         .cast<File>()
         .toList();
@@ -97,15 +98,22 @@ void main() {
     }
   });
 
-  test('message sender stores each prompt in its intended boundary', () async {
-    final sender = await File(
-      'lib/ui/studio/studio_message_sender.dart',
-    ).readAsString();
+  test(
+    'Studio prompt writers store each prompt in its intended boundary',
+    () async {
+      final sender = await File(
+        'lib/ui/studio/studio_message_sender.dart',
+      ).readAsString();
+      final verificationRunner = await File(
+        'lib/ui/studio/studio_patch_verification_runner.dart',
+      ).readAsString();
 
-    expect(sender, contains('prompt: visibleText'));
-    expect(sender, contains('modelPrompt: outboundText'));
-    expect(sender, contains('taskTitle: threadTitle ?? visibleText'));
-    expect(sender, contains("modelPrompt: ''"));
-    expect(sender, contains('taskTitle: patch.title'));
-  });
+      expect(sender, contains('prompt: visibleText'));
+      expect(sender, contains('modelPrompt: outboundText'));
+      expect(sender, contains('taskTitle: threadTitle ?? visibleText'));
+      expect(verificationRunner, contains('prompt: displayText'));
+      expect(verificationRunner, contains("modelPrompt: ''"));
+      expect(verificationRunner, contains('taskTitle: patch.title'));
+    },
+  );
 }

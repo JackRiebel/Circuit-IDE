@@ -5742,13 +5742,13 @@ environment:
               )
               .first,
         );
-        expect(box.width, 22);
-        expect(box.height, 22);
-        final decorated = tester.widget<AnimatedContainer>(
+        expect(box.width, 24);
+        expect(box.height, 24);
+        final decorated = tester.widget<Container>(
           find
               .ancestor(
                 of: find.byIcon(iconData),
-                matching: find.byType(AnimatedContainer),
+                matching: find.byType(Container),
               )
               .first,
         );
@@ -5756,7 +5756,7 @@ environment:
         expect(decoration, isA<BoxDecoration>());
         expect(
           (decoration! as BoxDecoration).borderRadius,
-          BorderRadius.circular(7),
+          BorderRadius.circular(6),
         );
       }
 
@@ -5905,7 +5905,7 @@ environment:
     expect(find.byTooltip('Open context details'), findsOneWidget);
     expect(
       tester.getSize(find.byTooltip('Open context details')),
-      const Size(24, 24),
+      const Size(28, 24),
     );
   });
 
