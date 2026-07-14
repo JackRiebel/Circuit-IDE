@@ -139,7 +139,9 @@ class PackagedStudioSmoke {
         'verification',
       );
 
-      await _settlePersistence();
+      await container
+          .read(studioThreadProvider.notifier)
+          .flushPendingPersistence();
       final store = StudioThreadStore(
         baseDir: p.join(config.path, 'studio_threads'),
       );
@@ -164,14 +166,22 @@ class PackagedStudioSmoke {
         !_threadFor(container.read(studioThreadProvider), thread.id).archived,
         'restore',
       );
+      await threadController.flushPendingPersistence();
       return const PackagedStudioSmokeResult.passed();
     } on _PackagedStudioSmokeFailure catch (error) {
       return PackagedStudioSmokeResult.failed(error.stage);
     } catch (_) {
       return const PackagedStudioSmokeResult.failed('unexpected');
     } finally {
-      container?.dispose();
-      await _settlePersistence();
+      if (container != null) {
+        try {
+          await container
+              .read(studioThreadProvider.notifier)
+              .flushPendingPersistence();
+        } finally {
+          container.dispose();
+        }
+      }
       PlatformUtils.configDirOverride = originalConfigDir;
       StudioThreadController.debugPersistDebounceOverride = originalDebounce;
       if (root != null && await root.exists()) {
@@ -192,9 +202,6 @@ class PackagedStudioSmoke {
   static StudioThread _threadFor(StudioThreadState state, String threadId) {
     return state.threads.singleWhere((thread) => thread.id == threadId);
   }
-
-  static Future<void> _settlePersistence() =>
-      Future<void>.delayed(const Duration(milliseconds: 40));
 
   static Future<void> _verifyRedactedCrashBoundary(Directory root) async {
     const secret = 'packaged-smoke-private-token';
