@@ -34,10 +34,12 @@ jobs:
           # This is a deliberately non-usable documentation-shaped pattern.
           # Assemble it only on the runner so no matcher-shaped value is stored
           # in the repository or printed to the workflow log.
-          access_key="$(printf '%s%s' 'AKIA' '1234567890ABCDEF')"
-          secret_key="$(printf '%s%s%s' 'wJalrXUtnFEMI/K7MDENG/' 'bPxRfiCY' 'EXAMPLEKEY')"
-          printf 'aws_access_key_id = "%s"\naws_secret_access_key = "%s"\n' \
-            "$access_key" "$secret_key" > "$fixture/fixture.env"
+          # The AWS detector requires a base32-shaped suffix. Assemble this
+          # non-usable pattern only on the hosted runner; it is never printed
+          # or stored in the repository.
+          access_key="$(printf '%s%s' 'AKIA' 'Q7T2M5Z4H6N3R7XK')"
+          printf 'aws_access_key_id = "%s"\n' "$access_key" \
+            > "$fixture/fixture.env"
 
           set +e
           "$(go env GOPATH)/bin/gitleaks" dir "$fixture" > "$log" 2>&1
