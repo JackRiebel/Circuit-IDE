@@ -2400,6 +2400,20 @@ void main() {
       );
       expect(
         plan_prompts.isRunnableVerificationCommand(
+          'test -f lib/journey_marker.dart',
+        ),
+        isTrue,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand('test -f .env'),
+        isFalse,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand('test -x lib/main.dart'),
+        isFalse,
+      );
+      expect(
+        plan_prompts.isRunnableVerificationCommand(
           'Review the changed files and run the project checks.',
         ),
         isFalse,

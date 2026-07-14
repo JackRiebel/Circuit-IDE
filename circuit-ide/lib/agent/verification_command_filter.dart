@@ -8,6 +8,7 @@ bool isRunnableVerificationCommand(String value) {
   if (CommandSanitizer.checkNetworkAccess(command) != null) return false;
   if (_hasUnsafePathArgument(command)) return false;
   final first = command.split(RegExp(r'\s+')).first.toLowerCase();
+  if (first == 'test') return _isSafeFileExistenceCheck(command);
   const knownCommands = {
     'cargo',
     'dart',
@@ -23,6 +24,21 @@ bool isRunnableVerificationCommand(String value) {
     'xcodebuild',
   };
   return knownCommands.contains(first);
+}
+
+/// Allows the smallest useful subset of the POSIX `test` builtin for a patch
+/// verification: checking whether one safe file or directory exists inside the
+/// workspace. This does not permit arbitrary shell predicates, sensitive
+/// paths, absolute paths, or traversal outside the bound project.
+bool _isSafeFileExistenceCheck(String command) {
+  final tokens = command.split(RegExp(r'\s+'));
+  if (tokens.length != 3) return false;
+  if (!const {'-d', '-e', '-f'}.contains(tokens[1])) return false;
+  final target = _normalizeToken(tokens[2]);
+  if (target.isEmpty || CommandSanitizer.looksSensitivePath(target)) {
+    return false;
+  }
+  return !_isUnsafePathToken(target);
 }
 
 bool _hasUnsafePathArgument(String command) {
