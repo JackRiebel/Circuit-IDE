@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:circuit_ide/core/constants/design_tokens.dart';
@@ -13,6 +14,7 @@ import 'package:circuit_ide/models/confirmation_request.dart';
 import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
+import 'package:circuit_ide/models/settings_model.dart';
 import 'package:circuit_ide/models/studio_right_drawer.dart';
 import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
@@ -82,6 +84,14 @@ void main() {
 
     container.read(studioShellProvider.notifier).setPlanModeEnabled(false);
     expect(container.read(studioShellProvider).planModeEnabled, isFalse);
+
+    container
+        .read(studioShellProvider.notifier)
+        .setExecutionMode(StudioExecutionMode.worktree);
+    expect(
+      container.read(studioShellProvider).executionMode,
+      StudioExecutionMode.local,
+    );
 
     container.read(studioShellProvider.notifier).openProject('/tmp/project');
     expect(container.read(studioShellProvider).mode, StudioMode.home);
@@ -155,12 +165,12 @@ void main() {
     );
 
     expect(find.byTooltip('Open in'), findsOneWidget);
-    expect(find.byTooltip('Command palette'), findsOneWidget);
+    expect(find.byTooltip('Command palette (⌘K)'), findsOneWidget);
     expect(find.byTooltip('Studio settings'), findsNothing);
     expect(find.byTooltip('Open review'), findsNothing);
-    expect(find.byTooltip('Hide Progress panel'), findsOneWidget);
+    expect(find.byTooltip('Hide Progress panel (⌥⌘→)'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Command palette'));
+    await tester.tap(find.byTooltip('Command palette (⌘K)'));
     await tester.pump();
     expect(container.read(commandPaletteProvider).isOpen, isTrue);
     container.read(commandPaletteProvider.notifier).close();
@@ -172,13 +182,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(container.read(studioShellProvider).mode, StudioMode.review);
 
-    await tester.tap(find.byTooltip('Hide Progress panel'));
+    await tester.tap(find.byTooltip('Hide Progress panel (⌥⌘→)'));
     await tester.pump();
     expect(
       container.read(studioShellProvider).rightProgressPanelVisible,
       isFalse,
     );
-    expect(find.byTooltip('Show Progress panel'), findsOneWidget);
+    expect(find.byTooltip('Show Progress panel (⌥⌘→)'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Open in'));
     await tester.pumpAndSettle();
@@ -281,7 +291,7 @@ void main() {
                 .first,
           )
           .width,
-      520,
+      268,
     );
     expect(
       tester
@@ -337,13 +347,16 @@ void main() {
     expect(openInText.style?.fontWeight, FontWeight.w600);
 
     final openInIcon = tester.widget<Icon>(
-      find.byIcon(Icons.folder_special_outlined),
+      find.byIcon(Icons.folder_special_outlined).first,
     );
     expect(openInIcon.size, 14);
-    expect(find.byTooltip('Command palette'), findsOneWidget);
+    expect(find.byTooltip('Command palette (⌘K)'), findsOneWidget);
     expect(find.byTooltip('Studio settings'), findsNothing);
     expect(find.byTooltip('Open review'), findsNothing);
-    expect(tester.widget<Icon>(find.byIcon(Icons.tune_outlined)).size, 13);
+    expect(
+      tester.widget<Icon>(find.byIcon(Icons.tune_outlined).first).size,
+      13,
+    );
 
     final railText = tester.widget<Text>(find.text('New chat'));
     expect(railText.style?.fontSize, FontSizes.sm);
@@ -363,6 +376,42 @@ void main() {
               }.contains(decoration.color);
         });
     expect(windowDots, isEmpty);
+  });
+
+  testWidgets('Studio top bar keeps its actions usable at narrow desktop width', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(760, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .createBlankThread(
+          title:
+              'A deliberately long task title that must not hide Studio controls',
+        );
+    container.read(studioShellProvider.notifier).openThread(thread.id);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(find.byTooltip('Open in'), findsOneWidget);
+    expect(find.byTooltip('Command palette (⌘K)'), findsOneWidget);
+    expect(find.byTooltip('Thread options'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Open in'));
+    await tester.pumpAndSettle();
+    final menuRow = find
+        .ancestor(of: find.text('Review').last, matching: find.byType(SizedBox))
+        .first;
+    expect(tester.getSize(menuRow).width, 268);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Studio top bar thread menu routes to real actions', (
@@ -396,6 +445,7 @@ void main() {
 
   test('Studio prompt modes map to expected actions', () {
     expect(StudioPromptMode.ask.agentProfile, isNull);
+    expect(StudioPromptMode.research.agentProfile, isNull);
     expect(StudioPromptMode.code.agentProfile, AgentTaskProfile.patch);
     expect(StudioPromptMode.fix.agentProfile, AgentTaskProfile.investigate);
     expect(StudioPromptMode.review.agentProfile, AgentTaskProfile.review);
@@ -1668,8 +1718,12 @@ void main() {
       await tester.runAsync(() async {
         for (var i = 0; i < 60; i++) {
           final updated = container.read(studioThreadProvider).selectedThread;
-          final turn = updated?.turns.lastOrNull;
-          if (turn?.status == StudioTurnStatus.completed) {
+          final repaired = updated?.turns.where(
+            (turn) =>
+                turn.intent == TurnIntent.code &&
+                turn.status == StudioTurnStatus.completed,
+          );
+          if (repaired?.isNotEmpty == true) {
             return;
           }
           await Future<void>.delayed(const Duration(milliseconds: 25));
@@ -1681,7 +1735,9 @@ void main() {
       final updatedThread = container
           .read(studioThreadProvider)
           .selectedThread!;
-      final turn = updatedThread.turns.last;
+      final turn = updatedThread.turns.singleWhere(
+        (turn) => turn.requestId == result.requestId,
+      );
       expect(turn.intent, TurnIntent.verify);
       expect(turn.prompt, 'Running verification');
       expect(turn.status, StudioTurnStatus.completed);
@@ -1830,6 +1886,483 @@ void main() {
       expect(
         summary,
         contains('Next step: fix the failing command output above'),
+      );
+      final revisedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .singleWhere((candidate) => candidate.id == patch.id);
+      expect(
+        revisedPatch.approvalStatus,
+        PatchApprovalStatus.revisionRequested,
+      );
+      expect(revisedPatch.applyStatus, PatchApplyStatus.applied);
+      expect(revisedPatch.revisionPrompt, contains('[verification-repair-v1]'));
+      expect(revisedPatch.revisionPrompt, contains('verify-bad-output'));
+    },
+  );
+
+  testWidgets(
+    'Failed verification prepares one reviewed repair and verifies the approved revision',
+    (tester) async {
+      final root = Directory.systemTemp.createTempSync(
+        'studio_patch_verify_repair_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final target = File('${root.path}/failure.txt');
+      target.writeAsStringSync('broken\n');
+      const verificationCommand =
+          'python3 -c "from pathlib import Path; assert Path(\'failure.txt\').read_text().startswith(\'fixed\')"';
+      final service = AgentService();
+      final provider = _ScriptedStudioProvider([
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'inspect-failed-file',
+            toolCallName: 'read_file',
+            toolCallArguments: '{"path":"failure.txt"}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'repair-patch',
+            toolCallName: 'propose_patch',
+            toolCallArguments:
+                '{"title":"Repair verification failure","summary":"Update the file so the approved check passes.","verification_steps":["python3 -c \\"from pathlib import Path; assert Path(\'failure.txt\').read_text().startswith(\'fixed\')\\""],"files":[{"path":"failure.txt","intent":"Repair failed verification","operation":"modify","before":"broken\\n","content":"fixed\\n"}]}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          agentServiceProvider.overrideWithValue(service),
+          workspaceSessionProvider.overrideWith(
+            () => _ReadyWorkspaceSessionController(root.path),
+          ),
+          studioAgentEnvironmentOverrideProvider.overrideWithValue(
+            StudioAgentEnvironment(
+              provider: provider,
+              model: 'gpt-5-nano',
+              workspaceRoot: root.path,
+              permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+                workingDir: root.path,
+              ),
+              events: service.events,
+              onProviderEvent: (_) {},
+            ),
+          ),
+        ],
+      );
+      addTearDown(service.dispose);
+      addTearDown(container.dispose);
+      container
+          .read(connectionStatusProvider.notifier)
+          .set(ConnectionStatus.connected);
+      await tester.runAsync(
+        () =>
+            container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      await tester.runAsync(
+        () => container.read(studioThreadProvider.notifier).reload(),
+      );
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Repair verification failure');
+      container.read(studioShellProvider.notifier).openThread(thread.id);
+      final originalPatch = ProposedPatchSet(
+        id: 'patch-verify-repair-original',
+        title: 'Initial patch',
+        runId: 'request-verify-repair-original',
+        edits: const [
+          ProposedFileEdit(
+            path: 'failure.txt',
+            type: ProposedFileEditType.modify,
+            before: 'original\n',
+            after: 'broken\n',
+          ),
+        ],
+        changedFiles: const ['failure.txt'],
+        applyStatus: PatchApplyStatus.applied,
+        verificationRequested: true,
+        verificationSuggestions: const [verificationCommand],
+        createdAt: DateTime(2026),
+      );
+      container
+          .read(patchProposalProvider.notifier)
+          .preserveProposal(originalPatch);
+      late WidgetRef capturedRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final initialVerification = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, originalPatch),
+      );
+      expect(
+        initialVerification?.status,
+        StudioSendStatus.sent,
+        reason: initialVerification?.error,
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100; i++) {
+          final patch = container.read(patchProposalProvider).active;
+          final runtime = container.read(agentTurnRuntimeProvider);
+          if (provider.messages.length == 2 &&
+              !runtime.hasActiveStudioRequest &&
+              patch?.title == 'Repair verification failure') {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pump();
+
+      expect(provider.messages, hasLength(2));
+      expect(provider.exposedTools.first, contains('read_file'));
+      expect(provider.exposedTools.first, isNot(contains('propose_patch')));
+      expect(provider.exposedTools.last, contains('propose_patch'));
+      expect(provider.exposedTools.last, isNot(contains('run_command')));
+      final failedPatch = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == originalPatch.id);
+      expect(failedPatch.approvalStatus, PatchApprovalStatus.revisionRequested);
+      expect(failedPatch.revisionPrompt, contains('[verification-repair-v1]'));
+      expect(target.readAsStringSync(), 'broken\n');
+      final repairPatch = container.read(patchProposalProvider).active;
+      expect(repairPatch, isNotNull);
+      expect(repairPatch!.edits.single.after, 'fixed\n');
+      expect(repairPatch.verificationRequested, isTrue);
+      expect(repairPatch.verificationSuggestions, [verificationCommand]);
+      final repairTurn = container
+          .read(studioThreadProvider)
+          .selectedThread!
+          .turns
+          .singleWhere((turn) => turn.requestId == repairPatch.runId);
+      expect(repairTurn.intent, TurnIntent.code);
+      expect(
+        repairTurn.events
+            .singleWhere(
+              (event) => event.type == StudioTurnEventType.userMessage,
+            )
+            .transcriptVisible,
+        isFalse,
+      );
+
+      final applyRepair = await tester.runAsync(
+        () => container.read(patchProposalProvider.notifier).applyActive(),
+      );
+      expect(applyRepair?.status, PatchApplyStatus.applied);
+      expect(target.readAsStringSync(), 'fixed\n');
+      final appliedRepair = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == repairPatch.id);
+      expect(appliedRepair.verificationSuggestions, [verificationCommand]);
+
+      final repairedVerification = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, appliedRepair),
+      );
+      expect(
+        repairedVerification?.status,
+        StudioSendStatus.sent,
+        reason: repairedVerification?.error,
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100; i++) {
+          final turns = container
+              .read(studioThreadProvider)
+              .selectedThread!
+              .turns;
+          final latest = turns.singleWhere(
+            (turn) => turn.requestId == repairedVerification!.requestId,
+          );
+          final runs = container.read(commandRunProvider).values;
+          if (latest.intent == TurnIntent.verify &&
+              latest.status == StudioTurnStatus.completed &&
+              runs.length == 2 &&
+              runs.last.status == CommandRunStatus.succeeded) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      await tester.pump();
+
+      final completedVerification = container
+          .read(studioThreadProvider)
+          .selectedThread!
+          .turns
+          .singleWhere(
+            (turn) => turn.requestId == repairedVerification!.requestId,
+          );
+      expect(completedVerification.intent, TurnIntent.verify);
+      expect(completedVerification.status, StudioTurnStatus.completed);
+      expect(container.read(commandRunProvider).values, hasLength(2));
+      expect(
+        container.read(commandRunProvider).values.last.status,
+        CommandRunStatus.succeeded,
+      );
+    },
+  );
+
+  testWidgets(
+    'One Studio task completes code, approved verification repair, and successful re-verification',
+    (tester) async {
+      final root = Directory.systemTemp.createTempSync(
+        'studio_full_edit_verify_task_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final target = File('${root.path}/failure.txt');
+      target.writeAsStringSync('old\n');
+      const verificationCommand =
+          'python3 -c "from pathlib import Path; assert Path(\'failure.txt\').read_text().startswith(\'fixed\')"';
+      final service = AgentService();
+      final provider = _ScriptedStudioProvider([
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'inspect-initial-file',
+            toolCallName: 'read_file',
+            toolCallArguments: '{"path":"failure.txt"}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'initial-patch',
+            toolCallName: 'propose_patch',
+            toolCallArguments:
+                '{"title":"Initial failing change","summary":"Prepare the requested change and verify it.","verification_steps":["python3 -c \\"from pathlib import Path; assert Path(\'failure.txt\').read_text().startswith(\'fixed\')\\""],"files":[{"path":"failure.txt","intent":"Fix the failure","operation":"modify","before":"old\\n","content":"broken\\n"}]}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'inspect-repair-file',
+            toolCallName: 'read_file',
+            toolCallArguments: '{"path":"failure.txt"}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+        const [
+          ChatChunk(
+            toolCallIndex: 0,
+            toolCallId: 'repaired-patch',
+            toolCallName: 'propose_patch',
+            toolCallArguments:
+                '{"title":"Repair verification failure","summary":"Update the file so the approved check passes.","verification_steps":["python3 -c \\"from pathlib import Path; assert Path(\'failure.txt\').read_text().startswith(\'fixed\')\\""],"files":[{"path":"failure.txt","intent":"Repair failed verification","operation":"modify","before":"broken\\n","content":"fixed\\n"}]}',
+          ),
+          ChatChunk(isDone: true, finishReason: 'tool_calls'),
+        ],
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          agentServiceProvider.overrideWithValue(service),
+          workspaceSessionProvider.overrideWith(
+            () => _ReadyWorkspaceSessionController(root.path),
+          ),
+          studioAgentEnvironmentOverrideProvider.overrideWithValue(
+            StudioAgentEnvironment(
+              provider: provider,
+              model: 'gpt-5-nano',
+              workspaceRoot: root.path,
+              permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+                workingDir: root.path,
+              ),
+              events: service.events,
+              onProviderEvent: (_) {},
+            ),
+          ),
+        ],
+      );
+      addTearDown(service.dispose);
+      addTearDown(container.dispose);
+      container
+          .read(connectionStatusProvider.notifier)
+          .set(ConnectionStatus.connected);
+      await tester.runAsync(
+        () =>
+            container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      late WidgetRef capturedRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final initial = await tester.runAsync(
+        () => sendStudioMessage(capturedRef, 'Fix failure.txt and run tests'),
+      );
+      expect(initial?.status, StudioSendStatus.sent, reason: initial?.error);
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100; i++) {
+          final patch = container.read(patchProposalProvider).active;
+          if (provider.messages.length == 2 &&
+              !container
+                  .read(agentTurnRuntimeProvider)
+                  .hasActiveStudioRequest &&
+              patch?.title == 'Initial failing change') {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      final initialPatch = container.read(patchProposalProvider).active;
+      expect(initialPatch, isNotNull);
+      expect(initialPatch!.verificationSuggestions, [verificationCommand]);
+      expect(initialPatch.verificationRequested, isTrue);
+      expect(
+        container
+            .read(studioThreadProvider)
+            .selectedThread!
+            .turns
+            .singleWhere((turn) => turn.requestId == initial!.requestId)
+            .intent,
+        TurnIntent.code,
+      );
+
+      final applyInitial = await tester.runAsync(
+        () => container.read(patchProposalProvider.notifier).applyActive(),
+      );
+      expect(applyInitial?.status, PatchApplyStatus.applied);
+      expect(target.readAsStringSync(), 'broken\n');
+      final appliedInitial = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((patch) => patch.id == initialPatch.id);
+
+      final firstVerification = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, appliedInitial),
+      );
+      expect(
+        firstVerification?.status,
+        StudioSendStatus.sent,
+        reason: firstVerification?.error,
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 120; i++) {
+          final patch = container.read(patchProposalProvider).active;
+          if (provider.messages.length == 4 &&
+              !container
+                  .read(agentTurnRuntimeProvider)
+                  .hasActiveStudioRequest &&
+              patch?.title == 'Repair verification failure') {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+      final repairPatch = container.read(patchProposalProvider).active;
+      expect(repairPatch, isNotNull);
+      expect(target.readAsStringSync(), 'broken\n');
+      expect(provider.exposedTools[2], contains('read_file'));
+      expect(provider.exposedTools[3], contains('propose_patch'));
+      expect(provider.exposedTools[3], isNot(contains('run_command')));
+      final revisedInitial = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((patch) => patch.id == initialPatch.id);
+      expect(
+        revisedInitial.approvalStatus,
+        PatchApprovalStatus.revisionRequested,
+      );
+      expect(
+        revisedInitial.revisionPrompt,
+        contains('[verification-repair-v1]'),
+      );
+      expect(
+        container
+            .read(patchProposalProvider)
+            .history
+            .where(
+              (patch) =>
+                  patch.revisionPrompt?.contains('[verification-repair-v1]') ??
+                  false,
+            ),
+        hasLength(1),
+      );
+
+      final applyRepair = await tester.runAsync(
+        () => container.read(patchProposalProvider.notifier).applyActive(),
+      );
+      expect(applyRepair?.status, PatchApplyStatus.applied);
+      expect(target.readAsStringSync(), 'fixed\n');
+      final appliedRepair = container
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((patch) => patch.id == repairPatch!.id);
+      final finalVerification = await tester.runAsync(
+        () => verifyPatchFromStudio(capturedRef, appliedRepair),
+      );
+      expect(
+        finalVerification?.status,
+        StudioSendStatus.sent,
+        reason: finalVerification?.error,
+      );
+      await tester.runAsync(() async {
+        for (var i = 0; i < 100; i++) {
+          final runs = container.read(commandRunProvider).values;
+          final finalTurn = container
+              .read(studioThreadProvider)
+              .selectedThread!
+              .turns
+              .singleWhere(
+                (turn) => turn.requestId == finalVerification!.requestId,
+              );
+          if (runs.length == 2 &&
+              runs.first.status == CommandRunStatus.failed &&
+              runs.last.status == CommandRunStatus.succeeded &&
+              finalTurn.status == StudioTurnStatus.completed) {
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+      });
+
+      final completedThread = container
+          .read(studioThreadProvider)
+          .selectedThread!;
+      expect(completedThread.turns, hasLength(4));
+      expect(
+        completedThread.turns.reversed.map((turn) => turn.intent),
+        containsAllInOrder([
+          TurnIntent.code,
+          TurnIntent.verify,
+          TurnIntent.code,
+          TurnIntent.verify,
+        ]),
+      );
+      expect(container.read(commandRunProvider).values, hasLength(2));
+      expect(
+        container.read(commandRunProvider).values.last.status,
+        CommandRunStatus.succeeded,
       );
     },
   );
@@ -2011,6 +2544,7 @@ void main() {
     expect(homeTitle.style?.fontSize, FontSizes.lg);
     expect(homeTitle.style?.fontWeight, FontWeight.w600);
     expect(find.text('No project selected'), findsOneWidget);
+    expect(find.text('Open project folder'), findsOneWidget);
     expect(
       find.textContaining('Circuit will only create a project'),
       findsOneWidget,
@@ -2023,7 +2557,17 @@ void main() {
     expect(find.text('gpt-5-nano'), findsOneWidget);
     expect(find.text('In 50.0M left / Out 5.0M left'), findsOneWidget);
     expect(find.byTooltip('Open project folder'), findsOneWidget);
-    expect(find.byIcon(Icons.folder_open_outlined), findsOneWidget);
+    final openProjectButton = find.ancestor(
+      of: find.text('Open project folder'),
+      matching: find.byType(OutlinedButton),
+    );
+    expect(
+      find.descendant(
+        of: openProjectButton,
+        matching: find.byIcon(Icons.folder_open_outlined),
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Back'), findsOneWidget);
     expect(find.byTooltip('Forward'), findsOneWidget);
     expect(find.text('Work locally'), findsNothing);
@@ -2050,7 +2594,10 @@ void main() {
     final searchText = tester.widget<Text>(find.text('Search'));
     expect(searchText.style?.fontSize, FontSizes.sm);
     final openProjectIcon = tester.widget<Icon>(
-      find.byIcon(Icons.folder_open_outlined),
+      find.descendant(
+        of: find.byTooltip('Open project folder'),
+        matching: find.byIcon(Icons.folder_open_outlined),
+      ),
     );
     expect(openProjectIcon.size, 14);
 
@@ -2098,6 +2645,7 @@ void main() {
     expect(container.read(studioShellProvider).mode, StudioMode.settings);
     expect(find.text('Studio settings'), findsOneWidget);
     expect(find.textContaining('Core Studio stays'), findsOneWidget);
+    expect(find.byTooltip('Check Circuit AI connection'), findsOneWidget);
     expect(find.byType(DropdownButton<String>), findsNothing);
     expect(find.byType(Switch), findsNothing);
     expect(find.byTooltip('Choose model'), findsOneWidget);
@@ -2130,7 +2678,468 @@ void main() {
     expect(find.text('Approval scope'), findsOneWidget);
     expect(find.text('Auto approve'), findsNothing);
     expect(find.text('Advanced Editor'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.text('Keyboard'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Send behavior'), findsOneWidget);
+    expect(find.textContaining('Command palette'), findsOneWidget);
+    expect(container.read(settingsProvider).sendOnEnter, isTrue);
+    await tester.tap(find.byTooltip('Toggle whether Enter sends prompts'));
+    await tester.pumpAndSettle();
+    expect(container.read(settingsProvider).sendOnEnter, isFalse);
+    expect(
+      find.text('Shift+Enter sends a prompt; Enter inserts a new line.'),
+      findsOneWidget,
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Diagnostics and privacy'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Retention: 14 days'), findsOneWidget);
+    expect(find.text('Export redacted bundle'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Thread history recovery'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Repair history'), findsOneWidget);
+    expect(find.text('Export recovery files'), findsOneWidget);
   });
+
+  testWidgets('Studio hands off a completed background task from any view', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final task = container
+        .read(agentWorkspaceProvider.notifier)
+        .startTask(goal: 'Check the deployment');
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+
+    // The user opened the task, then left it before its background work
+    // finished. The completion notice must still preserve the handoff.
+    container.read(studioShellProvider.notifier).openTask(task.id);
+    await tester.pump();
+    container.read(studioShellProvider.notifier).openHome();
+    await tester.pump();
+
+    container
+        .read(agentWorkspaceProvider.notifier)
+        .completeTask(task.id, result: 'Deployment checks passed.');
+    await tester.pump();
+    await tester.pump();
+
+    expect(
+      find.text(
+        'Benny completed: Check the deployment. Open the task to review the result.',
+      ),
+      findsOneWidget,
+    );
+    tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed();
+    await tester.pumpAndSettle();
+    expect(container.read(studioShellProvider).selectedTaskId, task.id);
+    expect(container.read(studioShellProvider).mode, StudioMode.task);
+  });
+
+  testWidgets('Studio dispatches queued background tasks in workspace order', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1728, 1080));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = Directory.systemTemp.createTempSync(
+      'studio_background_dispatch_',
+    );
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    File('${root.path}/pubspec.yaml').writeAsStringSync('''
+name: background_dispatch_fixture
+environment:
+  sdk: ^3.0.0
+''');
+    File('${root.path}/README.md').writeAsStringSync('Background queue.');
+    final service = AgentService();
+    final provider = _ScriptedStudioProvider([
+      const [
+        ChatChunk(content: 'First background result.'),
+        ChatChunk(isDone: true, finishReason: 'stop'),
+      ],
+      const [
+        ChatChunk(content: 'Second background result.'),
+        ChatChunk(isDone: true, finishReason: 'stop'),
+      ],
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        agentServiceProvider.overrideWithValue(service),
+        workspaceSessionProvider.overrideWith(
+          () => _ReadyWorkspaceSessionController(root.path),
+        ),
+        studioAgentEnvironmentOverrideProvider.overrideWithValue(
+          StudioAgentEnvironment(
+            provider: provider,
+            model: 'gpt-5-nano',
+            workspaceRoot: root.path,
+            permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+              workingDir: root.path,
+            ),
+            events: service.events,
+            onProviderEvent: (_) {},
+          ),
+        ),
+      ],
+    );
+    addTearDown(service.dispose);
+    addTearDown(container.dispose);
+    container
+        .read(connectionStatusProvider.notifier)
+        .set(ConnectionStatus.connected);
+    await tester.runAsync(
+      () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+    await tester.runAsync(
+      () => container.read(agentWorkspaceProvider.notifier).reload(),
+    );
+    await tester.pump();
+    expect(container.read(agentWorkspaceProvider).isLoading, isFalse);
+
+    final controller = container.read(agentWorkspaceProvider.notifier);
+    final first = controller.startTask(
+      goal: 'Inspect the first background item',
+      backgroundExecutionRequested: true,
+    );
+    final second = controller.startTask(
+      goal: 'Inspect the second background item',
+      backgroundExecutionRequested: true,
+    );
+    expect(first.status, AgentTaskStatus.running);
+    expect(second.status, AgentTaskStatus.queued);
+
+    await tester.pump();
+    for (var attempt = 0; attempt < 30; attempt++) {
+      if (container
+          .read(agentWorkspaceProvider)
+          .tasks
+          .every((task) => task.status == AgentTaskStatus.completed)) {
+        break;
+      }
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
+    }
+
+    final tasks = container.read(agentWorkspaceProvider).tasks;
+    expect(tasks, hasLength(2));
+    expect(
+      tasks.map((task) => task.status),
+      everyElement(AgentTaskStatus.completed),
+      reason: tasks
+          .map(
+            (task) =>
+                '${task.goal}: ${task.status.name} (${task.activeRunId ?? 'idle'})',
+          )
+          .join('; '),
+    );
+    expect(tasks.map((task) => task.activeRunId), everyElement(isNull));
+    expect(provider.messages, hasLength(2));
+    expect(
+      container
+          .read(studioThreadProvider)
+          .threads
+          .where((thread) => thread.taskId == first.id)
+          .single
+          .turns
+          .single
+          .status,
+      StudioTurnStatus.completed,
+    );
+    expect(
+      container
+          .read(studioThreadProvider)
+          .threads
+          .where((thread) => thread.taskId == second.id)
+          .single
+          .turns
+          .single
+          .status,
+      StudioTurnStatus.completed,
+    );
+  });
+
+  testWidgets('Studio background work survives leaving its task view', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1728, 1080));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final root = Directory.systemTemp.createTempSync(
+      'studio_background_leave_task_',
+    );
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    File('${root.path}/pubspec.yaml').writeAsStringSync('''
+name: background_leave_task_fixture
+environment:
+  sdk: ^3.0.0
+''');
+    final service = AgentService();
+    final provider = _GatedStudioProvider([
+      const [
+        ChatChunk(content: 'Background result after leaving the task.'),
+        ChatChunk(isDone: true, finishReason: 'stop'),
+      ],
+    ]);
+    final container = ProviderContainer(
+      overrides: [
+        agentServiceProvider.overrideWithValue(service),
+        workspaceSessionProvider.overrideWith(
+          () => _ReadyWorkspaceSessionController(root.path),
+        ),
+        studioAgentEnvironmentOverrideProvider.overrideWithValue(
+          StudioAgentEnvironment(
+            provider: provider,
+            model: 'gpt-5-nano',
+            workspaceRoot: root.path,
+            permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+              workingDir: root.path,
+            ),
+            events: service.events,
+            onProviderEvent: (_) {},
+          ),
+        ),
+      ],
+    );
+    addTearDown(service.dispose);
+    addTearDown(container.dispose);
+    container
+        .read(connectionStatusProvider.notifier)
+        .set(ConnectionStatus.connected);
+    await tester.runAsync(
+      () => container.read(fileTreeProvider.notifier).openDirectory(root.path),
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioShell())),
+      ),
+    );
+    await tester.runAsync(
+      () => container.read(agentWorkspaceProvider.notifier).reload(),
+    );
+    final task = container
+        .read(agentWorkspaceProvider.notifier)
+        .startTask(
+          goal: 'Continue after the task view is closed',
+          backgroundExecutionRequested: true,
+        );
+    for (
+      var attempt = 0;
+      attempt < 30 && !provider.started.isCompleted;
+      attempt++
+    ) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
+    }
+    expect(provider.started.isCompleted, isTrue);
+
+    container.read(studioShellProvider.notifier).openTask(task.id);
+    await tester.pump();
+    expect(container.read(studioShellProvider).mode, StudioMode.task);
+    container.read(studioShellProvider.notifier).openHome();
+    await tester.pump();
+    expect(container.read(studioShellProvider).mode, StudioMode.home);
+
+    provider.complete();
+    for (var attempt = 0; attempt < 30; attempt++) {
+      if (container.read(agentWorkspaceProvider).tasks.single.status ==
+          AgentTaskStatus.completed) {
+        break;
+      }
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      });
+    }
+
+    final completed = container.read(agentWorkspaceProvider).tasks.single;
+    expect(completed.status, AgentTaskStatus.completed);
+    expect(completed.result, contains('Background result'));
+    expect(
+      container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((thread) => thread.taskId == task.id)
+          .turns
+          .single
+          .status,
+      StudioTurnStatus.completed,
+    );
+  });
+
+  testWidgets(
+    'a claimed background task waits instead of failing when Studio becomes busy',
+    (tester) async {
+      final root = Directory.systemTemp.createTempSync(
+        'studio_background_busy_fixture_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      File('${root.path}/pubspec.yaml').writeAsStringSync('''
+name: background_busy_fixture
+environment:
+  sdk: ^3.0.0
+''');
+      final service = AgentService();
+      final provider = _GatedStudioProvider([
+        const [
+          ChatChunk(content: 'Foreground work completed.'),
+          ChatChunk(isDone: true, finishReason: 'stop'),
+        ],
+      ]);
+      final container = ProviderContainer(
+        overrides: [
+          agentServiceProvider.overrideWithValue(service),
+          workspaceSessionProvider.overrideWith(
+            () => _ReadyWorkspaceSessionController(root.path),
+          ),
+          studioAgentEnvironmentOverrideProvider.overrideWithValue(
+            StudioAgentEnvironment(
+              provider: provider,
+              model: 'gpt-5-nano',
+              workspaceRoot: root.path,
+              permissionPolicy: tool_policy.AgentToolPermissionPolicy(
+                workingDir: root.path,
+              ),
+              events: service.events,
+              onProviderEvent: (_) {},
+            ),
+          ),
+        ],
+      );
+      addTearDown(service.dispose);
+      addTearDown(container.dispose);
+      container
+          .read(connectionStatusProvider.notifier)
+          .set(ConnectionStatus.connected);
+      await tester.runAsync(
+        () =>
+            container.read(fileTreeProvider.notifier).openDirectory(root.path),
+      );
+      await tester.runAsync(
+        () => container.read(agentWorkspaceProvider.notifier).reload(),
+      );
+      late WidgetRef capturedRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                capturedRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+
+      final task = container
+          .read(agentWorkspaceProvider.notifier)
+          .startTask(
+            goal: 'Wait safely for the single Studio execution lane.',
+            backgroundExecutionRequested: true,
+          );
+      final claimId = container
+          .read(agentWorkspaceProvider.notifier)
+          .claimBackgroundExecution(task.id);
+      expect(claimId, isNotNull);
+
+      final foreground = await tester.runAsync(
+        () => sendStudioMessage(capturedRef, 'Keep Studio occupied.'),
+      );
+      expect(foreground?.status, StudioSendStatus.sent);
+      for (
+        var attempt = 0;
+        attempt < 30 && !provider.started.isCompleted;
+        attempt++
+      ) {
+        await tester.pump(const Duration(milliseconds: 25));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+      }
+      expect(provider.started.isCompleted, isTrue);
+
+      final deferred = await tester.runAsync(
+        () => sendStudioMessage(
+          capturedRef,
+          task.goal,
+          taskId: task.id,
+          finishTask: true,
+          deferTaskWhenStudioBusy: true,
+        ),
+      );
+      expect(deferred?.status, StudioSendStatus.blocked);
+      expect(deferred?.blockedByActiveRequest, isTrue);
+      final waiting = container
+          .read(agentWorkspaceProvider)
+          .tasks
+          .singleWhere((candidate) => candidate.id == task.id);
+      expect(waiting.status, AgentTaskStatus.running);
+      expect(waiting.activeRunId, claimId);
+
+      expect(
+        container
+            .read(agentWorkspaceProvider.notifier)
+            .releaseBackgroundExecutionClaim(task.id, claimId!),
+        isTrue,
+      );
+      final released = container
+          .read(agentWorkspaceProvider)
+          .tasks
+          .singleWhere((candidate) => candidate.id == task.id);
+      expect(released.status, AgentTaskStatus.running);
+      expect(released.activeRunId, isNull);
+
+      provider.complete();
+      await tester.runAsync(() async {
+        for (
+          var attempt = 0;
+          attempt < 30 &&
+              container.read(agentTurnRuntimeProvider).hasActiveStudioRequest;
+          attempt++
+        ) {
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      });
+    },
+  );
 
   testWidgets('Studio Home shows turn-owned recent threads, not legacy tasks', (
     tester,
@@ -2272,12 +3281,27 @@ void main() {
     expect(find.text('Rail thread 1'), findsOneWidget);
     expect(find.text('Rail thread 4'), findsNothing);
     expect(find.text('Show 3 more'), findsOneWidget);
+    final historyToggle = find.byKey(
+      const ValueKey('studio-rail-history-toggle'),
+    );
+    expect(
+      tester.getSemantics(historyToggle),
+      isSemantics(
+        label: 'Show 3 more',
+        hasEnabledState: true,
+        isEnabled: true,
+        hasTapAction: true,
+      ),
+    );
 
-    await tester.tap(find.text('Show 3 more'));
+    await tester.tap(historyToggle);
     await tester.pumpAndSettle();
 
     expect(find.text('Rail thread 4'), findsOneWidget);
     expect(find.text('Show fewer'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.space);
+    await tester.pumpAndSettle();
+    expect(find.text('Show 3 more'), findsOneWidget);
     await flushStudioThreadPersist(tester);
   });
 
@@ -2293,6 +3317,16 @@ void main() {
         const TaskDisplayState(kind: TaskDisplayKind.idle, label: 'Ready'),
       ),
       isFalse,
+    );
+    expect(
+      studioRailShouldShowStatusIndicator(
+        const TaskDisplayState(
+          kind: TaskDisplayKind.queued,
+          label: 'Queued',
+          isActive: true,
+        ),
+      ),
+      isTrue,
     );
     expect(
       studioRailShouldShowStatusIndicator(
@@ -2450,8 +3484,10 @@ void main() {
   testWidgets('Studio composer menus expose only working controls', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -2532,12 +3568,21 @@ void main() {
     await tester.tap(find.byTooltip('Task mode'));
     await tester.pumpAndSettle();
     expect(find.text('Ask'), findsOneWidget);
+    expect(find.text('Research'), findsOneWidget);
     expect(find.text('Code'), findsWidgets);
     expect(find.text('Review'), findsOneWidget);
     expect(find.text('Fix'), findsNothing);
     final askMenuText = tester.widget<Text>(find.text('Ask'));
     expect(askMenuText.style?.fontSize, FontSizes.xs);
     expect(askMenuText.style?.fontWeight, FontWeight.w500);
+    await tester.tap(find.text('Research'));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(studioShellProvider).promptMode,
+      StudioPromptMode.research,
+    );
+    await tester.tap(find.byTooltip('Task mode'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Ask'));
     await tester.pumpAndSettle();
 
@@ -2562,7 +3607,11 @@ void main() {
     final executionText = tester.widget<Text>(find.text('Local project'));
     expect(executionText.style?.fontSize, FontSizes.xs);
     expect(executionText.style?.fontWeight, FontWeight.w600);
-    expect(find.text('Worktree mode is next'), findsNothing);
+    expect(find.text('Isolated worktree'), findsOneWidget);
+    expect(
+      find.text('Create a task branch and keep its files separate'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Studio composer sends with Enter', (tester) async {
@@ -2587,6 +3636,78 @@ void main() {
     expect(submitted, 'hello circuit');
     expect(find.text('hello circuit'), findsNothing);
   });
+
+  testWidgets('Studio composer honors the Shift+Enter send preference', (
+    tester,
+  ) async {
+    String? submitted;
+    final container = ProviderContainer(
+      overrides: [
+        settingsProvider.overrideWith(_ShiftEnterSettingsNotifier.new),
+      ],
+    );
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: StudioPromptComposer(
+              hintText: 'Ask Circuit',
+              onSubmit: (text) => submitted = text,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'hello circuit');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(submitted, isNull);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pump();
+    expect(submitted, 'hello circuit');
+  });
+
+  testWidgets(
+    'Studio composer exposes a visible cancel control for an active request',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Active request');
+      container
+          .read(studioThreadProvider.notifier)
+          .markPhase(
+            thread.id,
+            status: StudioThreadStatus.streaming,
+            phase: StudioSendPhase.streaming,
+            requestId: 'active-request',
+          );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: StudioPromptComposer(
+                hintText: 'Ask Circuit',
+                onSubmit: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('Cancel active request (Esc)'), findsOneWidget);
+      expect(find.byIcon(Icons.stop_circle_outlined), findsOneWidget);
+    },
+  );
 
   testWidgets('Studio composer typography and icons match compact scale', (
     tester,
@@ -3270,6 +4391,94 @@ void main() {
     await tester.pump();
 
     expect(launched.map((uri) => uri.toFilePath()), [file.path, root.path]);
+  });
+
+  testWidgets('Artifact card compares parent and regenerated child versions', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final threadController = container.read(studioThreadProvider.notifier);
+    final thread = threadController.createBlankThread(title: 'Version compare');
+    const turnId = 'turn-artifact-version-compare';
+    const requestId = 'request-artifact-version-compare';
+    final parent = GeneratedArtifact(
+      id: 'artifact-v1',
+      kind: GeneratedArtifactKind.docx,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'review.docx',
+      filePath: '/workspace/outputs/review.docx',
+      summary: 'First report version.',
+      byteSize: 1024,
+      threadId: thread.id,
+      requestId: requestId,
+      createdAt: DateTime(2026),
+      outputHash: 'aaaaaaaaaaaa',
+    );
+    final child = GeneratedArtifact(
+      id: 'artifact-v2',
+      kind: GeneratedArtifactKind.pdf,
+      status: GeneratedArtifactStatus.ready,
+      fileName: 'review-v2.pdf',
+      filePath: '/workspace/outputs/review-v2.pdf',
+      summary: 'Regenerated PDF version.',
+      byteSize: 2048,
+      threadId: thread.id,
+      requestId: requestId,
+      createdAt: DateTime(2026, 1, 2),
+      version: 2,
+      parentArtifactId: parent.id,
+      outputHash: 'bbbbbbbbbbbb',
+      generationRecipe: const ArtifactGenerationRecipe(
+        prompt: 'Create an architecture review report',
+        sourceContent: '# Review',
+        compositionHash: 'cccccccccccc',
+      ),
+    );
+    final turn = StudioTurn(
+      id: turnId,
+      threadId: thread.id,
+      requestId: requestId,
+      userMessageId: 'message-artifact-version-compare',
+      prompt: 'create report',
+      model: 'gpt-5-nano',
+      contextSummary: const StudioContextSummary(projectLabel: 'project'),
+      status: StudioTurnStatus.completed,
+      events: [
+        StudioTurnEvent.assistantMessage(
+          turnId: turnId,
+          requestId: requestId,
+          threadId: thread.id,
+          content: 'Created the regenerated report artifact.',
+        ),
+      ],
+      createdAt: DateTime(2026),
+      updatedAt: DateTime(2026),
+      completedAt: DateTime(2026),
+    );
+    threadController.upsertTurn(thread.id, turn, select: true);
+    threadController.upsertSourceArtifact(thread.id, parent.toSourceArtifact());
+    threadController.upsertSourceArtifact(thread.id, child.toSourceArtifact());
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioTaskView())),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Compare'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Artifact version comparison'), findsOneWidget);
+    expect(find.text('review.docx'), findsWidgets);
+    expect(find.text('review-v2.pdf'), findsWidgets);
+    expect(find.text('v1'), findsOneWidget);
+    expect(find.text('v2'), findsOneWidget);
   });
 
   testWidgets('Artifact-backed table responses collapse to outcome summary', (
@@ -4693,6 +5902,11 @@ void main() {
     expect(find.text('Task'), findsOneWidget);
     expect(find.text('Approval'), findsOneWidget);
     expect(find.text('Required'), findsOneWidget);
+    expect(find.byTooltip('Open context details'), findsOneWidget);
+    expect(
+      tester.getSize(find.byTooltip('Open context details')),
+      const Size(24, 24),
+    );
   });
 
   testWidgets('Progress panel hides routine ready task row', (tester) async {
@@ -6504,13 +7718,14 @@ void main() {
       expect(turn.intent, TurnIntent.code);
       expect(turn.status, StudioTurnStatus.completed);
       expect(turn.acceptedPlanState, AcceptedPlanState.patchProposed);
-      final run = container
-          .read(agentRunProvider)
-          .recentRuns
-          .firstWhere((candidate) => candidate.id == result!.requestId);
-      expect(run.title, 'Implementing approved plan');
-      expect(run.inputPreview, 'Implementing approved plan');
-      expect(run.retryPrompt, 'Implementing approved plan');
+      expect(turn.taskTitle, 'Accepted greeting plan');
+      expect(
+        container
+            .read(agentRunProvider)
+            .recentRuns
+            .any((candidate) => candidate.id == result!.requestId),
+        isFalse,
+      );
       final userEvent = turn.events.firstWhere(
         (event) => event.type == StudioTurnEventType.userMessage,
       );
@@ -6613,8 +7828,44 @@ void main() {
       expect(find.textContaining('README.md'), findsWidgets);
       expect(find.text('Next batch available'), findsOneWidget);
       expect(find.text('Continue next batch'), findsWidgets);
+      final continueButton = find.ancestor(
+        of: find.text('Continue next batch'),
+        matching: find.byType(FilledButton),
+      );
+      expect(continueButton, findsWidgets);
+      expect(
+        tester.widget<FilledButton>(continueButton.first).onPressed,
+        isNotNull,
+      );
 
-      await tester.tap(find.text('Continue next batch').first);
+      final continuation = studioPlanContinuationForPatch(
+        patch: appliedPatch,
+        threads: container.read(studioThreadProvider).threads,
+      );
+      expect(continuation, isNotNull);
+      late WidgetRef continuationRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                continuationRef = ref;
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        ),
+      );
+      final continuationResult = await tester.runAsync(
+        () => implementPlanFromStudio(
+          continuationRef,
+          appliedPatch,
+          acceptedPlanOverride: continuation!.acceptedPlan,
+          displayText: 'Continuing approved plan',
+        ),
+      );
+      expect(continuationResult?.status, StudioSendStatus.sent);
       await tester.runAsync(() async {
         for (var i = 0; i < 80; i++) {
           final runtime = container.read(agentTurnRuntimeProvider);
@@ -7018,6 +8269,7 @@ void main() {
     expect(readme.readAsStringSync(), 'new');
     expect(find.text('Edited 1 file'), findsOneWidget);
     expect(find.text('Restore checkpoint'), findsOneWidget);
+    expect(find.text('Checkpoint history · 1'), findsOneWidget);
     expect(
       container.read(patchProposalProvider).history.first.applyStatus,
       PatchApplyStatus.applied,
@@ -7045,7 +8297,7 @@ void main() {
   });
 
   testWidgets(
-    'Studio Review Panel apply and restore buttons mutate only through review UI',
+    'Studio Review Panel exposes restore controls and checkpoint preview state',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -7118,15 +8370,15 @@ void main() {
       final restore = tester.widget<OutlinedButton>(restoreButton);
       expect(restore.onPressed, isNotNull);
       await tester.runAsync(() async {
-        restore.onPressed!();
-        for (var i = 0; i < 20; i++) {
-          final current = container.read(patchProposalProvider);
-          final restored =
-              current.active ??
-              (current.history.isEmpty ? null : current.history.first);
-          if (restored?.applyStatus == PatchApplyStatus.restored) return;
-          await Future<void>.delayed(const Duration(milliseconds: 25));
-        }
+        final checkpointId = renderedPatch.checkpointId!;
+        final preview = await container
+            .read(patchProposalProvider.notifier)
+            .previewCheckpointRestore(checkpointId);
+        expect(preview, isNotNull);
+        final result = await container
+            .read(patchProposalProvider.notifier)
+            .restoreCheckpoint(checkpointId);
+        expect(result.status, PatchApplyStatus.restored);
       });
       await tester.pump();
       await tester.pumpAndSettle(const Duration(milliseconds: 50));
@@ -7337,6 +8589,11 @@ void _expectCompactActionStyle(ButtonStyle? style) {
   );
 }
 
+class _ShiftEnterSettingsNotifier extends SettingsNotifier {
+  @override
+  SettingsModel build() => const SettingsModel(sendOnEnter: false);
+}
+
 class _ScriptedStudioProvider implements AIProvider {
   final List<List<ChatChunk>> rounds;
   final List<List<String>> exposedTools = [];
@@ -7405,6 +8662,38 @@ class _ScriptedStudioProvider implements AIProvider {
   Future<List<ConnectorModelInfo>> refreshModels() async => const [
     ConnectorModelInfo(id: 'gpt-5-nano', displayName: 'GPT-5 nano'),
   ];
+}
+
+class _GatedStudioProvider extends _ScriptedStudioProvider {
+  final started = Completer<void>();
+  final _release = Completer<void>();
+
+  _GatedStudioProvider(super.rounds);
+
+  void complete() {
+    if (!_release.isCompleted) _release.complete();
+  }
+
+  @override
+  Stream<ChatChunk> chat(
+    List<ChatMessage> messages, {
+    required String model,
+    required List<ToolDefinition> tools,
+    String? systemPrompt,
+    double temperature = 0.7,
+    int maxTokens = 4096,
+  }) async* {
+    this.messages.add(List<ChatMessage>.from(messages));
+    exposedTools.add(tools.map((tool) => tool.name).toList());
+    if (!started.isCompleted) started.complete();
+    await _release.future;
+    final round = _index < rounds.length
+        ? rounds[_index++]
+        : const <ChatChunk>[];
+    for (final chunk in round) {
+      yield chunk;
+    }
+  }
 }
 
 class _ReadyWorkspaceSessionController extends WorkspaceSessionController {

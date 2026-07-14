@@ -8,8 +8,10 @@ import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_request_lifecycle.dart';
 import 'package:circuit_ide/models/studio_shell.dart';
+import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
+import 'package:circuit_ide/models/token_usage.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
 import 'package:circuit_ide/models/tool_result_envelope.dart';
 import 'package:circuit_ide/models/turn_intent.dart';
@@ -205,6 +207,14 @@ void main() {
         'requestId': 'req-done',
         'content': 'Hi! How can I help?',
         'toolCalls': const [],
+        'lastUsage': const TokenUsage(
+          promptTokens: 50,
+          cachedInputTokens: 20,
+          completionTokens: 10,
+          reasoningTokens: 4,
+          toolTokens: 2,
+          totalTokens: 60,
+        ),
       });
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
@@ -215,6 +225,13 @@ void main() {
       expect(updated.status, StudioThreadStatus.done);
       expect(updated.phase, StudioSendPhase.completed);
       expect(updated.streamingContent, isEmpty);
+      expect(updated.tokenUsage.totalTokens, 0);
+      expect(updated.lastRequestTokenUsage.promptTokens, 50);
+      expect(updated.lastRequestTokenUsage.cachedInputTokens, 20);
+      expect(updated.lastRequestTokenUsage.completionTokens, 10);
+      expect(updated.lastRequestTokenUsage.reasoningTokens, 4);
+      expect(updated.lastRequestTokenUsage.toolTokens, 2);
+      expect(updated.lastRequestTokenUsage.totalTokens, 60);
       expect(updated.messages, isEmpty);
       final turn = updated.turns.single;
       expect(turn.status, StudioTurnStatus.completed);
@@ -238,7 +255,178 @@ void main() {
   );
 
   test(
-    'explicit completeRequest closes thread and turn without message event',
+    'research lifecycle persists evidence and visible source-review phases',
+    () async {
+      final container = _lifecycleContainer();
+      addTearDown(container.dispose);
+      await _waitForThreadStore(container);
+
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .ensureThread(title: 'Research rollout', model: 'gpt-5-nano');
+      const summary = StudioContextSummary(projectLabel: 'No project selected');
+      _registerTurn(
+        container,
+        'req-research',
+        thread.id,
+        summary: summary,
+        modelPrompt: 'Research Mode is enabled.\nResearch question: rollout',
+        isResearch: true,
+      );
+      container
+          .read(studioRequestLifecycleProvider.notifier)
+          .registerRequest(
+            requestId: 'req-research',
+            threadId: thread.id,
+            model: 'gpt-5-nano',
+            contextSummary: summary,
+            intent: TurnIntent.ask,
+          );
+
+      _emitRuntimeEvent(
+        container,
+        'req-research',
+        EventType.toolResultRecorded,
+        {
+          'result': const ToolResultEnvelope(
+            toolCallId: 'search-1',
+            toolName: 'web_search',
+            status: ToolResultStatus.success,
+            summary: 'Found candidates.',
+          ),
+        },
+      );
+      _emitRuntimeEvent(
+        container,
+        'req-research',
+        EventType.toolResultRecorded,
+        {
+          'result': const ToolResultEnvelope(
+            toolCallId: 'fetch-1',
+            toolName: 'web_fetch',
+            status: ToolResultStatus.success,
+            summary: 'Fetched official rollout record.',
+            data: {
+              'rawResult': '''
+# Official rollout record
+Published: 2026-07-12
+Source: https://agency.gov/rollout?tracking=private
+Checked: 2026-07-13
+''',
+            },
+          ),
+        },
+      );
+      _emitRuntimeEvent(container, 'req-research', EventType.messageCompleted, {
+        'content': '''
+The rollout is active. https://agency.gov/rollout?tracking=private
+
+## Evidence table
+| Claim | Sources | Evidence status |
+| --- | --- | --- |
+| The rollout is active. | https://agency.gov/rollout | Direct source attached |
+
+## Sources
+- https://agency.gov/rollout — Checked: 2026-07-13
+''',
+        'toolCalls': const [],
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final updated = container
+          .read(studioThreadProvider)
+          .threads
+          .firstWhere((candidate) => candidate.id == thread.id);
+      final turn = updated.turns.single;
+      expect(
+        turn.steps
+            .singleWhere((step) => step.step == TurnStep.sourceAcquisition)
+            .status,
+        TurnStepStatus.completed,
+      );
+      expect(
+        turn.steps
+            .singleWhere((step) => step.step == TurnStep.evidenceReview)
+            .status,
+        TurnStepStatus.completed,
+      );
+      final evidence = updated.sourceArtifacts.singleWhere(
+        (artifact) => artifact.id == 'research-evidence-${turn.id}',
+      );
+      expect(evidence.kind, StudioSourceArtifactKind.evidence);
+      expect(evidence.value, contains('## Evidence table'));
+      expect(evidence.value, isNot(contains('tracking=private')));
+      final assistant = turn.events.singleWhere(
+        (event) => event.type == StudioTurnEventType.assistantMessage,
+      );
+      expect(assistant.content, contains('The rollout is active.'));
+      expect(assistant.content, contains('Research evidence report saved'));
+      expect(assistant.content, isNot(contains('## Evidence table')));
+    },
+  );
+
+  test('research outcome repair is shown as a bounded source retry', () {
+    final container = _lifecycleContainer();
+    addTearDown(container.dispose);
+
+    final thread = container
+        .read(studioThreadProvider.notifier)
+        .ensureThread(title: 'Research retry', model: 'gpt-5-nano');
+    const summary = StudioContextSummary(projectLabel: 'project');
+    _registerTurn(
+      container,
+      'req-research-retry',
+      thread.id,
+      summary: summary,
+      modelPrompt: 'Research Mode is enabled.\nResearch question: rollout',
+      isResearch: true,
+    );
+    container
+        .read(studioRequestLifecycleProvider.notifier)
+        .registerRequest(
+          requestId: 'req-research-retry',
+          threadId: thread.id,
+          model: 'gpt-5-nano',
+          contextSummary: summary,
+          intent: TurnIntent.ask,
+        );
+
+    _emitRuntimeEvent(
+      container,
+      'req-research-retry',
+      EventType.providerLifecycle,
+      {
+        'event': ProviderLifecycleEvent(
+          requestId: 'req-research-retry',
+          kind: ProviderLifecycleEventKind.outcomeRepair,
+          timestamp: DateTime.utc(2026, 7, 13),
+          model: 'gpt-5-nano',
+          detail: 'One structured research repair is acquiring corroboration.',
+        ),
+      },
+    );
+
+    final turn = container
+        .read(studioThreadProvider)
+        .selectedThread!
+        .turns
+        .single;
+    final sourceAcquisition = turn.steps.singleWhere(
+      (step) => step.step == TurnStep.sourceAcquisition,
+    );
+    expect(sourceAcquisition.status, TurnStepStatus.running);
+    expect(sourceAcquisition.title, 'Independent-source retry');
+    expect(
+      turn.events
+          .where((event) => event.type == StudioTurnEventType.progress)
+          .singleWhere((event) => event.title == 'Retrying source acquisition')
+          .detail,
+      'Checking one more approved source path before finalizing evidence.',
+    );
+  });
+
+  test(
+    'explicit completeRequest does not mutate contradictory legacy request state',
     () async {
       final container = _lifecycleContainer();
       addTearDown(container.dispose);
@@ -301,13 +489,12 @@ void main() {
       );
       expect(
         container.read(agentRequestProvider)[AgentRequestLane.chat]?.status,
-        AgentRequestStatus.done,
+        AgentRequestStatus.running,
       );
-      final recentRun = container
-          .read(agentRunProvider)
-          .recentRuns
-          .firstWhere((run) => run.id == 'req-direct-complete');
-      expect(recentRun.status, AgentRunStatus.succeeded);
+      expect(
+        container.read(agentRunProvider).activeRuns[AgentRunKind.chat]?.status,
+        AgentRunStatus.running,
+      );
     },
   );
 
@@ -419,13 +606,12 @@ void main() {
     expect(updatedTask.status, AgentTaskStatus.cancelled);
     expect(
       container.read(agentRequestProvider)[AgentRequestLane.chat]?.status,
-      AgentRequestStatus.done,
+      AgentRequestStatus.running,
     );
-    final recentRun = container
-        .read(agentRunProvider)
-        .recentRuns
-        .firstWhere((run) => run.id == 'req-task-cancel');
-    expect(recentRun.status, AgentRunStatus.cancelled);
+    expect(
+      container.read(agentRunProvider).activeRuns[AgentRunKind.chat]?.status,
+      AgentRunStatus.running,
+    );
   });
 
   test(
@@ -1484,6 +1670,8 @@ void _registerTurn(
   String threadId, {
   required StudioContextSummary summary,
   String? prompt,
+  String? modelPrompt,
+  bool isResearch = false,
   AcceptedPlanState acceptedPlanState = AcceptedPlanState.none,
 }) {
   container
@@ -1494,9 +1682,11 @@ void _registerTurn(
         taskId: null,
         userMessageId: 'user-$requestId',
         prompt: prompt ?? 'Prompt for $requestId',
+        modelPrompt: modelPrompt,
         model: 'gpt-5-nano',
         contextSummary: summary,
         acceptedPlanState: acceptedPlanState,
+        isResearch: isResearch,
       );
 }
 

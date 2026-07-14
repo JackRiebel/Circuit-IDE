@@ -4,7 +4,7 @@ import 'package:circuit_ide/services/docx_artifact_renderer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('DOCX inspector verifies enterprise report structure', () {
+  test('DOCX inspector verifies enterprise report structure', () async {
     const document = ArtifactDocument(
       title: 'Campus Architecture Review',
       summary:
@@ -42,8 +42,19 @@ void main() {
     );
 
     final bytes = const DocxArtifactRenderer().render(document);
+    final workerBytes = await const DocxArtifactRenderer().renderInWorker(
+      document,
+    );
     final inspection = const DocxArtifactInspector().inspect(bytes);
+    final workerMetadata = await const DocxArtifactInspector()
+        .inspectMetadataInWorker(bytes);
     final packageText = String.fromCharCodes(bytes);
+
+    expect(
+      const DocxArtifactInspector().inspect(workerBytes).toMetadata(),
+      inspection.toMetadata(),
+    );
+    expect(workerMetadata, inspection.toMetadata());
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportStructure, isTrue);

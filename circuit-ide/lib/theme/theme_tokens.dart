@@ -5,6 +5,10 @@ class ThemeTokens {
   final String displayName;
   final Brightness brightness;
 
+  /// True only for the non-persisted variant selected by the operating
+  /// system's accessibility setting. The user's saved theme remains [name].
+  final bool highContrast;
+
   // Core UI
   final Color bgDark;
   final Color bgMain;
@@ -92,29 +96,58 @@ class ThemeTokens {
   Color get outlineSubtle => outlineSoft;
   Color get outlineStrong => borderLight.withValues(alpha: 0.78);
 
-  Color get studioCanvas =>
-      brightness == Brightness.dark ? const Color(0xFF111111) : bgDark;
+  Color get studioCanvas => highContrast
+      ? bgDark
+      : brightness == Brightness.dark
+      ? const Color(0xFF111111)
+      : bgDark;
   Color get studioRail => activityBarBg;
-  Color get studioTopBar =>
-      brightness == Brightness.dark ? const Color(0xFF141414) : bgMain;
+  Color get studioTopBar => highContrast
+      ? bgMain
+      : brightness == Brightness.dark
+      ? const Color(0xFF141414)
+      : bgMain;
   Color get studioPanel => surfacePanel;
-  Color get studioDrawer =>
-      brightness == Brightness.dark ? const Color(0xFF202020) : surfacePanel;
-  Color get studioCard => brightness == Brightness.dark
+  Color get studioDrawer => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF202020)
+      : surfacePanel;
+  Color get studioCard => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
       ? const Color(0xFF1B1B1B)
       : surfacePopover.withValues(alpha: 0.54);
-  Color get studioComposer =>
-      brightness == Brightness.dark ? const Color(0xFF262626) : inputBg;
-  Color get studioBubble =>
-      brightness == Brightness.dark ? const Color(0xFF242424) : userMsgBg;
-  Color get studioControl =>
-      brightness == Brightness.dark ? const Color(0xFF2C2C2C) : surfacePanel;
-  Color get studioActivityRow =>
-      brightness == Brightness.dark ? const Color(0xFF191919) : surfacePanel;
-  Color get studioRailSelected =>
-      brightness == Brightness.dark ? const Color(0xFF333333) : surfacePressed;
-  Color get studioTaskSelected =>
-      brightness == Brightness.dark ? const Color(0xFF2A2A2A) : surfacePressed;
+  Color get studioComposer => highContrast
+      ? inputBg
+      : brightness == Brightness.dark
+      ? const Color(0xFF262626)
+      : inputBg;
+  Color get studioBubble => highContrast
+      ? userMsgBg
+      : brightness == Brightness.dark
+      ? const Color(0xFF242424)
+      : userMsgBg;
+  Color get studioControl => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF2C2C2C)
+      : surfacePanel;
+  Color get studioActivityRow => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF191919)
+      : surfacePanel;
+  Color get studioRailSelected => highContrast
+      ? surfacePressed
+      : brightness == Brightness.dark
+      ? const Color(0xFF333333)
+      : surfacePressed;
+  Color get studioTaskSelected => highContrast
+      ? surfacePressed
+      : brightness == Brightness.dark
+      ? const Color(0xFF2A2A2A)
+      : surfacePressed;
   Color get studioDivider => outlineSoft;
   Color get studioHover => surfaceHover;
 
@@ -122,6 +155,7 @@ class ThemeTokens {
     required this.name,
     required this.displayName,
     required this.brightness,
+    this.highContrast = false,
     required this.bgDark,
     required this.bgMain,
     required this.bgLight,
@@ -180,6 +214,80 @@ class ThemeTokens {
        _surfacePressed = surfacePressed,
        _outlineSoft = outlineSoft,
        _outlineFocus = outlineFocus;
+
+  /// Returns a high-contrast rendering of the saved theme without changing
+  /// its name or persistence identity. Keeping this here means Studio's
+  /// direct token consumers and Material controls change together.
+  ThemeTokens get highContrastVariant {
+    if (highContrast) return this;
+    final dark = brightness == Brightness.dark;
+    return ThemeTokens(
+      name: name,
+      displayName: '$displayName High Contrast',
+      brightness: brightness,
+      highContrast: true,
+      bgDark: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgMain: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgLight: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgLighter: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      border: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      borderLight: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textPrimary: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textSecondary: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textMuted: dark ? const Color(0xFFE5E5E5) : const Color(0xFF262626),
+      textDisabled: dark ? const Color(0xFFBDBDBD) : const Color(0xFF595959),
+      accent: const Color(0xFF005FCC),
+      accentHover: const Color(0xFF004494),
+      success: dark ? const Color(0xFF00D26A) : const Color(0xFF006E2E),
+      warning: dark ? const Color(0xFFFFCC00) : const Color(0xFF7A4B00),
+      error: const Color(0xFFB00020),
+      info: dark ? const Color(0xFF66B2FF) : const Color(0xFF005FCC),
+      activityBarBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      activityBarIcon: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      activityBarIconActive: dark
+          ? const Color(0xFFFFFFFF)
+          : const Color(0xFF000000),
+      activityBarBadge: const Color(0xFF005FCC),
+      editorBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      editorLineHighlight: dark
+          ? const Color(0xFF1A1A1A)
+          : const Color(0xFFE5E5E5),
+      editorSelection: dark ? const Color(0xFF003A80) : const Color(0xFFB3D7FF),
+      editorCursor: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      editorLineNumber: dark
+          ? const Color(0xFFE5E5E5)
+          : const Color(0xFF262626),
+      editorLineNumberActive: dark
+          ? const Color(0xFFFFFFFF)
+          : const Color(0xFF000000),
+      userMsgBg: dark ? const Color(0xFF111111) : const Color(0xFFF2F2F2),
+      agentMsgBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      codeBlockBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      codeBlockBorder: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      inputBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      inputBorder: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      inputFocusBorder: dark
+          ? const Color(0xFF00E5FF)
+          : const Color(0xFF005FCC),
+      tabActive: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      tabInactive: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      tabHover: dark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E5E5),
+      tabIndicator: dark ? const Color(0xFF00E5FF) : const Color(0xFF005FCC),
+      statusBarBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      statusBarText: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      circuitColor: const Color(0xFF005FCC),
+      terminalBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      terminalText: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      surfaceBase: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfacePanel: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfaceInset: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfacePopover: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfaceHover: dark ? const Color(0x33FFFFFF) : const Color(0x26000000),
+      surfacePressed: dark ? const Color(0xFF003A80) : const Color(0xFFB3D7FF),
+      outlineSoft: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      outlineFocus: dark ? const Color(0xFF00E5FF) : const Color(0xFF005FCC),
+    );
+  }
 
   static const dark = ThemeTokens(
     name: 'dark',

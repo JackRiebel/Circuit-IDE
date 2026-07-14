@@ -55,10 +55,22 @@ class _MemoriesPanelState extends ConsumerState<MemoriesPanel> {
               _ToolbarBtn(
                 icon: Icons.refresh,
                 tooltip: 'Refresh',
-                onTap: () =>
-                    ref.read(memoriesProvider.notifier).loadMemories(),
+                onTap: () => ref.read(memoriesProvider.notifier).loadMemories(),
               ),
             ],
+          ),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.lg,
+            Spacing.xs,
+            Spacing.lg,
+            Spacing.sm,
+          ),
+          child: Text(
+            'Instructions stay in the Context drawer. This view contains durable user-authored or reviewed learned notes; editor, selection, and terminal context are turn-only.',
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
           ),
         ),
 
@@ -76,12 +88,12 @@ class _MemoriesPanelState extends ConsumerState<MemoriesPanel> {
                   ),
                 )
               : memoriesState.memories.isEmpty
-                  ? _EmptyState(tokens: tokens)
-                  : _MemoriesList(
-                      memories: memoriesState.memories,
-                      onEdit: (m) => _showMemoryEditor(context, m),
-                      onDelete: (m) => _confirmDelete(context, m),
-                    ),
+              ? _EmptyState(tokens: tokens)
+              : _MemoriesList(
+                  memories: memoriesState.memories,
+                  onEdit: (m) => _showMemoryEditor(context, m),
+                  onDelete: (m) => _confirmDelete(context, m),
+                ),
         ),
       ],
     );
@@ -106,19 +118,19 @@ class _MemoriesPanelState extends ConsumerState<MemoriesPanel> {
         ),
         title: Text(
           'Delete Memory',
-          style:
-              TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
+          style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
         ),
         content: Text(
           'Delete "${memory.name}"? This cannot be undone.',
-          style: TextStyle(
-              color: tokens.textSecondary, fontSize: FontSizes.sm),
+          style: TextStyle(color: tokens.textSecondary, fontSize: FontSizes.sm),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel',
-                style: TextStyle(color: tokens.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: tokens.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -155,22 +167,26 @@ class _MemoriesList extends StatelessWidget {
       children: [
         if (project.isNotEmpty) ...[
           _SectionHeader(label: 'Project Memories (${project.length})'),
-          ...project.map((m) => MemoryItem(
-                key: ValueKey(m.filePath),
-                memory: m,
-                onEdit: () => onEdit(m),
-                onDelete: () => onDelete(m),
-              )),
+          ...project.map(
+            (m) => MemoryItem(
+              key: ValueKey(m.filePath),
+              memory: m,
+              onEdit: () => onEdit(m),
+              onDelete: () => onDelete(m),
+            ),
+          ),
         ],
         if (global.isNotEmpty) ...[
           if (project.isNotEmpty) const SizedBox(height: Spacing.lg),
           _SectionHeader(label: 'Global Memories (${global.length})'),
-          ...global.map((m) => MemoryItem(
-                key: ValueKey(m.filePath),
-                memory: m,
-                onEdit: () => onEdit(m),
-                onDelete: () => onDelete(m),
-              )),
+          ...global.map(
+            (m) => MemoryItem(
+              key: ValueKey(m.filePath),
+              memory: m,
+              onEdit: () => onEdit(m),
+              onDelete: () => onDelete(m),
+            ),
+          ),
         ],
       ],
     );
@@ -239,10 +255,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Memories help the AI learn your\npreferences across sessions.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
         ],
       ),

@@ -12,8 +12,7 @@ class MemoryEditorDialog extends ConsumerStatefulWidget {
   const MemoryEditorDialog({super.key, this.existing});
 
   @override
-  ConsumerState<MemoryEditorDialog> createState() =>
-      _MemoryEditorDialogState();
+  ConsumerState<MemoryEditorDialog> createState() => _MemoryEditorDialogState();
 }
 
 class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
@@ -24,10 +23,10 @@ class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
   @override
   void initState() {
     super.initState();
-    _nameController =
-        TextEditingController(text: widget.existing?.name ?? '');
-    _contentController =
-        TextEditingController(text: widget.existing?.content ?? '');
+    _nameController = TextEditingController(text: widget.existing?.name ?? '');
+    _contentController = TextEditingController(
+      text: widget.existing?.content ?? '',
+    );
     _isGlobal = widget.existing?.isGlobal ?? false;
   }
 
@@ -72,7 +71,9 @@ class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
               controller: _nameController,
               autofocus: true,
               style: TextStyle(
-                  color: tokens.textPrimary, fontSize: FontSizes.sm),
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+              ),
               decoration: _inputDecoration(tokens, 'e.g., coding-preferences'),
             ),
             const SizedBox(height: Spacing.xl),
@@ -101,10 +102,10 @@ class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
                 decoration: _inputDecoration(
                   tokens,
                   'What should the AI remember?\n\n'
-                      'Examples:\n'
-                      '- Prefers const constructors\n'
-                      '- Uses Riverpod for state management\n'
-                      '- Project follows clean architecture',
+                  'Examples:\n'
+                  '- Prefers const constructors\n'
+                  '- Uses Riverpod for state management\n'
+                  '- Project follows clean architecture',
                 ),
               ),
             ),
@@ -141,8 +142,7 @@ class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child:
-              Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
+          child: Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
         ),
         TextButton(
           onPressed: _save,
@@ -182,12 +182,17 @@ class _MemoryEditorDialogState extends ConsumerState<MemoryEditorDialog> {
     final content = _contentController.text.trim();
     if (name.isEmpty || content.isEmpty) return;
 
-    final safeName =
-        name.replaceAll(RegExp(r'[^\w\-]'), '-').toLowerCase();
-    ref.read(memoriesProvider.notifier).saveMemory(
+    final safeName = name.replaceAll(RegExp(r'[^\w\-]'), '-').toLowerCase();
+    ref
+        .read(memoriesProvider.notifier)
+        .saveMemory(
           safeName,
           content,
           global: _isGlobal,
+          provenance:
+              widget.existing?.provenance ?? MemoryProvenance.userAuthored,
+          createdAt: widget.existing?.createdAt,
+          lastUsedAt: widget.existing?.lastUsedAt,
         );
     Navigator.of(context).pop();
   }

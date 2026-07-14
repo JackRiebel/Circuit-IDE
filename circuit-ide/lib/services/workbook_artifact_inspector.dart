@@ -1,8 +1,15 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
+
+import 'worker_cancellation.dart';
+import 'office_package_relationship_inspector.dart';
+import 'zip_package_integrity.dart';
 
 class WorkbookArtifactInspection {
   final bool hasZipSignature;
+  final bool hasValidZipContainer;
+  final bool hasResolvablePackageRelationships;
   final bool hasWorkbookXml;
   final bool hasStylesXml;
   final bool hasCoreProperties;
@@ -17,6 +24,8 @@ class WorkbookArtifactInspection {
 
   const WorkbookArtifactInspection({
     required this.hasZipSignature,
+    required this.hasValidZipContainer,
+    required this.hasResolvablePackageRelationships,
     required this.hasWorkbookXml,
     required this.hasStylesXml,
     required this.hasCoreProperties,
@@ -32,6 +41,8 @@ class WorkbookArtifactInspection {
 
   bool get isStructurallyValid {
     return hasZipSignature &&
+        hasValidZipContainer &&
+        hasResolvablePackageRelationships &&
         hasWorkbookXml &&
         hasStylesXml &&
         hasCoreProperties &&
@@ -45,6 +56,46 @@ class WorkbookArtifactInspection {
         hasAutoFilters &&
         hasStyledHeaders &&
         hasColumnWidths;
+  }
+
+  Map<String, Object?> toMetadata() {
+    final checks = <String, bool>{
+      'ZIP package header': hasZipSignature,
+      'ZIP central-directory integrity': hasValidZipContainer,
+      'OOXML relationship targets': hasResolvablePackageRelationships,
+      'xl/workbook.xml': hasWorkbookXml,
+      'xl/styles.xml': hasStylesXml,
+      'core properties': hasCoreProperties,
+      'CircuitCode creator': generatedByCircuitCode,
+      'frozen header panes': hasFrozenHeaderPanes,
+      'auto filters': hasAutoFilters,
+      'styled headers': hasStyledHeaders,
+      'column widths': hasColumnWidths,
+      'at least one worksheet': sheetNames.isNotEmpty,
+    };
+    final failedChecks = checks.entries
+        .where((entry) => !entry.value)
+        .map((entry) => entry.key)
+        .toList(growable: false);
+    return {
+      'workbookInspectionVersion': '1.0',
+      'workbookInspectionStatus': failedChecks.isEmpty
+          ? 'Verified'
+          : 'Needs review',
+      'workbookStructuralValid': isStructurallyValid,
+      'workbookEnterpriseStructure': hasEnterpriseWorkbookStructure,
+      'workbookInspectionFailedChecks': failedChecks,
+      'workbookInspectionFailedCheckCount': failedChecks.length,
+      'workbookParsedSheetCount': sheetNames.length,
+      'workbookZipContainerValid': hasValidZipContainer,
+      'workbookRelationshipTargetsValid': hasResolvablePackageRelationships,
+      'workbookParsedSheetNames': sheetNames,
+      'workbookParsedRowCounts': rowCounts,
+      'workbookHasFrozenHeaderPanes': hasFrozenHeaderPanes,
+      'workbookHasAutoFilters': hasAutoFilters,
+      'workbookHasStyledHeaders': hasStyledHeaders,
+      'workbookHasColumnWidths': hasColumnWidths,
+    };
   }
 
   bool hasSheets(Iterable<String> requiredSheets) {
@@ -72,7 +123,25 @@ class WorkbookArtifactInspection {
 class WorkbookArtifactInspector {
   const WorkbookArtifactInspector();
 
+  /// Parses a generated workbook away from the UI isolate before it is
+  /// published. The result is metadata-only so it remains safe to transfer
+  /// back to the caller and to persist with the artifact record.
+  Future<Map<String, Object?>> inspectMetadataInWorker(
+    List<int> bytes, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Map<String, Object?>>(
+      entryPoint: _workbookInspectionWorkerEntry,
+      arguments: {'bytes': bytes},
+      cancellationToken: cancellationToken,
+      decodeResult: _metadataFromWorkerResult,
+    );
+  }
+
   WorkbookArtifactInspection inspect(List<int> bytes) {
+    final zipInspection = const ZipPackageInspector().inspect(bytes);
+    final relationshipInspection = const OfficePackageRelationshipInspector()
+        .inspect(zipInspection);
     final files = _readZipEntries(Uint8List.fromList(bytes));
     final workbookXml = _utf8(files['xl/workbook.xml']);
     final stylesXml = _utf8(files['xl/styles.xml']);
@@ -96,12 +165,10 @@ class WorkbookArtifactInspector {
         .join('\n');
 
     return WorkbookArtifactInspection(
-      hasZipSignature:
-          bytes.length >= 4 &&
-          bytes[0] == 0x50 &&
-          bytes[1] == 0x4b &&
-          bytes[2] == 0x03 &&
-          bytes[3] == 0x04,
+      hasZipSignature: zipInspection.hasZipHeader,
+      hasValidZipContainer: zipInspection.isStructurallyValid,
+      hasResolvablePackageRelationships:
+          relationshipInspection.hasResolvableInternalTargets,
       hasWorkbookXml: workbookXml != null && workbookXml.contains('<workbook'),
       hasStylesXml: stylesXml != null && stylesXml.contains('<styleSheet'),
       hasCoreProperties:
@@ -202,4 +269,27 @@ class WorkbookArtifactInspector {
         .replaceAll('&gt;', '>')
         .replaceAll('&amp;', '&');
   }
+}
+
+void _workbookInspectionWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final bytes = arguments['bytes'];
+    if (bytes is! List<int>) {
+      throw StateError('Missing workbook bytes for inspection.');
+    }
+    replyPort.send({
+      'result': const WorkbookArtifactInspector().inspect(bytes).toMetadata(),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Map<String, Object?> _metadataFromWorkerResult(Object? result) {
+  if (result is! Map) {
+    throw StateError('Workbook inspector returned malformed metadata.');
+  }
+  return Map<String, Object?>.from(result);
 }

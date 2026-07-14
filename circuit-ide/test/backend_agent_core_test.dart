@@ -4,6 +4,7 @@ import 'package:circuit_ide/agent/agent.dart';
 import 'package:circuit_ide/agent/config/config.dart';
 import 'package:circuit_ide/agent/context/context_manager.dart';
 import 'package:circuit_ide/agent/providers/cisco_provider.dart';
+import 'package:circuit_ide/agent/providers/cisco_response_parser.dart';
 import 'package:circuit_ide/agent/providers/provider_interface.dart';
 import 'package:circuit_ide/agent/security/agent_tool_permission_policy.dart';
 import 'package:circuit_ide/agent/studio_turn_runner.dart';
@@ -295,10 +296,16 @@ void main() {
     const forbiddenSnippets = {
       'chatProvider',
       'agentServiceProvider',
+      'agentRequestProvider',
+      'agentRunProvider',
+      'AgentRequestLane',
+      'AgentRunKind',
       'ChatNotifier(',
       'AgentService(',
       'CircuitAgent(',
       'package:circuit_ide/state/chat_provider.dart',
+      'package:circuit_ide/state/agent_request_provider.dart',
+      'package:circuit_ide/state/agent_run_provider.dart',
       'package:circuit_ide/services/agent_service.dart',
       'package:circuit_ide/agent/agent.dart',
       '../state/chat_provider.dart',
@@ -366,7 +373,7 @@ void main() {
     expect(IntentContract.forIntent(TurnIntent.code).mayApplyPatch, isFalse);
   });
 
-  test('Studio tool phases do not expose external or MCP surfaces', () {
+  test('Studio tool phases confine external and MCP surfaces', () {
     for (final mode in AgentToolMode.values) {
       for (final phase in AgentToolPhase.values) {
         final tools = ToolRegistry.toolsForModeAndPhase(
@@ -383,13 +390,22 @@ void main() {
           isEmpty,
           reason: 'GitHub tools must not be exposed in Studio core phases.',
         );
-        expect(
-          tools.intersection({'web_fetch', 'web_search', 'orchestrate'}),
-          isEmpty,
-          reason:
-              'Network and subagent tools must remain quarantined from Studio '
-              'core phases until they obey the same turn contract.',
-        );
+        if (mode == AgentToolMode.research) {
+          expect(
+            tools.difference({'web_fetch', 'web_search'}),
+            isEmpty,
+            reason:
+                'Research may use only its explicit, approval-gated web tools.',
+          );
+        } else {
+          expect(
+            tools.intersection({'web_fetch', 'web_search', 'orchestrate'}),
+            isEmpty,
+            reason:
+                'Network and subagent tools must remain quarantined from '
+                'non-Research Studio phases.',
+          );
+        }
       }
     }
   });
@@ -3348,6 +3364,61 @@ void main() {
     },
   );
 
+  test(
+    'StudioTurnRunner gives Research one bounded source repair round',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'runner_research_repair_',
+      );
+      addTearDown(() => _delete(root));
+      final events = EventBus();
+      addTearDown(events.dispose);
+      final lifecycle = <ProviderLifecycleEventKind>[];
+      events.on(EventType.providerLifecycle, (event) {
+        final lifecycleEvent = event.data['event'] as ProviderLifecycleEvent?;
+        if (lifecycleEvent != null) lifecycle.add(lifecycleEvent.kind);
+      });
+      final provider = _ScriptedProvider([
+        const [
+          ChatChunk(content: 'The rollout is active.'),
+          ChatChunk(finishReason: 'stop', isDone: true),
+        ],
+        const [
+          ChatChunk(content: 'The rollout is still active.'),
+          ChatChunk(finishReason: 'stop', isDone: true),
+        ],
+      ]);
+      final runner = StudioTurnRunner(
+        provider: provider,
+        workingDir: root.path,
+        events: events,
+        model: 'gpt-5-nano',
+        toolExecutor: ToolExecutor(workingDir: root.path, autoApprove: true),
+      );
+
+      await expectLater(
+        runner.run(
+          requestId: 'research-repair',
+          turnId: 'turn-research-repair',
+          userMessage: 'Research the current rollout state',
+          history: const [],
+          toolMode: AgentToolMode.research,
+          intent: TurnIntent.ask,
+        ),
+        throwsA(isA<StudioTurnOutcomeValidationException>()),
+      );
+
+      expect(
+        lifecycle.where(
+          (kind) => kind == ProviderLifecycleEventKind.outcomeRepair,
+        ),
+        hasLength(1),
+      );
+      expect(provider.exposedTools, hasLength(2));
+      expect(provider.exposedTools, everyElement({'web_search', 'web_fetch'}));
+    },
+  );
+
   test('StudioTurnRunner emits no-first-byte diagnostics', () async {
     final root = await Directory.systemTemp.createTemp('runner_no_bytes_');
     addTearDown(() => _delete(root));
@@ -4543,6 +4614,11 @@ void main() {
       name: 'run_command',
       arguments: {'command': 'flutter test'},
     );
+    const modifiedFirstCommand = ToolCallInfo(
+      id: 'test-command-1',
+      name: 'run_command',
+      arguments: {'command': 'flutter test --coverage'},
+    );
 
     final turnGrantKey = policy.approvalGrantKeyFor(firstCommand);
     final onceGrantKey = policy.onceApprovalGrantKeyFor(firstCommand);
@@ -4584,12 +4660,20 @@ void main() {
       ToolPermissionVerdict.ask,
     );
     expect(
+      oneShotPolicy.evaluate(modifiedFirstCommand).verdict,
+      ToolPermissionVerdict.ask,
+    );
+    expect(
       wrongOnceKeyPolicy.evaluate(firstCommand).verdict,
       ToolPermissionVerdict.ask,
     );
     expect(
       turnPolicy.evaluate(secondCommand).reason,
       ToolPermissionReason.approvalGranted,
+    );
+    expect(
+      turnPolicy.evaluate(modifiedFirstCommand).verdict,
+      ToolPermissionVerdict.ask,
     );
   });
 

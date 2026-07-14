@@ -49,14 +49,48 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
   void initState() {
     super.initState();
     _controller = CodeLineEditingController.fromText(widget.tab.content);
+    _controller.addListener(_syncSelection);
     _findController = CodeFindController(_controller);
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_syncSelection);
     _controller.dispose();
     _findController.dispose();
     super.dispose();
+  }
+
+  void _syncSelection() {
+    final selection = _controller.selection;
+    if (selection.isCollapsed) {
+      ref.read(editorProvider.notifier).updateSelection(widget.tabIndex, '');
+      return;
+    }
+    final buffer = StringBuffer();
+    for (
+      var index = selection.startIndex;
+      index <= selection.endIndex;
+      index++
+    ) {
+      final line = _controller.codeLines[index].text;
+      final start = index == selection.startIndex
+          ? selection.startOffset.clamp(0, line.length)
+          : 0;
+      final end = index == selection.endIndex
+          ? selection.endOffset.clamp(0, line.length)
+          : line.length;
+      if (index > selection.startIndex) buffer.writeln();
+      if (end > start) buffer.write(line.substring(start, end));
+    }
+    ref
+        .read(editorProvider.notifier)
+        .updateSelection(
+          widget.tabIndex,
+          buffer.toString(),
+          startLine: selection.startIndex + 1,
+          endLine: selection.endIndex + 1,
+        );
   }
 
   Mode? _getLanguageMode(String language) {
@@ -103,31 +137,32 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
           controller: _controller,
           findController: _findController,
           scrollController: widget.scrollController,
-          indicatorBuilder: (context, editingController, chunkController, notifier) {
-            return Row(
-              children: [
-                DefaultCodeLineNumber(
-                  controller: editingController,
-                  notifier: notifier,
-                  textStyle: TextStyle(
-                    color: tokens.textMuted.withValues(alpha: 0.5),
-                    fontSize: editorState.fontSize,
-                    fontFamily: 'JetBrains Mono',
-                  ),
-                  focusedTextStyle: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: editorState.fontSize,
-                    fontFamily: 'JetBrains Mono',
-                  ),
-                ),
-                DefaultCodeChunkIndicator(
-                  width: 20,
-                  controller: chunkController,
-                  notifier: notifier,
-                ),
-              ],
-            );
-          },
+          indicatorBuilder:
+              (context, editingController, chunkController, notifier) {
+                return Row(
+                  children: [
+                    DefaultCodeLineNumber(
+                      controller: editingController,
+                      notifier: notifier,
+                      textStyle: TextStyle(
+                        color: tokens.textMuted.withValues(alpha: 0.5),
+                        fontSize: editorState.fontSize,
+                        fontFamily: 'JetBrains Mono',
+                      ),
+                      focusedTextStyle: TextStyle(
+                        color: tokens.textSecondary,
+                        fontSize: editorState.fontSize,
+                        fontFamily: 'JetBrains Mono',
+                      ),
+                    ),
+                    DefaultCodeChunkIndicator(
+                      width: 20,
+                      controller: chunkController,
+                      notifier: notifier,
+                    ),
+                  ],
+                );
+              },
           style: CodeEditorStyle(
             fontSize: editorState.fontSize,
             fontFamily: 'JetBrains Mono',
@@ -147,10 +182,9 @@ class _CodeEditorWidgetState extends ConsumerState<CodeEditorWidget> {
           wordWrap: editorState.wordWrap,
           readOnly: false,
           onChanged: (value) {
-            ref.read(editorProvider.notifier).updateContent(
-                  widget.tabIndex,
-                  _controller.text,
-                );
+            ref
+                .read(editorProvider.notifier)
+                .updateContent(widget.tabIndex, _controller.text);
           },
         ),
       ),

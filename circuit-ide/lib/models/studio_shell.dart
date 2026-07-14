@@ -3,7 +3,7 @@ import 'specialist_agent.dart';
 
 enum StudioMode { home, project, task, review, settings }
 
-enum StudioPromptMode { ask, code, fix, review }
+enum StudioPromptMode { ask, research, code, fix, review }
 
 enum StudioExecutionMode { local, worktree }
 
@@ -16,6 +16,8 @@ class StudioShellState {
   final StudioPromptMode promptMode;
   final StudioExecutionMode executionMode;
   final SpecialistAgentId specialistAgentId;
+  final String? customAgentId;
+  final bool autoCustomAgent;
   final String composerText;
   final bool rightProgressPanelVisible;
   final bool planModeEnabled;
@@ -29,6 +31,8 @@ class StudioShellState {
     this.promptMode = StudioPromptMode.code,
     this.executionMode = StudioExecutionMode.local,
     this.specialistAgentId = SpecialistAgentId.auto,
+    this.customAgentId,
+    this.autoCustomAgent = false,
     this.composerText = '',
     this.rightProgressPanelVisible = true,
     this.planModeEnabled = false,
@@ -43,6 +47,8 @@ class StudioShellState {
     StudioPromptMode? promptMode,
     StudioExecutionMode? executionMode,
     SpecialistAgentId? specialistAgentId,
+    Object? customAgentId = _sentinel,
+    bool? autoCustomAgent,
     String? composerText,
     bool? rightProgressPanelVisible,
     bool? planModeEnabled,
@@ -60,6 +66,10 @@ class StudioShellState {
       promptMode: promptMode ?? this.promptMode,
       executionMode: executionMode ?? this.executionMode,
       specialistAgentId: specialistAgentId ?? this.specialistAgentId,
+      customAgentId: identical(customAgentId, _sentinel)
+          ? this.customAgentId
+          : customAgentId as String?,
+      autoCustomAgent: autoCustomAgent ?? this.autoCustomAgent,
       composerText: composerText ?? this.composerText,
       rightProgressPanelVisible:
           rightProgressPanelVisible ?? this.rightProgressPanelVisible,
@@ -81,6 +91,7 @@ extension StudioPromptModeLabels on StudioPromptMode {
   String get label {
     return switch (this) {
       StudioPromptMode.ask => 'Ask',
+      StudioPromptMode.research => 'Research',
       StudioPromptMode.code => 'Code',
       StudioPromptMode.fix => 'Fix',
       StudioPromptMode.review => 'Review',
@@ -90,6 +101,7 @@ extension StudioPromptModeLabels on StudioPromptMode {
   AgentTaskProfile? get agentProfile {
     return switch (this) {
       StudioPromptMode.ask => null,
+      StudioPromptMode.research => null,
       StudioPromptMode.code => AgentTaskProfile.patch,
       StudioPromptMode.fix => AgentTaskProfile.investigate,
       StudioPromptMode.review => AgentTaskProfile.review,
@@ -130,7 +142,11 @@ class StudioTaskSummary {
       title: task.goal,
       projectLabel: projectLabel,
       statusLabel: studioTaskStatusLabel(task.status),
-      detail: task.result ?? task.error ?? _profileLabel(task.profile),
+      detail:
+          task.status == AgentTaskStatus.queued &&
+              task.workspaceMode == AgentTaskWorkspaceMode.currentWorkspace
+          ? 'Waiting for current workspace availability'
+          : task.result ?? task.error ?? _profileLabel(task.profile),
       artifactCount: task.artifacts.length,
       changeCount: task.patchSetIds.length,
       needsReview: task.status == AgentTaskStatus.waitingForApproval,
@@ -156,6 +172,7 @@ String studioTaskStatusLabel(AgentTaskStatus status) {
   return switch (status) {
     AgentTaskStatus.queued => 'Queued',
     AgentTaskStatus.running => 'Working',
+    AgentTaskStatus.paused => 'Paused',
     AgentTaskStatus.waitingForApproval => 'Needs review',
     AgentTaskStatus.completed => 'Done',
     AgentTaskStatus.failed => 'Failed',
@@ -166,6 +183,7 @@ String studioTaskStatusLabel(AgentTaskStatus status) {
 String _profileLabel(AgentTaskProfile profile) {
   return switch (profile) {
     AgentTaskProfile.investigate => 'Investigating the safest path',
+    AgentTaskProfile.research => 'Collecting cited web evidence',
     AgentTaskProfile.plan => 'Creating a plan',
     AgentTaskProfile.patch => 'Preparing code changes',
     AgentTaskProfile.review => 'Reviewing current work',

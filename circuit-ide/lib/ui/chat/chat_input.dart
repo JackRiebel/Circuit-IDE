@@ -369,9 +369,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           // Input row
           CompositedTransformTarget(
             link: _layerLink,
-            child: KeyboardListener(
-              focusNode: FocusNode(),
-              onKeyEvent: (event) => _handleKeyEvent(event),
+            child: Focus(
+              onKeyEvent: (_, event) => _handleKeyEvent(event)
+                  ? KeyEventResult.handled
+                  : KeyEventResult.ignored,
               child: Container(
                 decoration: BoxDecoration(
                   color: tokens.inputBg,

@@ -6,15 +6,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/utils/logger.dart';
 import '../models/semantic_search_models.dart';
 import '../services/semantic_index.dart';
+import '../services/worker_cancellation.dart';
 import '../state/connection_provider.dart';
 import '../state/file_tree_provider.dart';
 
 class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
   final SemanticIndex _index = SemanticIndex();
   Timer? _debounceTimer;
+  WorkerCancellationToken? _indexCancellation;
 
   @override
-  SemanticSearchState build() => const SemanticSearchState();
+  SemanticSearchState build() {
+    ref.onDispose(() {
+      _debounceTimer?.cancel();
+      _indexCancellation?.cancel('Semantic search disposed.');
+    });
+    return const SemanticSearchState();
+  }
 
   /// Toggle semantic search mode on/off.
   void toggleSemanticMode() {
@@ -34,6 +42,9 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
 
   /// Build or rebuild the semantic index for the current project.
   Future<void> buildIndex() async {
+    _indexCancellation?.cancel('Superseded by a newer semantic index build.');
+    final cancellation = WorkerCancellationToken();
+    _indexCancellation = cancellation;
     final rootPath = ref.read(fileTreeProvider).rootPath;
     if (rootPath == null) {
       state = state.copyWith(error: 'No project open');
@@ -48,7 +59,19 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
     );
 
     // Try loading cached index first
-    final loaded = await _index.loadIndex(rootPath);
+    bool loaded;
+    try {
+      loaded = await _index.loadIndex(
+        rootPath,
+        cancellationToken: cancellation,
+      );
+    } on WorkerCancelledException {
+      if (identical(_indexCancellation, cancellation)) {
+        state = state.copyWith(isIndexing: false);
+      }
+      return;
+    }
+    if (!identical(_indexCancellation, cancellation)) return;
     if (loaded && !_index.isStale) {
       state = state.copyWith(
         isIndexing: false,
@@ -59,18 +82,35 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
     }
 
     // Build fresh index
-    await _index.buildIndex(
-      rootPath,
-      onProgress: (indexed, total) {
-        state = state.copyWith(
-          indexedFileCount: indexed,
-          totalFileCount: total,
-        );
-      },
-    );
+    try {
+      await _index.buildIndex(
+        rootPath,
+        cancellationToken: cancellation,
+        onProgress: (indexed, total) {
+          state = state.copyWith(
+            indexedFileCount: indexed,
+            totalFileCount: total,
+          );
+        },
+      );
+    } on WorkerCancelledException {
+      if (identical(_indexCancellation, cancellation)) {
+        state = state.copyWith(isIndexing: false);
+      }
+      return;
+    }
+    if (!identical(_indexCancellation, cancellation)) return;
 
     // Save to disk for next time
-    await _index.saveIndex(rootPath);
+    try {
+      await _index.saveIndex(rootPath, cancellationToken: cancellation);
+    } on WorkerCancelledException {
+      if (identical(_indexCancellation, cancellation)) {
+        state = state.copyWith(isIndexing: false);
+      }
+      return;
+    }
+    if (!identical(_indexCancellation, cancellation)) return;
 
     state = state.copyWith(isIndexing: false);
     Logger.info(
@@ -110,9 +150,7 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
 
   Future<void> _executeSearch(String query) async {
     if (_index.chunkCount == 0) {
-      state = state.copyWith(
-        error: 'Index not built. Building now...',
-      );
+      state = state.copyWith(error: 'Index not built. Building now...');
       await buildIndex();
     }
 
@@ -123,10 +161,7 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
       final candidates = _index.getCandidates(query, limit: 30);
 
       if (candidates.isEmpty) {
-        state = state.copyWith(
-          isSearching: false,
-          results: [],
-        );
+        state = state.copyWith(isSearching: false, results: []);
         return;
       }
 
@@ -162,7 +197,8 @@ class SemanticSearchNotifier extends Notifier<SemanticSearchState> {
         });
       }
 
-      final prompt = '''Given the user's search query and a list of code chunks, rank the most relevant chunks and explain why they match.
+      final prompt =
+          '''Given the user's search query and a list of code chunks, rank the most relevant chunks and explain why they match.
 
 User query: "$query"
 
@@ -226,11 +262,13 @@ Respond with ONLY the JSON array, no other text.''';
         final explanation = map['explanation'] as String?;
 
         if (index >= 0 && index < candidates.length) {
-          results.add(SemanticSearchResult(
-            chunk: candidates[index],
-            score: score.clamp(0.0, 1.0),
-            explanation: explanation,
-          ));
+          results.add(
+            SemanticSearchResult(
+              chunk: candidates[index],
+              score: score.clamp(0.0, 1.0),
+              explanation: explanation,
+            ),
+          );
         }
       }
 
@@ -247,5 +285,5 @@ Respond with ONLY the JSON array, no other text.''';
 
 final semanticSearchProvider =
     NotifierProvider<SemanticSearchNotifier, SemanticSearchState>(
-  SemanticSearchNotifier.new,
-);
+      SemanticSearchNotifier.new,
+    );

@@ -7,6 +7,9 @@ class EditorTab {
   final bool isModified;
   final int cursorLine;
   final int cursorColumn;
+  final String selectedText;
+  final int? selectionStartLine;
+  final int? selectionEndLine;
   final String language;
 
   const EditorTab({
@@ -18,6 +21,9 @@ class EditorTab {
     this.isModified = false,
     this.cursorLine = 1,
     this.cursorColumn = 1,
+    this.selectedText = '',
+    this.selectionStartLine,
+    this.selectionEndLine,
     this.language = 'plaintext',
   });
 
@@ -27,6 +33,9 @@ class EditorTab {
     bool? isModified,
     int? cursorLine,
     int? cursorColumn,
+    String? selectedText,
+    Object? selectionStartLine = _editorSentinel,
+    Object? selectionEndLine = _editorSentinel,
     String? language,
   }) {
     return EditorTab(
@@ -38,10 +47,19 @@ class EditorTab {
       isModified: isModified ?? this.isModified,
       cursorLine: cursorLine ?? this.cursorLine,
       cursorColumn: cursorColumn ?? this.cursorColumn,
+      selectedText: selectedText ?? this.selectedText,
+      selectionStartLine: identical(selectionStartLine, _editorSentinel)
+          ? this.selectionStartLine
+          : selectionStartLine as int?,
+      selectionEndLine: identical(selectionEndLine, _editorSentinel)
+          ? this.selectionEndLine
+          : selectionEndLine as int?,
       language: language ?? this.language,
     );
   }
 }
+
+const _editorSentinel = Object();
 
 class EditorState {
   final List<EditorTab> tabs;

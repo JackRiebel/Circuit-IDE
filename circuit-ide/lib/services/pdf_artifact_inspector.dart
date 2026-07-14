@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:isolate';
+
+import 'worker_cancellation.dart';
 
 class PdfArtifactInspection {
   final bool hasPdfHeader;
@@ -37,6 +40,11 @@ class PdfArtifactInspection {
   final bool hasInfoKeywords;
   final bool hasCustomQualityInfo;
   final bool hasVisualVerificationManifest;
+  final bool hasAccessibilityPolicy;
+  final bool hasMarkedContent;
+  final bool hasStructTreeRoot;
+  final bool hasParentTree;
+  final bool hasTaggedPageContent;
   final bool hasExternalHandoffManifest;
   final bool hasRenderSafeTextFrame;
   final bool hasPageCountConsistency;
@@ -80,6 +88,11 @@ class PdfArtifactInspection {
     required this.hasInfoKeywords,
     required this.hasCustomQualityInfo,
     required this.hasVisualVerificationManifest,
+    this.hasAccessibilityPolicy = false,
+    this.hasMarkedContent = false,
+    this.hasStructTreeRoot = false,
+    this.hasParentTree = false,
+    this.hasTaggedPageContent = false,
     required this.hasExternalHandoffManifest,
     required this.hasRenderSafeTextFrame,
     required this.hasPageCountConsistency,
@@ -126,9 +139,17 @@ class PdfArtifactInspection {
       hasInfoKeywords &&
       hasCustomQualityInfo &&
       hasVisualVerificationManifest &&
+      hasAccessibilityPolicy &&
+      hasTaggedPdfStructure &&
       hasExternalHandoffManifest &&
       hasRenderSafeTextFrame &&
       hasResolvableBookmarkDestinations;
+
+  bool get hasTaggedPdfStructure =>
+      hasMarkedContent &&
+      hasStructTreeRoot &&
+      hasParentTree &&
+      hasTaggedPageContent;
 
   bool containsText(String text) =>
       _normalizedTitle(title).contains(_normalizedTitle(text));
@@ -140,6 +161,23 @@ class PdfArtifactInspection {
 class PdfArtifactInspector {
   const PdfArtifactInspector();
 
+  /// Parses PDF quality signals on a worker isolate before publication.
+  ///
+  /// The page count is included alongside serializable metadata because the
+  /// writer uses it to build preview rows without reconstructing a model on
+  /// the UI isolate.
+  Future<Map<String, Object?>> inspectForArtifactInWorker(
+    List<int> bytes, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Map<String, Object?>>(
+      entryPoint: _pdfInspectionWorkerEntry,
+      arguments: {'bytes': bytes},
+      cancellationToken: cancellationToken,
+      decodeResult: _pdfMetadataFromWorkerResult,
+    );
+  }
+
   PdfArtifactInspection inspect(List<int> bytes) {
     final text = latin1.decode(bytes, allowInvalid: true);
     return PdfArtifactInspection(
@@ -150,8 +188,8 @@ class PdfArtifactInspector {
       pageCount: RegExp(r'/Type /Page\b').allMatches(text).length,
       objectCount: RegExp(r'\n\d+ 0 obj\n').allMatches(text).length,
       hasLetterMediaBox: text.contains('/MediaBox [0 0 612 792]'),
-      hasCircuitHeader: text.contains('CircuitCode generated artifact'),
-      hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
+      hasCircuitHeader: text.contains('54 758 Td'),
+      hasCircuitFooter: text.contains('54 34 Td'),
       hasPageNumberFooter: RegExp(r'Page \d+ of \d+').hasMatch(text),
       hasAccentBar: text.contains('0 0 8 792 re f'),
       hasTableGrid: text.contains(' re S'),
@@ -214,6 +252,17 @@ class PdfArtifactInspector {
           text.contains('/CircuitVisualVerification') &&
           text.contains('Render-safe text frame') &&
           text.contains('Bookmark destinations resolve'),
+      hasAccessibilityPolicy: text.contains('/CircuitAccessibilityPolicy'),
+      hasMarkedContent: text.contains('/MarkInfo << /Marked true >>'),
+      hasStructTreeRoot: text.contains('/Type /StructTreeRoot'),
+      hasParentTree:
+          text.contains('/ParentTree ') && text.contains('/ParentTreeNextKey '),
+      hasTaggedPageContent:
+          RegExp(r'/StructParents\s+\d+').allMatches(text).length ==
+              RegExp(
+                r'/P\s+<<\s*/MCID\s+0\s*>>\s+BDC',
+              ).allMatches(text).length &&
+          text.contains('/Type /StructElem'),
       hasExternalHandoffManifest:
           text.contains('/CircuitExternalHandoffManifest') &&
           text.contains('Review owner:') &&
@@ -226,6 +275,83 @@ class PdfArtifactInspector {
       ),
       title: _titleFromInfo(text),
     );
+  }
+
+  static Map<String, Object?> metadataFor(PdfArtifactInspection inspection) {
+    final failedChecks = <String>[
+      if (!inspection.hasPdfHeader) 'PDF header missing',
+      if (!inspection.hasCatalog) 'Catalog missing',
+      if (!inspection.hasXref) 'xref missing',
+      if (!inspection.hasTrailer) 'Trailer/startxref missing',
+      if (!inspection.hasPageCountConsistency) 'Page count mismatch',
+      if (!inspection.hasResolvableBookmarkDestinations)
+        'Bookmark destinations do not resolve',
+      if (!inspection.hasTaggedPdfStructure)
+        'Tagged PDF reading-order structure missing',
+      if (!inspection.hasExpectedReportChrome)
+        'Expected report chrome incomplete',
+      if (!inspection.hasRenderSafeTextFrame)
+        'Text frame is outside safe bounds',
+    ];
+    return {
+      'pdfInspectionVersion': '1.0',
+      'pdfInspectionStatus': inspection.isStructurallyValid
+          ? (inspection.hasExpectedReportChrome
+                ? 'Verified'
+                : 'Structurally valid - review chrome')
+          : 'Failed',
+      'pdfStructuralValid': inspection.isStructurallyValid,
+      'pdfExpectedReportChrome': inspection.hasExpectedReportChrome,
+      'pdfInspectionFailedChecks': failedChecks,
+      'pdfInspectionFailedCheckCount': failedChecks.length,
+      'pdfParsedTitle': inspection.title,
+      'pdfParsedPageCount': inspection.pageCount,
+      'pdfObjectCount': inspection.objectCount,
+      'pdfHasHeader': inspection.hasPdfHeader,
+      'pdfHasCatalog': inspection.hasCatalog,
+      'pdfHasXref': inspection.hasXref,
+      'pdfHasTrailer': inspection.hasTrailer,
+      'pdfHasOutlineTree': inspection.hasOutlineTree,
+      'pdfHasReportOverviewBookmark': inspection.hasReportOverviewBookmark,
+      'pdfHasLeadDecisionBookmark': inspection.hasLeadDecisionBookmark,
+      'pdfHasExecutiveDecisionBookmark':
+          inspection.hasExecutiveDecisionBookmark,
+      'pdfHasValidationBookmark': inspection.hasValidationBookmark,
+      'pdfHasResolvableBookmarkDestinations':
+          inspection.hasResolvableBookmarkDestinations,
+      'pdfHasPageCountConsistency': inspection.hasPageCountConsistency,
+      'pdfHasRenderSafeTextFrame': inspection.hasRenderSafeTextFrame,
+      'pdfHasCircuitHeader': inspection.hasCircuitHeader,
+      'pdfHasCircuitFooter': inspection.hasCircuitFooter,
+      'pdfHasPageNumberFooter': inspection.hasPageNumberFooter,
+      'pdfHasLeadDecisionCallout': inspection.hasLeadDecisionCallout,
+      'pdfHasExecutiveDecisionBrief': inspection.hasExecutiveDecisionBrief,
+      'pdfHasRecommendationSummary': inspection.hasRecommendationSummary,
+      'pdfHasRiskRegister': inspection.hasRiskRegister,
+      'pdfHasNextStepActionPlan': inspection.hasNextStepActionPlan,
+      'pdfHasStakeholderReadout': inspection.hasStakeholderReadout,
+      'pdfHasEvidenceConfidenceMatrix': inspection.hasEvidenceConfidenceMatrix,
+      'pdfHasApprovalGates': inspection.hasApprovalGates,
+      'pdfHasValidationChecklist': inspection.hasValidationChecklist,
+      'pdfHasCustomerHandoffScorecard': inspection.hasCustomerHandoffScorecard,
+      'pdfHasCustomerHandoffReadinessMatrix':
+          inspection.hasCustomerHandoffReadinessMatrix,
+      'pdfHasDecisionLog': inspection.hasDecisionLog,
+      'pdfHasDecisionSignOff': inspection.hasDecisionSignOff,
+      'pdfHasExternalHandoffManifest':
+          inspection.hasVisibleExternalHandoffManifest &&
+          inspection.hasExternalHandoffManifest,
+      'pdfHasCustomQualityInfo': inspection.hasCustomQualityInfo,
+      'pdfHasVisualVerificationManifest':
+          inspection.hasVisualVerificationManifest,
+      'pdfHasAccessibilityPolicy': inspection.hasAccessibilityPolicy,
+      'pdfHasMarkedContent': inspection.hasMarkedContent,
+      'pdfHasStructTreeRoot': inspection.hasStructTreeRoot,
+      'pdfHasParentTree': inspection.hasParentTree,
+      'pdfHasTaggedPageContent': inspection.hasTaggedPageContent,
+      'pdfHasTaggedStructure': inspection.hasTaggedPdfStructure,
+      'pdfHasExplicitTableGeometry': inspection.hasExplicitTableGeometry,
+    };
   }
 
   static bool _hasPageCountConsistency(String text) {
@@ -295,4 +421,31 @@ class PdfArtifactInspector {
         .replaceAll('\r', ' ')
         .replaceAll('\n', ' ');
   }
+}
+
+void _pdfInspectionWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final bytes = arguments['bytes'];
+    if (bytes is! List<int>) {
+      throw StateError('Missing PDF bytes for inspection.');
+    }
+    final inspection = const PdfArtifactInspector().inspect(bytes);
+    replyPort.send({
+      'result': <String, Object?>{
+        'pageCount': inspection.pageCount,
+        'metadata': PdfArtifactInspector.metadataFor(inspection),
+      },
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Map<String, Object?> _pdfMetadataFromWorkerResult(Object? result) {
+  if (result is! Map) {
+    throw StateError('PDF inspector returned malformed metadata.');
+  }
+  return Map<String, Object?>.from(result);
 }

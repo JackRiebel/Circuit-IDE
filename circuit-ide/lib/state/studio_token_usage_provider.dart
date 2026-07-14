@@ -14,3 +14,10 @@ final studioTokenUsageForTaskViewProvider =
       final thread = threadState.threadForTaskView(taskId);
       return thread?.tokenUsage ?? const TokenUsage();
     });
+
+final studioLastRequestTokenUsageForTaskViewProvider =
+    Provider.family<TokenUsage, String?>((ref, taskId) {
+      final threadState = ref.watch(studioThreadProvider);
+      final thread = threadState.threadForTaskView(taskId);
+      return thread?.lastRequestTokenUsage ?? const TokenUsage();
+    });

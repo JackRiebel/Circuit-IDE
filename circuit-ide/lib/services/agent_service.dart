@@ -13,7 +13,6 @@ import '../agent/providers/provider_interface.dart';
 import '../agent/providers/provider_registry.dart';
 import '../core/utils/logger.dart';
 import '../agent/mcp/mcp_client.dart';
-import '../agent/tools/orchestrate_tool.dart';
 import '../agent/tools/tool_registry.dart';
 import '../enums/ai_provider.dart';
 import '../enums/connection_status.dart';
@@ -37,7 +36,6 @@ class AgentService {
   CircuitAgent? _agent;
   AIProvider? _provider;
   McpClient? _mcpClient;
-  OrchestrateToolExecutor? _orchestrateTool;
   final ProviderRegistry _providerRegistry = const ProviderRegistry();
   AgentState _state = const AgentState();
 
@@ -179,7 +177,6 @@ class AgentService {
     );
     await _agent!.init();
     _agent!.setMcpClient(_mcpClient);
-    _agent!.setOrchestrateTool(_orchestrateTool);
 
     _updateState(
       (s) => s.copyWith(
@@ -215,11 +212,6 @@ class AgentService {
   void setMcpClient(McpClient? client) {
     _mcpClient = client;
     _agent?.setMcpClient(client);
-  }
-
-  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
-    _orchestrateTool = tool;
-    _agent?.setOrchestrateTool(tool);
   }
 
   /// Expose the agent for orchestration

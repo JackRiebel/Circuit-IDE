@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../agent/studio_turn_runner.dart';
 import '../agent/studio_agent_environment.dart';
 import '../agent/config/models_config.dart';
+import '../agent/delegation/subagent_delegation_service.dart';
+import '../agent/intent/intent_model_classifier.dart';
 import '../agent/providers/provider_interface.dart';
 import '../agent/security/agent_tool_permission_policy.dart';
 import '../agent/tools/tool_executor.dart';
@@ -13,30 +15,33 @@ import '../agent/tools/tool_registry.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
 import '../models/agent_preflight.dart';
-import '../models/agent_request.dart';
-import '../models/agent_run.dart';
 import '../models/agent_tool_permission.dart';
 import '../models/accepted_plan_context.dart';
+import '../models/agent_config_model.dart';
 import '../models/chat_message.dart';
 import '../models/confirmation_request.dart';
 import '../models/context_attachment.dart';
 import '../models/provider_lifecycle_event.dart';
 import '../models/reviewed_edit.dart';
+import '../models/studio_shell.dart';
 import '../models/studio_turn.dart';
 import '../models/workspace_context.dart';
 import '../models/turn_intent.dart';
 import '../services/event_bus.dart';
-import 'agent_request_provider.dart';
-import 'agent_run_provider.dart';
+import '../services/provider_image_input_builder.dart';
+import 'agent_connector_network_review.dart';
 import 'agent_workspace_provider.dart';
 import 'command_run_provider.dart';
-import 'connection_provider.dart';
+import 'connection_provider.dart' show connectionStatusProvider;
+import 'studio_provider_connection.dart';
 import 'settings_provider.dart';
 import 'patch_proposal_provider.dart';
 import 'studio_request_lifecycle_provider.dart';
 import 'studio_thread_provider.dart';
 import 'studio_turn_provider.dart';
 import 'workspace_context_provider.dart';
+
+part 'agent_turn_runtime_approvals.dart';
 
 enum AgentTurnPhase {
   idle,
@@ -61,6 +66,12 @@ final studioTurnTimeoutProvider = Provider<Duration>(
   (ref) => const Duration(minutes: 4),
 );
 
+/// Kept injectable so the routing contract can be evaluated offline without a
+/// connected provider. Production uses the constrained typed classifier.
+final intentModelClassifierProvider = Provider<IntentModelClassifier>(
+  (ref) => const IntentModelClassifier(),
+);
+
 class AgentTurnSession {
   final String requestId;
   final String threadId;
@@ -68,6 +79,7 @@ class AgentTurnSession {
   final String model;
   final TurnIntent intent;
   final String workspaceRoot;
+  final String? customAgentId;
   final AgentTurnPhase phase;
   final DateTime startedAt;
   final String? lastError;
@@ -79,6 +91,7 @@ class AgentTurnSession {
     required this.model,
     required this.intent,
     required this.workspaceRoot,
+    this.customAgentId,
     required this.phase,
     required this.startedAt,
     this.lastError,
@@ -92,6 +105,7 @@ class AgentTurnSession {
       model: model,
       intent: intent,
       workspaceRoot: workspaceRoot,
+      customAgentId: customAgentId,
       phase: phase ?? this.phase,
       startedAt: startedAt,
       lastError: lastError ?? this.lastError,
@@ -99,6 +113,7 @@ class AgentTurnSession {
   }
 }
 
+// ADR-0006: every agent run is scoped through the Studio turn runtime.
 class AgentTurnRuntimeState {
   final Map<String, AgentTurnSession> activeSessions;
 
@@ -117,21 +132,54 @@ class AgentTurnRuntimeState {
   }
 }
 
-class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
+class AgentTurnRuntime extends _AgentTurnRuntimeApprovalController {
   final _runners = <String, StudioTurnRunner>{};
   final _runtimeEvents = <String, EventBus>{};
   final _ownedRuntimeEvents = <String, EventBus>{};
-  final _pendingApprovals = <String, ConfirmationRequest>{};
-  final _approvalRequestIds = <String, String>{};
-  final _turnApprovalGrantKeys = <String, String>{};
 
   @override
   AgentTurnRuntimeState build() => const AgentTurnRuntimeState();
 
+  Future<IntentRoutingDecision> resolveIntentRouting({
+    required String prompt,
+    required StudioPromptMode promptMode,
+    required bool planModeEnabled,
+  }) {
+    final deterministicDecision = IntentClassifier.classifyDecision(
+      prompt,
+      promptMode: promptMode,
+      planModeEnabled: planModeEnabled,
+    );
+    if (state.hasActiveStudioRequest) {
+      return Future.value(
+        deterministicDecision.safeFallback(
+          'Intent routing was deferred because another Studio request is active; continuing as Ask.',
+        ),
+      );
+    }
+    final environmentOverride = ref.read(
+      studioAgentEnvironmentOverrideProvider,
+    );
+    final provider =
+        environmentOverride?.provider ??
+        ref.read(studioAgentConnectionProvider).provider;
+    final model =
+        environmentOverride?.model ?? ref.read(settingsProvider).ciscoModel;
+    return ref
+        .read(intentModelClassifierProvider)
+        .resolve(
+          deterministicDecision: deterministicDecision,
+          prompt: prompt,
+          provider: provider,
+          model: model,
+        );
+  }
+
   Future<AgentPreflightResult> preflightMessage(
     String content,
-    List<ContextAttachment> attachments,
-  ) async {
+    List<ContextAttachment> attachments, {
+    bool requiresTools = false,
+  }) async {
     final issues = <AgentPreflightIssue>[];
     final settings = ref.read(settingsProvider);
     final connectionStatus = ref.read(connectionStatusProvider);
@@ -198,12 +246,28 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           recoveryAction: AgentPreflightRecoveryAction.openSettings,
         ),
       );
-    } else if (modelInfo?.supportsTools == false) {
+    } else if (requiresTools && modelInfo?.supportsTools != true) {
       issues.add(
         const AgentPreflightIssue(
-          severity: AgentPreflightSeverity.warning,
+          severity: AgentPreflightSeverity.blocking,
           message:
-              'Selected model may not support tools. Coding actions may be limited.',
+              'The selected model does not advertise tool calling. Choose a tools-capable model or use Chat mode.',
+          recoveryAction: AgentPreflightRecoveryAction.openSettings,
+        ),
+      );
+    }
+    final imageWithoutHashBoundOcrFallback = attachments.any(
+      (attachment) =>
+          attachment.type == ContextAttachmentType.image &&
+          !ProviderImageInputBuilder.hasHashBoundOcrProvenance(attachment),
+    );
+    if (imageWithoutHashBoundOcrFallback &&
+        modelInfo?.supportsImageInput != true) {
+      issues.add(
+        const AgentPreflightIssue(
+          severity: AgentPreflightSeverity.blocking,
+          message:
+              'The selected model does not advertise image input. Remove the image, attach verified OCR text, or choose a vision-capable model.',
           recoveryAction: AgentPreflightRecoveryAction.openSettings,
         ),
       );
@@ -313,6 +377,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     required String retryPrompt,
     String? displayTitle,
     required bool finishTask,
+    AgentConfigModel? customAgent,
+    String? workspaceRoot,
   }) async {
     if (state.activeSessions.containsKey(requestId)) {
       return;
@@ -335,7 +401,14 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     );
     final provider = environmentOverride?.provider ?? connection.provider;
     final workspace = ref.read(workspaceContextProvider);
-    final workingDir = environmentOverride?.workspaceRoot ?? workspace.rootPath;
+    // A task may be bound to an isolated Git worktree. Never derive the tool
+    // root from the visible project tree when the caller supplied that task
+    // root; every read, command, patch, and permission check below is built
+    // from this one value.
+    final workingDir =
+        environmentOverride?.workspaceRoot ??
+        workspaceRoot ??
+        workspace.rootPath;
     final effectiveWorkingDir =
         (workingDir == null || workingDir.trim().isEmpty) &&
             toolMode == AgentToolMode.chat
@@ -358,6 +431,14 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     }
     final runtimeEvents = environmentOverride?.events ?? EventBus();
     final ownsRuntimeEvents = environmentOverride == null;
+    final workspaceState = ref.read(agentWorkspaceProvider);
+    final taskPolicy = taskId == null
+        ? null
+        : workspaceState.tasks
+              .where((task) => task.id == taskId)
+              .firstOrNull
+              ?.policy;
+    final projectPolicy = workspaceState.projectPolicy;
     final environment =
         environmentOverride ??
         StudioAgentEnvironment(
@@ -366,10 +447,39 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           workspaceRoot: normalizedWorkingDir,
           permissionPolicy: AgentToolPermissionPolicy(
             workingDir: normalizedWorkingDir,
+            networkDisposition: projectPolicy.externalNetwork,
+            networkRules: projectPolicy.networkRules.isNotEmpty
+                ? projectPolicy.networkRules
+                : taskPolicy?.networkRules ?? const [],
           ),
           events: runtimeEvents,
           onProviderEvent: (_) {},
         );
+    final settings = ref.read(settingsProvider);
+    final selectedModelInfo =
+        settings.connectorModels
+            .where((candidate) => candidate.id == model)
+            .firstOrNull
+            ?.toModelInfo() ??
+        ModelsConfig.getModel(model);
+    final selectedCapabilities = capabilitiesForSelectedModel(
+      environment.provider.capabilities,
+      selectedModelInfo,
+    );
+    final imageInputs = await const ProviderImageInputBuilder().build(
+      attachments: attachments,
+      capabilities: selectedCapabilities,
+    );
+    if (imageInputs.hasErrors) {
+      _failBeforeStart(
+        requestId: requestId,
+        threadId: threadId,
+        taskId: taskId,
+        finishTask: finishTask,
+        message: imageInputs.errors.join(' '),
+      );
+      return;
+    }
     ref
         .read(studioRequestLifecycleProvider.notifier)
         .attachRuntimeEvents(requestId, environment.events);
@@ -390,28 +500,12 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
           model: model,
           intent: intent,
           workspaceRoot: environment.workspaceRoot,
+          customAgentId: customAgent?.id,
           phase: AgentTurnPhase.providerRequest,
           startedAt: DateTime.now(),
         ),
       },
     );
-    ref
-        .read(agentRunProvider.notifier)
-        .startRun(
-          id: requestId,
-          kind: AgentRunKind.chat,
-          model: model,
-          message: 'Studio turn sent',
-          title: _preview(displayTitle ?? retryPrompt),
-          inputPreview: _preview(displayTitle ?? retryPrompt),
-          retryPrompt: retryPrompt,
-          retryAttachments: attachments,
-          contextAttachmentCount: attachments.length,
-          acceptsLegacyEvents: false,
-        );
-    ref
-        .read(agentRequestProvider.notifier)
-        .start(lane: AgentRequestLane.chat, requestId: requestId, model: model);
     final turnRef = ref.read(studioTurnProvider).refForRequest(requestId);
     if (acceptedPlan != null) {
       ref
@@ -423,38 +517,63 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
             .markAcceptedPlanVerificationRequested(requestId);
       }
     }
-    final executor = ToolExecutor(
-      workingDir: environment.workspaceRoot,
-      autoApprove: false,
-      onConfirmationNeeded: (request) =>
-          _handleConfirmationNeeded(requestId, request, environment.events),
-      onToolCallUpdate: (toolCall) {
-        final type = switch (toolCall.status.name) {
-          'success' => EventType.toolCallCompleted,
-          'error' => EventType.toolCallError,
-          'cancelled' => EventType.toolCallError,
-          _ => EventType.toolCallStarted,
-        };
-        environment.events.emit(type, {
-          'toolCall': toolCall,
-          'requestId': requestId,
-        });
-      },
-    );
-    final runner = StudioTurnRunner(
-      provider: environment.provider,
-      workingDir: environment.workspaceRoot,
-      events: environment.events,
-      model: environment.model,
-      toolExecutor: executor,
-      approvalGrantProvider: () => _turnApprovalGrantKeys[requestId] != null
-          ? ApprovalGrant.turn
-          : ApprovalGrant.none,
-      approvalGrantKeyProvider: () => _turnApprovalGrantKeys[requestId],
-    );
-    _runners[requestId] = runner;
+    final initialConnectorNetworkPolicy =
+        ProviderConnectorNetworkPolicy.snapshot(
+          networkDisposition: environment.permissionPolicy.networkDisposition,
+          networkRules: environment.permissionPolicy.networkRules,
+        );
+    StudioTurnRunner? runner;
+    final requestTimeout = _timeoutFor(customAgent);
 
     try {
+      final connectorNetworkPolicy = await reviewProviderConnectorNetworkPolicy(
+        requestId: requestId,
+        provider: environment.provider,
+        policy: initialConnectorNetworkPolicy,
+        onConfirmationNeeded: (request) =>
+            _handleConfirmationNeeded(requestId, request, environment.events),
+      );
+      final delegationService = SubagentDelegationService(
+        provider: environment.provider,
+        workingDir: environment.workspaceRoot,
+        model: environment.model,
+        connectorNetworkPolicy: connectorNetworkPolicy,
+      );
+      final executor = ToolExecutor(
+        workingDir: environment.workspaceRoot,
+        networkDisposition: environment.permissionPolicy.networkDisposition,
+        networkRules: environment.permissionPolicy.networkRules,
+        autoApprove: false,
+        onConfirmationNeeded: (request) =>
+            _handleConfirmationNeeded(requestId, request, environment.events),
+        onToolCallUpdate: (toolCall) {
+          final type = switch (toolCall.status.name) {
+            'success' => EventType.toolCallCompleted,
+            'error' => EventType.toolCallError,
+            'cancelled' => EventType.toolCallError,
+            _ => EventType.toolCallStarted,
+          };
+          environment.events.emit(type, {
+            'toolCall': toolCall,
+            'requestId': requestId,
+          });
+        },
+        onSubagentDelegation: delegationService.delegate,
+        onCancelSubagents: delegationService.cancel,
+      );
+      runner = StudioTurnRunner(
+        provider: environment.provider,
+        workingDir: environment.workspaceRoot,
+        events: environment.events,
+        model: environment.model,
+        toolExecutor: executor,
+        connectorNetworkPolicy: connectorNetworkPolicy,
+        approvalGrantProvider: () => _turnApprovalGrantKeys[requestId] != null
+            ? ApprovalGrant.turn
+            : ApprovalGrant.none,
+        approvalGrantKeyProvider: () => _turnApprovalGrantKeys[requestId],
+      );
+      _runners[requestId] = runner;
       final result = await runner
           .run(
             requestId: requestId,
@@ -464,8 +583,12 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
             toolMode: toolMode,
             intent: intent,
             acceptedPlan: acceptedPlan,
+            images: imageInputs.images,
+            reasoningEnabled:
+                settings.thinkingMode && selectedCapabilities.supportsReasoning,
+            customAgent: customAgent,
           )
-          .timeout(ref.read(studioTurnTimeoutProvider));
+          .timeout(requestTimeout);
       _setAcceptedPlanState(requestId, turnRef, result.acceptedPlanState);
       ref
           .read(studioThreadProvider.notifier)
@@ -476,17 +599,13 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       ref
           .read(studioRequestLifecycleProvider.notifier)
           .completeRequest(requestId);
-      ref
-          .read(agentRunProvider.notifier)
-          .finishRun(
-            AgentRunKind.chat,
-            outputPreview: _preview(result.content),
-          );
-      ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
     } on TimeoutException {
-      const message =
-          'Request timed out after 4 minutes. Try again or check the Circuit AI connection.';
-      runner.cancel();
+      final timeoutLabel = requestTimeout.inSeconds % 60 == 0
+          ? '${requestTimeout.inMinutes} minutes'
+          : '${requestTimeout.inSeconds} seconds';
+      final message =
+          'Request timed out after $timeoutLabel. Try again or check the Circuit AI connection.';
+      runner?.cancel();
       _rejectPendingApprovalsForRequest(requestId);
       environment.events.emit(EventType.providerLifecycle, {
         'event': ProviderLifecycleEvent(
@@ -509,23 +628,11 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       if (acceptedPlan != null) {
         _setAcceptedPlanState(requestId, turnRef, AcceptedPlanState.failed);
       }
-      ref
-          .read(agentRunProvider.notifier)
-          .finishRun(AgentRunKind.chat, error: message);
-      ref
-          .read(agentRequestProvider.notifier)
-          .finish(AgentRequestLane.chat, error: message);
     } on StudioTurnCancelledException {
       _rejectPendingApprovalsForRequest(requestId);
       ref
           .read(studioRequestLifecycleProvider.notifier)
           .cancelRequest(requestId);
-      ref
-          .read(agentRequestProvider.notifier)
-          .finish(AgentRequestLane.chat, cancelled: true);
-      ref
-          .read(agentRunProvider.notifier)
-          .finishRun(AgentRunKind.chat, cancelled: true);
     } catch (error) {
       _rejectPendingApprovalsForRequest(requestId);
       final message = error.toString().replaceFirst('Exception: ', '');
@@ -585,10 +692,6 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
         ref
             .read(studioRequestLifecycleProvider.notifier)
             .completeRequest(requestId, message: summary);
-        ref
-            .read(agentRunProvider.notifier)
-            .finishRun(AgentRunKind.chat, outputPreview: summary);
-        ref.read(agentRequestProvider.notifier).finish(AgentRequestLane.chat);
         return;
       }
       if (acceptedPlan != null) {
@@ -601,19 +704,10 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       if (finishTask && taskId != null) {
         ref.read(agentWorkspaceProvider.notifier).failTask(taskId, message);
       }
-      ref
-          .read(agentRunProvider.notifier)
-          .finishRun(AgentRunKind.chat, error: message);
-      ref
-          .read(agentRequestProvider.notifier)
-          .finish(AgentRequestLane.chat, error: message);
     } finally {
       _runners.remove(requestId);
       _turnApprovalGrantKeys.remove(requestId);
-      _pendingApprovals.removeWhere(
-        (id, _) => _approvalRequestIds[id] == requestId,
-      );
-      _approvalRequestIds.removeWhere((_, value) => value == requestId);
+      _rejectPendingApprovalsForRequest(requestId);
       _releaseRuntimeEvents(requestId);
       if (ref.mounted) {
         final active = {...state.activeSessions}..remove(requestId);
@@ -660,84 +754,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
         );
   }
 
-  Future<bool> _handleConfirmationNeeded(
-    String requestId,
-    ConfirmationRequest request,
-    EventBus events,
-  ) async {
-    final grantKey = _turnApprovalGrantKeys[requestId];
-    final requestGrantKey = _approvalGrantKeyForRequest(requestId, request);
-    if (grantKey != null && grantKey == requestGrantKey) {
-      events.emit(EventType.confirmationNeeded, {
-        'request': request,
-        'requestId': requestId,
-      });
-      events.emit(EventType.confirmationReceived, {
-        'id': request.id,
-        'approved': true,
-        'requestId': requestId,
-      });
-      return true;
-    }
-    _pendingApprovals[request.id] = request;
-    _approvalRequestIds[request.id] = requestId;
-    events.emit(EventType.confirmationNeeded, {
-      'request': request,
-      'requestId': requestId,
-    });
-    final approved = await request.response;
-    events.emit(EventType.confirmationReceived, {
-      'id': request.id,
-      'approved': approved,
-      'requestId': requestId,
-    });
-    return approved;
-  }
-
-  void approveOnce(String approvalId) {
-    final request = _pendingApprovals.remove(approvalId);
-    _approvalRequestIds.remove(approvalId);
-    if (request != null) {
-      request.approve();
-    }
-  }
-
-  void approveForTurn(String approvalId) {
-    final requestId = _approvalRequestIds[approvalId];
-    final request = _pendingApprovals[approvalId];
-    if (requestId != null && request != null) {
-      _turnApprovalGrantKeys[requestId] = _approvalGrantKeyForRequest(
-        requestId,
-        request,
-      );
-    }
-    approveOnce(approvalId);
-  }
-
-  void rejectApproval(String approvalId) {
-    final request = _pendingApprovals.remove(approvalId);
-    _approvalRequestIds.remove(approvalId);
-    if (request != null) {
-      request.reject();
-    }
-  }
-
-  String _approvalGrantKeyForRequest(
-    String requestId,
-    ConfirmationRequest request,
-  ) {
-    final session = state.sessionFor(requestId);
-    return AgentToolPermissionPolicy(
-      workingDir: session?.workspaceRoot ?? Directory.systemTemp.path,
-    ).approvalGrantKeyFor(request.toolCall);
-  }
-
   void cancel(String requestId) {
     final session = state.sessionFor(requestId);
-    ref
-        .read(agentRequestProvider.notifier)
-        .requestCancel(AgentRequestLane.chat);
-    ref.read(agentRunProvider.notifier).requestCancel(AgentRunKind.chat);
     _runners[requestId]?.cancel();
     if (session != null) {
       _runtimeEvents[requestId]?.emit(EventType.providerLifecycle, {
@@ -753,18 +771,7 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
       });
     }
     ref.read(studioRequestLifecycleProvider.notifier).cancelRequest(requestId);
-    ref
-        .read(agentRequestProvider.notifier)
-        .finish(AgentRequestLane.chat, cancelled: true);
-    ref
-        .read(agentRunProvider.notifier)
-        .finishRun(AgentRunKind.chat, cancelled: true);
-    _pendingApprovals.removeWhere((id, request) {
-      if (_approvalRequestIds[id] != requestId) return false;
-      request.reject();
-      return true;
-    });
-    _approvalRequestIds.removeWhere((_, value) => value == requestId);
+    _rejectPendingApprovalsForRequest(requestId);
     _turnApprovalGrantKeys.remove(requestId);
     _releaseRuntimeEvents(requestId);
     final active = {...state.activeSessions}..remove(requestId);
@@ -788,9 +795,8 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
         if (entry.value == requestId) entry.key,
     ];
     for (final approvalId in pendingIds) {
-      final request = _pendingApprovals.remove(approvalId);
+      final request = _takePendingApproval(approvalId);
       request?.reject();
-      _approvalRequestIds.remove(approvalId);
     }
   }
 
@@ -846,6 +852,13 @@ class AgentTurnRuntime extends Notifier<AgentTurnRuntimeState> {
     }
     return latest;
   }
+
+  Duration _timeoutFor(AgentConfigModel? customAgent) {
+    final runtimeLimit = ref.read(studioTurnTimeoutProvider);
+    final agentLimit = customAgent?.limits.maxWallTime;
+    if (agentLimit == null || agentLimit >= runtimeLimit) return runtimeLimit;
+    return agentLimit;
+  }
 }
 
 String _buildMessageWithContext(
@@ -863,12 +876,6 @@ String _buildMessageWithContext(
 }
 
 int _estimateTokens(String text) => (text.length / 4).ceil();
-
-String _preview(String text) {
-  final clean = text.trim().replaceAll(RegExp(r'\s+'), ' ');
-  if (clean.length <= 120) return clean;
-  return '${clean.substring(0, 117)}...';
-}
 
 final agentTurnRuntimeProvider =
     NotifierProvider<AgentTurnRuntime, AgentTurnRuntimeState>(

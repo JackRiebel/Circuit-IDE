@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/generated_artifact.dart';
@@ -14,8 +15,15 @@ class GeneratedArtifactExporter {
   });
 
   List<GeneratedArtifactKind> supportedTargets(GeneratedArtifact artifact) {
+    if (artifact.canRegenerate) {
+      return GeneratedArtifactKind.values
+          .where((target) => target != artifact.kind)
+          .toList(growable: false);
+    }
     final targets = switch (artifact.kind) {
-      GeneratedArtifactKind.markdown || GeneratedArtifactKind.report => [
+      GeneratedArtifactKind.markdown ||
+      GeneratedArtifactKind.html ||
+      GeneratedArtifactKind.report => [
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.pdf,
         GeneratedArtifactKind.powerPoint,
@@ -23,15 +31,18 @@ class GeneratedArtifactExporter {
       GeneratedArtifactKind.csv => [
         GeneratedArtifactKind.excel,
         GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.html,
       ],
       GeneratedArtifactKind.json => [
         GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.html,
         GeneratedArtifactKind.docx,
         GeneratedArtifactKind.pdf,
       ],
       GeneratedArtifactKind.diagram || GeneratedArtifactKind.chart => [
         GeneratedArtifactKind.powerPoint,
         GeneratedArtifactKind.markdown,
+        GeneratedArtifactKind.html,
         GeneratedArtifactKind.pdf,
       ],
       GeneratedArtifactKind.excel ||
@@ -44,11 +55,58 @@ class GeneratedArtifactExporter {
         .toList(growable: false);
   }
 
+  Future<bool> hasExternalChanges(GeneratedArtifact artifact) async {
+    if (artifact.outputHash.trim().isEmpty) return false;
+    final file = File(artifact.filePath);
+    if (!await file.exists()) return true;
+    final bytes = await file.readAsBytes();
+    return sha256.convert(bytes).toString() != artifact.outputHash;
+  }
+
+  /// Rebuilds an artifact from its persisted composition rather than trying to
+  /// extract prose from a prior binary output. A regenerated output is always
+  /// a new child version, including when it changes format.
+  Future<GeneratedArtifact?> regenerate({
+    required GeneratedArtifact artifact,
+    GeneratedArtifactKind? targetKind,
+    String? sourceContentOverride,
+    String? templateId,
+  }) async {
+    final recipe = artifact.generationRecipe;
+    if (recipe == null || !recipe.isReproducible) return null;
+    final sourceContent = sourceContentOverride ?? recipe.sourceContent;
+    if (sourceContent.trim().isEmpty) return null;
+    final rootPath = _workspaceRootFor(artifact.filePath);
+    final resolvedTarget = targetKind ?? artifact.kind;
+    final nextVersion = artifact.version + 1;
+    final turnId = [
+      artifact.id,
+      'v$nextVersion',
+      resolvedTarget.name,
+      DateTime.now().microsecondsSinceEpoch,
+    ].join('-');
+    return writer.writeStructuredArtifact(
+      rootPath: rootPath,
+      prompt: recipe.prompt,
+      content: sourceContent,
+      targetKind: resolvedTarget,
+      turnId: turnId,
+      threadId: artifact.threadId,
+      requestId: artifact.requestId,
+      artifactVersion: nextVersion,
+      parentArtifactId: artifact.id,
+      templateId: templateId ?? recipe.templateId,
+    );
+  }
+
   Future<GeneratedArtifact?> export({
     required GeneratedArtifact artifact,
     required GeneratedArtifactKind targetKind,
   }) async {
     if (!supportedTargets(artifact).contains(targetKind)) return null;
+    if (artifact.canRegenerate) {
+      return regenerate(artifact: artifact, targetKind: targetKind);
+    }
     final source = File(artifact.filePath);
     if (!await source.exists()) return null;
     final rootPath = _workspaceRootFor(artifact.filePath);
@@ -161,6 +219,7 @@ class GeneratedArtifactExporter {
       GeneratedArtifactKind.excel => 'Excel workbook',
       GeneratedArtifactKind.csv => 'CSV',
       GeneratedArtifactKind.markdown => 'Markdown report',
+      GeneratedArtifactKind.html => 'HTML document',
       GeneratedArtifactKind.json => 'JSON',
       GeneratedArtifactKind.pdf => 'PDF report',
       GeneratedArtifactKind.powerPoint => 'PowerPoint deck',

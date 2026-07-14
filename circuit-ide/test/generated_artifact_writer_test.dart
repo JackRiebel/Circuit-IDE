@@ -5,9 +5,67 @@ import 'package:circuit_ide/services/artifact_type_registry.dart';
 import 'package:circuit_ide/services/generated_artifact_exporter.dart';
 import 'package:circuit_ide/services/generated_artifact_package_writer.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
+import 'package:circuit_ide/services/worker_cancellation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 void main() {
+  test(
+    'cancelled artifact generation never publishes a partial output',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final cancellation = WorkerCancellationToken()
+        ..cancel('Test cancelled artifact generation.');
+
+      await expectLater(
+        const GeneratedArtifactWriter().writeStructuredArtifact(
+          rootPath: root.path,
+          prompt: 'create a DOCX architecture review',
+          content: '# Review\n\nA review that should not be published.',
+          targetKind: GeneratedArtifactKind.docx,
+          turnId: 'turn-cancelled-artifact',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+          cancellationToken: cancellation,
+        ),
+        throwsA(isA<WorkerCancelledException>()),
+      );
+      final output = Directory(p.join(root.path, 'outputs'));
+      expect(await output.list().isEmpty, isTrue);
+    },
+  );
+
+  test(
+    'cancelled workbook generation never publishes a partial output',
+    () async {
+      final root = await Directory.systemTemp.createTemp('circuit-artifacts-');
+      addTearDown(() => root.delete(recursive: true));
+      final cancellation = WorkerCancellationToken()
+        ..cancel('Test cancelled workbook generation.');
+
+      await expectLater(
+        const GeneratedArtifactWriter().writeStructuredArtifact(
+          rootPath: root.path,
+          prompt: 'create an Excel workbook',
+          content: '''
+| Site | Users |
+| --- | ---: |
+| HQ | 250 |
+''',
+          targetKind: GeneratedArtifactKind.excel,
+          turnId: 'turn-cancelled-workbook',
+          threadId: 'thread-1',
+          requestId: 'request-1',
+          cancellationToken: cancellation,
+        ),
+        throwsA(isA<WorkerCancelledException>()),
+      );
+      final output = Directory(p.join(root.path, 'outputs'));
+      expect(await output.list().isEmpty, isTrue);
+    },
+  );
+
   test(
     'PowerPoint prompt creates a real pptx artifact from structured markdown',
     () async {
@@ -356,6 +414,9 @@ Here is the data.
       expect(String.fromCharCodes(bytes), contains('xl/workbook.xml'));
       expect(artifact.previewRows.first, ['Product', 'Count']);
       expect(artifact.sheetCount, 1);
+      expect(artifact.metadata['accessibilityStatus'], 'Checks passed');
+      expect(artifact.metadata['hasAccessibleArtifact'], isTrue);
+      expect(artifact.metadata['accessibilityGapCount'], 0);
     },
   );
 
@@ -381,6 +442,12 @@ Here is the data.
 ## Assumptions
 - Customer wants 25% growth headroom.
 - Lifecycle and LDOS dates still need validation.
+
+## Sources
+- Customer inventory and WAN telemetry checked 2026-07-11.
+
+## Confidence
+- Confidence: High after inventory and telemetry review.
 ''',
       turnId: 'turn-sizing',
       threadId: 'thread-1',
@@ -537,6 +604,18 @@ Here is the data.
         'Native format ready',
         'Workbook sheets packaged',
         'Header and data rows detected',
+      ]),
+    );
+    expect(
+      artifact.metadata['qualityGates'],
+      containsAll([
+        'Contract: Assumptions',
+        'Contract: Checked date',
+        'Contract: Confidence',
+        'Contract: Sources',
+        'Contract: PoE budget validation',
+        'Contract: WAN throughput validation',
+        'Contract: Candidate validation',
       ]),
     );
     expect(artifact.metadata['qualityGaps'], isEmpty);
@@ -2484,6 +2563,11 @@ Executive-ready summary for a final customer handoff.
     expect(artifact.metadata['pdfHasXref'], isTrue);
     expect(artifact.metadata['pdfHasTrailer'], isTrue);
     expect(artifact.metadata['pdfHasOutlineTree'], isTrue);
+    expect(artifact.metadata['pdfHasMarkedContent'], isTrue);
+    expect(artifact.metadata['pdfHasStructTreeRoot'], isTrue);
+    expect(artifact.metadata['pdfHasParentTree'], isTrue);
+    expect(artifact.metadata['pdfHasTaggedPageContent'], isTrue);
+    expect(artifact.metadata['pdfHasTaggedStructure'], isTrue);
     expect(artifact.metadata['pdfHasReportOverviewBookmark'], isTrue);
     expect(artifact.metadata['pdfHasLeadDecisionBookmark'], isTrue);
     expect(artifact.metadata['pdfHasExecutiveDecisionBookmark'], isTrue);
@@ -2530,6 +2614,10 @@ Executive-ready summary for a final customer handoff.
     expect(pdfText, contains('/Type /Catalog'));
     expect(pdfText, contains('/PageMode /UseOutlines'));
     expect(pdfText, contains('/Type /Outlines'));
+    expect(pdfText, contains('/MarkInfo << /Marked true >>'));
+    expect(pdfText, contains('/Type /StructTreeRoot'));
+    expect(pdfText, contains('/ParentTree'));
+    expect(pdfText, contains('/P << /MCID 0 >> BDC'));
     expect(pdfText, contains('/Title (Report Overview)'));
     expect(pdfText, contains('/Title (Executive Decision Brief)'));
     expect(pdfText, contains('/Title (Validation Checklist)'));

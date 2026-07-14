@@ -15,6 +15,7 @@ import '../models/tool_call_info.dart';
 import '../models/tool_result_envelope.dart';
 import '../models/agent_tool_permission.dart';
 import '../models/accepted_plan_context.dart';
+import '../models/agent_config_model.dart';
 import '../models/turn_intent.dart';
 import '../services/event_bus.dart';
 import 'context/context_manager.dart';
@@ -28,12 +29,14 @@ class StudioTurnRunnerResult {
   final String content;
   final TokenUsage usage;
   final List<ToolCallInfo> toolCalls;
+  final List<ToolResultEnvelope> toolResults;
   final AcceptedPlanState acceptedPlanState;
 
   const StudioTurnRunnerResult({
     required this.content,
     required this.usage,
     required this.toolCalls,
+    this.toolResults = const [],
     this.acceptedPlanState = AcceptedPlanState.none,
   });
 }
@@ -46,6 +49,7 @@ class StudioTurnRunner {
   final EventBus events;
   final String model;
   final ToolExecutor toolExecutor;
+  final ProviderConnectorNetworkPolicy connectorNetworkPolicy;
   final ApprovalGrant Function()? approvalGrantProvider;
   final String? Function()? approvalGrantKeyProvider;
   final ContextManager _contextManager = ContextManager();
@@ -60,6 +64,7 @@ class StudioTurnRunner {
     required this.events,
     required this.model,
     required this.toolExecutor,
+    this.connectorNetworkPolicy = ProviderConnectorNetworkPolicy.unrestricted,
     this.approvalGrantProvider,
     this.approvalGrantKeyProvider,
   });
@@ -78,12 +83,17 @@ class StudioTurnRunner {
     required AgentToolMode toolMode,
     required TurnIntent intent,
     AcceptedPlanContext? acceptedPlan,
+    List<ProviderImageInput> images = const [],
+    bool reasoningEnabled = false,
+    AgentConfigModel? customAgent,
   }) async {
     _isCancelled = false;
-    final systemPrompt = _studioSystemPrompt(
+    final agentManifest = customAgent?.manifest;
+    final systemPrompt = _systemPromptForTurn(
       intent: intent,
       toolMode: toolMode,
       hasAcceptedPlan: acceptedPlan != null,
+      customAgent: customAgent,
     );
     final effectiveUserMessage = acceptedPlan == null
         ? userMessage
@@ -127,10 +137,20 @@ class StudioTurnRunner {
         outcomeAttempt++
       ) {
         if (outcomeAttempt > 0) {
+          final retainedResearchCalls = toolMode == AgentToolMode.research
+              ? List<ToolCallInfo>.from(allToolCalls)
+              : const <ToolCallInfo>[];
+          final retainedResearchResults = toolMode == AgentToolMode.research
+              ? List<ToolResultEnvelope>.from(allToolResults)
+              : const <ToolResultEnvelope>[];
           fullResponse = '';
           usage = const TokenUsage();
-          allToolCalls.clear();
-          allToolResults.clear();
+          allToolCalls
+            ..clear()
+            ..addAll(retainedResearchCalls);
+          allToolResults
+            ..clear()
+            ..addAll(retainedResearchResults);
           seenToolRounds.clear();
           noProgressRounds = 0;
           sawAnyText = false;
@@ -144,6 +164,7 @@ class StudioTurnRunner {
                 intent: intent,
                 toolMode: toolMode,
                 acceptedPlan: acceptedPlan,
+                violation: pendingRepairValidationMessage,
               ),
               timestamp: DateTime.now(),
             ),
@@ -151,7 +172,10 @@ class StudioTurnRunner {
           toolOnlyNonTerminalRounds = 0;
         }
 
-        final maxIterations = toolMode == AgentToolMode.plan ? 4 : 6;
+        final maxIterations = _iterationLimit(
+          toolMode,
+          agentManifest?.limits.maxTurns,
+        );
         for (var iteration = 0; iteration < maxIterations; iteration++) {
           final response = StreamingResponse();
           final phase = _phaseFor(
@@ -159,7 +183,8 @@ class StudioTurnRunner {
             iteration + (outcomeAttempt > 0 ? 1 : 0),
             hasAcceptedPlan: acceptedPlan != null,
           );
-          final tools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
+          final modeTools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
+          final tools = _toolsForTurn(modeTools, agentManifest);
           toolExecutor.setPermissionRequest(
             ToolPermissionRequest(
               intent: intent,
@@ -181,13 +206,33 @@ class StudioTurnRunner {
           var sawFirstByte = false;
           var sawFirstText = false;
           var sawFirstTool = false;
-          await for (final chunk in provider.chat(
-            _contextManager.optimizeContext(requestHistory),
+          final request = ProviderChatRequest(
+            messages: _contextManager.optimizeContext(requestHistory),
             model: model,
             tools: tools,
             systemPrompt: systemPrompt,
             maxTokens: 4096,
-          )) {
+            images: images,
+            reasoningEnabled: reasoningEnabled,
+            connectorNetworkPolicy: connectorNetworkPolicy,
+          );
+          final chunks = provider is ImageCapableProvider
+              ? (provider as ImageCapableProvider).chatWithRequest(request)
+              : images.isNotEmpty || reasoningEnabled
+              ? Stream<ChatChunk>.error(
+                  ProviderCapabilityException(
+                    '${provider.name} does not support the requested selected-model capability.',
+                  ),
+                )
+              : provider.chat(
+                  request.messages,
+                  model: request.model,
+                  tools: request.tools,
+                  systemPrompt: request.systemPrompt,
+                  temperature: request.temperature,
+                  maxTokens: request.maxTokens,
+                );
+          await for (final chunk in chunks) {
             if (_isCancelled) break;
             final lifecycleOnly =
                 chunk.lifecycleKind != null &&
@@ -196,7 +241,10 @@ class StudioTurnRunner {
                 chunk.finishReason == null &&
                 !chunk.isDone &&
                 chunk.promptTokens == 0 &&
-                chunk.completionTokens == 0;
+                chunk.cachedInputTokens == 0 &&
+                chunk.completionTokens == 0 &&
+                chunk.reasoningTokens == 0 &&
+                chunk.toolTokens == 0;
             if (!sawFirstByte &&
                 !lifecycleOnly &&
                 !chunk.isDone &&
@@ -283,8 +331,18 @@ class StudioTurnRunner {
                 }
               }
             }
-            if (chunk.promptTokens > 0 || chunk.completionTokens > 0) {
-              response.updateUsage(chunk.promptTokens, chunk.completionTokens);
+            if (chunk.promptTokens > 0 ||
+                chunk.cachedInputTokens > 0 ||
+                chunk.completionTokens > 0 ||
+                chunk.reasoningTokens > 0 ||
+                chunk.toolTokens > 0) {
+              response.updateUsage(
+                chunk.promptTokens,
+                chunk.completionTokens,
+                cachedInput: chunk.cachedInputTokens,
+                reasoning: chunk.reasoningTokens,
+                tool: chunk.toolTokens,
+              );
             }
             if (chunk.finishReason != null) {
               response.finishReason = chunk.finishReason;
@@ -328,13 +386,19 @@ class StudioTurnRunner {
 
           usage = TokenUsage(
             promptTokens: response.promptTokens,
+            cachedInputTokens: response.cachedInputTokens,
             completionTokens: response.completionTokens,
+            reasoningTokens: response.reasoningTokens,
+            toolTokens: response.toolTokens,
             totalTokens: response.totalTokens,
           );
           if (usage.isNotEmpty) {
             totalUsage = totalUsage.add(
               prompt: usage.promptTokens,
+              cachedInput: usage.cachedInputTokens,
               completion: usage.completionTokens,
+              reasoning: usage.reasoningTokens,
+              tool: usage.toolTokens,
             );
             events.emit(EventType.tokensUpdated, {
               'lastUsage': totalUsage,
@@ -393,6 +457,19 @@ class StudioTurnRunner {
             );
             throw StateError(message);
           }
+          final toolLimit = agentManifest?.limits.maxToolCalls;
+          if (toolLimit != null &&
+              allToolCalls.length + toolCallInfos.length > toolLimit) {
+            final message =
+                'Custom agent "${customAgent!.name}" reached its declared tool-call limit ($toolLimit). I stopped before running another tool.';
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.unavailableTool,
+              detail: message,
+            );
+            throw StateError(message);
+          }
           if (response.content.trim().isEmpty && toolCallInfos.isEmpty) {
             if (fullResponse.trim().isEmpty) {
               _emitLifecycle(
@@ -433,8 +510,7 @@ class StudioTurnRunner {
             noProgressRounds = 0;
           }
           if (noProgressRounds >= 2) {
-            const stopMessage =
-                'I’m stopping because the same tool step repeated without new progress. Tell me what to inspect next, or switch to Plan mode for a smaller reviewable plan.';
+            final stopMessage = _repeatedToolQuestion(acceptedPlan);
             fullResponse = fullResponse.trim().isEmpty
                 ? stopMessage
                 : '$fullResponse\n\n$stopMessage';
@@ -663,6 +739,7 @@ class StudioTurnRunner {
           content: fullResponse,
           usage: totalUsage,
           toolCalls: allToolCalls,
+          toolResults: allToolResults,
           acceptedPlanState: validation.acceptedPlanState,
         );
       }
@@ -714,6 +791,7 @@ class StudioTurnRunner {
     required TurnIntent intent,
     required AgentToolMode toolMode,
   }) {
+    if (toolMode == AgentToolMode.research) return true;
     if (intent == TurnIntent.plan) return true;
     if (intent == TurnIntent.code &&
         (toolMode == AgentToolMode.code || toolMode == AgentToolMode.fix)) {
@@ -1199,6 +1277,19 @@ class StudioTurnRunner {
     return 'Which file should I inspect next?';
   }
 
+  String _repeatedToolQuestion(AcceptedPlanContext? acceptedPlan) {
+    final target = acceptedPlan == null
+        ? null
+        : _firstAcceptedPlanTarget(acceptedPlan);
+    if (target != null) {
+      return 'What exact behavior should I implement in $target after the same tool step repeated without new progress?';
+    }
+    if (acceptedPlan != null) {
+      return 'What exact behavior belongs inside the planned target file after the same tool step repeated without new progress?';
+    }
+    return 'Which file should I inspect next after the same tool step repeated without new progress?';
+  }
+
   String? _firstAcceptedPlanTarget(AcceptedPlanContext acceptedPlan) {
     final structuredTargets = acceptedPlan.plannedTargets
         .map((target) => target.path.trim())
@@ -1215,7 +1306,19 @@ class StudioTurnRunner {
     required TurnIntent intent,
     required AgentToolMode toolMode,
     AcceptedPlanContext? acceptedPlan,
+    String? violation,
   }) {
+    if (toolMode == AgentToolMode.research) {
+      return [
+        'CircuitCode rejected the previous research draft because it did not satisfy the cited-evidence contract.',
+        'This is the one bounded source-acquisition repair round. Keep any successful direct sources already acquired, then use only `web_search` and `web_fetch` to fill the specific evidence gap below.',
+        'Do not inspect the workspace, use connectors, run commands, create files, or make patches. Every network call remains subject to policy and approval.',
+        'For a factual answer, acquire an independent publisher source when feasible. If none is available after this repair round, disclose `Single-source limitation:` and mark affected claims as needing corroboration rather than inventing support.',
+        'Return the required Conflict review, Evidence table, and dated Sources section after the evidence gap is addressed.',
+        if (violation != null && violation.trim().isNotEmpty)
+          'Evidence gap to repair: ${violation.trim()}',
+      ].join('\n');
+    }
     final common = [
       'CircuitCode runtime rejected the previous response because it did not satisfy the active turn contract.',
       'Do not ask the user to type "approve"; CircuitCode owns plan, patch, and approval UI.',
@@ -1268,6 +1371,7 @@ class StudioTurnRunner {
     return switch (mode) {
       AgentToolMode.chat ||
       AgentToolMode.ask ||
+      AgentToolMode.research ||
       AgentToolMode.review ||
       AgentToolMode.handoff => AgentToolPhase.inspect,
       AgentToolMode.plan => AgentToolPhase.propose,
@@ -1294,6 +1398,59 @@ class StudioTurnRunner {
     ].join('\n\n');
   }
 
+  int _iterationLimit(AgentToolMode mode, int? declaredLimit) {
+    final runtimeLimit = mode == AgentToolMode.plan ? 4 : 6;
+    if (declaredLimit == null) return runtimeLimit;
+    return declaredLimit.clamp(1, runtimeLimit).toInt();
+  }
+
+  List<ToolDefinition> _toolsForTurn(
+    List<ToolDefinition> modeTools,
+    AgentManifest? manifest,
+  ) {
+    if (manifest == null) return modeTools;
+    final declaredTools = modeTools
+        .where((tool) => manifest.allowedTools.contains(tool.name))
+        .toList(growable: false);
+    if (manifest.contextPolicy == AgentContextPolicy.projectOnly) {
+      return declaredTools;
+    }
+    // A selected-file or user-provided-only manifest must not turn an
+    // attachment-scoped request into a repository-discovery request. A patch
+    // proposal is kept because it is reviewable data, not an executed read or
+    // mutation; the shared Studio policy still handles every later approval.
+    return declaredTools
+        .where((tool) => tool.name == 'propose_patch')
+        .toList(growable: false);
+  }
+
+  String _systemPromptForTurn({
+    required TurnIntent intent,
+    required AgentToolMode toolMode,
+    required bool hasAcceptedPlan,
+    AgentConfigModel? customAgent,
+  }) {
+    final studioPrompt = _studioSystemPrompt(
+      intent: intent,
+      toolMode: toolMode,
+      hasAcceptedPlan: hasAcceptedPlan,
+    );
+    if (customAgent == null) return studioPrompt;
+    final manifest = customAgent.manifest;
+    return [
+      studioPrompt,
+      'Custom agent contract (internal):',
+      'Agent: ${customAgent.name}. Purpose: ${manifest.purpose}.',
+      'This agent is limited to declared tools and cannot widen Studio policy, approval scope, workspace access, connector access, or model capabilities.',
+      if (manifest.contextPolicy != AgentContextPolicy.projectOnly)
+        'Context policy: ${manifest.contextPolicy.name}. Only current-turn attachments are available; repository-reading and command tools are withheld.',
+      'Declared output contracts: ${manifest.outputContracts.map((contract) => contract.name).join(', ')}.',
+      'Declared limits: at most ${manifest.limits.maxTurns} provider rounds and ${manifest.limits.maxToolCalls} tool calls.',
+      if (manifest.instructions.trim().isNotEmpty)
+        'Agent instructions:\n${manifest.instructions.trim()}',
+    ].join('\n\n');
+  }
+
   String _studioSystemPrompt({
     required TurnIntent intent,
     required AgentToolMode toolMode,
@@ -1304,6 +1461,7 @@ class StudioTurnRunner {
       'Operate only within the selected Studio workspace and use relative paths when discussing files.',
       'Instructions and project memories are guidance only; the app-side permission policy is authoritative.',
       'Inspect before proposing changes. Never claim that files changed, commands ran, or tests passed unless a tool result proves it.',
+      'When a connector tool returns facts, cite its exact `Source: mcp:...` provenance identifier in the final answer. If evidence is missing, label the statement as an assumption instead.',
       'Do not ask the user to type "approve"; CircuitCode renders approval, plan, patch, and apply controls in the UI.',
       'Current intent: ${intent.name}. Current tool profile: ${toolMode.name}.',
       if (hasAcceptedPlan)

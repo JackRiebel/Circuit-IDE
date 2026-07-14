@@ -8,6 +8,15 @@ enum CommandRunStatus {
   blocked,
 }
 
+enum CommandExitReason {
+  completed,
+  cancelled,
+  timedOut,
+  blocked,
+  failed,
+  interrupted,
+}
+
 enum CommandRunEventType {
   started,
   stdout,
@@ -22,17 +31,23 @@ class CommandRunEvent {
   final CommandRunEventType type;
   final DateTime timestamp;
   final String text;
+  final int? processId;
+  final int? processGroupId;
 
   const CommandRunEvent({
     required this.type,
     required this.timestamp,
     required this.text,
+    this.processId,
+    this.processGroupId,
   });
 
   Map<String, dynamic> toJson() => {
     'type': type.name,
     'timestamp': timestamp.toIso8601String(),
     'text': text,
+    if (processId != null) 'processId': processId,
+    if (processGroupId != null) 'processGroupId': processGroupId,
   };
 
   static CommandRunEvent? fromJson(Map<String, dynamic>? json) {
@@ -47,6 +62,8 @@ class CommandRunEvent {
             DateTime.tryParse(json['timestamp'] as String? ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
         text: json['text'] as String? ?? '',
+        processId: json['processId'] as int?,
+        processGroupId: json['processGroupId'] as int?,
       );
     } catch (_) {
       return null;
@@ -60,10 +77,17 @@ class CommandRun {
   final String? turnId;
   final String? taskId;
   final String command;
+  final String workingDirectory;
+  final int timeoutSeconds;
+  final String environmentPolicy;
+  final String? logPath;
+  final int? processId;
+  final int? processGroupId;
   final CommandRunStatus status;
   final DateTime startedAt;
   final DateTime? endedAt;
   final int? exitCode;
+  final CommandExitReason? exitReason;
   final String stdout;
   final String stderr;
   final List<CommandRunEvent> events;
@@ -74,10 +98,17 @@ class CommandRun {
     this.turnId,
     this.taskId,
     required this.command,
+    this.workingDirectory = '',
+    this.timeoutSeconds = 120,
+    this.environmentPolicy = 'sanitized-allowlist',
+    this.logPath,
+    this.processId,
+    this.processGroupId,
     required this.status,
     required this.startedAt,
     this.endedAt,
     this.exitCode,
+    this.exitReason,
     this.stdout = '',
     this.stderr = '',
     this.events = const [],
@@ -103,9 +134,16 @@ class CommandRun {
     String? requestId,
     String? turnId,
     String? taskId,
+    String? workingDirectory,
+    int? timeoutSeconds,
+    String? environmentPolicy,
+    String? logPath,
+    int? processId,
+    int? processGroupId,
     CommandRunStatus? status,
     DateTime? endedAt,
     int? exitCode,
+    CommandExitReason? exitReason,
     String? stdout,
     String? stderr,
     List<CommandRunEvent>? events,
@@ -116,10 +154,17 @@ class CommandRun {
       turnId: turnId ?? this.turnId,
       taskId: taskId ?? this.taskId,
       command: command,
+      workingDirectory: workingDirectory ?? this.workingDirectory,
+      timeoutSeconds: timeoutSeconds ?? this.timeoutSeconds,
+      environmentPolicy: environmentPolicy ?? this.environmentPolicy,
+      logPath: logPath ?? this.logPath,
+      processId: processId ?? this.processId,
+      processGroupId: processGroupId ?? this.processGroupId,
       status: status ?? this.status,
       startedAt: startedAt,
       endedAt: endedAt ?? this.endedAt,
       exitCode: exitCode ?? this.exitCode,
+      exitReason: exitReason ?? this.exitReason,
       stdout: stdout ?? this.stdout,
       stderr: stderr ?? this.stderr,
       events: events ?? this.events,
@@ -132,10 +177,17 @@ class CommandRun {
     if (turnId != null) 'turnId': turnId,
     if (taskId != null) 'taskId': taskId,
     'command': command,
+    'workingDirectory': workingDirectory,
+    'timeoutSeconds': timeoutSeconds,
+    'environmentPolicy': environmentPolicy,
+    if (logPath != null) 'logPath': logPath,
+    if (processId != null) 'processId': processId,
+    if (processGroupId != null) 'processGroupId': processGroupId,
     'status': status.name,
     'startedAt': startedAt.toIso8601String(),
     'endedAt': endedAt?.toIso8601String(),
     'exitCode': exitCode,
+    'exitReason': exitReason?.name,
     'stdout': stdout,
     'stderr': stderr,
     'events': events.map((event) => event.toJson()).toList(),
@@ -150,6 +202,13 @@ class CommandRun {
         turnId: json['turnId'] as String?,
         taskId: json['taskId'] as String?,
         command: json['command'] as String? ?? '',
+        workingDirectory: json['workingDirectory'] as String? ?? '',
+        timeoutSeconds: json['timeoutSeconds'] as int? ?? 120,
+        environmentPolicy:
+            json['environmentPolicy'] as String? ?? 'sanitized-allowlist',
+        logPath: json['logPath'] as String?,
+        processId: json['processId'] as int?,
+        processGroupId: json['processGroupId'] as int?,
         status: CommandRunStatus.values.firstWhere(
           (value) => value.name == json['status'],
           orElse: () => CommandRunStatus.failed,
@@ -159,6 +218,12 @@ class CommandRun {
             DateTime.fromMillisecondsSinceEpoch(0),
         endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
         exitCode: json['exitCode'] as int?,
+        exitReason: (json['exitReason'] as String?) == null
+            ? null
+            : CommandExitReason.values.firstWhere(
+                (value) => value.name == json['exitReason'],
+                orElse: () => CommandExitReason.failed,
+              ),
         stdout: json['stdout'] as String? ?? '',
         stderr: json['stderr'] as String? ?? '',
         events: (json['events'] as List<dynamic>? ?? const [])

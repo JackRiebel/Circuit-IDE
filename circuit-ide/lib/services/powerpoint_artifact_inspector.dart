@@ -1,7 +1,14 @@
 import 'dart:convert';
+import 'dart:isolate';
+
+import 'worker_cancellation.dart';
+import 'office_package_relationship_inspector.dart';
+import 'zip_package_integrity.dart';
 
 class PowerPointArtifactInspection {
   final bool hasZipHeader;
+  final bool hasValidZipContainer;
+  final bool hasResolvablePackageRelationships;
   final bool hasContentTypes;
   final bool hasPresentation;
   final bool hasTheme;
@@ -46,6 +53,8 @@ class PowerPointArtifactInspection {
 
   const PowerPointArtifactInspection({
     required this.hasZipHeader,
+    required this.hasValidZipContainer,
+    required this.hasResolvablePackageRelationships,
     required this.hasContentTypes,
     required this.hasPresentation,
     required this.hasTheme,
@@ -91,6 +100,8 @@ class PowerPointArtifactInspection {
 
   bool get isStructurallyValid =>
       hasZipHeader &&
+      hasValidZipContainer &&
+      hasResolvablePackageRelationships &&
       hasContentTypes &&
       hasPresentation &&
       hasTheme &&
@@ -134,6 +145,8 @@ class PowerPointArtifactInspection {
   Map<String, Object?> toMetadata({int? expectedSlideCount}) {
     final checks = <String, bool>{
       'ZIP package header': hasZipHeader,
+      'ZIP central-directory integrity': hasValidZipContainer,
+      'OOXML relationship targets': hasResolvablePackageRelationships,
       '[Content_Types].xml': hasContentTypes,
       'ppt/presentation.xml': hasPresentation,
       'ppt/theme/theme1.xml': hasTheme,
@@ -170,6 +183,8 @@ class PowerPointArtifactInspection {
       'pptxSlideFileCount': slideCount,
       'pptxNotesFileCount': notesSlideCount,
       'pptxHasContentTypes': hasContentTypes,
+      'pptxZipContainerValid': hasValidZipContainer,
+      'pptxRelationshipTargetsValid': hasResolvablePackageRelationships,
       'pptxHasPresentationXml': hasPresentation,
       'pptxHasPresentationRels': hasPresentation,
       'pptxHasTheme': hasTheme,
@@ -210,7 +225,29 @@ class PowerPointArtifactInspection {
 class PowerPointArtifactInspector {
   const PowerPointArtifactInspector();
 
+  /// Parses an Office package without holding up the UI isolate.
+  ///
+  /// Artifact generation already awaits this validation before it publishes a
+  /// file. Returning metadata keeps the isolate boundary transferable while
+  /// preserving the synchronous [inspect] API for callers that need the full
+  /// inspection model.
+  Future<Map<String, Object?>> inspectMetadataInWorker(
+    List<int> bytes, {
+    int? expectedSlideCount,
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Map<String, Object?>>(
+      entryPoint: _powerPointInspectionWorkerEntry,
+      arguments: {'bytes': bytes, 'expectedSlideCount': expectedSlideCount},
+      cancellationToken: cancellationToken,
+      decodeResult: _powerPointMetadataFromWorkerResult,
+    );
+  }
+
   PowerPointArtifactInspection inspect(List<int> bytes) {
+    final zipInspection = const ZipPackageInspector().inspect(bytes);
+    final relationshipInspection = const OfficePackageRelationshipInspector()
+        .inspect(zipInspection);
     final text = latin1.decode(bytes, allowInvalid: true);
     final slideFiles =
         RegExp(r'ppt/slides/slide(\d+)\.xml')
@@ -234,12 +271,10 @@ class PowerPointArtifactInspector {
             .toList(growable: false)
           ..sort();
     return PowerPointArtifactInspection(
-      hasZipHeader:
-          bytes.length >= 4 &&
-          bytes[0] == 0x50 &&
-          bytes[1] == 0x4b &&
-          bytes[2] == 0x03 &&
-          bytes[3] == 0x04,
+      hasZipHeader: zipInspection.hasZipHeader,
+      hasValidZipContainer: zipInspection.isStructurallyValid,
+      hasResolvablePackageRelationships:
+          relationshipInspection.hasResolvableInternalTargets,
       hasContentTypes: text.contains('[Content_Types].xml'),
       hasPresentation: text.contains('ppt/presentation.xml'),
       hasTheme:
@@ -306,7 +341,7 @@ class PowerPointArtifactInspector {
           text.contains('Section progress marker'),
       hasEnterpriseBrandPill:
           text.contains('Enterprise brand pill') &&
-          text.contains('CircuitCode enterprise artifact'),
+          text.contains('Enterprise brand pill label'),
       hasImplementationRoadmap:
           text.contains('Implementation Roadmap') ||
           slideTypes.contains('Roadmap'),
@@ -365,4 +400,31 @@ class PowerPointArtifactInspector {
       .replaceAll('&gt;', '>')
       .replaceAll('&lt;', '<')
       .replaceAll('&amp;', '&');
+}
+
+void _powerPointInspectionWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final bytes = arguments['bytes'];
+    if (bytes is! List<int>) {
+      throw StateError('Missing PowerPoint bytes for inspection.');
+    }
+    replyPort.send({
+      'result': const PowerPointArtifactInspector()
+          .inspect(bytes)
+          .toMetadata(
+            expectedSlideCount: arguments['expectedSlideCount'] as int?,
+          ),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Map<String, Object?> _powerPointMetadataFromWorkerResult(Object? result) {
+  if (result is! Map) {
+    throw StateError('PowerPoint inspector returned malformed metadata.');
+  }
+  return Map<String, Object?>.from(result);
 }

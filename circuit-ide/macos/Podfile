@@ -29,6 +29,11 @@ flutter_macos_podfile_setup
 target 'Runner' do
   use_frameworks!
 
+  # Sparkle owns signed macOS update download, validation, installation, and
+  # rollback-safe replacement. CircuitCode only supplies a reviewed channel
+  # preference and invokes its native UI; it never replaces its own bundle.
+  pod 'Sparkle', '~> 2.6'
+
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths

@@ -131,24 +131,94 @@ void main() {
   test(
     'Studio review surfaces expose actionable plan and conflict outcomes',
     () async {
-      final taskViewSource = await File(
-        'lib/ui/studio/studio_task_view.dart',
-      ).readAsString();
+      final taskViewSource = [
+        await File('lib/ui/studio/studio_task_view.dart').readAsString(),
+        await File('lib/ui/studio/studio_task_plan_draft.dart').readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_plan_summary.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_plan_continuation_card.dart',
+        ).readAsString(),
+        await File('lib/ui/studio/studio_task_patch_files.dart').readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_patch_controls.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_patch_evidence.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_patch_status.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_patch_summary.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_task_transcript_index.dart',
+        ).readAsString(),
+      ].join('\n');
       final leftRailSource = await File(
         'lib/ui/studio/studio_left_rail.dart',
       ).readAsString();
+      final recentProjectRailSource = await File(
+        'lib/ui/studio/studio_recent_project_group.dart',
+      ).readAsString();
+      final railSource = [leftRailSource, recentProjectRailSource].join('\n');
       final runtimeSource = await File(
         'lib/state/agent_turn_runtime_provider.dart',
       ).readAsString();
       final senderSource = await File(
         'lib/ui/studio/studio_message_sender.dart',
       ).readAsString();
+      final verificationRunnerSource = await File(
+        'lib/ui/studio/studio_patch_verification_runner.dart',
+      ).readAsString();
       final reviewPanelSource = await File(
         'lib/ui/studio/studio_review_panel.dart',
       ).readAsString();
-      final drawerSource = await File(
+      final rightDrawerSource = await File(
         'lib/ui/studio/studio_right_drawer.dart',
       ).readAsString();
+      final drawerSource = [
+        rightDrawerSource,
+        await File(
+          'lib/ui/studio/studio_patch_review_drawer.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_patch_review_actions.dart',
+        ).readAsString(),
+        await File('lib/ui/studio/studio_browser_drawer.dart').readAsString(),
+        await File('lib/ui/studio/studio_code_drawer.dart').readAsString(),
+        await File('lib/ui/studio/studio_progress_drawer.dart').readAsString(),
+        await File('lib/ui/studio/studio_artifacts_drawer.dart').readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_drawer_actions.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_drawer_preview.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_descriptor.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_metadata.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_package_panels.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_package_detail_rows.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_diagram_excel_detail_rows.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_chart_detail_rows.dart',
+        ).readAsString(),
+        await File(
+          'lib/ui/studio/studio_artifact_document_detail_rows.dart',
+        ).readAsString(),
+      ].join('\n');
       final progressPanelSource = await File(
         'lib/ui/studio/studio_progress_panel.dart',
       ).readAsString();
@@ -157,6 +227,9 @@ void main() {
       ).readAsString();
       final shellSource = await File(
         'lib/ui/studio/studio_shell.dart',
+      ).readAsString();
+      final topBarSource = await File(
+        'lib/ui/studio/studio_top_bar.dart',
       ).readAsString();
       final projectHistorySource = await File(
         'lib/state/studio_project_history_provider.dart',
@@ -171,8 +244,12 @@ void main() {
       expect(taskViewSource, contains('Needs rebase before apply'));
       expect(taskViewSource, contains('Refresh patch'));
       expect(taskViewSource, contains('ListView.builder'));
-      expect(taskViewSource, contains('_TaskTranscriptIndex'));
-      expect(taskViewSource, contains('_TurnTranscriptItem'));
+      expect(
+        taskViewSource,
+        contains('cacheExtent: StudioLayoutContract.transcriptCacheExtent'),
+      );
+      expect(taskViewSource, contains('StudioTaskTranscriptIndex'));
+      expect(taskViewSource, contains('StudioTurnTranscriptItem'));
       expect(taskViewSource, contains('_PlanProgressSnapshot'));
       expect(taskViewSource, contains('_PatchVerificationSnapshot'));
       expect(taskViewSource, contains('state.threadForTaskView(taskId)'));
@@ -186,17 +263,15 @@ void main() {
       expect(taskViewSource, contains('ValueKey(\'studio-turn-\${turn.id}\')'));
       expect(taskViewSource, isNot(contains('...turnWidgets')));
       expect(leftRailSource, contains('ListView.builder'));
+      expect(leftRailSource, contains('StudioRecentProjectGroup'));
+      expect(railSource, contains("ValueKey('studio-rail-project-\$path')"));
+      expect(railSource, contains('_maxCollapsedRailConversations'));
+      expect(railSource, contains('_ShowMoreConversationsRow'));
       expect(
-        leftRailSource,
-        contains("ValueKey('studio-rail-project-\$path')"),
-      );
-      expect(leftRailSource, contains('_maxCollapsedRailConversations'));
-      expect(leftRailSource, contains('_ShowMoreConversationsRow'));
-      expect(
-        leftRailSource,
+        railSource,
         contains('commandRunProvider.select(_runningCommandTaskKey)'),
       );
-      expect(leftRailSource, contains('_runningCommandTaskKey'));
+      expect(railSource, contains('_runningCommandTaskKey'));
       expect(
         runtimeSource,
         contains('required List<ChatMessage> modelHistory'),
@@ -204,18 +279,39 @@ void main() {
       expect(runtimeSource, isNot(contains('historyOverride')));
       expect(senderSource, contains('modelHistory: priorThreadMessages'));
       expect(senderSource, isNot(contains('historyOverride')));
+      expect(senderSource, contains('startStudioPatchVerification('));
+      expect(senderSource, isNot(contains('runVerificationCommand(')));
+      expect(
+        verificationRunnerSource,
+        contains('startStudioPatchVerification('),
+      );
+      expect(verificationRunnerSource, contains('runVerificationCommand('));
+      expect(
+        verificationRunnerSource,
+        contains('StudioVerificationRepairDispatcher'),
+      );
+      expect(
+        verificationRunnerSource,
+        isNot(contains('studioAgentConnectionProvider')),
+      );
       expect(reviewPanelSource, contains('Patch conflict'));
       expect(reviewPanelSource, contains('Refresh patch'));
       expect(reviewPanelSource, contains('Ask Circuit to rebase'));
       expect(drawerSource, contains('_PatchDiffReviewDrawer'));
       expect(drawerSource, contains('_MissingPatchReviewDrawer'));
-      expect(drawerSource, contains('_PatchReviewActionBar'));
+      expect(drawerSource, contains('StudioPatchReviewActionBar'));
       expect(drawerSource, contains('Apply changes'));
       expect(drawerSource, contains('Ask for revision'));
       expect(drawerSource, contains('Refresh patch'));
       expect(drawerSource, contains('Restore checkpoint'));
       expect(drawerSource, contains('Patch review unavailable'));
       expect(drawerSource, contains('openRepositoryDiff'));
+      expect(drawerSource, contains('StudioArtifactDrawerActions'));
+      expect(drawerSource, contains('StudioArtifactDrawerPreview'));
+      expect(drawerSource, contains('StudioArtifactPackageReadinessPanel'));
+      expect(drawerSource, contains('StudioArtifactHandoffManifestPanel'));
+      expect(rightDrawerSource, contains('StudioProgressDrawer'));
+      expect(rightDrawerSource, contains('StudioArtifactsDrawer'));
       expect(
         drawerSource,
         contains(
@@ -249,12 +345,13 @@ void main() {
         contains('gitProvider.select((state) => state.status.branch)'),
       );
       expect(shellSource, contains('state) => state.mode'));
+      expect(shellSource, contains("import 'studio_top_bar.dart';"));
       expect(
-        shellSource,
+        topBarSource,
         contains('studioThreadProvider.select((threadState) {'),
       );
       expect(
-        shellSource,
+        topBarSource,
         contains('threadState.threadForTaskView(studio.selectedTaskId);'),
       );
       expect(
@@ -278,7 +375,7 @@ void main() {
       expect(leftRailSource, contains('state.byPath.keys.join'));
       expect(
         sourceArtifactSource,
-        contains('StudioFeatureFlags.advancedStudioSurfaces'),
+        contains('StudioFeatureFlags.browserPreview'),
       );
       expect(sourceArtifactSource, contains('_isQuarantinedArtifact'));
       expect(
@@ -296,6 +393,32 @@ void main() {
         drawerSource,
         isNot(contains('ref.watch(studioSourceArtifactProvider).artifacts')),
       );
+    },
+  );
+
+  test(
+    'Studio settings delegates recovery and diagnostics to bounded modules',
+    () async {
+      final settingsSource = await File(
+        'lib/ui/studio/studio_settings_view.dart',
+      ).readAsString();
+      final recoverySource = await File(
+        'lib/ui/studio/studio_settings_recovery.dart',
+      ).readAsString();
+      final diagnosticsSource = await File(
+        'lib/ui/studio/studio_settings_diagnostics.dart',
+      ).readAsString();
+
+      expect(settingsSource, contains('StudioThreadHistoryRecoveryPanel'));
+      expect(settingsSource, contains('StudioProjectTransferPanel'));
+      expect(settingsSource, contains('StudioDiagnosticRetentionPanel'));
+      expect(settingsSource, contains('StudioCrashReportingPanel'));
+      expect(recoverySource, contains('StudioProjectTransferService'));
+      expect(recoverySource, contains('repairStorage'));
+      expect(recoverySource, contains('exportRecoveryBundle'));
+      expect(diagnosticsSource, contains('AuditLogger'));
+      expect(diagnosticsSource, contains('PrivacyCrashReporter'));
+      expect(diagnosticsSource, contains('exportSupportBundle'));
     },
   );
 }

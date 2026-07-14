@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/design_tokens.dart';
+import '../../models/agent_workspace.dart';
+import '../../state/agent_workspace_provider.dart';
 import '../../models/studio_thread.dart';
 import '../../state/file_tree_provider.dart';
 import '../../state/settings_provider.dart';
@@ -12,7 +14,9 @@ import '../../state/studio_shell_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
 import 'studio_message_sender.dart';
+import 'studio_chrome.dart';
 import 'studio_prompt_composer.dart';
+import 'studio_workspace_opening.dart';
 
 class StudioHome extends ConsumerWidget {
   const StudioHome({super.key});
@@ -68,11 +72,26 @@ class StudioHome extends ConsumerWidget {
                     height: 1.3,
                   ),
                 ),
+                if (rootPath == null) ...[
+                  const SizedBox(height: Spacing.sm),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: () => unawaited(chooseStudioProjectRoot(ref)),
+                      icon: const Icon(
+                        StudioIcons.folderOpenOutlined,
+                        size: 15,
+                      ),
+                      label: const Text('Open project folder'),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 14),
                 StudioPromptComposer(
                   hintText: 'Ask, plan, or describe work',
                   submitTooltip: 'Start Circuit task',
                   onSubmit: (text) => _submit(ref, text),
+                  onQueueResearch: (text) => _queueResearch(context, ref, text),
                 ),
                 const SizedBox(height: Spacing.lg),
                 if (recentThreads.isNotEmpty) ...[
@@ -142,6 +161,23 @@ class StudioHome extends ConsumerWidget {
       ref.read(studioShellProvider.notifier).openThread(threadId);
     }
   }
+
+  void _queueResearch(BuildContext context, WidgetRef ref, String text) {
+    try {
+      final task = ref
+          .read(agentWorkspaceProvider.notifier)
+          .startTask(
+            goal: text,
+            profile: AgentTaskProfile.research,
+            backgroundExecutionRequested: true,
+          );
+      ref.read(studioShellProvider.notifier).openTask(task.id);
+    } on StateError catch (error) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message.toString())));
+    }
+  }
 }
 
 class _HomeContextChip extends ConsumerWidget {
@@ -163,7 +199,7 @@ class _HomeContextChip extends ConsumerWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.folder_outlined, size: 12, color: tokens.textMuted),
+          Icon(StudioIcons.folderOutlined, size: 12, color: tokens.textMuted),
           const SizedBox(width: Spacing.sm),
           Flexible(
             child: Text(
@@ -223,7 +259,9 @@ class _RecentThreadRow extends ConsumerWidget {
         ? tokens.accent
         : tokens.textMuted;
 
-    return InkWell(
+    return StudioFocusableActionSurface(
+      key: ValueKey('studio-home-recent-thread-${thread.id}'),
+      semanticLabel: 'Open ${thread.title}, ${lifecycle.label} recent task',
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.md),
       child: Container(
@@ -238,7 +276,11 @@ class _RecentThreadRow extends ConsumerWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.chat_bubble_outline, color: tokens.textMuted, size: 13),
+            Icon(
+              StudioIcons.chatBubbleOutline,
+              color: tokens.textMuted,
+              size: 13,
+            ),
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(
@@ -326,7 +368,9 @@ class _SuggestionRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    return InkWell(
+    return StudioFocusableActionSurface(
+      key: ValueKey('studio-home-suggestion-$text'),
+      semanticLabel: 'Use suggestion: $text',
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.sm),
       child: Container(
@@ -344,7 +388,7 @@ class _SuggestionRow extends ConsumerWidget {
         child: Row(
           children: [
             Icon(
-              Icons.arrow_outward,
+              StudioIcons.arrowOutward,
               color: tokens.textMuted.withValues(alpha: 0.86),
               size: 13,
             ),
@@ -361,7 +405,7 @@ class _SuggestionRow extends ConsumerWidget {
                 ),
               ),
             ),
-            Icon(Icons.chevron_right, color: tokens.textMuted, size: 14),
+            Icon(StudioIcons.chevronRight, color: tokens.textMuted, size: 14),
           ],
         ),
       ),

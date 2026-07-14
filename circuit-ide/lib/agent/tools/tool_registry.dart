@@ -44,6 +44,7 @@ class ToolRegistry {
     final allowedNames = switch (mode) {
       AgentToolMode.chat => const <String>{},
       AgentToolMode.ask => _askToolNames,
+      AgentToolMode.research => _researchToolNames,
       AgentToolMode.plan => _planToolNames,
       AgentToolMode.code => _codeToolNames,
       AgentToolMode.fix => _codeToolNames,
@@ -61,6 +62,7 @@ class ToolRegistry {
     final allowedNames = switch ((mode, phase)) {
       (AgentToolMode.chat, _) => const <String>{},
       (AgentToolMode.ask, _) => _askToolNames,
+      (AgentToolMode.research, _) => _researchToolNames,
       (AgentToolMode.review, _) => _reviewToolNames,
       (AgentToolMode.handoff, _) => _handoffToolNames,
       (AgentToolMode.plan, _) => _planToolNames,
@@ -80,10 +82,10 @@ class ToolRegistry {
   static List<ToolDefinition> get allTools => [
     ..._fileTools,
     ..._patchTools,
+    ..._delegationTools,
     ..._gitTools,
     ..._webTools,
     ..._githubTools,
-    ..._orchestrationTools,
   ];
 
   static final _patchTools = [
@@ -147,6 +149,51 @@ class ToolRegistry {
           },
         },
         'required': ['title', 'summary', 'files'],
+      },
+    ),
+  ];
+
+  static final _delegationTools = [
+    const ToolDefinition(
+      name: 'delegate_subagent',
+      description:
+          'Ask an isolated subagent to complete one bounded task. Supply only the context it needs and an explicit read-only tool grant. This always requires user review. A child never receives the parent conversation and cannot modify files; allow_reviewed_patch_proposal only permits a reviewable proposal.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'task': {
+            'type': 'string',
+            'description': 'One bounded task for the child agent.',
+          },
+          'context': {
+            'type': 'string',
+            'description':
+                'The exact, minimal context excerpt to share. Do not include a whole conversation.',
+          },
+          'tool_grant': {
+            'type': 'array',
+            'description':
+                'Explicit child tools. Only read_file, list_files, search_files, git_status, git_diff, git_log, and conditionally propose_patch are allowed.',
+            'items': {
+              'type': 'string',
+              'enum': [
+                'read_file',
+                'list_files',
+                'search_files',
+                'git_status',
+                'git_diff',
+                'git_log',
+                'propose_patch',
+              ],
+            },
+          },
+          'allow_reviewed_patch_proposal': {
+            'type': 'boolean',
+            'description':
+                'Permit only a reviewable patch proposal. It never applies changes.',
+          },
+        },
+        'required': ['task'],
       },
     ),
   ];
@@ -496,34 +543,19 @@ class ToolRegistry {
       },
     ),
   ];
-
-  static final _orchestrationTools = [
-    const ToolDefinition(
-      name: 'orchestrate',
-      description:
-          'Spawn a subagent to handle a specific task autonomously. '
-          'The subagent has full tool access and will return its result. '
-          'Use this for tasks that can run independently.',
-      parameters: {
-        'type': 'object',
-        'properties': {
-          'task': {
-            'type': 'string',
-            'description': 'Detailed task description for the subagent',
-          },
-          'name': {
-            'type': 'string',
-            'description':
-                'Short name for this subagent (e.g., "test-writer", "refactorer")',
-          },
-        },
-        'required': ['task', 'name'],
-      },
-    ),
-  ];
 }
 
-enum AgentToolMode { chat, ask, plan, code, fix, review, verify, handoff }
+enum AgentToolMode {
+  chat,
+  ask,
+  research,
+  plan,
+  code,
+  fix,
+  review,
+  verify,
+  handoff,
+}
 
 enum AgentToolPhase { inspect, propose, apply, verify }
 
@@ -534,7 +566,13 @@ const _askToolNames = {
   'git_status',
   'git_diff',
   'git_log',
+  'delegate_subagent',
 };
+
+/// Research is intentionally separate from Ask. It exposes only the network
+/// tools, which remain subject to the project network policy and a per-call
+/// approval. Workspace, patch, command, MCP, and Git tools are absent.
+const _researchToolNames = {'web_search', 'web_fetch'};
 
 const _codeToolNames = _codeProposalToolNames;
 

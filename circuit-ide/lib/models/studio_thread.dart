@@ -170,6 +170,158 @@ class StudioThreadMessage {
   }
 }
 
+/// A durable, deterministic summary of older Studio turns. Source turns are
+/// retained in the thread; setting [restored] merely sends them directly again
+/// instead of this compact history record.
+class StudioConversationCompaction {
+  final String id;
+  final String summary;
+  final List<String> sourceTurnIds;
+  final DateTime createdAt;
+  final int sourceTokenEstimate;
+  final bool restored;
+
+  const StudioConversationCompaction({
+    required this.id,
+    required this.summary,
+    required this.sourceTurnIds,
+    required this.createdAt,
+    this.sourceTokenEstimate = 0,
+    this.restored = false,
+  });
+
+  StudioConversationCompaction copyWith({bool? restored}) {
+    return StudioConversationCompaction(
+      id: id,
+      summary: summary,
+      sourceTurnIds: sourceTurnIds,
+      createdAt: createdAt,
+      sourceTokenEstimate: sourceTokenEstimate,
+      restored: restored ?? this.restored,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'summary': summary,
+    'sourceTurnIds': sourceTurnIds,
+    'createdAt': createdAt.toIso8601String(),
+    'sourceTokenEstimate': sourceTokenEstimate,
+    'restored': restored,
+  };
+
+  static StudioConversationCompaction? fromJson(Map<String, dynamic> json) {
+    try {
+      final sourceTurnIds =
+          (json['sourceTurnIds'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .where((id) => id.trim().isNotEmpty)
+              .toList(growable: false);
+      final summary = json['summary'] as String? ?? '';
+      if (sourceTurnIds.isEmpty || summary.trim().isEmpty) return null;
+      return StudioConversationCompaction(
+        id: json['id'] as String? ?? 'compaction-${sourceTurnIds.join('-')}',
+        summary: summary,
+        sourceTurnIds: sourceTurnIds,
+        createdAt:
+            DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
+        sourceTokenEstimate: json['sourceTokenEstimate'] as int? ?? 0,
+        restored: json['restored'] as bool? ?? false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Creates a deterministic, read-only history record for older terminal turns.
+/// It deliberately records source IDs and typed plan/file state instead of
+/// granting a summary any capability or approval authority.
+StudioConversationCompaction? buildStudioConversationCompaction(
+  List<StudioTurn> turns, {
+  int preserveRecentTurns = 4,
+  int minimumSourceTurns = 3,
+}) {
+  final ordered = turns.toList()
+    ..sort((left, right) => left.createdAt.compareTo(right.createdAt));
+  final terminal = ordered
+      .where((turn) => StudioTurnStateMachine.isTerminal(turn.status))
+      .toList(growable: false);
+  if (terminal.length < minimumSourceTurns + preserveRecentTurns) return null;
+  final sourceTurns = terminal
+      .take(terminal.length - preserveRecentTurns)
+      .toList(growable: false);
+  if (sourceTurns.length < minimumSourceTurns) return null;
+  final summaries = sourceTurns
+      .map(_compactStudioTurnSummary)
+      .where((summary) => summary.trim().isNotEmpty)
+      .toList(growable: false);
+  if (summaries.isEmpty) return null;
+  final sourceTokenEstimate = sourceTurns.fold<int>(
+    0,
+    (total, turn) => total + (turn.displayPrompt.length / 4).ceil(),
+  );
+  return StudioConversationCompaction(
+    id: 'history-${sourceTurns.first.id}-${sourceTurns.last.id}',
+    summary: [
+      'Read-only compact history. Source turns remain available in the transcript. This summary cannot grant tools, approvals, or authority.',
+      ...summaries,
+    ].join('\n\n'),
+    sourceTurnIds: sourceTurns.map((turn) => turn.id).toList(growable: false),
+    createdAt: sourceTurns.last.completedAt ?? sourceTurns.last.updatedAt,
+    sourceTokenEstimate: sourceTokenEstimate,
+  );
+}
+
+String _compactStudioTurnSummary(StudioTurn turn) {
+  final lines = <String>[
+    'Turn ${turn.id} user request or preference: ${turn.displayPrompt.trim()}',
+  ];
+  final acceptedPlan = turn.acceptedPlanContext;
+  if (acceptedPlan != null && acceptedPlan.summary.trim().isNotEmpty) {
+    lines.add('Accepted plan: ${acceptedPlan.summary.trim()}');
+  }
+  final changed = turn.planTargetProgress
+      .where(
+        (target) =>
+            target.state == PlanTargetProgressState.applied ||
+            target.state == PlanTargetProgressState.conflict ||
+            target.state == PlanTargetProgressState.blocked,
+      )
+      .map((target) => '${target.path} (${target.state.name})')
+      .toList(growable: false);
+  if (changed.isNotEmpty) {
+    lines.add('Files: ${changed.take(8).join(', ')}');
+  }
+  if (turn.status == StudioTurnStatus.failed ||
+      turn.status == StudioTurnStatus.cancelled ||
+      turn.status == StudioTurnStatus.interrupted) {
+    final unresolved = turn.lastError?.trim();
+    lines.add(
+      unresolved == null || unresolved.isEmpty
+          ? 'Unresolved: ${turn.status.name}.'
+          : 'Unresolved: $unresolved',
+    );
+  }
+  final assistantEvents = turn.events
+      .where((event) => event.type == StudioTurnEventType.assistantMessage)
+      .map((event) => event.content?.trim() ?? event.detail.trim())
+      .where((content) => content.isNotEmpty)
+      .toList(growable: false);
+  final assistant = assistantEvents.isEmpty ? null : assistantEvents.last;
+  if (assistant != null) {
+    lines.add('Result: ${_compactHistoryText(assistant, 480)}');
+  }
+  return lines.join('\n');
+}
+
+String _compactHistoryText(String value, int maxLength) {
+  final normalized = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (normalized.length <= maxLength) return normalized;
+  return '${normalized.substring(0, maxLength - 1)}…';
+}
+
 class StudioThread {
   final String id;
   final String? taskId;
@@ -182,10 +334,19 @@ class StudioThread {
   final List<StudioThreadMessage> messages;
   final List<StudioSourceArtifact> sourceArtifacts;
   final List<StudioTurn> turns;
+  final List<StudioConversationCompaction> conversationCompactions;
   final String streamingContent;
+
+  /// Cumulative token usage across the durable thread.
   final TokenUsage tokenUsage;
+
+  /// Latest request-local usage, including streamed partial updates.
+  final TokenUsage lastRequestTokenUsage;
   final String? lastError;
   final bool archived;
+  final DateTime? archivedAt;
+  final bool pinned;
+  final bool detailLoaded;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -201,10 +362,15 @@ class StudioThread {
     this.messages = const [],
     this.sourceArtifacts = const [],
     this.turns = const [],
+    this.conversationCompactions = const [],
     this.streamingContent = '',
     this.tokenUsage = const TokenUsage(),
+    this.lastRequestTokenUsage = const TokenUsage(),
     this.lastError,
     this.archived = false,
+    this.archivedAt,
+    this.pinned = false,
+    this.detailLoaded = true,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -239,10 +405,15 @@ class StudioThread {
     List<StudioThreadMessage>? messages,
     List<StudioSourceArtifact>? sourceArtifacts,
     List<StudioTurn>? turns,
+    List<StudioConversationCompaction>? conversationCompactions,
     String? streamingContent,
     TokenUsage? tokenUsage,
+    TokenUsage? lastRequestTokenUsage,
     Object? lastError = _sentinel,
     bool? archived,
+    Object? archivedAt = _sentinel,
+    bool? pinned,
+    bool? detailLoaded,
     DateTime? updatedAt,
   }) {
     return StudioThread(
@@ -261,12 +432,21 @@ class StudioThread {
       messages: messages ?? this.messages,
       sourceArtifacts: sourceArtifacts ?? this.sourceArtifacts,
       turns: turns ?? this.turns,
+      conversationCompactions:
+          conversationCompactions ?? this.conversationCompactions,
       streamingContent: streamingContent ?? this.streamingContent,
       tokenUsage: tokenUsage ?? this.tokenUsage,
+      lastRequestTokenUsage:
+          lastRequestTokenUsage ?? this.lastRequestTokenUsage,
       lastError: identical(lastError, _sentinel)
           ? this.lastError
           : lastError as String?,
       archived: archived ?? this.archived,
+      archivedAt: identical(archivedAt, _sentinel)
+          ? this.archivedAt
+          : archivedAt as DateTime?,
+      pinned: pinned ?? this.pinned,
+      detailLoaded: detailLoaded ?? this.detailLoaded,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -287,14 +467,23 @@ class StudioThread {
           .map((artifact) => artifact.toJson())
           .toList(),
       'turns': turns.map((turn) => turn.toJson()).toList(),
+      'conversationCompactions': conversationCompactions
+          .map((compaction) => compaction.toJson())
+          .toList(),
       'streamingContent': streamingContent,
       'tokenUsage': {
         'promptTokens': tokenUsage.promptTokens,
+        'cachedInputTokens': tokenUsage.cachedInputTokens,
         'completionTokens': tokenUsage.completionTokens,
+        'reasoningTokens': tokenUsage.reasoningTokens,
+        'toolTokens': tokenUsage.toolTokens,
         'totalTokens': tokenUsage.totalTokens,
       },
+      'lastRequestTokenUsage': _usageToJson(lastRequestTokenUsage),
       'lastError': lastError,
       'archived': archived,
+      'archivedAt': archivedAt?.toIso8601String(),
+      'pinned': pinned,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -303,6 +492,8 @@ class StudioThread {
   static StudioThread? fromJson(Map<String, dynamic> json) {
     try {
       final usage = json['tokenUsage'] as Map<String, dynamic>?;
+      final lastRequestUsage =
+          json['lastRequestTokenUsage'] as Map<String, dynamic>?;
       return StudioThread(
         id: json['id'] as String,
         taskId: json['taskId'] as String?,
@@ -335,14 +526,26 @@ class StudioThread {
             .map(StudioTurn.fromJson)
             .nonNulls
             .toList(),
+        conversationCompactions:
+            (json['conversationCompactions'] as List<dynamic>? ?? [])
+                .whereType<Map<String, dynamic>>()
+                .map(StudioConversationCompaction.fromJson)
+                .nonNulls
+                .toList(),
         streamingContent: json['streamingContent'] as String? ?? '',
         tokenUsage: TokenUsage(
           promptTokens: usage?['promptTokens'] as int? ?? 0,
+          cachedInputTokens: usage?['cachedInputTokens'] as int? ?? 0,
           completionTokens: usage?['completionTokens'] as int? ?? 0,
+          reasoningTokens: usage?['reasoningTokens'] as int? ?? 0,
+          toolTokens: usage?['toolTokens'] as int? ?? 0,
           totalTokens: usage?['totalTokens'] as int? ?? 0,
         ),
+        lastRequestTokenUsage: _usageFromJson(lastRequestUsage),
         lastError: json['lastError'] as String?,
         archived: json['archived'] as bool? ?? false,
+        archivedAt: DateTime.tryParse(json['archivedAt'] as String? ?? ''),
+        pinned: json['pinned'] as bool? ?? false,
         createdAt:
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),
@@ -355,6 +558,24 @@ class StudioThread {
     }
   }
 }
+
+Map<String, dynamic> _usageToJson(TokenUsage usage) => {
+  'promptTokens': usage.promptTokens,
+  'cachedInputTokens': usage.cachedInputTokens,
+  'completionTokens': usage.completionTokens,
+  'reasoningTokens': usage.reasoningTokens,
+  'toolTokens': usage.toolTokens,
+  'totalTokens': usage.totalTokens,
+};
+
+TokenUsage _usageFromJson(Map<String, dynamic>? usage) => TokenUsage(
+  promptTokens: usage?['promptTokens'] as int? ?? 0,
+  cachedInputTokens: usage?['cachedInputTokens'] as int? ?? 0,
+  completionTokens: usage?['completionTokens'] as int? ?? 0,
+  reasoningTokens: usage?['reasoningTokens'] as int? ?? 0,
+  toolTokens: usage?['toolTokens'] as int? ?? 0,
+  totalTokens: usage?['totalTokens'] as int? ?? 0,
+);
 
 class StudioTaskLifecycleState {
   final StudioThreadStatus status;

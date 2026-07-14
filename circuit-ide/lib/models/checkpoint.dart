@@ -38,11 +38,26 @@ class Checkpoint {
   final String description;
   final List<FileSnapshot> snapshots;
 
+  /// The reviewed patch that created this checkpoint, when available.
+  final String? patchSetId;
+
+  /// The owning task is deliberately stored as an opaque identifier. The
+  /// checkpoint history can therefore survive task title changes and still
+  /// render a useful link back to its source task.
+  final String? workItemId;
+
+  /// A restore creates a second checkpoint containing the state immediately
+  /// before that restore. This provides an explicit, durable way back.
+  final String? restoresCheckpointId;
+
   const Checkpoint({
     required this.id,
     required this.timestamp,
     required this.description,
     required this.snapshots,
+    this.patchSetId,
+    this.workItemId,
+    this.restoresCheckpointId,
   });
 
   int get fileCount => snapshots.length;
@@ -52,6 +67,9 @@ class Checkpoint {
     'timestamp': timestamp.toIso8601String(),
     'description': description,
     'snapshots': snapshots.map((s) => s.toJson()).toList(),
+    'patchSetId': patchSetId,
+    'workItemId': workItemId,
+    'restoresCheckpointId': restoresCheckpointId,
   };
 
   factory Checkpoint.fromJson(Map<String, dynamic> json) => Checkpoint(
@@ -61,6 +79,9 @@ class Checkpoint {
     snapshots: (json['snapshots'] as List)
         .map((s) => FileSnapshot.fromJson(s as Map<String, dynamic>))
         .toList(),
+    patchSetId: json['patchSetId'] as String?,
+    workItemId: json['workItemId'] as String?,
+    restoresCheckpointId: json['restoresCheckpointId'] as String?,
   );
 
   String toJsonString() => const JsonEncoder.withIndent('  ').convert(toJson());

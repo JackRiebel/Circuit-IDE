@@ -69,18 +69,22 @@ class DiagramArtifactRenderer {
     final linkSchedule = _linkSchedule(resolvedGraph, profile);
     final advisories = _designAdvisories(profile, assumptions);
     final failureDomains = _failureDomainRows(profile);
-    final metadata = _metadataFor(
-      graph: resolvedGraph,
-      tiers: tiers,
-      assumptions: assumptions,
-      citationCount: document.citations.length,
-      profile: profile,
-      readinessItems: readinessItems,
-      capacityItems: capacityItems,
-      linkSchedule: linkSchedule,
-      advisories: advisories,
-      failureDomains: failureDomains,
-    );
+    final metadata = <String, Object?>{
+      ..._metadataFor(
+        graph: resolvedGraph,
+        tiers: tiers,
+        assumptions: assumptions,
+        citationCount: document.citations.length,
+        profile: profile,
+        readinessItems: readinessItems,
+        capacityItems: capacityItems,
+        linkSchedule: linkSchedule,
+        advisories: advisories,
+        failureDomains: failureDomains,
+      ),
+      'hasAccessibleSvgTitle': true,
+      'hasAccessibleSvgDescription': true,
+    };
     final svg = _svgFor(
       resolvedGraph,
       title: document.title,

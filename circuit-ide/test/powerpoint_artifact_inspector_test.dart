@@ -6,7 +6,7 @@ import 'package:circuit_ide/services/powerpoint_artifact_renderer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('PowerPoint inspector verifies enterprise deck structure', () {
+  test('PowerPoint inspector verifies enterprise deck structure', () async {
     const document = ArtifactDocument(
       title: 'Customer Architecture Proposal',
       summary: 'Executive-ready customer proposal for a campus refresh.',
@@ -43,7 +43,26 @@ void main() {
     );
 
     final bytes = const PowerPointArtifactRenderer().render(document);
+    final workerBytes = await const PowerPointArtifactRenderer().renderInWorker(
+      document,
+    );
     final inspection = const PowerPointArtifactInspector().inspect(bytes);
+    final workerMetadata = await const PowerPointArtifactInspector()
+        .inspectMetadataInWorker(
+          bytes,
+          expectedSlideCount: inspection.slideCount,
+        );
+
+    expect(
+      const PowerPointArtifactInspector()
+          .inspect(workerBytes)
+          .toMetadata(expectedSlideCount: inspection.slideCount),
+      inspection.toMetadata(expectedSlideCount: inspection.slideCount),
+    );
+    expect(
+      workerMetadata,
+      inspection.toMetadata(expectedSlideCount: inspection.slideCount),
+    );
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedDeckStructure, isTrue);

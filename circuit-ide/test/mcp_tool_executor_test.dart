@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:circuit_ide/agent/mcp/mcp_client.dart';
+import 'package:circuit_ide/agent/mcp/mcp_config.dart';
 import 'package:circuit_ide/agent/tools/tool_executor.dart';
 import 'package:circuit_ide/models/agent_tool_permission.dart';
 import 'package:circuit_ide/models/tool_call_info.dart';
@@ -8,6 +12,56 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('MCP client dispatch guard', () {
+    test(
+      'rejects malformed MCP tool metadata before registering a server',
+      () async {
+        final fixture = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        addTearDown(fixture.close);
+        fixture.listen((request) async {
+          final body = await utf8.decoder.bind(request).join();
+          final rpc = jsonDecode(body) as Map<String, dynamic>;
+          final method = rpc['method'] as String?;
+          final response = method == 'initialize'
+              ? {
+                  'jsonrpc': '2.0',
+                  'id': rpc['id'],
+                  'result': {'protocolVersion': '2024-11-05'},
+                }
+              : {
+                  'jsonrpc': '2.0',
+                  'id': rpc['id'],
+                  'result': {
+                    'tools': [
+                      {'name': 17, 'inputSchema': 'not-an-object'},
+                    ],
+                  },
+                };
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode(response));
+          await request.response.close();
+        });
+        final client = McpClient();
+
+        await expectLater(
+          client.connectServer(
+            McpServerConfig(
+              name: 'malformed-fixture',
+              url: 'http://${fixture.address.address}:${fixture.port}',
+            ),
+          ),
+          throwsA(
+            isA<McpConnectionException>().having(
+              (error) => error.message,
+              'message',
+              contains('valid name/schema metadata'),
+            ),
+          ),
+        );
+        expect(client.hasConnections, isFalse);
+        expect(client.availableTools, isEmpty);
+      },
+    );
+
     test(
       'blocks mutation-looking direct calls before server dispatch',
       () async {
@@ -106,14 +160,15 @@ void main() {
       expect(result, contains('Unknown MCP tools'));
     });
 
-    test('allows explicit unsafe legacy dispatch opt-out', () async {
-      final client = McpClient(allowUnsafeMcpCalls: true);
+    test('has no unsafe direct-dispatch bypass', () async {
+      final client = McpClient();
 
       final result = await client.callToolOnServer('jira', 'update_issue', {
         'issue': 'ABC-1',
       });
 
-      expect(result, 'Error: MCP server jira is not connected');
+      expect(result, contains('MCP tool blocked'));
+      expect(result, contains('MCP mutation'));
     });
   });
 

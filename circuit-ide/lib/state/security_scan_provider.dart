@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../agent/security/vulnerability_scanner.dart';
 import '../core/utils/logger.dart';
 import '../models/security_scan_models.dart';
+import '../services/worker_cancellation.dart';
 import 'connection_provider.dart';
 import 'file_tree_provider.dart';
 
@@ -48,26 +49,49 @@ class SecurityScanState {
 
 class SecurityScanNotifier extends Notifier<SecurityScanState> {
   final _scanner = VulnerabilityScanner();
+  WorkerCancellationToken? _activeScan;
+  var _disposed = false;
 
   @override
-  SecurityScanState build() => const SecurityScanState();
+  SecurityScanState build() {
+    ref.onDispose(() {
+      _disposed = true;
+      _activeScan?.cancel('Security scan view was disposed.');
+    });
+    return const SecurityScanState();
+  }
 
   Future<void> scanProject() async {
     final rootPath = ref.read(fileTreeProvider).rootPath;
     if (rootPath == null) return;
 
+    _activeScan?.cancel('A newer security scan replaced this one.');
+    final cancellation = WorkerCancellationToken();
+    _activeScan = cancellation;
     state = state.copyWith(isScanning: true);
 
     try {
-      final result = await _scanner.scanProject(rootPath);
+      final result = await _scanner.scanProject(
+        rootPath,
+        cancellationToken: cancellation,
+      );
+      if (_disposed || !identical(_activeScan, cancellation)) return;
       state = SecurityScanState(
         lastResult: result,
         isScanning: false,
         activeSeverityFilters: state.activeSeverityFilters,
       );
+    } on WorkerCancelledException {
+      if (_disposed || !identical(_activeScan, cancellation)) return;
+      state = state.copyWith(isScanning: false);
     } catch (e) {
+      if (_disposed || !identical(_activeScan, cancellation)) return;
       Logger.error('Security scan failed', e);
       state = state.copyWith(isScanning: false);
+    } finally {
+      if (identical(_activeScan, cancellation)) {
+        _activeScan = null;
+      }
     }
   }
 
@@ -88,7 +112,8 @@ class SecurityScanNotifier extends Notifier<SecurityScanState> {
     state = state.copyWith(isAnalyzing: true, aiAnalysis: null);
 
     try {
-      final prompt = '''Analyze this security vulnerability and provide a detailed fix:
+      final prompt =
+          '''Analyze this security vulnerability and provide a detailed fix:
 
 **Type**: ${finding.type.displayName}
 **Severity**: ${finding.severity.toUpperCase()}
@@ -122,5 +147,5 @@ Please provide:
 
 final securityScanProvider =
     NotifierProvider<SecurityScanNotifier, SecurityScanState>(
-  SecurityScanNotifier.new,
-);
+      SecurityScanNotifier.new,
+    );

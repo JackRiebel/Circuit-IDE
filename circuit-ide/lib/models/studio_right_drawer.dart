@@ -1,3 +1,5 @@
+import '../core/constants/studio_layout_contract.dart';
+
 enum StudioDrawerMode {
   progress,
   browser,
@@ -36,11 +38,13 @@ class StudioRightDrawerState {
   });
 
   double get width {
-    if (collapsed) return 52;
+    if (collapsed) return StudioLayoutContract.collapsedDrawerWidth;
     return switch (widthMode) {
-      StudioDrawerWidthMode.standard => 300,
-      StudioDrawerWidthMode.expanded => 508,
-      StudioDrawerWidthMode.split => 668,
+      StudioDrawerWidthMode.standard =>
+        StudioLayoutContract.standardDrawerWidth,
+      StudioDrawerWidthMode.expanded =>
+        StudioLayoutContract.expandedDrawerWidth,
+      StudioDrawerWidthMode.split => StudioLayoutContract.splitDrawerWidth,
     };
   }
 

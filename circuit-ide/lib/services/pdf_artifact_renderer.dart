@@ -1,14 +1,30 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
+import '../models/artifact_template.dart';
+import 'worker_cancellation.dart';
 
 class PdfArtifactRenderer {
   const PdfArtifactRenderer();
 
   static const int _maxTablesInReport = 6;
   static const int _tableDataRowsPerPage = 15;
+
+  /// Builds generated PDFs off the UI isolate.
+  Future<Uint8List> renderInWorker(
+    ArtifactDocument document, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Uint8List>(
+      entryPoint: _pdfRenderWorkerEntry,
+      arguments: {'document': document},
+      cancellationToken: cancellationToken,
+      decodeResult: _pdfBytesFromWorkerResult,
+    );
+  }
 
   List<List<String>> previewRowsFor(
     ArtifactDocument document, {
@@ -231,6 +247,10 @@ class PdfArtifactRenderer {
       'hasRenderSafeContentFrame': true,
       'hasPublishingMetadata': true,
       'hasReportEvidencePolicy': true,
+      'hasAccessibilityPolicy': true,
+      'hasTaggedPdfStructure': true,
+      'pdfTaggingProfile': 'Page-level marked reading order',
+      'pdfTaggedPageCount': pages.length,
       'hasAssumptionsAppendix': document.assumptions.isNotEmpty,
       'hasSourcesAppendix': document.citations.isNotEmpty,
       'hasCustomerReadyPackage': _hasCustomerReadyPackage(document),
@@ -248,6 +268,16 @@ class PdfArtifactRenderer {
     );
     final objects = <int, List<int>>{};
     final pageIds = <int>[];
+    final outlineRootId = 7 + (pages.length * 2);
+    final firstOutlineItemId = outlineRootId + 1;
+    final outlineIds = <int>[
+      for (var i = 0; i < outlineEntries.length; i++) firstOutlineItemId + i,
+    ];
+    final structTreeRootId = firstOutlineItemId + outlineEntries.length;
+    final parentTreeId = structTreeRootId + 1;
+    final structElementIds = <int>[
+      for (var i = 0; i < pages.length; i++) parentTreeId + 1 + i,
+    ];
     objects[3] = _bytes(
       '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     );
@@ -286,17 +316,12 @@ class PdfArtifactRenderer {
       objects[pageId] = _bytes(
         '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] '
         '/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> '
-        '/Contents $contentId 0 R >>',
+        '/StructParents $i /Contents $contentId 0 R >>',
       );
     }
-    final outlineRootId = 7 + (pages.length * 2);
-    final firstOutlineItemId = outlineRootId + 1;
-    final outlineIds = <int>[];
-    for (var i = 0; i < outlineEntries.length; i++) {
-      outlineIds.add(firstOutlineItemId + i);
-    }
     objects[1] = _bytes(
-      '<< /Type /Catalog /Pages 2 0 R /Outlines $outlineRootId 0 R /PageMode /UseOutlines >>',
+      '<< /Type /Catalog /Pages 2 0 R /Outlines $outlineRootId 0 R /PageMode /UseOutlines '
+      '/MarkInfo << /Marked true >> /StructTreeRoot $structTreeRootId 0 R /Lang (en-US) >>',
     );
     objects[2] = _bytes(
       '<< /Type /Pages /Kids [${pageIds.map((id) => '$id 0 R').join(' ')}] /Count ${pageIds.length} >>',
@@ -316,6 +341,19 @@ class PdfArtifactRenderer {
       final pageId = _pageIdForOutlineEntry(entry.title, pages, pageIds);
       objects[id] = _bytes(
         '<< /Title (${_pdfText(entry.title)}) /Parent $outlineRootId 0 R$previous$next /Dest [$pageId 0 R /FitH 744] >>',
+      );
+    }
+    objects[structTreeRootId] = _bytes(
+      '<< /Type /StructTreeRoot /K [${structElementIds.map((id) => '$id 0 R').join(' ')}] '
+      '/ParentTree $parentTreeId 0 R /ParentTreeNextKey ${pages.length} >>',
+    );
+    objects[parentTreeId] = _bytes(
+      '<< /Nums [${[for (var i = 0; i < structElementIds.length; i++) '$i [${structElementIds[i]} 0 R]'].join(' ')}] >>',
+    );
+    for (var i = 0; i < structElementIds.length; i++) {
+      objects[structElementIds[i]] = _bytes(
+        '<< /Type /StructElem /S /P /P $structTreeRootId 0 R '
+        '/Pg ${pageIds[i]} 0 R /K 0 >>',
       );
     }
 
@@ -1804,10 +1842,12 @@ class PdfArtifactRenderer {
     required int pageNumber,
     required int pageCount,
   }) {
+    final template = const ArtifactTemplateRegistry().fromDocument(document);
     final buffer = StringBuffer()
       ..writeln('0.98 0.98 0.97 rg 0 0 612 792 re f')
-      ..writeln('0.20 0.56 0.53 rg 0 0 8 792 re f')
-      ..writeln('0.12 0.12 0.12 rg');
+      ..writeln('${_pdfColor(template.accentColor)} rg 0 0 8 792 re f')
+      ..writeln('0.12 0.12 0.12 rg')
+      ..writeln('/P << /MCID 0 >> BDC');
     _drawHeader(buffer, document, pageNumber);
     for (final placed in items) {
       final item = placed.item;
@@ -1817,15 +1857,17 @@ class PdfArtifactRenderer {
         _drawTable(buffer, item, placed.y);
       }
     }
-    _drawFooter(buffer, pageNumber, pageCount);
+    _drawFooter(buffer, template, pageNumber, pageCount);
+    buffer.writeln('EMC');
     return buffer.toString();
   }
 
   void _drawHeader(StringBuffer buffer, ArtifactDocument document, int page) {
+    final template = const ArtifactTemplateRegistry().fromDocument(document);
     buffer
-      ..writeln('0.92 0.93 0.92 rg 54 744 504 1 re f')
+      ..writeln('${_pdfColor(template.accentColor)} rg 54 744 504 1 re f')
       ..writeln(
-        'BT /F1 8 Tf 0.35 0.37 0.40 rg 54 758 Td (${_pdfText('CircuitCode generated artifact')}) Tj ET',
+        'BT /F1 8 Tf ${_pdfColor(template.primaryColor)} rg 54 758 Td (${_pdfText('${template.logoText} · ${template.confidentialityLabel}')}) Tj ET',
       );
     if (page > 1) {
       buffer.writeln(
@@ -1834,15 +1876,28 @@ class PdfArtifactRenderer {
     }
   }
 
-  void _drawFooter(StringBuffer buffer, int pageNumber, int pageCount) {
+  void _drawFooter(
+    StringBuffer buffer,
+    ArtifactTemplate template,
+    int pageNumber,
+    int pageCount,
+  ) {
     buffer
-      ..writeln('0.90 0.91 0.91 rg 54 52 504 1 re f')
+      ..writeln('${_pdfColor(template.accentColor)} rg 54 52 504 1 re f')
       ..writeln(
-        'BT /F1 8 Tf 0.43 0.45 0.48 rg 54 34 Td (${_pdfText('CircuitCode - Generated artifact')}) Tj ET',
+        'BT /F1 8 Tf ${_pdfColor(template.primaryColor)} rg 54 34 Td (${_pdfText(template.footerText)}) Tj ET',
       )
       ..writeln(
         'BT /F1 8 Tf 0.43 0.45 0.48 rg 500 34 Td (${_pdfText('Page $pageNumber of $pageCount')}) Tj ET',
       );
+  }
+
+  String _pdfColor(String hex) {
+    final value = int.tryParse(hex, radix: 16) ?? 0;
+    final red = ((value >> 16) & 0xff) / 255;
+    final green = ((value >> 8) & 0xff) / 255;
+    final blue = (value & 0xff) / 255;
+    return '${red.toStringAsFixed(3)} ${green.toStringAsFixed(3)} ${blue.toStringAsFixed(3)}';
   }
 
   void _drawText(StringBuffer buffer, _PdfText line, double y) {
@@ -1912,6 +1967,26 @@ class PdfArtifactRenderer {
     if (max < 6 || normalized.length <= max) return normalized;
     return '${normalized.substring(0, max - 3)}...';
   }
+}
+
+void _pdfRenderWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final document = arguments['document'];
+    if (document is! ArtifactDocument) {
+      throw StateError('Missing artifact document for PDF rendering.');
+    }
+    replyPort.send({'result': const PdfArtifactRenderer().render(document)});
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Uint8List _pdfBytesFromWorkerResult(Object? result) {
+  if (result is Uint8List) return result;
+  if (result is List<int>) return Uint8List.fromList(result);
+  throw StateError('Artifact renderer returned invalid bytes.');
 }
 
 enum _PdfColor { body, muted }

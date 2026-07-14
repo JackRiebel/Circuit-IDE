@@ -61,7 +61,11 @@ class ChartArtifactRenderer {
       chartCount: charts.length,
       signals: profile.signals,
       previewRows: _previewRows(charts, profile),
-      metadata: _metadataFor(charts, profile, document),
+      metadata: {
+        ..._metadataFor(charts, profile, document),
+        'hasAccessibleSvgTitle': true,
+        'hasAccessibleSvgDescription': true,
+      },
     );
   }
 

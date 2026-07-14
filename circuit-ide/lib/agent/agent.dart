@@ -22,7 +22,6 @@ import 'checkpoint/checkpoint_manager.dart';
 import 'mcp/mcp_client.dart';
 import 'tools/tool_executor.dart';
 import 'tools/tool_registry.dart';
-import 'tools/orchestrate_tool.dart';
 
 class CircuitAgent {
   final AIProvider provider;
@@ -74,11 +73,6 @@ class CircuitAgent {
   void setMcpClient(McpClient? client) {
     _mcpTools = client?.toolDefinitions ?? [];
     _toolExecutor.setMcpClient(client);
-  }
-
-  /// Set orchestration tool executor.
-  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
-    _toolExecutor.setOrchestrateTool(tool);
   }
 
   set systemPromptOverride(String? prompt) {
@@ -450,6 +444,7 @@ class CircuitAgent {
     return switch (mode) {
       AgentToolMode.chat ||
       AgentToolMode.ask ||
+      AgentToolMode.research ||
       AgentToolMode.review ||
       AgentToolMode.handoff => AgentToolPhase.inspect,
       AgentToolMode.plan => AgentToolPhase.propose,

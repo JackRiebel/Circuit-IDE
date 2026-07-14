@@ -10,6 +10,7 @@ import '../models/project_profile.dart';
 import '../models/reviewed_edit.dart';
 import '../models/work_item.dart';
 import '../models/work_item_handoff_summary.dart';
+import '../services/versioned_json_document.dart';
 import 'agent_run_provider.dart';
 import 'context_pack_provider.dart';
 import 'file_tree_provider.dart';
@@ -43,6 +44,9 @@ class WorkItemHistory {
 }
 
 class WorkItemStore {
+  static const _schemaKind = 'circuit.work-item-history';
+  static const _schemaVersion = 2;
+
   final String baseDir;
 
   WorkItemStore({String? baseDir})
@@ -59,23 +63,42 @@ class WorkItemStore {
   Future<List<WorkItem>> load(String? rootPath) async {
     final file = File(historyPath(rootPath));
     if (!await file.exists()) return const [];
-    final json = jsonDecode(await file.readAsString()) as List<dynamic>;
-    return json
+    final contents = await file.readAsString();
+    final document = VersionedJsonDocument.decode(
+      jsonDecode(contents),
+      expectedKind: _schemaKind,
+      currentSchemaVersion: _schemaVersion,
+    );
+    final payload = document.payload;
+    if (payload is! List<dynamic>) {
+      throw const FormatException('Work item history payload is not a list.');
+    }
+    final items = payload
         .whereType<Map<String, dynamic>>()
         .map(WorkItem.fromJson)
         .nonNulls
         .toList();
+    if (document.schemaVersion < _schemaVersion) {
+      await migrateVersionedJsonFile(
+        file: file,
+        originalContents: contents,
+        migratedContents: _encode(items),
+        previousSchemaVersion: document.schemaVersion,
+      );
+    }
+    return items;
   }
 
   Future<void> save(String? rootPath, List<WorkItem> items) async {
     final file = File(historyPath(rootPath));
-    if (!await file.parent.exists()) await file.parent.create(recursive: true);
-    await file.writeAsString(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert(items.map((item) => item.toJson()).toList()),
-    );
+    await writeVersionedJsonAtomically(file, _encode(items));
   }
+
+  String _encode(List<WorkItem> items) => VersionedJsonDocument(
+    kind: _schemaKind,
+    schemaVersion: _schemaVersion,
+    payload: items.map((item) => item.toJson()).toList(),
+  ).encode(pretty: true);
 }
 
 class WorkItemHistoryController extends Notifier<WorkItemHistory> {
@@ -198,7 +221,9 @@ class WorkItemController extends Notifier<WorkItem?> {
     final profileNotifier = ref.read(projectProfileProvider.notifier);
     final results = <VerificationResultSummary>[];
     for (final command in item.verificationCommands.where((c) => c.enabled)) {
-      results.add(await profileNotifier.runCommand(command));
+      results.add(
+        await profileNotifier.runCommand(command, userApproved: true),
+      );
     }
     final passed =
         results.isNotEmpty && results.every((result) => result.passed);

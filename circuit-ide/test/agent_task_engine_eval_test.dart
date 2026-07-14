@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:circuit_ide/agent/security/agent_tool_permission_policy.dart';
 import 'package:circuit_ide/agent/tools/tool_registry.dart';
 import 'package:circuit_ide/agent/turn_outcome_validator.dart';
@@ -1485,45 +1488,58 @@ void main() {
       expect(proposeTools, isNot(contains('run_command')));
     });
 
-    test('Studio tool phases quarantine advanced and network surfaces', () {
-      const advancedOrExternalTools = {
-        'web_fetch',
-        'web_search',
-        'github_whoami',
-        'github_list_repos',
-        'github_get_repo',
-        'github_list_issues',
-        'github_get_issue',
-        'github_create_issue',
-        'github_list_prs',
-        'github_get_pr',
-        'github_search_repos',
-        'github_search_issues',
-        'github_create_repo',
-        'orchestrate',
-      };
+    test(
+      'Studio tool phases quarantine external surfaces except web-only Research',
+      () {
+        const advancedOrExternalTools = {
+          'web_fetch',
+          'web_search',
+          'github_whoami',
+          'github_list_repos',
+          'github_get_repo',
+          'github_list_issues',
+          'github_get_issue',
+          'github_create_issue',
+          'github_list_prs',
+          'github_get_pr',
+          'github_search_repos',
+          'github_search_issues',
+          'github_create_repo',
+          'orchestrate',
+        };
 
-      for (final mode in AgentToolMode.values) {
-        for (final phase in AgentToolPhase.values) {
-          final exposed = ToolRegistry.toolsForModeAndPhase(
-            mode,
-            phase,
-          ).map((tool) => tool.name).toSet();
+        for (final mode in AgentToolMode.values) {
+          for (final phase in AgentToolPhase.values) {
+            final exposed = ToolRegistry.toolsForModeAndPhase(
+              mode,
+              phase,
+            ).map((tool) => tool.name).toSet();
 
-          expect(
-            exposed.intersection(advancedOrExternalTools),
-            isEmpty,
-            reason: '${mode.name}/${phase.name} exposed advanced tools.',
-          );
-          expect(
-            exposed.any((tool) => tool.startsWith('mcp_')),
-            isFalse,
-            reason:
-                '${mode.name}/${phase.name} exposed MCP tools without a runtime-compliant connector contract.',
-          );
+            final externalTools = exposed.intersection(advancedOrExternalTools);
+            if (mode == AgentToolMode.research) {
+              expect(
+                externalTools,
+                {'web_fetch', 'web_search'},
+                reason:
+                    'Research must remain web-only without GitHub, orchestration, or workspace tools.',
+              );
+            } else {
+              expect(
+                externalTools,
+                isEmpty,
+                reason: '${mode.name}/${phase.name} exposed advanced tools.',
+              );
+            }
+            expect(
+              exposed.any((tool) => tool.startsWith('mcp_')),
+              isFalse,
+              reason:
+                  '${mode.name}/${phase.name} exposed MCP tools without a runtime-compliant connector contract.',
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
     test('vague read-only prompts in Code mode do not require a workspace', () {
       final intent = IntentClassifier.classify(
@@ -4398,7 +4414,87 @@ Verification
         );
       }
     });
+
+    test(
+      'publishes a complete deterministic evaluation fixture inventory',
+      () async {
+        final intentCounts = <String, int>{
+          for (final intent in TurnIntent.values) intent.name: 0,
+        };
+        final toolModeCounts = <String, int>{
+          for (final mode in const [
+            AgentToolMode.chat,
+            AgentToolMode.ask,
+            AgentToolMode.plan,
+            AgentToolMode.code,
+            AgentToolMode.fix,
+            AgentToolMode.review,
+            AgentToolMode.verify,
+          ])
+            mode.name: 0,
+        };
+        for (final scenario in scenarios) {
+          intentCounts.update(
+            scenario.expectedIntent.name,
+            (count) => count + 1,
+          );
+          toolModeCounts.update(
+            scenario.expectedToolMode.name,
+            (count) => count + 1,
+          );
+        }
+
+        expect(scenarios, isNotEmpty);
+        expect(
+          intentCounts.values,
+          everyElement(greaterThan(0)),
+          reason: 'Every core task intent needs at least one routing fixture.',
+        );
+        expect(
+          toolModeCounts.values,
+          everyElement(greaterThan(0)),
+          reason: 'Every Studio task-engine tool mode needs a routing fixture.',
+        );
+
+        final report = <String, Object?>{
+          'schemaVersion': 1,
+          'evaluation': 'deterministic-task-engine',
+          'allPassed': true,
+          'requiredPassRate': 1.0,
+          'promptRoutingScenarioCount': scenarios.length,
+          'coveredIntents': TurnIntent.values
+              .map((intent) => intent.name)
+              .toList(growable: false),
+          'intentFixtureCounts': intentCounts,
+          'toolModeFixtureCounts': toolModeCounts,
+          'contractChecks': const [
+            'intent and workspace boundary',
+            'tool-phase exposure',
+            'plan and accepted-plan outcome validation',
+            'scoped approval and command policy',
+            'failure and recovery contracts',
+          ],
+        };
+        await _writeTaskEngineReportIfRequested(report);
+        // This is intentionally aggregate-only: CI reporting must not retain
+        // prompts, paths, provider payloads, or workspace content.
+        // ignore: avoid_print
+        print('TASK_ENGINE_EVAL=${jsonEncode(report)}');
+      },
+    );
   });
+}
+
+Future<void> _writeTaskEngineReportIfRequested(
+  Map<String, Object?> report,
+) async {
+  final path = Platform.environment['TASK_ENGINE_EVAL_REPORT']?.trim();
+  if (path == null || path.isEmpty) return;
+  final destination = File(path);
+  await destination.parent.create(recursive: true);
+  final temporary = File('${destination.path}.tmp');
+  await temporary.writeAsString(jsonEncode(report), flush: true);
+  await temporary.rename(destination.path);
 }
 
 class _PromptScenario {

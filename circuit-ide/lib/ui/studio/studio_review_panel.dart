@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants/design_tokens.dart';
+import '../../core/constants/studio_layout_contract.dart';
 import '../../models/reviewed_edit.dart';
 import '../../models/studio_shell.dart';
 import '../../state/patch_proposal_provider.dart';
@@ -11,7 +12,10 @@ import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_shell_provider.dart';
 import '../../state/theme_provider.dart';
 import '../../theme/theme_tokens.dart';
+import 'checkpoint_restore_dialog.dart';
+import 'studio_chrome.dart';
 import 'studio_message_sender.dart';
+import 'studio_review_checkpoint_history.dart';
 
 class StudioReviewPanel extends ConsumerWidget {
   const StudioReviewPanel({super.key});
@@ -28,7 +32,7 @@ class StudioReviewPanel extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.difference_outlined,
+              StudioIcons.differenceOutlined,
               color: tokens.textMuted.withValues(alpha: 0.72),
               size: 14,
             ),
@@ -49,7 +53,9 @@ class StudioReviewPanel extends ConsumerWidget {
 
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 694),
+        constraints: const BoxConstraints(
+          maxWidth: StudioLayoutContract.reviewWidth,
+        ),
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
           decoration: BoxDecoration(
@@ -131,6 +137,13 @@ class StudioReviewPanel extends ConsumerWidget {
                       fontSize: FontSizes.sm,
                     ),
                   ),
+                ),
+              ],
+              if (patchState.checkpoints.isNotEmpty) ...[
+                const SizedBox(height: Spacing.sm),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
+                  child: StudioCheckpointHistory(state: patchState),
                 ),
               ],
               const SizedBox(height: Spacing.md),
@@ -241,7 +254,9 @@ class _ReviewHeader extends ConsumerWidget {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(
-            patch.isPlanOnly ? Icons.format_list_bulleted : Icons.difference,
+            patch.isPlanOnly
+                ? StudioIcons.formatListBulleted
+                : StudioIcons.difference,
             color: tokens.textMuted,
             size: 14,
           ),
@@ -289,55 +304,54 @@ class _ReviewFileRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () => ref
-            .read(studioRightDrawerProvider.notifier)
-            .openPatchFile(patchId, edit.path),
-        child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 13),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: tokens.studioDivider.withValues(alpha: 0.48),
-              ),
+    return StudioFocusableActionSurface(
+      key: ValueKey('studio-review-file-$patchId-${edit.path}'),
+      semanticLabel: 'Open ${edit.type.name} patch review for ${edit.path}',
+      onTap: () => ref
+          .read(studioRightDrawerProvider.notifier)
+          .openPatchFile(patchId, edit.path),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: tokens.studioDivider.withValues(alpha: 0.48),
             ),
           ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.description_outlined,
-                color: tokens.textMuted,
-                size: 11,
-              ),
-              const SizedBox(width: Spacing.sm),
-              Expanded(
-                child: Text(
-                  edit.path,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: FontSizes.xs,
-                    height: 1.15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              Text(
-                edit.type.name,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              StudioIcons.descriptionOutlined,
+              color: tokens.textMuted,
+              size: 11,
+            ),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Text(
+                edit.path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: tokens.textMuted,
-                  fontSize: FontSizes.xxs,
-                  fontWeight: FontWeight.w600,
+                  color: tokens.textSecondary,
+                  fontSize: FontSizes.xs,
+                  height: 1.15,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: Spacing.sm),
-              Icon(Icons.chevron_right, color: tokens.textMuted, size: 13),
-            ],
-          ),
+            ),
+            Text(
+              edit.type.name,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Icon(StudioIcons.chevronRight, color: tokens.textMuted, size: 13),
+          ],
         ),
       ),
     );
@@ -374,7 +388,7 @@ class _ReviewActions extends ConsumerWidget {
                 : () => unawaited(
                     ref.read(patchProposalProvider.notifier).apply(patch.id),
                   ),
-            icon: const Icon(Icons.check, size: 13),
+            icon: const Icon(StudioIcons.check, size: 13),
             label: Text(
               isApplying
                   ? 'Applying'
@@ -386,7 +400,7 @@ class _ReviewActions extends ConsumerWidget {
         OutlinedButton.icon(
           style: _secondaryActionStyle(tokens),
           onPressed: isApplying ? null : () => _requestPatchUpdate(ref, patch),
-          icon: const Icon(Icons.edit_note, size: 13),
+          icon: const Icon(StudioIcons.editNote, size: 13),
           label: Text(
             patch.applyStatus == PatchApplyStatus.conflict
                 ? 'Ask Circuit to rebase'
@@ -399,26 +413,45 @@ class _ReviewActions extends ConsumerWidget {
             onPressed: isApplying
                 ? null
                 : () => _requestPatchRefresh(ref, patch),
-            icon: const Icon(Icons.refresh, size: 13),
+            icon: const Icon(StudioIcons.refresh, size: 13),
             label: const Text('Refresh patch'),
+          ),
+        if (patch.applyStatus == PatchApplyStatus.conflict &&
+            _conflictedPatchPath(patch) != null)
+          OutlinedButton.icon(
+            style: _secondaryActionStyle(tokens),
+            onPressed: isApplying
+                ? null
+                : () => ref
+                      .read(patchProposalProvider.notifier)
+                      .skipConflictedFile(
+                        patch.id,
+                        _conflictedPatchPath(patch)!,
+                      ),
+            icon: const Icon(StudioIcons.skipNext, size: 13),
+            label: const Text('Skip conflicted file'),
           ),
         OutlinedButton.icon(
           style: _subtleActionStyle(tokens),
           onPressed: isApplying
               ? null
               : () => ref.read(patchProposalProvider.notifier).reject(patch.id),
-          icon: const Icon(Icons.close, size: 13),
+          icon: const Icon(StudioIcons.close, size: 13),
           label: const Text('Reject'),
         ),
         if (patch.checkpointId != null)
           OutlinedButton.icon(
             style: _secondaryActionStyle(tokens),
-            onPressed: () => unawaited(
-              ref
-                  .read(patchProposalProvider.notifier)
-                  .restoreCheckpoint(patch.checkpointId!),
-            ),
-            icon: const Icon(Icons.restore, size: 13),
+            onPressed: isApplying
+                ? null
+                : () => unawaited(
+                    previewAndRestoreCheckpoint(
+                      context,
+                      ref,
+                      patch.checkpointId!,
+                    ),
+                  ),
+            icon: const Icon(StudioIcons.restore, size: 13),
             label: const Text('Restore checkpoint'),
           ),
       ],
@@ -466,6 +499,17 @@ String _refreshPrompt(ProposedPatchSet patch) {
       ? ''
       : ' Resolve the current conflict: $conflict';
   return 'Refresh this patch against the current file contents without expanding scope.$suffix';
+}
+
+String? _conflictedPatchPath(ProposedPatchSet patch) {
+  final message = patch.conflictMessage ?? '';
+  final match = RegExp(
+    r'(?:proposal|file)[^\n:]*:\s*([^\n]+)',
+    caseSensitive: false,
+  ).firstMatch(message);
+  final path = match?.group(1)?.trim();
+  if (path == null || path.isEmpty) return null;
+  return patch.edits.any((edit) => edit.path == path) ? path : null;
 }
 
 ButtonStyle _primaryActionStyle(ThemeTokens tokens) {
@@ -523,54 +567,53 @@ class _PlanFileRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final filePath = _plannedFilePath(path);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: () =>
-            ref.read(studioRightDrawerProvider.notifier).openFile(filePath),
-        child: Container(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 13),
-          decoration: BoxDecoration(
-            border: Border(
-              top: BorderSide(
-                color: tokens.studioDivider.withValues(alpha: 0.48),
-              ),
+    return StudioFocusableActionSurface(
+      key: ValueKey('studio-plan-file-$filePath'),
+      semanticLabel: 'Open planned file $filePath',
+      onTap: () =>
+          ref.read(studioRightDrawerProvider.notifier).openFile(filePath),
+      child: Container(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: tokens.studioDivider.withValues(alpha: 0.48),
             ),
           ),
-          child: Row(
-            children: [
-              Icon(
-                Icons.description_outlined,
-                color: tokens.textMuted,
-                size: 11,
-              ),
-              const SizedBox(width: Spacing.sm),
-              Expanded(
-                child: Text(
-                  filePath,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: tokens.textSecondary,
-                    fontSize: FontSizes.xs,
-                    height: 1.15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              Text(
-                'planned',
+        ),
+        child: Row(
+          children: [
+            Icon(
+              StudioIcons.descriptionOutlined,
+              color: tokens.textMuted,
+              size: 11,
+            ),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Text(
+                filePath,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: tokens.textMuted,
+                  color: tokens.textSecondary,
                   fontSize: FontSizes.xs,
-                  fontWeight: FontWeight.w600,
+                  height: 1.15,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: Spacing.sm),
-              Icon(Icons.chevron_right, color: tokens.textMuted, size: 13),
-            ],
-          ),
+            ),
+            Text(
+              'planned',
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xs,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Icon(StudioIcons.chevronRight, color: tokens.textMuted, size: 13),
+          ],
         ),
       ),
     );

@@ -15,17 +15,29 @@ class CommandPalette extends ConsumerStatefulWidget {
 
 class _CommandPaletteState extends ConsumerState<CommandPalette> {
   final _controller = TextEditingController();
-  final _focusNode = FocusNode();
+  final _focusNode = FocusNode(debugLabel: 'command-palette-search');
+  FocusNode? _previousFocus;
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.requestFocus();
+    _previousFocus = FocusManager.instance.primaryFocus;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
+    final previousFocus = _previousFocus;
+    if (previousFocus != null &&
+        previousFocus.context != null &&
+        previousFocus.canRequestFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        previousFocus.requestFocus();
+      });
+    }
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -73,43 +85,50 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                   // Search input
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: KeyboardListener(
-                      focusNode: FocusNode(),
-                      onKeyEvent: (event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.escape) {
-                            ref.read(commandPaletteProvider.notifier).close();
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.arrowDown) {
-                            if (visibleCommands.isEmpty) return;
+                    child: Focus(
+                      onKeyEvent: (_, event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.escape) {
+                          ref.read(commandPaletteProvider.notifier).close();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          if (visibleCommands.isNotEmpty) {
                             setState(() {
                               _selectedIndex = (_selectedIndex + 1).clamp(
                                 0,
                                 visibleCommands.length - 1,
                               );
                             });
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.arrowUp) {
-                            if (visibleCommands.isEmpty) return;
+                          }
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          if (visibleCommands.isNotEmpty) {
                             setState(() {
                               _selectedIndex = (_selectedIndex - 1).clamp(
                                 0,
                                 visibleCommands.length - 1,
                               );
                             });
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.enter) {
-                            if (visibleCommands.isNotEmpty) {
-                              final index = _selectedIndex.clamp(
-                                0,
-                                visibleCommands.length - 1,
-                              );
-                              ref
-                                  .read(commandPaletteProvider.notifier)
-                                  .execute(visibleCommands[index]);
-                            }
                           }
+                          return KeyEventResult.handled;
                         }
+                        if (event.logicalKey == LogicalKeyboardKey.enter) {
+                          if (visibleCommands.isNotEmpty) {
+                            final index = _selectedIndex.clamp(
+                              0,
+                              visibleCommands.length - 1,
+                            );
+                            ref
+                                .read(commandPaletteProvider.notifier)
+                                .execute(visibleCommands[index]);
+                          }
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
                       },
                       child: Row(
                         children: [

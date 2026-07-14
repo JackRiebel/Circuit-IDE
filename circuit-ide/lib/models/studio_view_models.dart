@@ -9,6 +9,7 @@ import 'studio_thread.dart';
 
 enum TaskDisplayKind {
   idle,
+  queued,
   working,
   waitingForApproval,
   runningCommand,
@@ -56,6 +57,15 @@ class TaskDisplayState {
       return const TaskDisplayState(
         kind: TaskDisplayKind.runningCommand,
         label: 'Running',
+        isActive: true,
+      );
+    }
+    if (task?.status == AgentTaskStatus.queued) {
+      return const TaskDisplayState(
+        kind: TaskDisplayKind.queued,
+        label: 'Queued',
+        // Queued tasks remain in the active filter because they are waiting
+        // for the current workspace, but they are not executing yet.
         isActive: true,
       );
     }
@@ -317,6 +327,8 @@ class StudioRailTaskSummary {
   final bool selected;
   final TaskDisplayState displayState;
   final DateTime? updatedAt;
+  final bool pinned;
+  final bool archived;
 
   const StudioRailTaskSummary({
     required this.id,
@@ -324,6 +336,8 @@ class StudioRailTaskSummary {
     required this.selected,
     required this.displayState,
     this.updatedAt,
+    this.pinned = false,
+    this.archived = false,
   });
 }
 

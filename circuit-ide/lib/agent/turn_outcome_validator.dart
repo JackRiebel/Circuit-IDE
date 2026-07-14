@@ -4,6 +4,7 @@ import '../models/studio_turn.dart';
 import '../models/tool_call_info.dart';
 import '../models/tool_result_envelope.dart';
 import '../models/turn_intent.dart';
+import '../services/research_evidence_evaluator.dart';
 import 'tools/tool_registry.dart';
 
 enum TurnOutcomeValidationStatus { valid, invalid, blockingQuestion }
@@ -117,6 +118,85 @@ class TurnOutcomeValidator {
         _containsConfidentReadOnlyFinding(content)) {
       return const TurnOutcomeValidationResult.invalid(
         'This read-only turn could not inspect the requested context but still claimed a confident finding. Report the inspection failure or ask for the missing context instead.',
+        acceptedPlanState: AcceptedPlanState.none,
+      );
+    }
+    if (_hasSuccessfulConnectorResult(toolResults) &&
+        !_hasConnectorCitationOrAssumption(content)) {
+      return const TurnOutcomeValidationResult.invalid(
+        'This turn used connector evidence but did not cite its `Source: mcp:...` identifier or label the claim as an assumption. Add the provenance citation before completing.',
+      );
+    }
+    if (toolMode == AgentToolMode.research) {
+      if (toolNames.any(
+        (name) => name != 'web_search' && name != 'web_fetch',
+      )) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode is limited to approved web search and fetch operations. Use another mode for workspace, command, connector, or mutation work.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      final researchQuestion = _singleBlockingQuestion(content);
+      if (!_hasSuccessfulResearchFetch(toolResults)) {
+        if (researchQuestion != null) {
+          return TurnOutcomeValidationResult.blockingQuestion(
+            researchQuestion,
+            acceptedPlanState: AcceptedPlanState.none,
+          );
+        }
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode must fetch at least one direct source before making a factual answer, or ask one specific blocking question. Search snippets and model memory are not source evidence.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      if (!_hasResearchSourceSection(content)) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode used web evidence but the answer has no claim-level Sources section with a direct URL and checked date. Cite the fetched source or clearly label the claim as unsupported.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      if (!_hasResearchEvidenceTable(content)) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode needs an Evidence table with Claim, Sources, and Evidence status columns so unsupported or freshness-sensitive statements remain reviewable.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      if (!_hasResearchConflictReview(content)) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode needs a Conflict review. State `No material conflicts identified` after comparing direct sources, or add a cited `Conflict:` item that explains whether the disagreement is unresolved or why one record is preferred.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      final evidenceAssessment = _researchEvidenceAssessment(
+        content: content,
+        toolCalls: toolCalls,
+        toolResults: toolResults,
+      );
+      if (evidenceAssessment.unsupportedClaims.isNotEmpty &&
+          !_hasUnsupportedResearchClaimDisclosure(
+            content,
+            evidenceAssessment.unsupportedClaims,
+          )) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode contains a material claim without a matching successfully fetched direct source. Cite the fetched URL for that claim, or add an Evidence table row that names the claim and marks it unsupported.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      if (_successfulResearchPublisherScopes(toolCalls, toolResults).length <
+              2 &&
+          !_hasResearchSingleSourceLimitation(content)) {
+        return const TurnOutcomeValidationResult.invalid(
+          'Research mode needs two independent publisher sources for factual answers. If only one direct source is available, add a clear `Single-source limitation:` statement and mark affected claims as needing corroboration.',
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      if (researchQuestion != null) {
+        return TurnOutcomeValidationResult.blockingQuestion(
+          researchQuestion,
+          acceptedPlanState: AcceptedPlanState.none,
+        );
+      }
+      return const TurnOutcomeValidationResult.valid(
         acceptedPlanState: AcceptedPlanState.none,
       );
     }
@@ -329,6 +409,221 @@ class TurnOutcomeValidator {
     }
 
     return const TurnOutcomeValidationResult.valid();
+  }
+
+  bool _hasSuccessfulConnectorResult(List<ToolResultEnvelope> results) {
+    return results.any(
+      (result) =>
+          result.status == ToolResultStatus.success &&
+          result.toolName.startsWith('mcp_'),
+    );
+  }
+
+  bool _hasConnectorCitationOrAssumption(String content) {
+    return RegExp(
+          r'\bsource\s*:\s*mcp:[^\s]+',
+          caseSensitive: false,
+          multiLine: true,
+        ).hasMatch(content) ||
+        RegExp(
+          r'\b(?:assumption|assume|assumed)\b',
+          caseSensitive: false,
+        ).hasMatch(content);
+  }
+
+  bool _hasSuccessfulResearchFetch(List<ToolResultEnvelope> results) {
+    return results.any(
+      (result) =>
+          result.status == ToolResultStatus.success &&
+          result.toolName == 'web_fetch',
+    );
+  }
+
+  Set<String> _successfulResearchPublisherScopes(
+    List<ToolCallInfo> toolCalls,
+    List<ToolResultEnvelope> toolResults,
+  ) => _successfulResearchSources(toolCalls, toolResults)
+      .map((source) => source.publisherScope)
+      .where((scope) => scope.isNotEmpty)
+      .toSet();
+
+  List<ResearchSourceRecord> _successfulResearchSources(
+    List<ToolCallInfo> toolCalls,
+    List<ToolResultEnvelope> toolResults,
+  ) {
+    final urlsByCallId = {
+      for (final call in toolCalls)
+        if (call.name == 'web_fetch')
+          call.id: call.arguments['url']?.toString(),
+    };
+    final sourcesByUrl = <String, ResearchSourceRecord>{};
+    final checkedAt = DateTime.now().toUtc();
+    for (final result in toolResults) {
+      if (result.status != ToolResultStatus.success ||
+          result.toolName != 'web_fetch') {
+        continue;
+      }
+      // Prefer the provenance footer emitted after the guarded request. A
+      // fetch can redirect, so the requested URL is a fallback only when the
+      // durable result lacks that footer (for example, older persisted turns).
+      final url = _researchSourceUrl(result) ?? urlsByCallId[result.toolCallId];
+      final uri = url == null ? null : Uri.tryParse(url);
+      if (uri == null || !uri.hasScheme || uri.host.isEmpty) continue;
+      final record = ResearchSourceRecord(uri: uri, checkedAt: checkedAt);
+      sourcesByUrl.putIfAbsent(record.citationUrl, () => record);
+    }
+    return sourcesByUrl.values.toList(growable: false);
+  }
+
+  ResearchEvidenceAssessment _researchEvidenceAssessment({
+    required String content,
+    required List<ToolCallInfo> toolCalls,
+    required List<ToolResultEnvelope> toolResults,
+  }) => const ResearchEvidenceEvaluator().assess(
+    claims: ResearchEvidenceEvaluator.claimsFromContent(content),
+    sources: _successfulResearchSources(toolCalls, toolResults),
+    now: DateTime.now().toUtc(),
+  );
+
+  bool _hasUnsupportedResearchClaimDisclosure(
+    String content,
+    List<ResearchClaimAssessment> unsupportedClaims,
+  ) {
+    final heading = RegExp(
+      r'^\s*#{1,6}\s*evidence\s+table\s*$',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(content);
+    if (heading == null) return false;
+    final rows = content
+        .substring(heading.end)
+        .split('\n')
+        .where(
+          (row) => RegExp(
+            r'\b(?:unsupported|unverified|needs\s+(?:direct\s+)?source)\b',
+            caseSensitive: false,
+          ).hasMatch(row),
+        )
+        .map((row) => row.toLowerCase())
+        .toList(growable: false);
+    if (rows.isEmpty) return false;
+    return unsupportedClaims.every((assessment) {
+      final words = RegExp(r'[a-z0-9]{4,}', caseSensitive: false)
+          .allMatches(assessment.claim.text.toLowerCase())
+          .map((match) => match.group(0)!)
+          .where(
+            (word) => !const {
+              'that',
+              'this',
+              'with',
+              'from',
+              'have',
+              'will',
+              'current',
+              'currently',
+              'latest',
+            }.contains(word),
+          )
+          .toSet();
+      if (words.isEmpty) return false;
+      final requiredMatches = words.length == 1 ? 1 : 2;
+      return rows.any(
+        (row) =>
+            words.where((word) => row.contains(word)).length >= requiredMatches,
+      );
+    });
+  }
+
+  String? _researchSourceUrl(ToolResultEnvelope result) {
+    final raw = result.data['rawResult'];
+    if (raw is! String) return null;
+    return RegExp(
+      r'^Source:\s*(https?://[^\s]+)',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(raw)?.group(1);
+  }
+
+  bool _hasResearchSingleSourceLimitation(String content) => RegExp(
+    r'^\s*(?:[-*]\s*)?(?:#{1,6}\s*)?single[- ]source\s+limitation\s*:',
+    caseSensitive: false,
+    multiLine: true,
+  ).hasMatch(content);
+
+  bool _hasResearchSourceSection(String content) {
+    final sourceHeading = RegExp(
+      r'^\s*(?:#{1,6}\s*)?sources?\s*:?',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(content);
+    if (sourceHeading == null) return false;
+    final sources = content.substring(sourceHeading.start);
+    final hasUrl = RegExp(
+      r'https?://[^\s)\]]+',
+      caseSensitive: false,
+    ).hasMatch(sources);
+    final hasCheckedDate = RegExp(
+      r'\b(?:checked|retrieved|accessed)\s*:\s*\d{4}-\d{2}-\d{2}\b',
+      caseSensitive: false,
+    ).hasMatch(sources);
+    return hasUrl && hasCheckedDate;
+  }
+
+  bool _hasResearchEvidenceTable(String content) {
+    final heading = RegExp(
+      r'^\s*#{1,6}\s*evidence\s+table\s*$',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(content);
+    if (heading == null) return false;
+    final table = content.substring(heading.end);
+    final header = RegExp(
+      r'^\s*\|\s*claim\s*\|\s*sources\s*\|\s*evidence\s+status\s*\|\s*$',
+      caseSensitive: false,
+      multiLine: true,
+    ).hasMatch(table);
+    final separator = RegExp(
+      r'^\s*\|\s*:?-{3,}:?\s*\|\s*:?-{3,}:?\s*\|\s*:?-{3,}:?\s*\|\s*$',
+      multiLine: true,
+    ).hasMatch(table);
+    return header && separator;
+  }
+
+  bool _hasResearchConflictReview(String content) {
+    final heading = RegExp(
+      r'^\s*#{1,6}\s*(?:source\s+)?conflict\s+review\s*$',
+      caseSensitive: false,
+      multiLine: true,
+    ).firstMatch(content);
+    if (heading == null) return false;
+    final remainder = content.substring(heading.end);
+    final nextHeading = RegExp(
+      r'^\s*#{1,6}\s+',
+      multiLine: true,
+    ).firstMatch(remainder);
+    final review = nextHeading == null
+        ? remainder
+        : remainder.substring(0, nextHeading.start);
+    if (RegExp(
+      r'\bno\s+(?:material\s+)?conflicts?\s+(?:were\s+)?(?:identified|found)\b',
+      caseSensitive: false,
+    ).hasMatch(review)) {
+      return true;
+    }
+    final hasConflict = RegExp(
+      r'^\s*(?:[-*]|\d+\.)\s*conflict\s*:',
+      caseSensitive: false,
+      multiLine: true,
+    ).hasMatch(review);
+    final sourceCount = RegExp(
+      r'https?://[^\s)\]]+',
+      caseSensitive: false,
+    ).allMatches(review).length;
+    final hasDisposition = RegExp(
+      r'\b(?:unresolved|resolution|resolved|prefer(?:red|ring)?)\b',
+      caseSensitive: false,
+    ).hasMatch(review);
+    return hasConflict && sourceCount >= 2 && hasDisposition;
   }
 
   int _reviewablePlanProposalCount(

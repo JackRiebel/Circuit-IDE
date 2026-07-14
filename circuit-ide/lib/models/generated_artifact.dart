@@ -6,6 +6,7 @@ enum GeneratedArtifactKind {
   excel,
   csv,
   markdown,
+  html,
   json,
   pdf,
   powerPoint,
@@ -16,6 +17,57 @@ enum GeneratedArtifactKind {
 }
 
 enum GeneratedArtifactStatus { ready, fallback, failed }
+
+/// The durable, user-reviewable inputs needed to reproduce an artifact without
+/// depending on a historical chat transcript or the previous output file.
+class ArtifactGenerationRecipe {
+  final String prompt;
+  final String sourceContent;
+  final String compositionHash;
+  final String templateId;
+  final String templateVersion;
+
+  const ArtifactGenerationRecipe({
+    required this.prompt,
+    required this.sourceContent,
+    required this.compositionHash,
+    this.templateId = 'circuit-standard',
+    this.templateVersion = '1.0',
+  });
+
+  bool get isReproducible =>
+      prompt.trim().isNotEmpty && sourceContent.trim().isNotEmpty;
+
+  Map<String, dynamic> toJson() => {
+    'prompt': prompt,
+    'sourceContent': sourceContent,
+    'compositionHash': compositionHash,
+    'templateId': templateId,
+    'templateVersion': templateVersion,
+  };
+
+  static ArtifactGenerationRecipe? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final prompt = value['prompt'];
+    final sourceContent = value['sourceContent'];
+    final compositionHash = value['compositionHash'];
+    if (prompt is! String ||
+        sourceContent is! String ||
+        compositionHash is! String ||
+        prompt.trim().isEmpty ||
+        sourceContent.trim().isEmpty ||
+        compositionHash.trim().isEmpty) {
+      return null;
+    }
+    return ArtifactGenerationRecipe(
+      prompt: prompt,
+      sourceContent: sourceContent,
+      compositionHash: compositionHash,
+      templateId: value['templateId'] as String? ?? 'circuit-standard',
+      templateVersion: value['templateVersion'] as String? ?? '1.0',
+    );
+  }
+}
 
 class GeneratedArtifact {
   final String id;
@@ -31,6 +83,10 @@ class GeneratedArtifact {
   final String? threadId;
   final String? requestId;
   final DateTime createdAt;
+  final int version;
+  final String? parentArtifactId;
+  final String outputHash;
+  final ArtifactGenerationRecipe? generationRecipe;
 
   const GeneratedArtifact({
     required this.id,
@@ -46,13 +102,20 @@ class GeneratedArtifact {
     this.threadId,
     this.requestId,
     required this.createdAt,
+    this.version = 1,
+    this.parentArtifactId,
+    this.outputHash = '',
+    this.generationRecipe,
   });
+
+  bool get canRegenerate => generationRecipe?.isReproducible == true;
 
   String get typeLabel {
     return switch (kind) {
       GeneratedArtifactKind.excel => 'Excel',
       GeneratedArtifactKind.csv => 'CSV',
       GeneratedArtifactKind.markdown => 'Markdown',
+      GeneratedArtifactKind.html => 'HTML',
       GeneratedArtifactKind.json => 'JSON',
       GeneratedArtifactKind.pdf => 'PDF',
       GeneratedArtifactKind.powerPoint => 'PowerPoint',
@@ -100,6 +163,11 @@ class GeneratedArtifact {
       'threadId': threadId,
       'requestId': requestId,
       'createdAt': createdAt.toIso8601String(),
+      'version': version,
+      'parentArtifactId': parentArtifactId,
+      'outputHash': outputHash,
+      if (generationRecipe != null)
+        'generationRecipe': generationRecipe!.toJson(),
     };
   }
 
@@ -127,6 +195,12 @@ class GeneratedArtifact {
         createdAt:
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),
+        version: (json['version'] as num?)?.toInt() ?? 1,
+        parentArtifactId: json['parentArtifactId'] as String?,
+        outputHash: json['outputHash'] as String? ?? '',
+        generationRecipe: ArtifactGenerationRecipe.fromJson(
+          json['generationRecipe'],
+        ),
       );
     } catch (_) {
       return null;
@@ -177,6 +251,9 @@ class GeneratedArtifact {
 
 GeneratedArtifactKind? detectGeneratedArtifactKind(String text) {
   final normalized = text.toLowerCase();
+  if (RegExp(r'\b(html|web page|webpage)\b').hasMatch(normalized)) {
+    return GeneratedArtifactKind.html;
+  }
   if (RegExp(
     r'\b(pdf|final customer handoff|final handoff|final report|finalized report|customer handoff pdf)\b',
   ).hasMatch(normalized)) {

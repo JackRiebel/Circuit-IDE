@@ -181,6 +181,7 @@ class CoreCommandRegistry {
                 goal:
                     'Investigate this project and propose the safest next coding step.',
                 profile: AgentTaskProfile.investigate,
+                backgroundExecutionRequested: true,
               );
         },
       ),

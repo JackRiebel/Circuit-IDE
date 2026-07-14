@@ -145,6 +145,9 @@ class ContextCandidate {
   final int estimatedTokens;
   final bool included;
   final String reason;
+  final int rank;
+  final String contentFingerprint;
+  final bool truncated;
 
   const ContextCandidate({
     required this.id,
@@ -155,6 +158,9 @@ class ContextCandidate {
     required this.estimatedTokens,
     required this.included,
     required this.reason,
+    this.rank = 0,
+    this.contentFingerprint = '',
+    this.truncated = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -166,6 +172,9 @@ class ContextCandidate {
     'estimatedTokens': estimatedTokens,
     'included': included,
     'reason': reason,
+    'rank': rank,
+    'contentFingerprint': contentFingerprint,
+    'truncated': truncated,
   };
 
   static ContextCandidate fromJson(Map<String, dynamic> json) {
@@ -181,6 +190,9 @@ class ContextCandidate {
       estimatedTokens: json['estimatedTokens'] as int? ?? 0,
       included: json['included'] as bool? ?? false,
       reason: json['reason'] as String? ?? '',
+      rank: json['rank'] as int? ?? 0,
+      contentFingerprint: json['contentFingerprint'] as String? ?? '',
+      truncated: json['truncated'] as bool? ?? false,
     );
   }
 }

@@ -6,118 +6,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
-import '../core/utils/platform_utils.dart';
+import '../agent/security/agent_tool_permission_policy.dart';
 import '../agent/verification_command_filter.dart'
     as verification_command_filter;
 import '../agent/security/secret_detector.dart';
-import '../models/agent_run.dart';
+import '../models/agent_tool_permission.dart';
 import '../models/checkpoint.dart';
 import '../models/reviewed_edit.dart';
-import 'agent_run_provider.dart';
+import '../models/tool_call_info.dart';
+import '../models/turn_intent.dart';
 import 'agent_workspace_provider.dart';
 import 'diff_preview_provider.dart';
 import 'file_tree_provider.dart';
+import 'project_profile_provider.dart';
+import 'patch_proposal_storage.dart';
 import 'studio_turn_provider.dart';
 import 'work_item_provider.dart';
+
+export 'patch_proposal_storage.dart';
+
+part 'patch_proposal_execution.dart';
 
 const _uuid = Uuid();
 final _secretDetector = SecretDetector();
 
-class PatchProposalState {
-  final ProposedPatchSet? active;
-  final List<ProposedPatchSet> history;
-  final Map<String, Checkpoint> checkpoints;
-  final bool isApplying;
-  final String? message;
-
-  const PatchProposalState({
-    this.active,
-    this.history = const [],
-    this.checkpoints = const {},
-    this.isApplying = false,
-    this.message,
-  });
-
-  PatchProposalState copyWith({
-    Object? active = _sentinel,
-    List<ProposedPatchSet>? history,
-    Map<String, Checkpoint>? checkpoints,
-    bool? isApplying,
-    Object? message = _sentinel,
-  }) {
-    return PatchProposalState(
-      active: identical(active, _sentinel)
-          ? this.active
-          : active as ProposedPatchSet?,
-      history: history ?? this.history,
-      checkpoints: checkpoints ?? this.checkpoints,
-      isApplying: isApplying ?? this.isApplying,
-      message: identical(message, _sentinel)
-          ? this.message
-          : message as String?,
-    );
-  }
-}
-
-class PatchProposalStore {
-  final String baseDir;
-
-  PatchProposalStore({String? baseDir})
-    : baseDir = baseDir ?? p.join(PlatformUtils.configDir, 'patch_proposals');
-
-  String historyPath(String? rootPath) {
-    return p.join(baseDir, '${WorkItemStore.projectKey(rootPath)}.json');
-  }
-
-  Future<PatchProposalState> load(String? rootPath) async {
-    final file = File(historyPath(rootPath));
-    if (!await file.exists()) return const PatchProposalState();
-    final json = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-    return PatchProposalState(
-      active: ProposedPatchSet.fromJson(
-        json['active'] as Map<String, dynamic>?,
-      ),
-      history: (json['history'] as List<dynamic>? ?? [])
-          .whereType<Map<String, dynamic>>()
-          .map(ProposedPatchSet.fromJson)
-          .nonNulls
-          .toList(),
-      checkpoints: (json['checkpoints'] as Map<String, dynamic>? ?? {}).map(
-        (id, value) =>
-            MapEntry(id, Checkpoint.fromJson(value as Map<String, dynamic>)),
-      ),
-      message: json['message'] as String?,
-    );
-  }
-
-  Future<void> save(String? rootPath, PatchProposalState state) async {
-    final file = File(historyPath(rootPath));
-    if (!await file.parent.exists()) await file.parent.create(recursive: true);
-    await file.writeAsString(_encode(state));
-  }
-
-  void saveSync(String? rootPath, PatchProposalState state) {
-    final file = File(historyPath(rootPath));
-    if (!file.parent.existsSync()) file.parent.createSync(recursive: true);
-    file.writeAsStringSync(_encode(state));
-  }
-
-  String _encode(PatchProposalState state) {
-    return const JsonEncoder.withIndent('  ').convert({
-      'active': state.active?.toJson(),
-      'history': state.history.map((patchSet) => patchSet.toJson()).toList(),
-      'checkpoints': state.checkpoints.map(
-        (id, checkpoint) => MapEntry(id, checkpoint.toJson()),
-      ),
-      'message': state.message,
-    });
-  }
-}
-
-final patchProposalStoreProvider = Provider<PatchProposalStore>(
-  (ref) => PatchProposalStore(),
-);
-
+/// Test-only seam for simulating an abrupt process termination after a
+/// workspace mutation. Production stores never set this callback.
 class PatchProposalRevisionRequest {
   final String patchSetId;
   final String prompt;
@@ -128,7 +42,8 @@ class PatchProposalRevisionRequest {
   });
 }
 
-class PatchProposalController extends Notifier<PatchProposalState> {
+class PatchProposalController extends Notifier<PatchProposalState>
+    with PatchProposalExecution {
   @override
   PatchProposalState build() {
     Future.microtask(_loadForCurrentWorkspace);
@@ -145,7 +60,15 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     if (!ref.mounted) return;
     final rootPath = ref.read(fileTreeProvider).rootPath;
     try {
-      final loaded = await ref.read(patchProposalStoreProvider).load(rootPath);
+      final store = ref.read(patchProposalStoreProvider);
+      final recovery = rootPath == null
+          ? null
+          : await store.recoverPendingApply(rootPath);
+      var loaded = await store.load(rootPath);
+      if (recovery != null) {
+        loaded = _stateAfterInterruptedApplyRecovery(loaded, recovery);
+        await store.save(rootPath, loaded);
+      }
       if (!ref.mounted) return;
       if (ref.read(fileTreeProvider).rootPath != rootPath) return;
       final hasCurrentProposalState =
@@ -167,6 +90,46 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     }
   }
 
+  PatchProposalState _stateAfterInterruptedApplyRecovery(
+    PatchProposalState loaded,
+    PatchApplyRecovery recovery,
+  ) {
+    if (recovery.operation == PatchApplyOperation.checkpointRestore) {
+      return loaded.copyWith(
+        checkpoints: {...loaded.checkpoints}..remove(recovery.checkpointId),
+        isApplying: false,
+        message:
+            'Recovered an interrupted checkpoint restore and restored the workspace to its pre-restore state.',
+      );
+    }
+    const message =
+        'Recovered an interrupted patch application and restored the workspace.';
+    ProposedPatchSet? recoveredPatch;
+
+    ProposedPatchSet repair(ProposedPatchSet patch) {
+      if (patch.id != recovery.patchSetId) return patch;
+      final repaired = patch.copyWith(
+        applyStatus: PatchApplyStatus.failed,
+        conflictMessage: message,
+        changedFiles: const [],
+        clearCheckpoint: true,
+      );
+      recoveredPatch = repaired;
+      return repaired;
+    }
+
+    final active = loaded.active == null ? null : repair(loaded.active!);
+    final history = [for (final patch in loaded.history) repair(patch)];
+    final checkpoints = {...loaded.checkpoints}..remove(recovery.checkpointId);
+    return loaded.copyWith(
+      active: recoveredPatch ?? active,
+      history: history,
+      checkpoints: checkpoints,
+      isApplying: false,
+      message: message,
+    );
+  }
+
   ProposedPatchSet propose({
     required String title,
     required List<ProposedFileEdit> edits,
@@ -178,6 +141,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     String? agentTaskId,
     String? comparisonSummary,
     bool verificationRequested = false,
+    List<String> verificationSuggestions = const [],
   }) {
     final previousActive = state.active;
     final rootPath = ref.read(fileTreeProvider).rootPath;
@@ -228,6 +192,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
       agentTaskId: agentTaskId,
       comparisonSummary: comparisonSummary,
       verificationRequested: verificationRequested,
+      verificationSuggestions: verificationSuggestions,
       edits: normalizedEdits,
       planMarkdown: planMarkdown,
       plannedFiles: displayPlannedFiles,
@@ -258,324 +223,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
           .read(agentWorkspaceProvider.notifier)
           .attachPatchSet(agentTaskId, patchSet);
     }
-    ref
-        .read(agentRunProvider.notifier)
-        .addEvent(
-          AgentRunKind.chat,
-          AgentRunEventType.patchProposal,
-          'Patch proposed: ${patchSet.title}',
-          metadata: {'patchSetId': patchSet.id},
-        );
-    ref
-        .read(agentRunProvider.notifier)
-        .addSpan(
-          AgentRunKind.chat,
-          spanKind: AgentTraceSpanKind.patchProposal,
-          name: 'Patch proposal',
-          detail: '${patchSet.fileCount} files',
-        );
     return patchSet;
-  }
-
-  Future<PatchApplyResult> applyActive() async {
-    final patchSet = state.active;
-    if (patchSet == null) {
-      return const PatchApplyResult(
-        status: PatchApplyStatus.failed,
-        message: 'No patch proposal is active.',
-      );
-    }
-    return apply(patchSet.id);
-  }
-
-  Future<PatchApplyResult> apply(String patchSetId) async {
-    final patchSet = _find(patchSetId);
-    final rootPath = ref.read(fileTreeProvider).rootPath;
-    if (patchSet == null || rootPath == null) {
-      return const PatchApplyResult(
-        status: PatchApplyStatus.failed,
-        message: 'No workspace or patch proposal available.',
-      );
-    }
-    if (patchSet.edits.isEmpty) {
-      return _finishApply(
-        patchSet,
-        PatchApplyResult(
-          status: PatchApplyStatus.conflict,
-          conflictMessage: patchSet.isPlanOnly
-              ? 'Plan-only proposals cannot be applied directly. Use Implement this plan to create a concrete patch first.'
-              : 'Patch proposal contains no concrete file edits to apply.',
-        ),
-      );
-    }
-
-    state = state.copyWith(isApplying: true, message: 'Applying patch...');
-    final snapshots = <FileSnapshot>[];
-    final changedFiles = <String>[];
-    final prepared = <_PreparedPatchEdit>[];
-    final seenTargets = <String>{};
-
-    try {
-      for (final edit in patchSet.edits) {
-        final sanitizedPath = _sanitizePatchPathInput(edit.path);
-        if (_hasUnsafePatchPathCharacters(sanitizedPath)) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch path contains unsupported control characters: ${edit.path}',
-            ),
-          );
-        }
-        if (_looksSecretPatchPath(edit.path)) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Secret or environment file paths cannot be patched: ${edit.path}',
-            ),
-          );
-        }
-        final fullPath = _resolve(rootPath, edit.path);
-        if (fullPath == null) {
-          return _finishApply(
-            patchSet,
-            const PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'Patch includes a path outside the workspace.',
-            ),
-          );
-        }
-        if (!seenTargets.add(fullPath)) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch includes multiple edits for the same file: ${edit.path}',
-            ),
-          );
-        }
-        if (_pathTraversesSymlink(rootPath, fullPath)) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch path traverses a symlink and could escape the workspace: ${edit.path}',
-            ),
-          );
-        }
-
-        final file = File(fullPath);
-        final obstructingAncestor = await _firstNonDirectoryAncestor(
-          rootPath,
-          file.parent.path,
-        );
-        if (obstructingAncestor != null) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch parent path is not a directory: ${p.relative(obstructingAncestor, from: rootPath)}',
-            ),
-          );
-        }
-        if (await FileSystemEntity.isDirectory(fullPath)) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'Patch target is a directory: ${edit.path}',
-            ),
-          );
-        }
-        final parentEntity = await FileSystemEntity.type(file.parent.path);
-        if (parentEntity != FileSystemEntityType.notFound &&
-            parentEntity != FileSystemEntityType.directory) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch parent path is not a directory: ${edit.path}',
-            ),
-          );
-        }
-        final existed = await file.exists();
-        if (edit.type == ProposedFileEditType.create && existed) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'File already exists: ${edit.path}',
-            ),
-          );
-        }
-        if (edit.type == ProposedFileEditType.modify && !existed) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'File missing for modify: ${edit.path}',
-            ),
-          );
-        }
-        if (edit.type == ProposedFileEditType.delete && !existed) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'File missing for delete: ${edit.path}',
-            ),
-          );
-        }
-        final beforeOnDisk = existed
-            ? await _readPatchTargetText(file, edit.path)
-            : null;
-        if (beforeOnDisk is PatchApplyResult) {
-          return _finishApply(patchSet, beforeOnDisk);
-        }
-        final proposedContent = edit.after;
-        if ((edit.type == ProposedFileEditType.create ||
-                edit.type == ProposedFileEditType.modify) &&
-            proposedContent == null) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch is missing full target content for ${edit.path}. Ask Circuit to revise the patch with complete file contents before applying.',
-            ),
-          );
-        }
-        if ((edit.type == ProposedFileEditType.create ||
-                edit.type == ProposedFileEditType.modify) &&
-            proposedContent != null) {
-          if (proposedContent.trim().isEmpty &&
-              !_allowsEmptyPatchContent(edit.path)) {
-            return _finishApply(
-              patchSet,
-              PatchApplyResult(
-                status: PatchApplyStatus.conflict,
-                conflictMessage:
-                    'Patch leaves ${edit.path} empty. Ask Circuit to revise the patch with complete file contents before applying.',
-              ),
-            );
-          }
-          final secrets = _secretDetector.scan(proposedContent);
-          if (secrets.isNotEmpty) {
-            final first = secrets.first;
-            return _finishApply(
-              patchSet,
-              PatchApplyResult(
-                status: PatchApplyStatus.conflict,
-                conflictMessage:
-                    'Patch includes possible ${first.severity} ${first.type} in ${edit.path} on line ${first.line}.',
-              ),
-            );
-          }
-        }
-        if ((edit.type == ProposedFileEditType.modify ||
-                edit.type == ProposedFileEditType.delete) &&
-            edit.before == null) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch is missing expected prior content for ${edit.path}. Ask Circuit to revise the patch before applying.',
-            ),
-          );
-        }
-        if (edit.before != null && beforeOnDisk != edit.before) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage: 'File changed since proposal: ${edit.path}',
-            ),
-          );
-        }
-        if (edit.type == ProposedFileEditType.modify &&
-            proposedContent != null &&
-            edit.before == proposedContent) {
-          return _finishApply(
-            patchSet,
-            PatchApplyResult(
-              status: PatchApplyStatus.conflict,
-              conflictMessage:
-                  'Patch does not change file content: ${edit.path}',
-            ),
-          );
-        }
-
-        prepared.add(_PreparedPatchEdit(edit: edit, fullPath: fullPath));
-        snapshots.add(
-          FileSnapshot(
-            path: edit.path,
-            originalContent: beforeOnDisk as String?,
-            wasCreated: !existed,
-            createdParentDirs: existed
-                ? const []
-                : _missingParentDirectories(rootPath, fullPath),
-          ),
-        );
-      }
-
-      for (final item in prepared) {
-        final edit = item.edit;
-        final file = File(item.fullPath);
-        switch (edit.type) {
-          case ProposedFileEditType.create:
-          case ProposedFileEditType.modify:
-            await file.parent.create(recursive: true);
-            await file.writeAsString(edit.after ?? '');
-            changedFiles.add(edit.path);
-            break;
-          case ProposedFileEditType.delete:
-            if (await file.exists()) await file.delete();
-            changedFiles.add(edit.path);
-            break;
-        }
-      }
-
-      final checkpoint = Checkpoint(
-        id: _uuid.v4(),
-        timestamp: DateTime.now(),
-        description: 'Applied patch proposal: ${patchSet.title}',
-        snapshots: snapshots,
-      );
-      final verificationSuggestions = _verificationSuggestionsForPatch(
-        rootPath,
-        patchSet,
-      );
-      return _finishApply(
-        patchSet,
-        PatchApplyResult(
-          status: PatchApplyStatus.applied,
-          changedFiles: changedFiles,
-          checkpointId: checkpoint.id,
-          message: 'Applied ${changedFiles.length} files.',
-          diffSummary: _diffSummary(patchSet),
-          verificationSuggestions: verificationSuggestions,
-          verificationRequested: patchSet.verificationRequested,
-        ),
-        checkpoint: checkpoint,
-      );
-    } catch (error) {
-      await _restoreSnapshots(rootPath, snapshots);
-      return _finishApply(
-        patchSet,
-        PatchApplyResult(
-          status: PatchApplyStatus.failed,
-          message: error.toString(),
-        ),
-      );
-    }
   }
 
   void approvePlanActive() {
@@ -732,191 +380,58 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     _syncAgentTask(updated);
   }
 
-  Future<PatchApplyResult> restoreCheckpoint(String checkpointId) async {
-    final checkpoint = state.checkpoints[checkpointId];
-    final rootPath = ref.read(fileTreeProvider).rootPath;
-    if (checkpoint == null || rootPath == null) {
-      return const PatchApplyResult(
-        status: PatchApplyStatus.failed,
-        message: 'Checkpoint not found.',
-      );
+  bool skipConflictedFile(String patchSetId, String path) {
+    final patchSet = _find(patchSetId);
+    final normalized = path.trim().replaceAll('\\', '/');
+    if (patchSet == null || normalized.isEmpty) return false;
+    final remaining = patchSet.edits
+        .where((edit) => edit.path.replaceAll('\\', '/') != normalized)
+        .toList(growable: false);
+    if (remaining.length == patchSet.edits.length || remaining.isEmpty) {
+      return false;
     }
-    final preflightFailure = await _preflightCheckpointRestore(
-      rootPath,
-      checkpoint,
+    final updated = patchSet.copyWith(
+      edits: remaining,
+      applyStatus: null,
+      conflictMessage: null,
+      revisionPrompt:
+          'Skipped conflicted file $normalized. Remaining non-overlapping edits stay ready for review.',
+      changedFiles: [
+        ...patchSet.changedFiles.where((file) => file != normalized),
+      ],
     );
-    if (preflightFailure != null) return preflightFailure;
-    final restored = <String>[];
-    try {
-      for (final snapshot in checkpoint.snapshots) {
-        final fullPath = _resolve(rootPath, snapshot.path);
-        if (fullPath == null) continue;
-        if (_pathTraversesSymlink(rootPath, fullPath)) {
-          return PatchApplyResult(
-            status: PatchApplyStatus.failed,
-            checkpointId: checkpointId,
-            message:
-                'Checkpoint restore refused because ${snapshot.path} traverses a symlink.',
-          );
-        }
-        final file = File(fullPath);
-        if (snapshot.wasCreated) {
-          if (await file.exists()) await file.delete();
-          await _removeCreatedParentDirs(rootPath, snapshot.createdParentDirs);
-        } else if (snapshot.originalContent != null) {
-          await file.parent.create(recursive: true);
-          await file.writeAsString(snapshot.originalContent!);
-        }
-        restored.add(snapshot.path);
-      }
-      await ref.read(fileTreeProvider.notifier).refresh();
-      final patchSet = _findByCheckpoint(checkpointId);
-      if (patchSet != null) {
-        final updated = patchSet.copyWith(
-          applyStatus: PatchApplyStatus.restored,
-          changedFiles: restored,
-          conflictMessage: null,
-        );
-        state = state.copyWith(
-          active: state.active?.id == updated.id ? updated : state.active,
-          history: _replace(updated),
-          message: 'Restored ${restored.length} files.',
-        );
-        await _persist();
-        ref.read(workItemProvider.notifier).recordPatchSet(updated);
-        _syncAgentTask(updated);
-        _recordPatchTransaction(
-          updated,
-          PatchApplyResult(
-            status: PatchApplyStatus.restored,
-            changedFiles: restored,
-            checkpointId: checkpointId,
-            message: 'Restored ${restored.length} files.',
-          ),
-        );
-      }
-      ref
-          .read(agentRunProvider.notifier)
-          .addEvent(
-            AgentRunKind.chat,
-            AgentRunEventType.patchApply,
-            'Patch checkpoint restored',
-            metadata: {
-              'checkpointId': checkpointId,
-              'restoredFiles': restored.length.toString(),
-            },
-          );
-      return PatchApplyResult(
-        status: PatchApplyStatus.restored,
-        changedFiles: restored,
-        checkpointId: checkpointId,
-        message: 'Restored ${restored.length} files.',
-      );
-    } catch (error) {
-      return PatchApplyResult(
-        status: PatchApplyStatus.failed,
-        checkpointId: checkpointId,
-        message: error.toString(),
-      );
-    }
+    state = state.copyWith(
+      active: state.active?.id == patchSetId ? updated : state.active,
+      history: _replace(updated),
+      message:
+          'Skipped conflicted file $normalized. Review the remaining edits.',
+    );
+    _persistSync();
+    ref.read(workItemProvider.notifier).recordPatchSet(updated);
+    _syncAgentTask(updated);
+    _recordPatchTransaction(
+      updated,
+      PatchApplyResult(
+        status: PatchApplyStatus.revisionRequested,
+        message: 'Skipped conflicted file $normalized.',
+        conflictMessage: 'Skipped conflicted file $normalized.',
+        changedFiles: updated.changedFiles,
+        checkpointId: updated.checkpointId,
+        diffSummary: updated.diffSummary,
+        verificationSuggestions: updated.verificationSuggestions,
+        verificationRequested: updated.verificationRequested,
+      ),
+      titleOverride: 'Conflicted file skipped',
+    );
+    return true;
   }
 
-  Future<PatchApplyResult?> _preflightCheckpointRestore(
-    String rootPath,
-    Checkpoint checkpoint,
-  ) async {
-    for (final snapshot in checkpoint.snapshots) {
-      final fullPath = _resolve(rootPath, snapshot.path);
-      if (fullPath == null) {
-        return PatchApplyResult(
-          status: PatchApplyStatus.failed,
-          checkpointId: checkpoint.id,
-          message:
-              'Checkpoint restore refused because ${snapshot.path} is outside the workspace.',
-        );
-      }
-      if (_pathTraversesSymlink(rootPath, fullPath)) {
-        return PatchApplyResult(
-          status: PatchApplyStatus.failed,
-          checkpointId: checkpoint.id,
-          message:
-              'Checkpoint restore refused because ${snapshot.path} traverses a symlink.',
-        );
-      }
-      if (await FileSystemEntity.isDirectory(fullPath)) {
-        return PatchApplyResult(
-          status: PatchApplyStatus.failed,
-          checkpointId: checkpoint.id,
-          message:
-              'Checkpoint restore refused because ${snapshot.path} is now a directory.',
-        );
-      }
-      if (!snapshot.wasCreated && snapshot.originalContent != null) {
-        final file = File(fullPath);
-        final obstructingAncestor = await _firstNonDirectoryAncestor(
-          rootPath,
-          file.parent.path,
-        );
-        if (obstructingAncestor != null) {
-          return PatchApplyResult(
-            status: PatchApplyStatus.failed,
-            checkpointId: checkpoint.id,
-            message:
-                'Checkpoint restore refused because ${p.relative(obstructingAncestor, from: rootPath)} is not a directory.',
-          );
-        }
-        final parentType = await FileSystemEntity.type(file.parent.path);
-        if (parentType != FileSystemEntityType.notFound &&
-            parentType != FileSystemEntityType.directory) {
-          return PatchApplyResult(
-            status: PatchApplyStatus.failed,
-            checkpointId: checkpoint.id,
-            message:
-                'Checkpoint restore refused because ${snapshot.path} has a non-directory parent.',
-          );
-        }
-      }
-    }
-    return null;
-  }
-
-  ProposedPatchSet? _find(String id) {
-    if (state.active?.id == id) return state.active;
-    return state.history.where((patchSet) => patchSet.id == id).firstOrNull;
-  }
-
-  ProposedPatchSet? _findByCheckpoint(String checkpointId) {
-    if (state.active?.checkpointId == checkpointId) return state.active;
-    return state.history
-        .where((patchSet) => patchSet.checkpointId == checkpointId)
-        .firstOrNull;
-  }
-
-  Future<Object?> _readPatchTargetText(File file, String displayPath) async {
-    try {
-      return await file.readAsString();
-    } on FormatException {
-      return PatchApplyResult(
-        status: PatchApplyStatus.conflict,
-        conflictMessage:
-            'Patch target is not readable as UTF-8 text: $displayPath. Ask Circuit to revise the patch or skip this binary file.',
-      );
-    } on FileSystemException catch (error) {
-      if (error.message.toLowerCase().contains('decode')) {
-        return PatchApplyResult(
-          status: PatchApplyStatus.conflict,
-          conflictMessage:
-              'Patch target is not readable as UTF-8 text: $displayPath. Ask Circuit to revise the patch or skip this binary file.',
-        );
-      }
-      return PatchApplyResult(
-        status: PatchApplyStatus.conflict,
-        conflictMessage:
-            'Patch target could not be read before applying: $displayPath (${error.message}).',
-      );
-    }
-  }
-
+  /// Returns a non-mutating restore preview for a user-facing confirmation.
+  ///
+  /// A file is only considered safe when it is still in the exact state the
+  /// patch left behind, or it has already been restored. Any other content is
+  /// treated as a later user change and requires an explicit overwrite grant.
+  @override
   Future<PatchApplyResult> _finishApply(
     ProposedPatchSet patchSet,
     PatchApplyResult result, {
@@ -958,40 +473,11 @@ class PatchProposalController extends Notifier<PatchProposalState> {
             result: 'Applied patch ${updated.title}.',
           );
     }
-    ref
-        .read(agentRunProvider.notifier)
-        .addEvent(
-          AgentRunKind.chat,
-          AgentRunEventType.patchApply,
-          result.applied ? 'Patch applied' : 'Patch not applied',
-          metadata: {
-            'patchSetId': patchSet.id,
-            'status': result.status.name,
-            if (result.checkpointId != null)
-              'checkpointId': result.checkpointId!,
-          },
-        );
-    ref
-        .read(agentRunProvider.notifier)
-        .addSpan(
-          AgentRunKind.chat,
-          spanKind: AgentTraceSpanKind.patchApply,
-          name: 'Patch apply',
-          detail: result.message ?? result.conflictMessage,
-        );
-    if (result.applied) {
-      ref
-          .read(agentRunProvider.notifier)
-          .addRunArtifacts(
-            AgentRunKind.chat,
-            changedFiles: result.changedFiles,
-            checkpointId: result.checkpointId,
-          );
-    }
     _recordPatchTransaction(updated, result);
     return result;
   }
 
+  @override
   void _recordPatchTransaction(
     ProposedPatchSet patchSet,
     PatchApplyResult result, {
@@ -1125,6 +611,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     ]);
   }
 
+  @override
   List<ProposedPatchSet> _replace(ProposedPatchSet updated) {
     final replaced = [
       updated,
@@ -1133,6 +620,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return replaced;
   }
 
+  @override
   Future<void> _persist() async {
     if (!ref.mounted) return;
     final rootPath = ref.read(fileTreeProvider).rootPath;
@@ -1156,12 +644,14 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     }
   }
 
+  @override
   void _syncAgentTask(ProposedPatchSet patchSet) {
     final taskId = patchSet.agentTaskId;
     if (taskId == null) return;
     ref.read(agentWorkspaceProvider.notifier).attachPatchSet(taskId, patchSet);
   }
 
+  @override
   String? _resolve(String rootPath, String targetPath) {
     final sanitized = _sanitizePatchPathInput(targetPath);
     if (sanitized.trim().isEmpty) return null;
@@ -1190,10 +680,12 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return p.normalize(trimmed);
   }
 
+  @override
   String _sanitizePatchPathInput(String targetPath) {
     return targetPath.trim().replaceAll('\\', '/');
   }
 
+  @override
   bool _hasUnsafePatchPathCharacters(String sanitizedPath) {
     return sanitizedPath.codeUnits.any((unit) => unit < 32 || unit == 127);
   }
@@ -1203,6 +695,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         sanitizedPath.startsWith('//');
   }
 
+  @override
   bool _looksSecretPatchPath(String targetPath) {
     final normalized = _sanitizePatchPathInput(targetPath).toLowerCase();
     return normalized == '.env' ||
@@ -1223,6 +716,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         normalized.contains('/.aws/');
   }
 
+  @override
   bool _pathTraversesSymlink(String rootPath, String fullPath) {
     final root = p.normalize(rootPath);
     final relative = p.relative(fullPath, from: root);
@@ -1240,6 +734,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return false;
   }
 
+  @override
   Future<String?> _firstNonDirectoryAncestor(
     String rootPath,
     String parentPath,
@@ -1259,6 +754,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return null;
   }
 
+  @override
   Future<void> _restoreSnapshots(
     String rootPath,
     List<FileSnapshot> snapshots,
@@ -1272,12 +768,12 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         if (await file.exists()) await file.delete();
         await _removeCreatedParentDirs(rootPath, snapshot.createdParentDirs);
       } else if (snapshot.originalContent != null) {
-        await file.parent.create(recursive: true);
-        await file.writeAsString(snapshot.originalContent!);
+        await writePatchFileAtomically(file, snapshot.originalContent!);
       }
     }
   }
 
+  @override
   String _diffSummary(ProposedPatchSet patchSet) {
     if (patchSet.edits.isEmpty) return 'No file edits were included.';
     return patchSet.edits
@@ -1300,6 +796,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
         .join('\n');
   }
 
+  @override
   bool _allowsEmptyPatchContent(String path) {
     final basename = p.basename(path).toLowerCase();
     return basename == '.gitkeep' ||
@@ -1362,10 +859,21 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return suggestions.toSet().take(5).toList();
   }
 
+  @override
   List<String> _verificationSuggestionsForPatch(
     String rootPath,
     ProposedPatchSet patchSet,
   ) {
+    final profileChecks = ref
+        .read(projectProfileProvider)
+        .commands
+        .where((command) => command.enabled)
+        .map((command) => command.command)
+        .where(verification_command_filter.isRunnableVerificationCommand)
+        .toSet()
+        .take(5)
+        .toList(growable: false);
+    if (profileChecks.isNotEmpty) return profileChecks;
     final detected = _verificationSuggestions(rootPath);
     if (detected.isNotEmpty) return detected;
     if (patchSet.verificationSuggestions.isNotEmpty) {
@@ -1381,6 +889,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return const [];
   }
 
+  @override
   List<String> _missingParentDirectories(String rootPath, String fullPath) {
     final root = p.normalize(rootPath);
     final parent = p.normalize(p.dirname(fullPath));
@@ -1396,6 +905,7 @@ class PatchProposalController extends Notifier<PatchProposalState> {
     return missing;
   }
 
+  @override
   Future<void> _removeCreatedParentDirs(
     String rootPath,
     List<String> createdParentDirs,
@@ -1426,5 +936,3 @@ class _PreparedPatchEdit {
 
   const _PreparedPatchEdit({required this.edit, required this.fullPath});
 }
-
-const _sentinel = Object();

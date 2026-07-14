@@ -1,14 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
+import '../agent/security/agent_tool_permission_policy.dart';
 import '../core/config/studio_feature_flags.dart';
+import '../models/agent_tool_permission.dart';
 import '../models/command_run.dart';
 import '../models/generated_artifact.dart';
 import '../models/reviewed_edit.dart';
 import '../models/studio_source_artifact.dart';
 import '../models/studio_thread.dart';
 import '../models/studio_turn.dart';
+import '../models/tool_call_info.dart';
+import '../models/turn_intent.dart';
 import '../services/generated_artifact_exporter.dart';
 import '../services/generated_artifact_package_writer.dart';
 import 'command_run_provider.dart';
@@ -86,16 +91,46 @@ class StudioSourceArtifactController
     _upsert(artifact);
   }
 
+  bool remove(String artifactId) {
+    final artifact = state.byId(artifactId);
+    if (artifact == null) return false;
+    state = StudioSourceArtifactState(
+      artifacts: state.artifacts
+          .where((candidate) => candidate.id != artifactId)
+          .toList(growable: false),
+    );
+    final threadId = artifact.threadId;
+    if (threadId != null) {
+      ref
+          .read(studioThreadProvider.notifier)
+          .removeSourceArtifact(threadId, artifactId);
+    }
+    return true;
+  }
+
   List<GeneratedArtifactKind> supportedExportTargets(
     GeneratedArtifact artifact,
   ) {
     return _generatedArtifactExporter.supportedTargets(artifact);
   }
 
+  Future<bool> generatedArtifactHasExternalChanges(
+    GeneratedArtifact artifact,
+  ) => _generatedArtifactExporter.hasExternalChanges(artifact);
+
   Future<GeneratedArtifact?> exportGeneratedArtifact(
     GeneratedArtifact artifact,
     GeneratedArtifactKind targetKind,
   ) async {
+    final rootPath = _workspaceRootForArtifact(artifact.filePath);
+    if (rootPath == null ||
+        !_canWriteArtifactOutput(
+          rootPath: rootPath,
+          intent: TurnIntent.ask,
+          actionId: 'export-${artifact.id}-${targetKind.name}',
+        )) {
+      return null;
+    }
     final exported = await _generatedArtifactExporter.export(
       artifact: artifact,
       targetKind: targetKind,
@@ -130,6 +165,72 @@ class StudioSourceArtifactController
       }
     }
     return exported;
+  }
+
+  Future<GeneratedArtifact?> regenerateGeneratedArtifact(
+    GeneratedArtifact artifact, {
+    GeneratedArtifactKind? targetKind,
+    String? sourceContentOverride,
+    String? templateId,
+  }) async {
+    if (!artifact.canRegenerate) return null;
+    final rootPath = _workspaceRootForArtifact(artifact.filePath);
+    if (rootPath == null ||
+        !_canWriteArtifactOutput(
+          rootPath: rootPath,
+          intent: TurnIntent.ask,
+          actionId:
+              'regenerate-${artifact.id}-${targetKind?.name ?? artifact.kind.name}',
+        )) {
+      return null;
+    }
+    final regenerated = await _generatedArtifactExporter.regenerate(
+      artifact: artifact,
+      targetKind: targetKind,
+      sourceContentOverride: sourceContentOverride,
+      templateId: templateId,
+    );
+    if (regenerated == null) return null;
+    _upsertArtifact(regenerated.toSourceArtifact());
+    _recordArtifactAction(
+      artifact: regenerated,
+      title: 'Regenerated ${regenerated.typeLabel} v${regenerated.version}',
+      detail:
+          '${regenerated.summary}\nFile: ${regenerated.fileName}\nParent: ${artifact.fileName}',
+    );
+    return regenerated;
+  }
+
+  void _recordArtifactAction({
+    required GeneratedArtifact artifact,
+    required String title,
+    required String detail,
+  }) {
+    final threadId = artifact.threadId;
+    if (threadId == null) return;
+    final thread = ref
+        .read(studioThreadProvider)
+        .threads
+        .where((thread) => thread.id == threadId)
+        .firstOrNull;
+    final turn = thread?.turns
+        .where((turn) => turn.requestId == artifact.requestId)
+        .firstOrNull;
+    if (turn == null) return;
+    ref
+        .read(studioThreadProvider.notifier)
+        .upsertTurnEvent(
+          threadId,
+          turn.id,
+          StudioTurnEvent.completionSummary(
+            id: 'artifact-action-${artifact.id}',
+            turnId: turn.id,
+            requestId: turn.requestId,
+            threadId: threadId,
+            title: title,
+            detail: detail,
+          ),
+        );
   }
 
   void _syncThreads(Iterable<StudioThread> threads) {
@@ -215,7 +316,7 @@ class StudioSourceArtifactController
       if (_hasArtifactMaterializationFailure(turn)) continue;
       if (_artifactMaterializationInFlight.contains(turn.id)) continue;
       if (turn.status != StudioTurnStatus.completed) continue;
-      if (!isGeneratedArtifactRequest(turn.prompt)) continue;
+      if (!isGeneratedArtifactRequest(turn.modelPrompt)) continue;
       final content = _assistantContentForTurn(turn);
       if (content.trim().isEmpty) continue;
       _artifactMaterializationInFlight.add(turn.id);
@@ -236,11 +337,24 @@ class StudioSourceArtifactController
     required StudioTurn turn,
     required String content,
   }) async {
+    if (!_canWriteArtifactOutput(
+      rootPath: rootPath,
+      intent: turn.intent,
+      actionId: 'materialize-${turn.id}',
+    )) {
+      _recordArtifactMaterializationFailure(
+        thread: thread,
+        turn: turn,
+        detail:
+            'Circuit could not create the requested artifact because the artifact output policy denied this workspace route.',
+      );
+      return;
+    }
     try {
       final package = await _generatedArtifactPackageWriter
           .writePackageFromAssistantOutput(
             rootPath: rootPath,
-            prompt: turn.prompt,
+            prompt: turn.modelPrompt,
             content: content,
             turnId: turn.id,
             threadId: thread.id,
@@ -325,6 +439,35 @@ class StudioSourceArtifactController
     final text = error.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
     if (text.isEmpty) return 'The artifact writer failed without details.';
     return text.length <= 220 ? text : '${text.substring(0, 220)}...';
+  }
+
+  bool _canWriteArtifactOutput({
+    required String rootPath,
+    required TurnIntent intent,
+    required String actionId,
+  }) {
+    final decision =
+        AgentToolPermissionPolicy(
+          workingDir: rootPath,
+          request: ToolPermissionRequest(
+            intent: intent,
+            phase: ToolPermissionPhase.propose,
+            allowArtifactOutput: true,
+          ),
+        ).evaluate(
+          ToolCallInfo(
+            id: actionId,
+            name: 'write_artifact',
+            arguments: const {'path': 'outputs'},
+          ),
+        );
+    return decision.allowed;
+  }
+
+  String? _workspaceRootForArtifact(String filePath) {
+    final normalized = p.normalize(filePath);
+    if (p.basename(p.dirname(normalized)) != 'outputs') return null;
+    return p.dirname(p.dirname(normalized));
   }
 
   String _assistantContentForTurn(StudioTurn turn) {
@@ -586,8 +729,12 @@ class StudioSourceArtifactController
   }
 
   bool _isQuarantinedArtifact(StudioSourceArtifact artifact) {
-    if (StudioFeatureFlags.advancedStudioSurfaces) return false;
-    return artifact.kind == StudioSourceArtifactKind.browserComment;
+    // Browser notes stay private to the preview. A browser selection can be
+    // persisted only after the user explicitly shares it and only while the
+    // isolated preview surface itself is enabled.
+    if (artifact.kind == StudioSourceArtifactKind.browserComment) return true;
+    return artifact.kind == StudioSourceArtifactKind.browserSelection &&
+        !StudioFeatureFlags.browserPreview;
   }
 
   String _threadArtifactFingerprint(StudioThread thread) {

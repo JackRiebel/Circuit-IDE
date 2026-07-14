@@ -122,6 +122,15 @@ class ArchitectureReviewPackBuilder {
       ..._reviewTables(document: document, sections: sections),
       ...document.tables,
     ];
+    final findingCount = _tableDataRowCount(
+      tables,
+      'Architecture Findings Matrix',
+    );
+    final riskCount = _tableDataRowCount(
+      tables,
+      'Risk And Mitigation Register',
+    );
+    final validationCount = _tableDataRowCount(tables, 'Validation Checklist');
     return ArtifactDocument(
       title: _title(document.title, prompt),
       summary: document.summary,
@@ -134,6 +143,9 @@ class ArchitectureReviewPackBuilder {
         'artifactTemplate': 'architecture_review_pack',
         'sourcePrompt': prompt,
         'architectureReviewTables': tables.length,
+        'architectureFindingCount': findingCount,
+        'architectureRiskCount': riskCount,
+        'architectureValidationCount': validationCount,
       },
     );
   }
@@ -186,6 +198,15 @@ class ArchitectureReviewPackBuilder {
       if (patterns.any(normalized.contains)) return section;
     }
     return null;
+  }
+
+  int _tableDataRowCount(List<ArtifactTable> tables, String title) {
+    for (final table in tables) {
+      if (table.title == title) {
+        return table.rows.length > 1 ? table.rows.length - 1 : 0;
+      }
+    }
+    return 0;
   }
 
   List<ArtifactTable> _reviewTables({

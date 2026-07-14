@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:circuit_ide/models/generated_artifact.dart';
 import 'package:circuit_ide/services/generated_artifact_writer.dart';
 import 'package:circuit_ide/services/workbook_artifact_inspector.dart';
+import 'package:circuit_ide/services/worker_cancellation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -44,8 +45,13 @@ void main() {
       final inspection = const WorkbookArtifactInspector().inspect(
         File(artifact.filePath).readAsBytesSync(),
       );
+      final workerMetadata = await const WorkbookArtifactInspector()
+          .inspectMetadataInWorker(await File(artifact.filePath).readAsBytes());
       expect(inspection.isStructurallyValid, isTrue);
       expect(inspection.hasEnterpriseWorkbookStructure, isTrue);
+      expect(workerMetadata, inspection.toMetadata());
+      expect(artifact.metadata['workbookStructuralValid'], isTrue);
+      expect(artifact.metadata['workbookInspectionStatus'], 'Verified');
       expect(
         inspection.hasSheets(const [
           'Executive Summary',
@@ -175,6 +181,22 @@ void main() {
       expect(
         inspection.sheetContains('Validation', 'Lifecycle / LDOS'),
         isTrue,
+      );
+    },
+  );
+
+  test(
+    'workbook inspection cancels before spawning a package parser',
+    () async {
+      final token = WorkerCancellationToken()..cancel('Test cancellation.');
+      await expectLater(
+        const WorkbookArtifactInspector().inspectMetadataInWorker(const [
+          0x50,
+          0x4b,
+          0x03,
+          0x04,
+        ], cancellationToken: token),
+        throwsA(isA<WorkerCancelledException>()),
       );
     },
   );

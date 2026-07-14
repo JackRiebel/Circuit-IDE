@@ -27,6 +27,36 @@ class ArtifactDocument {
     this.metadata = const {},
   });
 
+  ArtifactDocument copyWith({
+    String? title,
+    String? summary,
+    List<ArtifactSection>? sections,
+    List<ArtifactTable>? tables,
+    List<ArtifactChart>? charts,
+    List<ArtifactDiagram>? diagrams,
+    List<ArtifactAppendix>? appendices,
+    List<ArtifactSourceData>? sourceData,
+    List<String>? assumptions,
+    List<String>? citations,
+    ArtifactExportMetadata? exportMetadata,
+    Map<String, Object?>? metadata,
+  }) {
+    return ArtifactDocument(
+      title: title ?? this.title,
+      summary: summary ?? this.summary,
+      sections: sections ?? this.sections,
+      tables: tables ?? this.tables,
+      charts: charts ?? this.charts,
+      diagrams: diagrams ?? this.diagrams,
+      appendices: appendices ?? this.appendices,
+      sourceData: sourceData ?? this.sourceData,
+      assumptions: assumptions ?? this.assumptions,
+      citations: citations ?? this.citations,
+      exportMetadata: exportMetadata ?? this.exportMetadata,
+      metadata: metadata ?? this.metadata,
+    );
+  }
+
   bool get hasTables => tables.isNotEmpty;
 
   List<List<String>> get previewRows {

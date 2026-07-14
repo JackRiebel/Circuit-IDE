@@ -1,10 +1,12 @@
 import '../enums/message_role.dart';
 import 'accepted_plan_context.dart';
+import 'agent_tool_permission.dart';
 import 'chat_message.dart';
 import 'confirmation_request.dart';
 import 'context_pack.dart';
 import 'provider_lifecycle_event.dart';
 import 'reviewed_edit.dart';
+import 'studio_failure_taxonomy.dart';
 import 'studio_thread.dart';
 import 'tool_result_envelope.dart';
 import 'turn_intent.dart';
@@ -12,6 +14,9 @@ import 'turn_intent.dart';
 enum TurnStep {
   preflight,
   contextBuild,
+  researchPlan,
+  sourceAcquisition,
+  evidenceReview,
   providerRequest,
   streaming,
   toolDecision,
@@ -104,9 +109,222 @@ enum StudioTurnStatus {
   streaming,
   toolRunning,
   waitingForApproval,
+  reviewingPatch,
+  verifying,
   completed,
   failed,
   cancelled,
+  interrupted,
+}
+
+/// The durable user-facing result of a terminal Studio turn. Provider prose is
+/// supporting evidence; it is never the authority for what the product claims
+/// happened.
+enum StudioTurnOutcome {
+  answered,
+  createdArtifact,
+  preparedChanges,
+  appliedChanges,
+  verified,
+  blocked,
+  failed,
+  cancelled,
+}
+
+String studioTurnOutcomeTitle(StudioTurnOutcome outcome) => switch (outcome) {
+  StudioTurnOutcome.answered => 'Answered',
+  StudioTurnOutcome.createdArtifact => 'Created artifact',
+  StudioTurnOutcome.preparedChanges => 'Prepared changes',
+  StudioTurnOutcome.appliedChanges => 'Applied changes',
+  StudioTurnOutcome.verified => 'Verified',
+  StudioTurnOutcome.blocked => 'Blocked',
+  StudioTurnOutcome.failed => 'Failed',
+  StudioTurnOutcome.cancelled => 'Cancelled',
+};
+
+StudioTurnOutcome? inferStudioTurnOutcome(StudioTurn turn) {
+  if (turn.finalOutcome != null) return turn.finalOutcome;
+  return switch (turn.status) {
+    StudioTurnStatus.failed =>
+      _turnWasBlocked(turn)
+          ? StudioTurnOutcome.blocked
+          : StudioTurnOutcome.failed,
+    StudioTurnStatus.cancelled => StudioTurnOutcome.cancelled,
+    StudioTurnStatus.interrupted => StudioTurnOutcome.failed,
+    StudioTurnStatus.completed => _completedTurnOutcome(turn),
+    _ => null,
+  };
+}
+
+StudioTurnOutcome _completedTurnOutcome(StudioTurn turn) {
+  final deniedTool = turn.toolResults.any(
+    (result) => result.status == ToolResultStatus.denied,
+  );
+  if (deniedTool) return StudioTurnOutcome.blocked;
+  final failedVerification =
+      turn.steps.any(
+        (step) =>
+            step.step == TurnStep.verification &&
+            step.status == TurnStepStatus.failed,
+      ) ||
+      turn.toolResults.any(
+        (result) =>
+            result.toolName == 'run_command' &&
+            (result.status == ToolResultStatus.error ||
+                result.status == ToolResultStatus.cancelled),
+      );
+  if (failedVerification) return StudioTurnOutcome.failed;
+  if (turn.intent == TurnIntent.verify ||
+      turn.steps.any(
+        (step) =>
+            step.step == TurnStep.verification &&
+            step.status == TurnStepStatus.completed,
+      )) {
+    return StudioTurnOutcome.verified;
+  }
+  if (turn.toolResults.any((result) => result.artifacts.isNotEmpty)) {
+    return StudioTurnOutcome.createdArtifact;
+  }
+  // Completion summaries are provider-facing prose and may be absent, stale,
+  // or overly broad. Durable outcome classification must use only typed turn
+  // state that the runtime owns.
+  final appliedPatch =
+      turn.acceptedPlanState == AcceptedPlanState.implemented ||
+      turn.planTargetProgress.any(
+        (target) => target.state == PlanTargetProgressState.applied,
+      );
+  if (appliedPatch) return StudioTurnOutcome.appliedChanges;
+  final preparedPatch =
+      turn.intent == TurnIntent.plan ||
+      turn.acceptedPlanState == AcceptedPlanState.patchProposed ||
+      turn.toolResults.any(
+        (result) =>
+            result.toolName == 'propose_patch' ||
+            result.toolName == 'create_patch',
+      );
+  return preparedPatch
+      ? StudioTurnOutcome.preparedChanges
+      : StudioTurnOutcome.answered;
+}
+
+bool _turnWasBlocked(StudioTurn turn) {
+  return turn.toolResults.any(
+    (result) => result.status == ToolResultStatus.denied,
+  );
+}
+
+/// Canonical persisted lifecycle phases. Older transport-oriented status names
+/// remain readable for backwards compatibility, but each maps to exactly one
+/// phase so callers can reason about legal state transitions consistently.
+enum StudioTurnPhase {
+  created,
+  retrieving,
+  requesting,
+  streaming,
+  waitingApproval,
+  runningTool,
+  reviewingPatch,
+  verifying,
+  completed,
+  failed,
+  cancelled,
+  interrupted,
+}
+
+class StudioTurnStateMachine {
+  const StudioTurnStateMachine._();
+
+  static StudioTurnPhase phaseFor(StudioTurnStatus status) => switch (status) {
+    StudioTurnStatus.queued => StudioTurnPhase.created,
+    StudioTurnStatus.buildingContext => StudioTurnPhase.retrieving,
+    StudioTurnStatus.sent ||
+    StudioTurnStatus.waitingForModel => StudioTurnPhase.requesting,
+    StudioTurnStatus.streaming => StudioTurnPhase.streaming,
+    StudioTurnStatus.toolRunning => StudioTurnPhase.runningTool,
+    StudioTurnStatus.waitingForApproval => StudioTurnPhase.waitingApproval,
+    StudioTurnStatus.reviewingPatch => StudioTurnPhase.reviewingPatch,
+    StudioTurnStatus.verifying => StudioTurnPhase.verifying,
+    StudioTurnStatus.completed => StudioTurnPhase.completed,
+    StudioTurnStatus.failed => StudioTurnPhase.failed,
+    StudioTurnStatus.cancelled => StudioTurnPhase.cancelled,
+    StudioTurnStatus.interrupted => StudioTurnPhase.interrupted,
+  };
+
+  static bool isTerminal(StudioTurnStatus status) => switch (phaseFor(status)) {
+    StudioTurnPhase.completed ||
+    StudioTurnPhase.failed ||
+    StudioTurnPhase.cancelled ||
+    StudioTurnPhase.interrupted => true,
+    _ => false,
+  };
+
+  static bool canTransition(StudioTurnStatus from, StudioTurnStatus to) {
+    final current = phaseFor(from);
+    final next = phaseFor(to);
+    if (current == next) return true;
+    if (isTerminal(from)) return false;
+    if (next == StudioTurnPhase.failed ||
+        next == StudioTurnPhase.cancelled ||
+        next == StudioTurnPhase.interrupted) {
+      return true;
+    }
+    return switch (current) {
+      StudioTurnPhase.created =>
+        next == StudioTurnPhase.retrieving ||
+            next == StudioTurnPhase.requesting,
+      StudioTurnPhase.retrieving =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.streaming ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.requesting =>
+        next == StudioTurnPhase.streaming ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.streaming =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.runningTool =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.streaming ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.waitingApproval =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.reviewingPatch =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.verifying ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.verifying =>
+        next == StudioTurnPhase.requesting ||
+            next == StudioTurnPhase.runningTool ||
+            next == StudioTurnPhase.waitingApproval ||
+            next == StudioTurnPhase.reviewingPatch ||
+            next == StudioTurnPhase.completed,
+      StudioTurnPhase.completed ||
+      StudioTurnPhase.failed ||
+      StudioTurnPhase.cancelled ||
+      StudioTurnPhase.interrupted => false,
+    };
+  }
 }
 
 enum StudioTurnEventType {
@@ -247,6 +465,10 @@ class StudioTurnEvent {
   final ApprovalRequestState? approvalState;
   final String? approvalPreview;
   final List<String> approvalWarnings;
+  final ApprovalGrant? approvalGrant;
+  final ToolPermissionReason? approvalRisk;
+  final String? approvalNormalizedAction;
+  final DateTime? approvalExpiresAt;
   final String? sourceArtifactId;
   final String? filePath;
   final String? localUrl;
@@ -270,6 +492,10 @@ class StudioTurnEvent {
     this.approvalState,
     this.approvalPreview,
     this.approvalWarnings = const [],
+    this.approvalGrant,
+    this.approvalRisk,
+    this.approvalNormalizedAction,
+    this.approvalExpiresAt,
     this.sourceArtifactId,
     this.filePath,
     this.localUrl,
@@ -315,6 +541,27 @@ class StudioTurnEvent {
       type: StudioTurnEventType.context,
       title: summary.title,
       detail: summary.detail,
+      timestamp: timestamp ?? DateTime.now(),
+      transcriptVisible: false,
+    );
+  }
+
+  factory StudioTurnEvent.intentRouting({
+    required String turnId,
+    required String requestId,
+    required String threadId,
+    required IntentRoutingDecision decision,
+    DateTime? timestamp,
+  }) {
+    return StudioTurnEvent(
+      id: 'intent-routing-$turnId',
+      turnId: turnId,
+      requestId: requestId,
+      threadId: threadId,
+      type: StudioTurnEventType.progress,
+      title: 'Intent routing',
+      detail:
+          '${decision.intent.name} · ${decision.confidenceLabel} · ${decision.source.name}: ${decision.reason}',
       timestamp: timestamp ?? DateTime.now(),
       transcriptVisible: false,
     );
@@ -392,6 +639,10 @@ class StudioTurnEvent {
       approvalState: state,
       approvalPreview: request.preview,
       approvalWarnings: request.warnings,
+      approvalGrant: request.grantedScope,
+      approvalRisk: request.risk,
+      approvalNormalizedAction: request.normalizedAction,
+      approvalExpiresAt: request.expiresAt,
       filePath: _pathForTool(request.toolCall.arguments),
     );
   }
@@ -464,6 +715,10 @@ class StudioTurnEvent {
     Object? content = _sentinel,
     DateTime? timestamp,
     Object? approvalState = _sentinel,
+    Object? approvalGrant = _sentinel,
+    Object? approvalRisk = _sentinel,
+    Object? approvalNormalizedAction = _sentinel,
+    Object? approvalExpiresAt = _sentinel,
     Object? sourceArtifactId = _sentinel,
     Object? filePath = _sentinel,
     Object? localUrl = _sentinel,
@@ -491,6 +746,18 @@ class StudioTurnEvent {
           : approvalState as ApprovalRequestState?,
       approvalPreview: approvalPreview,
       approvalWarnings: approvalWarnings,
+      approvalGrant: identical(approvalGrant, _sentinel)
+          ? this.approvalGrant
+          : approvalGrant as ApprovalGrant?,
+      approvalRisk: identical(approvalRisk, _sentinel)
+          ? this.approvalRisk
+          : approvalRisk as ToolPermissionReason?,
+      approvalNormalizedAction: identical(approvalNormalizedAction, _sentinel)
+          ? this.approvalNormalizedAction
+          : approvalNormalizedAction as String?,
+      approvalExpiresAt: identical(approvalExpiresAt, _sentinel)
+          ? this.approvalExpiresAt
+          : approvalExpiresAt as DateTime?,
       sourceArtifactId: identical(sourceArtifactId, _sentinel)
           ? this.sourceArtifactId
           : sourceArtifactId as String?,
@@ -534,6 +801,10 @@ class StudioTurnEvent {
       'approvalState': approvalState?.name,
       'approvalPreview': approvalPreview,
       'approvalWarnings': approvalWarnings,
+      'approvalGrant': approvalGrant?.name,
+      'approvalRisk': approvalRisk?.name,
+      'approvalNormalizedAction': approvalNormalizedAction,
+      'approvalExpiresAt': approvalExpiresAt?.toIso8601String(),
       'sourceArtifactId': sourceArtifactId,
       'filePath': filePath,
       'localUrl': localUrl,
@@ -545,6 +816,8 @@ class StudioTurnEvent {
   static StudioTurnEvent? fromJson(Map<String, dynamic> json) {
     try {
       final approvalStateName = json['approvalState'] as String?;
+      final approvalGrantName = json['approvalGrant'] as String?;
+      final approvalRiskName = json['approvalRisk'] as String?;
       return StudioTurnEvent(
         id: json['id'] as String,
         turnId: json['turnId'] as String,
@@ -574,6 +847,22 @@ class StudioTurnEvent {
         approvalWarnings:
             (json['approvalWarnings'] as List<dynamic>?)?.cast<String>() ??
             const [],
+        approvalGrant: approvalGrantName == null
+            ? null
+            : ApprovalGrant.values.firstWhere(
+                (value) => value.name == approvalGrantName,
+                orElse: () => ApprovalGrant.once,
+              ),
+        approvalRisk: approvalRiskName == null
+            ? null
+            : ToolPermissionReason.values.firstWhere(
+                (value) => value.name == approvalRiskName,
+                orElse: () => ToolPermissionReason.unknownTool,
+              ),
+        approvalNormalizedAction: json['approvalNormalizedAction'] as String?,
+        approvalExpiresAt: DateTime.tryParse(
+          json['approvalExpiresAt'] as String? ?? '',
+        ),
         sourceArtifactId: json['sourceArtifactId'] as String?,
         filePath: json['filePath'] as String?,
         localUrl: json['localUrl'] as String?,
@@ -599,6 +888,7 @@ class StudioTurnEvent {
   }
 }
 
+// ADR-0001: StudioTurn is the durable source of Studio lifecycle truth.
 bool _defaultTranscriptVisibleFor(StudioTurnEventType type) {
   return switch (type) {
     StudioTurnEventType.context ||
@@ -612,15 +902,180 @@ bool _defaultTranscriptVisibleFor(StudioTurnEventType type) {
   };
 }
 
+/// Safe recovery information captured whenever an active turn is persisted.
+///
+/// Provider streams, command processes, and approval grants are request-local,
+/// so a checkpoint never resumes any of them automatically after restart. It
+/// gives the restored UI the exact phase and the safest next user action.
+enum StudioTurnRecoveryAction {
+  retryTurn,
+  reviewPatch,
+  continuePlan,
+  rerunVerification,
+}
+
+class StudioTurnRecoveryCheckpoint {
+  final StudioTurnPhase phase;
+  final DateTime capturedAt;
+  final int streamedCharacters;
+  final int completedToolCount;
+  final String? providerCursor;
+  final String? pendingApprovalId;
+  final String? pendingToolCallId;
+  final String? pendingToolName;
+  final String? commandRunId;
+  final String? patchSetId;
+  final StudioTurnRecoveryAction action;
+
+  const StudioTurnRecoveryCheckpoint({
+    required this.phase,
+    required this.capturedAt,
+    required this.streamedCharacters,
+    required this.completedToolCount,
+    this.providerCursor,
+    this.pendingApprovalId,
+    this.pendingToolCallId,
+    this.pendingToolName,
+    this.commandRunId,
+    this.patchSetId,
+    required this.action,
+  });
+
+  String get actionLabel => switch (action) {
+    StudioTurnRecoveryAction.retryTurn => 'Retry task',
+    StudioTurnRecoveryAction.reviewPatch => 'Review patch',
+    StudioTurnRecoveryAction.continuePlan => 'Continue plan',
+    StudioTurnRecoveryAction.rerunVerification => 'Rerun verification',
+  };
+
+  factory StudioTurnRecoveryCheckpoint.capture(
+    StudioTurn turn, {
+    DateTime? capturedAt,
+  }) {
+    final pendingApproval = turn.events.reversed
+        .where(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalState == ApprovalRequestState.pending,
+        )
+        .firstOrNull;
+    final pendingTool = turn.events.reversed
+        .where((event) => event.type == StudioTurnEventType.tool)
+        .firstOrNull;
+    final commandResult = turn.toolResults.reversed
+        .where((result) => result.toolName == 'run_command')
+        .firstOrNull;
+    final patchSetId =
+        turn.acceptedPlanContext?.patchSetId ??
+        turn.events.reversed
+            .map((event) => event.patchSetId)
+            .whereType<String>()
+            .firstOrNull;
+    final hasPendingPlanTargets = turn.planTargetProgress.any(
+      (target) =>
+          target.state == PlanTargetProgressState.pending ||
+          target.state == PlanTargetProgressState.proposed ||
+          target.state == PlanTargetProgressState.blocked,
+    );
+    final action = switch (turn.status) {
+      StudioTurnStatus.reviewingPatch => StudioTurnRecoveryAction.reviewPatch,
+      StudioTurnStatus.verifying => StudioTurnRecoveryAction.rerunVerification,
+      _
+          when turn.intent == TurnIntent.verify ||
+              commandResult?.status == ToolResultStatus.waitingForApproval =>
+        StudioTurnRecoveryAction.rerunVerification,
+      _
+          when turn.acceptedPlanState == AcceptedPlanState.patchProposed ||
+              patchSetId != null =>
+        StudioTurnRecoveryAction.reviewPatch,
+      _ when hasPendingPlanTargets => StudioTurnRecoveryAction.continuePlan,
+      _ => StudioTurnRecoveryAction.retryTurn,
+    };
+    return StudioTurnRecoveryCheckpoint(
+      phase: turn.phase,
+      capturedAt: capturedAt ?? DateTime.now(),
+      streamedCharacters: turn.assistantDraft.length,
+      completedToolCount: turn.toolResults
+          .where((result) => result.status == ToolResultStatus.success)
+          .length,
+      // The current provider protocol advertises no resumable cursor. Keep
+      // this nullable field for a negotiated cursor in a future protocol.
+      providerCursor: null,
+      pendingApprovalId: pendingApproval?.approvalId,
+      pendingToolCallId: pendingApproval?.toolCallId ?? pendingTool?.toolCallId,
+      pendingToolName: pendingApproval?.toolName ?? pendingTool?.toolName,
+      commandRunId: commandResult?.toolCallId,
+      patchSetId: patchSetId,
+      action: action,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'phase': phase.name,
+    'capturedAt': capturedAt.toIso8601String(),
+    'streamedCharacters': streamedCharacters,
+    'completedToolCount': completedToolCount,
+    'providerCursor': providerCursor,
+    'pendingApprovalId': pendingApprovalId,
+    'pendingToolCallId': pendingToolCallId,
+    'pendingToolName': pendingToolName,
+    'commandRunId': commandRunId,
+    'patchSetId': patchSetId,
+    'action': action.name,
+  };
+
+  static StudioTurnRecoveryCheckpoint? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final phaseName = json['phase'] as String?;
+    final actionName = json['action'] as String?;
+    if (phaseName == null || actionName == null) return null;
+    try {
+      return StudioTurnRecoveryCheckpoint(
+        phase: StudioTurnPhase.values.firstWhere(
+          (value) => value.name == phaseName,
+        ),
+        capturedAt:
+            DateTime.tryParse(json['capturedAt'] as String? ?? '') ??
+            DateTime.now(),
+        streamedCharacters: json['streamedCharacters'] as int? ?? 0,
+        completedToolCount: json['completedToolCount'] as int? ?? 0,
+        providerCursor: json['providerCursor'] as String?,
+        pendingApprovalId: json['pendingApprovalId'] as String?,
+        pendingToolCallId: json['pendingToolCallId'] as String?,
+        pendingToolName: json['pendingToolName'] as String?,
+        commandRunId: json['commandRunId'] as String?,
+        patchSetId: json['patchSetId'] as String?,
+        action: StudioTurnRecoveryAction.values.firstWhere(
+          (value) => value.name == actionName,
+        ),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class StudioTurn {
   final String id;
   final String threadId;
   final String requestId;
   final String? taskId;
   final String userMessageId;
-  final String prompt;
+
+  /// User-visible prompt. This is the only prompt surface UI/history may use.
+  final String displayPrompt;
+
+  /// Runtime-only prompt sent to the provider. It can include orchestration
+  /// contracts and must never be rendered as a user message, task title, or
+  /// search/export/notification payload.
+  final String modelPrompt;
+
+  /// User-facing title chosen at turn creation, independent of either prompt.
+  final String taskTitle;
   final String model;
   final TurnIntent intent;
+  final IntentRoutingDecision? intentRouting;
+  final StudioTurnRecoveryCheckpoint? recoveryCheckpoint;
   final StudioContextSummary contextSummary;
   final StudioTurnStatus status;
   final String assistantDraft;
@@ -636,6 +1091,10 @@ class StudioTurn {
   final DateTime updatedAt;
   final DateTime? completedAt;
   final String? lastError;
+  final StudioFailureCategory? failureCategory;
+  final StudioTurnOutcome? finalOutcome;
+
+  StudioTurnPhase get phase => StudioTurnStateMachine.phaseFor(status);
 
   const StudioTurn({
     required this.id,
@@ -643,9 +1102,13 @@ class StudioTurn {
     required this.requestId,
     this.taskId,
     required this.userMessageId,
-    required this.prompt,
+    required String prompt,
+    String? modelPrompt,
+    String? taskTitle,
     required this.model,
     this.intent = TurnIntent.code,
+    this.intentRouting,
+    this.recoveryCheckpoint,
     required this.contextSummary,
     this.status = StudioTurnStatus.queued,
     this.assistantDraft = '',
@@ -661,7 +1124,14 @@ class StudioTurn {
     required this.updatedAt,
     this.completedAt,
     this.lastError,
-  });
+    this.failureCategory,
+    this.finalOutcome,
+  }) : displayPrompt = prompt,
+       modelPrompt = modelPrompt ?? prompt,
+       taskTitle = taskTitle ?? prompt;
+
+  @Deprecated('Use displayPrompt for user-visible turn text.')
+  String get prompt => displayPrompt;
 
   StudioTurn copyWith({
     StudioTurnStatus? status,
@@ -670,6 +1140,8 @@ class StudioTurn {
     List<TurnStepRecord>? steps,
     List<ToolResultEnvelope>? toolResults,
     List<ProviderLifecycleEvent>? providerDiagnostics,
+    Object? intentRouting = _sentinel,
+    Object? recoveryCheckpoint = _sentinel,
     AcceptedPlanState? acceptedPlanState,
     Object? acceptedPlanContext = _sentinel,
     List<PlanTargetProgress>? planTargetProgress,
@@ -677,6 +1149,8 @@ class StudioTurn {
     DateTime? updatedAt,
     Object? completedAt = _sentinel,
     Object? lastError = _sentinel,
+    Object? failureCategory = _sentinel,
+    Object? finalOutcome = _sentinel,
   }) {
     return StudioTurn(
       id: id,
@@ -684,9 +1158,17 @@ class StudioTurn {
       requestId: requestId,
       taskId: taskId,
       userMessageId: userMessageId,
-      prompt: prompt,
+      prompt: displayPrompt,
+      modelPrompt: modelPrompt,
+      taskTitle: taskTitle,
       model: model,
       intent: intent,
+      intentRouting: identical(intentRouting, _sentinel)
+          ? this.intentRouting
+          : intentRouting as IntentRoutingDecision?,
+      recoveryCheckpoint: identical(recoveryCheckpoint, _sentinel)
+          ? this.recoveryCheckpoint
+          : recoveryCheckpoint as StudioTurnRecoveryCheckpoint?,
       contextSummary: contextSummary,
       status: status ?? this.status,
       assistantDraft: assistantDraft ?? this.assistantDraft,
@@ -710,8 +1192,18 @@ class StudioTurn {
       lastError: identical(lastError, _sentinel)
           ? this.lastError
           : lastError as String?,
+      failureCategory: identical(failureCategory, _sentinel)
+          ? this.failureCategory
+          : failureCategory as StudioFailureCategory?,
+      finalOutcome: identical(finalOutcome, _sentinel)
+          ? this.finalOutcome
+          : finalOutcome as StudioTurnOutcome?,
     );
   }
+
+  StudioFailureCategory? get effectiveFailureCategory =>
+      failureCategory ??
+      StudioFailureTaxonomy.classify(statusName: status.name, error: lastError);
 
   StudioTurn upsertEvent(StudioTurnEvent event) {
     final events = [
@@ -750,9 +1242,16 @@ class StudioTurn {
       'requestId': requestId,
       'taskId': taskId,
       'userMessageId': userMessageId,
-      'prompt': prompt,
+      // Keep `prompt` for schema-1 compatibility; readers prefer the explicit
+      // display/model/title fields added in schema 2.
+      'prompt': displayPrompt,
+      'displayPrompt': displayPrompt,
+      'modelPrompt': modelPrompt,
+      'taskTitle': taskTitle,
       'model': model,
       'intent': intent.name,
+      'intentRouting': intentRouting?.toJson(),
+      'recoveryCheckpoint': recoveryCheckpoint?.toJson(),
       'contextSummary': contextSummary.toJson(),
       'status': status.name,
       'assistantDraft': assistantDraft,
@@ -772,6 +1271,8 @@ class StudioTurn {
       'updatedAt': updatedAt.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
       'lastError': lastError,
+      'failureCategory': effectiveFailureCategory?.name,
+      'finalOutcome': finalOutcome?.name,
     };
   }
 
@@ -792,11 +1293,20 @@ class StudioTurn {
         requestId: json['requestId'] as String,
         taskId: json['taskId'] as String?,
         userMessageId: json['userMessageId'] as String,
-        prompt: json['prompt'] as String? ?? '',
+        prompt:
+            json['displayPrompt'] as String? ?? json['prompt'] as String? ?? '',
+        modelPrompt: json['modelPrompt'] as String?,
+        taskTitle: json['taskTitle'] as String?,
         model: json['model'] as String? ?? '',
         intent: TurnIntent.values.firstWhere(
           (value) => value.name == json['intent'],
           orElse: () => TurnIntent.code,
+        ),
+        intentRouting: IntentRoutingDecision.fromJson(
+          json['intentRouting'] as Map<String, dynamic>?,
+        ),
+        recoveryCheckpoint: StudioTurnRecoveryCheckpoint.fromJson(
+          json['recoveryCheckpoint'] as Map<String, dynamic>?,
         ),
         contextSummary: StudioContextSummary.fromJson(
           json['contextSummary'] as Map<String, dynamic>?,
@@ -845,6 +1355,12 @@ class StudioTurn {
             DateTime.now(),
         completedAt: DateTime.tryParse(json['completedAt'] as String? ?? ''),
         lastError: json['lastError'] as String?,
+        failureCategory: StudioFailureCategory.values
+            .where((value) => value.name == json['failureCategory'])
+            .firstOrNull,
+        finalOutcome: StudioTurnOutcome.values
+            .where((value) => value.name == json['finalOutcome'])
+            .firstOrNull,
       );
     } catch (_) {
       return null;

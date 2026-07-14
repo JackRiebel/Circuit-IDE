@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import '../../state/code_review_provider.dart';
 import '../../state/theme_provider.dart';
 import 'branch_picker.dart';
 import 'code_review_button.dart';
+import 'git_mutation_review_dialog.dart';
 import 'review_summary_panel.dart';
 
 class GitPanel extends ConsumerStatefulWidget {
@@ -188,8 +190,14 @@ class _GitPanelState extends ConsumerState<GitPanel> {
                       : () async {
                           final msg = _commitMsgController.text.trim();
                           if (msg.isEmpty) return;
-                          await ref.read(gitProvider.notifier).commit(msg);
-                          _commitMsgController.clear();
+                          final result = await reviewAndApplyGitMutation(
+                            context,
+                            ref,
+                            ref.read(gitProvider.notifier).previewCommit(msg),
+                          );
+                          if (result?.applied == true) {
+                            _commitMsgController.clear();
+                          }
                         },
                   icon: const Icon(Icons.check, size: 14),
                   label: const Text('Commit'),
@@ -341,11 +349,19 @@ class _ChangeItemState extends ConsumerState<_ChangeItem> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          if (widget.isStaged) {
-            ref.read(gitProvider.notifier).unstageFile(widget.change.path);
-          } else {
-            ref.read(gitProvider.notifier).stageFile(widget.change.path);
-          }
+          unawaited(
+            reviewAndApplyGitMutation(
+              context,
+              ref,
+              widget.isStaged
+                  ? ref
+                        .read(gitProvider.notifier)
+                        .previewUnstage(widget.change.path)
+                  : ref
+                        .read(gitProvider.notifier)
+                        .previewStage(widget.change.path),
+            ),
+          );
         },
         child: AnimatedContainer(
           duration: AnimationDurations.instant,
@@ -386,12 +402,34 @@ class _ChangeItemState extends ConsumerState<_ChangeItem> {
               AnimatedOpacity(
                 duration: AnimationDurations.fast,
                 opacity: _isHovered ? 1.0 : 0.0,
-                child: Icon(
-                  widget.isStaged
-                      ? Icons.remove_circle_outline
-                      : Icons.add_circle_outline,
-                  size: 14,
-                  color: tokens.textMuted,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.isStaged
+                          ? Icons.remove_circle_outline
+                          : Icons.add_circle_outline,
+                      size: 14,
+                      color: tokens.textMuted,
+                    ),
+                    if (!widget.isStaged &&
+                        widget.change.type != GitChangeType.untracked)
+                      IconButton(
+                        tooltip: 'Review discard changes',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 24,
+                          height: 24,
+                        ),
+                        icon: Icon(
+                          Icons.delete_outline,
+                          size: 14,
+                          color: tokens.error,
+                        ),
+                        onPressed: () => unawaited(_reviewDiscard()),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -400,4 +438,79 @@ class _ChangeItemState extends ConsumerState<_ChangeItem> {
       ),
     );
   }
+
+  Future<void> _reviewDiscard() async {
+    final notifier = ref.read(gitProvider.notifier);
+    final hunks = await notifier.unstagedHunks(widget.change.path);
+    if (!mounted) return;
+    if (hunks.length <= 1) {
+      await reviewAndApplyGitMutation(
+        context,
+        ref,
+        hunks.isEmpty
+            ? notifier.previewDiscardFile(widget.change.path)
+            : notifier.previewDiscardHunk(hunks.single),
+      );
+      return;
+    }
+    final choice = await showDialog<_DiscardChoice>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Choose changes to discard'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560, maxHeight: 420),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              TextButton.icon(
+                onPressed: () => Navigator.of(
+                  dialogContext,
+                ).pop(const _DiscardChoice.file()),
+                icon: const Icon(Icons.delete_sweep_outlined),
+                label: const Text('Discard all unstaged changes in this file'),
+              ),
+              const Divider(),
+              for (final hunk in hunks)
+                ListTile(
+                  leading: const Icon(Icons.content_cut_outlined),
+                  title: Text(hunk.header),
+                  subtitle: Text(
+                    hunk.patch.length > 180
+                        ? '${hunk.patch.substring(0, 180)}…'
+                        : hunk.patch,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                  onTap: () => Navigator.of(
+                    dialogContext,
+                  ).pop(_DiscardChoice.hunk(hunk)),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    await reviewAndApplyGitMutation(
+      context,
+      ref,
+      choice.hunk == null
+          ? notifier.previewDiscardFile(widget.change.path)
+          : notifier.previewDiscardHunk(choice.hunk!),
+    );
+  }
+}
+
+class _DiscardChoice {
+  final GitDiffHunk? hunk;
+
+  const _DiscardChoice.file() : hunk = null;
+  const _DiscardChoice.hunk(this.hunk);
 }

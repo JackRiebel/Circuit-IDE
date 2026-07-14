@@ -8,12 +8,52 @@ import '../../core/constants/app_constants.dart';
 import '../../core/utils/platform_utils.dart';
 import '../../core/utils/logger.dart';
 import '../../enums/ai_provider.dart';
+import '../../services/versioned_json_document.dart';
 import '../context/flow_analyzer.dart';
 import '../context/flow_context_builder.dart';
 import '../context/memories_loader.dart';
 import '../context/rules_loader.dart';
 import '../context/smart_rules_matcher.dart';
 import 'models_config.dart';
+
+/// Minimal interface around credential storage so configuration migration can
+/// be tested without a platform Keychain implementation.
+abstract interface class SecureCredentialStore {
+  Future<String?> read({required String key});
+  Future<void> write({required String key, required String value});
+  Future<void> delete({required String key});
+}
+
+class FlutterSecureCredentialStore implements SecureCredentialStore {
+  final FlutterSecureStorage _storage;
+
+  const FlutterSecureCredentialStore([
+    this._storage = const FlutterSecureStorage(),
+  ]);
+
+  @override
+  Future<void> delete({required String key}) => _storage.delete(key: key);
+
+  @override
+  Future<String?> read({required String key}) => _storage.read(key: key);
+
+  @override
+  Future<void> write({required String key, required String value}) =>
+      _storage.write(key: key, value: value);
+}
+
+/// Thrown when the operating-system credential store rejects a save.
+///
+/// Callers must surface this to the user instead of falling back to a
+/// plaintext settings file.
+class SecureCredentialStorageException implements Exception {
+  final String message;
+
+  const SecureCredentialStorageException(this.message);
+
+  @override
+  String toString() => message;
+}
 
 class AgentConfig {
   String? ciscoClientId;
@@ -26,7 +66,12 @@ class AgentConfig {
   bool thinkingMode;
   bool streamResponses;
 
-  static const _secureStorage = FlutterSecureStorage();
+  static const _settingsSchemaKind = 'circuit.agent-settings';
+  static const _settingsSchemaVersion = 2;
+
+  final SecureCredentialStore _credentialStore;
+  final String _configDirectory;
+  bool _settingsSchemaUnsupported = false;
 
   AgentConfig({
     this.ciscoClientId,
@@ -38,100 +83,218 @@ class AgentConfig {
     this.autoApprove = false,
     this.thinkingMode = false,
     this.streamResponses = true,
-  });
+    SecureCredentialStore? credentialStore,
+    String? configDirectory,
+  }) : _credentialStore =
+           credentialStore ?? const FlutterSecureCredentialStore(),
+       _configDirectory = configDirectory ?? configDir;
 
   static String get configDir => PlatformUtils.configDir;
   static String get configFile =>
       p.join(configDir, AppConstants.configFileName);
 
-  /// Load credentials from secure storage, then fall back to config file
-  static Future<AgentConfig> load() async {
-    final config = AgentConfig();
+  String get _instanceConfigFile =>
+      p.join(_configDirectory, AppConstants.configFileName);
+
+  /// Load credentials from secure storage and non-sensitive settings from
+  /// disk. Older plaintext credential files are migrated only after every
+  /// value has been written to the operating-system credential store.
+  static Future<AgentConfig> load({
+    SecureCredentialStore? credentialStore,
+    String? configDirectory,
+    Map<String, String>? environment,
+  }) async {
+    final config = AgentConfig(
+      credentialStore: credentialStore,
+      configDirectory: configDirectory,
+    );
+    final processEnvironment = environment ?? Platform.environment;
 
     // Try environment variables first
-    config.ciscoClientId = Platform.environment['CIRCUIT_CLIENT_ID'];
-    config.ciscoClientSecret = Platform.environment['CIRCUIT_CLIENT_SECRET'];
-    config.ciscoAppKey = Platform.environment['CIRCUIT_APP_KEY'];
+    config.ciscoClientId = processEnvironment['CIRCUIT_CLIENT_ID'];
+    config.ciscoClientSecret = processEnvironment['CIRCUIT_CLIENT_SECRET'];
+    config.ciscoAppKey = processEnvironment['CIRCUIT_APP_KEY'];
     config.githubPat =
-        Platform.environment['GITHUB_PERSONAL_ACCESS_TOKEN'] ??
-        Platform.environment['GITHUB_TOKEN'];
+        processEnvironment['GITHUB_PERSONAL_ACCESS_TOKEN'] ??
+        processEnvironment['GITHUB_TOKEN'];
 
     // Try secure storage
     try {
-      config.ciscoClientId ??= await _secureStorage.read(
-        key: 'cisco_client_id',
+      config.ciscoClientId ??= await config._credentialStore.read(
+        key: _CredentialKey.ciscoClientId,
       );
-      config.ciscoClientSecret ??= await _secureStorage.read(
-        key: 'cisco_client_secret',
+      config.ciscoClientSecret ??= await config._credentialStore.read(
+        key: _CredentialKey.ciscoClientSecret,
       );
-      config.ciscoAppKey ??= await _secureStorage.read(key: 'cisco_app_key');
-      config.githubPat ??= await _secureStorage.read(key: 'github_pat');
-    } catch (e) {
-      Logger.warning('Could not read secure storage: $e', 'Config');
+      config.ciscoAppKey ??= await config._credentialStore.read(
+        key: _CredentialKey.ciscoAppKey,
+      );
+      config.githubPat ??= await config._credentialStore.read(
+        key: _CredentialKey.githubPat,
+      );
+    } catch (_) {
+      Logger.warning('Could not read secure storage.', 'Config');
     }
 
-    // Try config file as fallback
+    // The settings file is intentionally non-sensitive. Its previous format
+    // contained credentials, so migrate those fields when secure storage is
+    // available and remove them only after a successful secure write.
     try {
-      final file = File(configFile);
+      final file = File(config._instanceConfigFile);
       if (await file.exists()) {
-        final json =
-            jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-        config.ciscoClientId ??= json['client_id'] as String?;
-        config.ciscoClientSecret ??= json['client_secret'] as String?;
-        config.ciscoAppKey ??= json['app_key'] as String?;
-        config.githubPat ??= json['github_pat'] as String?;
+        final contents = await file.readAsString();
+        final document = VersionedJsonDocument.decode(
+          jsonDecode(contents),
+          expectedKind: _settingsSchemaKind,
+          currentSchemaVersion: _settingsSchemaVersion,
+        );
+        if (document.payload is! Map) {
+          throw const FormatException(
+            'Agent settings payload is not an object.',
+          );
+        }
+        final json = Map<String, dynamic>.from(document.payload as Map);
         config.model = ModelsConfig.coerceModelForProvider(
           AIProviderType.cisco,
           json['model'] as String?,
         );
         config.autoApprove = json['auto_approve'] as bool? ?? false;
+        final credentialsMigrated = await config._migrateLegacyCredentials(
+          json,
+        );
+        if (document.schemaVersion < _settingsSchemaVersion &&
+            credentialsMigrated) {
+          await config._migrateSettingsFile(
+            originalContents: contents,
+            previousSchemaVersion: document.schemaVersion,
+          );
+        }
       }
-    } catch (e) {
-      Logger.warning('Could not read config file: $e', 'Config');
+    } on UnsupportedRuntimeSchemaVersion catch (error) {
+      config._settingsSchemaUnsupported = true;
+      Logger.warning(error.toString(), 'Config');
+    } catch (_) {
+      Logger.warning('Could not read configuration settings.', 'Config');
     }
 
     return config;
   }
 
-  /// Save credentials to secure storage
+  /// Save credentials exclusively to secure storage.
+  ///
+  /// Preferences still persist on disk, but a secure-storage failure never
+  /// causes a plaintext credential fallback.
   Future<void> save() async {
+    if (_settingsSchemaUnsupported) {
+      throw const SecureCredentialStorageException(
+        'Agent settings use a newer schema. Update CircuitCode before changing credentials or settings.',
+      );
+    }
     try {
-      await _writeOrDeleteSecure('cisco_client_id', ciscoClientId);
-      await _writeOrDeleteSecure('cisco_client_secret', ciscoClientSecret);
-      await _writeOrDeleteSecure('cisco_app_key', ciscoAppKey);
-      await _writeOrDeleteSecure('github_pat', githubPat);
+      await _writeOrDeleteSecure(_CredentialKey.ciscoClientId, ciscoClientId);
+      await _writeOrDeleteSecure(
+        _CredentialKey.ciscoClientSecret,
+        ciscoClientSecret,
+      );
+      await _writeOrDeleteSecure(_CredentialKey.ciscoAppKey, ciscoAppKey);
+      await _writeOrDeleteSecure(_CredentialKey.githubPat, githubPat);
       await _saveToFile();
-    } catch (e) {
-      Logger.error('Could not save to secure storage', e);
-      // Fall back to config file
-      await _saveToFile();
+    } catch (_) {
+      Logger.error('Could not save credentials to secure storage.', null);
+      throw const SecureCredentialStorageException(
+        'Credentials could not be saved securely. Check Keychain access and try again.',
+      );
     }
   }
 
   Future<void> _writeOrDeleteSecure(String key, String? value) async {
     final normalized = value?.trim() ?? '';
     if (normalized.isEmpty) {
-      await _secureStorage.delete(key: key);
+      await _credentialStore.delete(key: key);
       return;
     }
-    await _secureStorage.write(key: key, value: normalized);
+    await _credentialStore.write(key: key, value: normalized);
   }
 
   Future<void> _saveToFile() async {
-    final dir = Directory(configDir);
+    final dir = Directory(_configDirectory);
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
-    final file = File(configFile);
-    final json = {
-      if (ciscoClientId != null) 'client_id': ciscoClientId,
-      if (ciscoClientSecret != null) 'client_secret': ciscoClientSecret,
-      if (ciscoAppKey != null) 'app_key': ciscoAppKey,
-      if (githubPat != null) 'github_pat': githubPat,
-      'model': model,
-      'auto_approve': autoApprove,
+    final file = File(_instanceConfigFile);
+    final payload = {'model': model, 'auto_approve': autoApprove};
+    await writeVersionedJsonAtomically(
+      file,
+      VersionedJsonDocument(
+        kind: _settingsSchemaKind,
+        schemaVersion: _settingsSchemaVersion,
+        payload: payload,
+      ).encode(pretty: true),
+    );
+  }
+
+  Future<void> _migrateSettingsFile({
+    required String originalContents,
+    required int previousSchemaVersion,
+  }) {
+    return migrateVersionedJsonFile(
+      file: File(_instanceConfigFile),
+      originalContents: originalContents,
+      migratedContents: VersionedJsonDocument(
+        kind: _settingsSchemaKind,
+        schemaVersion: _settingsSchemaVersion,
+        payload: {'model': model, 'auto_approve': autoApprove},
+      ).encode(pretty: true),
+      previousSchemaVersion: previousSchemaVersion,
+    );
+  }
+
+  Future<bool> _migrateLegacyCredentials(Map<String, dynamic> json) async {
+    final legacy = <String, String?>{
+      _CredentialKey.ciscoClientId: json['client_id'] as String?,
+      _CredentialKey.ciscoClientSecret: json['client_secret'] as String?,
+      _CredentialKey.ciscoAppKey: json['app_key'] as String?,
+      _CredentialKey.githubPat: json['github_pat'] as String?,
     };
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(json));
+    if (legacy.values.every((value) => value == null || value.trim().isEmpty)) {
+      return true;
+    }
+
+    try {
+      for (final entry in legacy.entries) {
+        final legacyValue = entry.value?.trim() ?? '';
+        if (legacyValue.isEmpty) continue;
+        final secureValue = await _credentialStore.read(key: entry.key);
+        if (secureValue == null || secureValue.trim().isEmpty) {
+          await _credentialStore.write(key: entry.key, value: legacyValue);
+        }
+      }
+
+      ciscoClientId ??= await _credentialStore.read(
+        key: _CredentialKey.ciscoClientId,
+      );
+      ciscoClientSecret ??= await _credentialStore.read(
+        key: _CredentialKey.ciscoClientSecret,
+      );
+      ciscoAppKey ??= await _credentialStore.read(
+        key: _CredentialKey.ciscoAppKey,
+      );
+      githubPat ??= await _credentialStore.read(key: _CredentialKey.githubPat);
+      Logger.info(
+        'Migrated legacy credential settings to secure storage.',
+        'Config',
+      );
+    } catch (_) {
+      // Keep the old file intact if any secret could not be secured. This is
+      // the only safe recovery path: never discard a credential before it has
+      // been confirmed in Keychain, and never log its value.
+      Logger.warning(
+        'Legacy plaintext credentials require Keychain access before they can be migrated.',
+        'Config',
+      );
+      return false;
+    }
+    return true;
   }
 
   bool get hasCiscoCredentials =>
@@ -223,4 +386,11 @@ You operate inside the currently selected workspace directory. Treat that direct
 - Write clean, well-structured code following project conventions.
 - When planning, produce concrete steps tied to files, commands, and verification checks.
 ''';
+}
+
+abstract final class _CredentialKey {
+  static const ciscoClientId = 'cisco_client_id';
+  static const ciscoClientSecret = 'cisco_client_secret';
+  static const ciscoAppKey = 'cisco_app_key';
+  static const githubPat = 'github_pat';
 }

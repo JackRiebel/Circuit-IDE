@@ -38,8 +38,14 @@ void main() {
     );
     expect(attachment.metadata['artifactRole'], 'visual_evidence');
     expect(attachment.metadata['ocrStatus'], 'not_extracted');
-    expect(attachment.metadata['providerPixelInputSupported'], isFalse);
-    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+    expect(
+      attachment.metadata['providerPixelInputSupported'],
+      'pending_capability_check',
+    );
+    expect(
+      attachment.metadata['analysisReliability'],
+      'metadata_pending_provider_capability_check',
+    );
     expect(
       attachment.metadata['recommendedFollowUp'],
       contains('OCR/vision integration'),

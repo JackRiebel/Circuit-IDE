@@ -178,6 +178,22 @@ void main() {
     expect(pack.visibleItems.first.type, ContextPackItemType.projectProfile);
     expect(pack.serializePrompt(), contains('Improve startup'));
     expect(pack.estimatedTokens, greaterThan(0));
+    final retrieval = pack.retrievalResult!;
+    expect(retrieval.rankedCandidates, isNotEmpty);
+    expect(
+      retrieval.rankedCandidates.map((candidate) => candidate.rank),
+      orderedEquals([
+        for (var index = 1; index <= retrieval.rankedCandidates.length; index++)
+          index,
+      ]),
+    );
+    expect(retrieval.rankedCandidates.first.contentFingerprint, isNotEmpty);
+    final restored = ContextRetrievalResult.fromJson(retrieval.toJson())!;
+    expect(restored.rankedCandidates.first.rank, 1);
+    expect(
+      restored.rankedCandidates.first.contentFingerprint,
+      retrieval.rankedCandidates.first.contentFingerprint,
+    );
   });
 
   test('ContextPackController includes pinned context on next build', () async {
@@ -234,6 +250,59 @@ void main() {
       contains('included next time from Context drawer'),
     );
   });
+
+  test(
+    'ContextPackController persists project exclusions and can reset them',
+    () async {
+      final root = await Directory.systemTemp.createTemp('context_exclude_');
+      final prefsRoot = await Directory.systemTemp.createTemp(
+        'context_exclude_prefs_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(prefsRoot));
+      await Directory(p.join(root.path, 'lib')).create(recursive: true);
+      await File(
+        p.join(root.path, 'lib', 'ignored.dart'),
+      ).writeAsString('class IgnoredContext {}\n');
+
+      final store = ContextPreferenceStore(baseDir: prefsRoot.path);
+      final firstContainer = ProviderContainer(
+        overrides: [contextPreferenceStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(firstContainer.dispose);
+      await firstContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      final controller = firstContainer.read(contextPackProvider.notifier);
+      controller.includeNextTime('lib/ignored.dart');
+      controller.excludeForProject('lib/ignored.dart');
+
+      expect(controller.includeNextTimePathsForCurrentRoot(), isEmpty);
+      expect(
+        controller.excludedPathsForCurrentRoot(),
+        contains('lib/ignored.dart'),
+      );
+      expect(store.loadIncludedPaths(root.path), isEmpty);
+      expect(store.loadExcludedPaths(root.path), contains('lib/ignored.dart'));
+
+      final reloadedContainer = ProviderContainer(
+        overrides: [contextPreferenceStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(reloadedContainer.dispose);
+      await reloadedContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      final reloaded = reloadedContainer.read(contextPackProvider.notifier);
+      expect(
+        reloaded.excludedPathsForCurrentRoot(),
+        contains('lib/ignored.dart'),
+      );
+
+      reloaded.resetProjectContextChoices();
+      expect(store.loadIncludedPaths(root.path), isEmpty);
+      expect(store.loadExcludedPaths(root.path), isEmpty);
+    },
+  );
 
   test(
     'ContextPackController ranks symbol declaration files from index',
@@ -635,6 +704,98 @@ DatacenterSizingEngine is mentioned here, but the implementation lives in code.
           .restoreCheckpoint(applyResult.checkpointId!);
       expect(restoreResult.status, PatchApplyStatus.restored);
       expect(await target.exists(), isFalse);
+    },
+  );
+
+  test(
+    'PatchProposalController restores every crash-injected partial patch on reload',
+    () async {
+      for (final interruptAfterMutation in [1, 2, 3]) {
+        final root = await Directory.systemTemp.createTemp(
+          'patch_crash_atomic_${interruptAfterMutation}_',
+        );
+        final storeRoot = await Directory.systemTemp.createTemp(
+          'patch_crash_atomic_store_${interruptAfterMutation}_',
+        );
+        addTearDown(() => _delete(root));
+        addTearDown(() => _delete(storeRoot));
+        final modified = File(p.join(root.path, 'modified.txt'));
+        final deleted = File(p.join(root.path, 'deleted.txt'));
+        final created = File(p.join(root.path, 'nested', 'created.txt'));
+        await modified.writeAsString('before modify\n');
+        await deleted.writeAsString('before delete\n');
+
+        final store = PatchProposalStore(
+          baseDir: storeRoot.path,
+          onMutationApplied: (completedMutations) {
+            if (completedMutations == interruptAfterMutation) {
+              throw const PatchApplySimulatedCrash();
+            }
+          },
+        );
+        final applyingContainer = ProviderContainer(
+          overrides: [patchProposalStoreProvider.overrideWithValue(store)],
+        );
+        await applyingContainer
+            .read(fileTreeProvider.notifier)
+            .openDirectory(root.path);
+        final patch = applyingContainer
+            .read(patchProposalProvider.notifier)
+            .propose(
+              title: 'Crash-safe transaction',
+              edits: const [
+                ProposedFileEdit(
+                  path: 'modified.txt',
+                  type: ProposedFileEditType.modify,
+                  before: 'before modify\n',
+                  after: 'after modify\n',
+                ),
+                ProposedFileEdit(
+                  path: 'nested/created.txt',
+                  type: ProposedFileEditType.create,
+                  after: 'created\n',
+                ),
+                ProposedFileEdit(
+                  path: 'deleted.txt',
+                  type: ProposedFileEditType.delete,
+                  before: 'before delete\n',
+                ),
+              ],
+            );
+
+        final interrupted = await applyingContainer
+            .read(patchProposalProvider.notifier)
+            .apply(patch.id);
+        expect(interrupted.status, PatchApplyStatus.failed);
+        expect(await File(store.applyJournalPath(root.path)).exists(), isTrue);
+        applyingContainer.dispose();
+
+        final recoveryContainer = ProviderContainer(
+          overrides: [patchProposalStoreProvider.overrideWithValue(store)],
+        );
+        addTearDown(recoveryContainer.dispose);
+        await recoveryContainer
+            .read(fileTreeProvider.notifier)
+            .openDirectory(root.path);
+        recoveryContainer.read(patchProposalProvider);
+        await _waitForPatchProvider(
+          recoveryContainer,
+          (state) =>
+              state.message?.contains('Recovered an interrupted') ?? false,
+        );
+
+        expect(await modified.readAsString(), 'before modify\n');
+        expect(await deleted.readAsString(), 'before delete\n');
+        expect(await created.exists(), isFalse);
+        expect(await Directory(p.join(root.path, 'nested')).exists(), isFalse);
+        expect(await File(store.applyJournalPath(root.path)).exists(), isFalse);
+        final recoveredPatch = recoveryContainer
+            .read(patchProposalProvider)
+            .history
+            .firstWhere((candidate) => candidate.id == patch.id);
+        expect(recoveredPatch.applyStatus, PatchApplyStatus.failed);
+        expect(recoveredPatch.checkpointId, isNull);
+      }
     },
   );
 
@@ -1409,6 +1570,182 @@ DatacenterSizingEngine is mentioned here, but the implementation lives in code.
   );
 
   test(
+    'Checkpoint restore previews later user changes and creates a reversible checkpoint',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_restore_preview_v3_',
+      );
+      addTearDown(() => _delete(root));
+      final readme = File(p.join(root.path, 'README.md'));
+      await readme.writeAsString('before patch\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      final patch = container
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Update readme',
+            workItemId: 'task-checkpoint-preview',
+            verificationRequested: true,
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'before patch\n',
+                after: 'after patch\n',
+              ),
+            ],
+          );
+      final applied = await container
+          .read(patchProposalProvider.notifier)
+          .apply(patch.id);
+      expect(applied.status, PatchApplyStatus.applied);
+      await readme.writeAsString('later user change\n');
+
+      final preview = await container
+          .read(patchProposalProvider.notifier)
+          .previewCheckpointRestore(applied.checkpointId!);
+      expect(preview, isNotNull);
+      expect(preview!.hasLaterUserChanges, isTrue);
+      expect(preview.files.single.path, 'README.md');
+      expect(
+        preview.files.single.state,
+        CheckpointRestoreFileState.laterUserChange,
+      );
+      expect(preview.verificationStatus, 'Verification requested');
+
+      final denied = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applied.checkpointId!);
+      expect(denied.status, PatchApplyStatus.conflict);
+      expect(denied.conflictMessage, contains('changed after the patch'));
+      expect(await readme.readAsString(), 'later user change\n');
+
+      final restored = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applied.checkpointId!, allowOverwrite: true);
+      expect(restored.status, PatchApplyStatus.restored);
+      expect(await readme.readAsString(), 'before patch\n');
+      final rollback = container
+          .read(patchProposalProvider)
+          .checkpoints
+          .values
+          .singleWhere(
+            (checkpoint) =>
+                checkpoint.restoresCheckpointId == applied.checkpointId,
+          );
+      expect(rollback.patchSetId, patch.id);
+      expect(rollback.workItemId, 'task-checkpoint-preview');
+
+      final reversed = await container
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(rollback.id);
+      expect(reversed.status, PatchApplyStatus.restored);
+      expect(await readme.readAsString(), 'later user change\n');
+    },
+  );
+
+  test(
+    'Checkpoint restore journal recovers a forced interruption without changing patch history',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'patch_restore_crash_v3_',
+      );
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'patch_restore_crash_store_v3_',
+      );
+      addTearDown(() => _delete(root));
+      addTearDown(() => _delete(storeRoot));
+      final file = File(p.join(root.path, 'README.md'));
+      await file.writeAsString('before\n');
+      final normalStore = PatchProposalStore(baseDir: storeRoot.path);
+
+      final applyingContainer = ProviderContainer(
+        overrides: [patchProposalStoreProvider.overrideWithValue(normalStore)],
+      );
+      await applyingContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      final patch = applyingContainer
+          .read(patchProposalProvider.notifier)
+          .propose(
+            title: 'Crash-safe restore',
+            edits: const [
+              ProposedFileEdit(
+                path: 'README.md',
+                type: ProposedFileEditType.modify,
+                before: 'before\n',
+                after: 'after\n',
+              ),
+            ],
+          );
+      final applied = await applyingContainer
+          .read(patchProposalProvider.notifier)
+          .apply(patch.id);
+      expect(applied.status, PatchApplyStatus.applied);
+      applyingContainer.dispose();
+
+      final interruptedStore = PatchProposalStore(
+        baseDir: storeRoot.path,
+        onMutationApplied: (completed) {
+          if (completed == 1) throw const PatchApplySimulatedCrash();
+        },
+      );
+      final interruptedContainer = ProviderContainer(
+        overrides: [
+          patchProposalStoreProvider.overrideWithValue(interruptedStore),
+        ],
+      );
+      await interruptedContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      interruptedContainer.read(patchProposalProvider);
+      await _waitForPatchProvider(
+        interruptedContainer,
+        (state) => state.checkpoints.containsKey(applied.checkpointId),
+      );
+
+      final interrupted = await interruptedContainer
+          .read(patchProposalProvider.notifier)
+          .restoreCheckpoint(applied.checkpointId!);
+      expect(interrupted.status, PatchApplyStatus.failed);
+      expect(await file.readAsString(), 'before\n');
+      expect(
+        await File(normalStore.applyJournalPath(root.path)).exists(),
+        isTrue,
+      );
+      interruptedContainer.dispose();
+
+      final recoveryContainer = ProviderContainer(
+        overrides: [patchProposalStoreProvider.overrideWithValue(normalStore)],
+      );
+      addTearDown(recoveryContainer.dispose);
+      await recoveryContainer
+          .read(fileTreeProvider.notifier)
+          .openDirectory(root.path);
+      recoveryContainer.read(patchProposalProvider);
+      await _waitForPatchProvider(
+        recoveryContainer,
+        (state) =>
+            state.message?.contains('interrupted checkpoint restore') ?? false,
+      );
+
+      expect(await file.readAsString(), 'after\n');
+      expect(
+        await File(normalStore.applyJournalPath(root.path)).exists(),
+        isFalse,
+      );
+      final recoveredPatch = recoveryContainer
+          .read(patchProposalProvider)
+          .history
+          .firstWhere((candidate) => candidate.id == patch.id);
+      expect(recoveredPatch.applyStatus, PatchApplyStatus.applied);
+      expect(recoveredPatch.checkpointId, applied.checkpointId);
+    },
+  );
+
+  test(
     'PatchProposalController rejects empty and workspace-root patch targets',
     () async {
       final root = await Directory.systemTemp.createTemp(
@@ -2175,13 +2512,10 @@ DatacenterSizingEngine is mentioned here, but the implementation lives in code.
     'Studio connection facade owns provider without reading AgentService',
     () async {
       final source = await File(
-        'lib/state/connection_provider.dart',
+        'lib/state/studio_provider_connection.dart',
       ).readAsString();
       final start = source.indexOf('class StudioAgentConnectionController');
-      final end = source.indexOf(
-        '/// Studio-facing provider-only connection facade.',
-      );
-      final studioConnectionSource = source.substring(start, end);
+      final studioConnectionSource = source.substring(start);
 
       expect(studioConnectionSource, contains('ProviderRegistry'));
       expect(studioConnectionSource, contains('provider.connect'));
@@ -2261,8 +2595,10 @@ DatacenterSizingEngine is mentioned here, but the implementation lives in code.
   test(
     'Studio task title does not fall back to unrelated selected thread',
     () async {
+      // The shell composes the feature modules; task-scoped title selection
+      // belongs to the persistent top-bar module after the Studio split.
       final source = await File(
-        'lib/ui/studio/studio_shell.dart',
+        'lib/ui/studio/studio_top_bar.dart',
       ).readAsString();
 
       expect(
@@ -2350,131 +2686,177 @@ DatacenterSizingEngine is mentioned here, but the implementation lives in code.
     expect(source, isNot(contains('sendMessage(')));
   });
 
-  test('Advanced agents are quarantined outside Studio runtime', () async {
-    final sources = {
-      'lib/state/agent_manager_provider.dart':
-          '_advancedAgentsEnabled => false',
-      'lib/state/ghost_mode_provider.dart': '_ghostModeEnabled => false',
-      'lib/state/background_agent_provider.dart':
-          '_backgroundAgentsEnabled => false',
-    };
-
-    for (final entry in sources.entries) {
-      final source = await File(entry.key).readAsString();
-      expect(source, contains(entry.value), reason: entry.key);
+  test(
+    'Custom agents enter only through Studio while legacy agents stay quarantined',
+    () async {
+      final managerSource = await File(
+        'lib/state/agent_manager_provider.dart',
+      ).readAsString();
       expect(
-        source,
-        contains('request-local turn runtime'),
-        reason: '${entry.key} should explain why execution is paused.',
+        managerSource,
+        contains('Custom agents run only from the Studio composer'),
       );
-    }
+      expect(managerSource, isNot(contains('CircuitAgent')));
+      expect(managerSource, isNot(contains('agentServiceProvider')));
+      expect(managerSource, isNot(contains('autoApprove')));
+      expect(
+        await File('lib/agent/tools/orchestrate_tool.dart').exists(),
+        isFalse,
+        reason:
+            'The legacy full-access subagent tool must not remain available outside a scoped Studio delegation runtime.',
+      );
+      for (final path in [
+        'lib/agent/tools/tool_registry.dart',
+        'lib/agent/tools/tool_executor.dart',
+        'lib/agent/agent.dart',
+        'lib/services/agent_service.dart',
+      ]) {
+        final source = await File(path).readAsString();
+        expect(
+          source,
+          isNot(contains('orchestrate')),
+          reason: '$path must not retain the legacy subagent route.',
+        );
+      }
 
-    final ghostSource = await File(
-      'lib/state/ghost_mode_provider.dart',
-    ).readAsString();
-    final statusBarSource = await File(
-      'lib/ui/layout/status_bar.dart',
-    ).readAsString();
-    expect(
-      statusBarSource,
-      contains('StudioFeatureFlags.advancedStudioSurfaces'),
-      reason:
-          'Ghost status UI must stay hidden from the stable Studio chrome until Ghost Mode is migrated to the turn runtime.',
-    );
-    expect(
-      statusBarSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
-      lessThan(statusBarSource.indexOf('GhostStatusWidget')),
-      reason:
-          'Ghost status UI should be mounted only behind the advanced Studio surface flag.',
-    );
-    final startGhostSource = _methodBody(
-      ghostSource,
-      'Future<void> startGhost',
-      'Future<void> undoGhost',
-    );
-    expect(
-      startGhostSource.indexOf('if (!_ghostModeEnabled)'),
-      lessThan(startGhostSource.indexOf('ref.read(agentServiceProvider)')),
-      reason:
-          'Ghost Mode must fail closed before touching legacy AgentService.',
-    );
-    final undoGhostSource = _methodBody(
-      ghostSource,
-      'Future<void> undoGhost',
-      'void dismissTask',
-    );
-    expect(
-      undoGhostSource.indexOf('if (!_ghostModeEnabled)'),
-      lessThan(undoGhostSource.indexOf('ref.read(agentServiceProvider)')),
-      reason: 'Ghost undo must stay quarantined while Ghost Mode is disabled.',
-    );
+      final sources = {
+        'lib/state/ghost_mode_provider.dart': '_ghostModeEnabled => false',
+        'lib/state/background_agent_provider.dart':
+            '_backgroundAgentsEnabled => false',
+      };
 
-    final backgroundSource = await File(
-      'lib/state/background_agent_provider.dart',
-    ).readAsString();
-    for (final marker in [
-      'void _setupListeners',
-      'void _handleFileSaveTrigger',
-      'void handleGitCommitTrigger',
-      'void handleProjectOpenTrigger',
-      'void _handlePeriodicTriggers',
-    ]) {
-      final methodSource = _methodBody(
-        backgroundSource,
-        marker,
-        marker == 'void _handlePeriodicTriggers'
-            ? 'bool _checkCooldown'
-            : _nextBackgroundMarker(marker),
+      for (final entry in sources.entries) {
+        final source = await File(entry.key).readAsString();
+        expect(source, contains(entry.value), reason: entry.key);
+        expect(
+          source,
+          contains('request-local turn runtime'),
+          reason: '${entry.key} should explain why execution is paused.',
+        );
+      }
+
+      final ghostSource = await File(
+        'lib/state/ghost_mode_provider.dart',
+      ).readAsString();
+      final statusBarSource = await File(
+        'lib/ui/layout/status_bar.dart',
+      ).readAsString();
+      expect(
+        statusBarSource,
+        contains('StudioFeatureFlags.advancedStudioSurfaces'),
+        reason:
+            'Ghost status UI must stay hidden from the stable Studio chrome until Ghost Mode is migrated to the turn runtime.',
       );
       expect(
-        methodSource.indexOf('if (!_backgroundAgentsEnabled)'),
-        lessThan(methodSource.indexOf('ref.read(agentServiceProvider)')),
-        reason: '$marker must fail closed before touching legacy AgentService.',
+        statusBarSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
+        lessThan(statusBarSource.indexOf('GhostStatusWidget')),
+        reason:
+            'Ghost status UI should be mounted only behind the advanced Studio surface flag.',
       );
-    }
+      final startGhostSource = _methodBody(
+        ghostSource,
+        'Future<void> startGhost',
+        'Future<void> undoGhost',
+      );
+      expect(
+        startGhostSource.indexOf('if (!_ghostModeEnabled)'),
+        lessThan(startGhostSource.indexOf('ref.read(agentServiceProvider)')),
+        reason:
+            'Ghost Mode must fail closed before touching legacy AgentService.',
+      );
+      final undoGhostSource = _methodBody(
+        ghostSource,
+        'Future<void> undoGhost',
+        'void dismissTask',
+      );
+      expect(
+        undoGhostSource.indexOf('if (!_ghostModeEnabled)'),
+        lessThan(undoGhostSource.indexOf('ref.read(agentServiceProvider)')),
+        reason:
+            'Ghost undo must stay quarantined while Ghost Mode is disabled.',
+      );
 
-    final senderSource = await File(
-      'lib/ui/studio/studio_message_sender.dart',
-    ).readAsString();
-    final agentSource = await File('lib/agent/agent.dart').readAsString();
-    final featureFlagSource = await File(
-      'lib/core/config/studio_feature_flags.dart',
-    ).readAsString();
-    expect(
-      featureFlagSource,
-      contains('static const enterpriseSpecialists = false'),
-    );
-    expect(senderSource, contains('StudioFeatureFlags.enterpriseSpecialists'));
-    expect(senderSource, contains('Enterprise specialist routing is disabled'));
-    expect(
-      senderSource,
-      contains('SpecialistAgentRouter().route(prompt)'),
-      reason:
-          'Specialist routing may return only after the explicit Studio feature gate is enabled.',
-    );
-    expect(agentSource, contains('StudioFeatureFlags.advancedStudioSurfaces'));
-    expect(
-      agentSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
-      lessThan(agentSource.indexOf('..._mcpTools')),
-      reason:
-          'Legacy CircuitAgent must not expose MCP tools unless advanced surfaces are explicitly enabled.',
-    );
+      final backgroundSource = await File(
+        'lib/state/background_agent_provider.dart',
+      ).readAsString();
+      for (final marker in [
+        'void _setupListeners',
+        'void _handleFileSaveTrigger',
+        'void handleGitCommitTrigger',
+        'void handleProjectOpenTrigger',
+        'void _handlePeriodicTriggers',
+      ]) {
+        final methodSource = _methodBody(
+          backgroundSource,
+          marker,
+          marker == 'void _handlePeriodicTriggers'
+              ? 'bool _checkCooldown'
+              : _nextBackgroundMarker(marker),
+        );
+        expect(
+          methodSource.indexOf('if (!_backgroundAgentsEnabled)'),
+          lessThan(methodSource.indexOf('ref.read(agentServiceProvider)')),
+          reason:
+              '$marker must fail closed before touching legacy AgentService.',
+        );
+      }
 
-    final shellProviderSource = await File(
-      'lib/state/studio_shell_provider.dart',
-    ).readAsString();
-    expect(
-      shellProviderSource,
-      contains('StudioFeatureFlags.advancedStudioSurfaces'),
-      reason:
-          'Unsupported execution modes must be coerced until the Studio runtime owns their sandbox boundary.',
-    );
-    expect(
-      shellProviderSource,
-      contains('StudioExecutionMode.local'),
-      reason: 'Studio should fail closed to local execution mode.',
-    );
-  });
+      final senderSource = [
+        await File('lib/ui/studio/studio_message_sender.dart').readAsString(),
+        await File(
+          'lib/ui/studio/studio_custom_agent_routing.dart',
+        ).readAsString(),
+        await File('lib/ui/studio/studio_context_payload.dart').readAsString(),
+      ].join('\n');
+      final agentSource = await File('lib/agent/agent.dart').readAsString();
+      final featureFlagSource = await File(
+        'lib/core/config/studio_feature_flags.dart',
+      ).readAsString();
+      expect(
+        featureFlagSource,
+        contains('static const enterpriseSpecialists = false'),
+      );
+      expect(
+        senderSource,
+        contains('StudioFeatureFlags.enterpriseSpecialists'),
+      );
+      expect(
+        senderSource,
+        contains('Enterprise specialist routing is disabled'),
+      );
+      expect(
+        senderSource,
+        contains('SpecialistAgentRouter().route(prompt)'),
+        reason:
+            'Specialist routing may return only after the explicit Studio feature gate is enabled.',
+      );
+      expect(
+        agentSource,
+        contains('StudioFeatureFlags.advancedStudioSurfaces'),
+      );
+      expect(
+        agentSource.indexOf('StudioFeatureFlags.advancedStudioSurfaces'),
+        lessThan(agentSource.indexOf('..._mcpTools')),
+        reason:
+            'Legacy CircuitAgent must not expose MCP tools unless advanced surfaces are explicitly enabled.',
+      );
+
+      final shellProviderSource = await File(
+        'lib/state/studio_shell_provider.dart',
+      ).readAsString();
+      expect(
+        shellProviderSource,
+        contains('StudioFeatureFlags.advancedStudioSurfaces'),
+        reason:
+            'Unsupported execution modes must be coerced until the Studio runtime owns their sandbox boundary.',
+      );
+      expect(
+        shellProviderSource,
+        contains('StudioExecutionMode.local'),
+        reason: 'Studio should fail closed to local execution mode.',
+      );
+    },
+  );
 
   test('Disabled Studio specialists coerce to Auto in shell state', () {
     final container = ProviderContainer();

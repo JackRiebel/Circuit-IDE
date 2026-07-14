@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:circuit_ide/agent/tools/command_tools.dart';
+import 'package:circuit_ide/agent/security/child_process_environment.dart';
+import 'package:circuit_ide/core/utils/platform_utils.dart';
+import 'package:circuit_ide/agent/security/macos_execution_boundary.dart';
 import 'package:circuit_ide/agent/tools/tool_executor.dart';
 import 'package:circuit_ide/enums/event_type.dart';
 import 'package:circuit_ide/enums/tool_status.dart';
@@ -14,6 +18,7 @@ import 'package:circuit_ide/models/tool_call_info.dart';
 import 'package:circuit_ide/state/agent_turn_runtime_provider.dart';
 import 'package:circuit_ide/state/agent_workspace_provider.dart';
 import 'package:circuit_ide/state/command_run_provider.dart';
+import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:circuit_ide/services/event_bus.dart';
@@ -21,6 +26,273 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('macOS development command turns retain a no-network fallback', () {
+    final launch = MacOsExecutionBoundary.forShellCommand(
+      shell: '/bin/sh',
+      shellArgs: const ['-c'],
+      command: 'printf safe',
+      workingDirectory: Directory.current.path,
+      cpuLimitSeconds: 5,
+      allowNetwork: false,
+    );
+
+    if (Platform.isMacOS && File('/usr/bin/sandbox-exec').existsSync()) {
+      expect(launch.executable, '/usr/bin/sandbox-exec');
+      expect(launch.arguments, [
+        '-n',
+        'no-internet',
+        '/bin/sh',
+        '-c',
+        'printf safe',
+      ]);
+    } else {
+      expect(launch.executable, '/bin/sh');
+      expect(launch.arguments, ['-c', 'printf safe']);
+    }
+  });
+
+  test(
+    'explicit network approval is the only path that bypasses no-network',
+    () {
+      final launch = MacOsExecutionBoundary.forShellCommand(
+        shell: '/bin/sh',
+        shellArgs: const ['-c'],
+        command: 'printf approved',
+        workingDirectory: Directory.current.path,
+        cpuLimitSeconds: 5,
+        allowNetwork: true,
+      );
+
+      expect(launch.executable, '/bin/sh');
+      expect(launch.arguments, ['-c', 'printf approved']);
+    },
+  );
+
+  test('a packaged macOS app fails closed when its broker is missing', () async {
+    if (!Platform.isMacOS) return;
+    final contents = await Directory.systemTemp.createTemp(
+      'missing-packaged-broker-',
+    );
+    addTearDown(() => contents.delete(recursive: true));
+    MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride =
+        contents.path;
+    addTearDown(() {
+      MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride = null;
+      MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
+    });
+
+    final launch = MacOsExecutionBoundary.forShellCommand(
+      shell: '/bin/sh',
+      shellArgs: const ['-c'],
+      command: 'touch must-not-run',
+      workingDirectory: contents.path,
+      cpuLimitSeconds: 5,
+      allowNetwork: true,
+    );
+
+    expect(launch.isDenied, isTrue);
+    expect(launch.executable, isEmpty);
+    expect(
+      launch.denialMessage,
+      MacOsExecutionBoundary.packagedBrokerUnavailableMessage,
+    );
+
+    final events = <CommandRunEvent>[];
+    final output = await CommandTools(workingDir: contents.path).runCommand(
+      const {'command': 'touch must-not-run', 'timeout': 5},
+      onEvent: events.add,
+    );
+    expect(output, 'Error: ${MacOsExecutionBoundary.packagedBrokerUnavailableMessage}');
+    expect(events, hasLength(1));
+    expect(events.single.type, CommandRunEventType.stderr);
+    expect(events.single.text, MacOsExecutionBoundary.packagedBrokerUnavailableMessage);
+    expect(File('${contents.path}/must-not-run').existsSync(), isFalse);
+  });
+
+  test('brokered commands forward only reviewed executable roots', () async {
+    if (!Platform.isMacOS) return;
+    final directory = await Directory.systemTemp.createTemp('broker-roots-');
+    addTearDown(() => directory.delete(recursive: true));
+    final broker = File('${directory.path}/CircuitExecutionBroker')
+      ..createSync();
+    MacOsExecutionBoundary.debugBrokerExecutableOverride = broker.path;
+    addTearDown(() {
+      MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
+    });
+
+    final launch = MacOsExecutionBoundary.forShellCommand(
+      shell: '/bin/sh',
+      shellArgs: const ['-c'],
+      command: 'printf brokered',
+      workingDirectory: directory.path,
+      cpuLimitSeconds: 10,
+      allowNetwork: false,
+      toolRoots: const [
+        '/usr/bin',
+        '/opt/homebrew/bin',
+        '/Users/example/.cache/runtime/bin',
+        '/',
+      ],
+    );
+
+    expect(launch.brokered, isTrue);
+    expect(launch.arguments, containsAllInOrder(['--tool-root', '/usr/bin']));
+    expect(
+      launch.arguments,
+      containsAllInOrder(['--tool-root', '/opt/homebrew/bin']),
+    );
+    expect(
+      launch.arguments,
+      isNot(contains('/Users/example/.cache/runtime/bin')),
+    );
+    expect(launch.arguments, isNot(contains('/')));
+  });
+
+  test('a configured packaged broker completes a sanitized command', () async {
+    final brokerPath = Platform.environment['CIRCUIT_SOAK_BROKER_PATH']?.trim();
+    if (!Platform.isMacOS ||
+        brokerPath == null ||
+        brokerPath.isEmpty ||
+        !File(brokerPath).existsSync()) {
+      return;
+    }
+
+    final root = await Directory.systemTemp.createTemp('broker-command-');
+    addTearDown(() => root.delete(recursive: true));
+    await File('${root.path}/lib/marker.dart').create(recursive: true);
+    MacOsExecutionBoundary.debugBrokerExecutableOverride = brokerPath;
+    addTearDown(() {
+      MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
+    });
+
+    final launch = MacOsExecutionBoundary.forShellCommand(
+      shell: PlatformUtils.shell,
+      shellArgs: PlatformUtils.shellArgs,
+      command: 'test -f lib/marker.dart',
+      workingDirectory: root.path,
+      cpuLimitSeconds: 10,
+      allowNetwork: false,
+      toolRoots: Platform.environment['PATH']!
+          .split(Platform.pathSeparator)
+          .where((entry) => entry.startsWith('/'))
+          .toList(growable: false),
+    );
+    try {
+      final process = await Process.start(
+        launch.executable,
+        launch.arguments,
+        workingDirectory: root.path,
+        environment: ChildProcessEnvironment.build(
+          baseEnvironment: Platform.environment,
+        ),
+      );
+      expect(await process.exitCode, 0);
+    } on ProcessException catch (error) {
+      fail('packaged_broker_process_start_${error.errorCode}');
+    }
+
+    final events = <CommandRunEvent>[];
+    final output = await CommandTools(workingDir: root.path).runCommand({
+      'command': 'test -f lib/marker.dart',
+      'timeout': 10,
+    }, onEvent: events.add);
+
+    expect(output, '(no output)');
+    expect(events.last.type, CommandRunEventType.exited);
+    expect(events.last.text, 'exit 0');
+  });
+
+  test('a bundled macOS broker receives the reviewed execution policy', () {
+    if (!Platform.isMacOS) return;
+
+    final directory = Directory.systemTemp.createTempSync(
+      'circuit-broker-test-',
+    );
+    final broker = File('${directory.path}/CircuitExecutionBroker')
+      ..createSync();
+    MacOsExecutionBoundary.debugBrokerExecutableOverride = broker.path;
+    addTearDown(() {
+      MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
+      directory.deleteSync(recursive: true);
+    });
+
+    final launch = MacOsExecutionBoundary.forShellCommand(
+      shell: '/bin/sh',
+      shellArgs: const ['-c'],
+      command: 'printf brokered',
+      workingDirectory: Directory.current.path,
+      cpuLimitSeconds: 7,
+      allowNetwork: true,
+      toolRoots: const ['/usr/local/bin'],
+    );
+
+    expect(launch.executable, broker.path);
+    expect(launch.brokered, isTrue);
+    expect(launch.arguments, [
+      '--workspace',
+      Directory.current.path,
+      '--network',
+      'allow',
+      '--cpu-limit',
+      '7',
+      '--tool-root',
+      '/usr/local/bin',
+      '--',
+      '/bin/sh',
+      '-c',
+      'printf brokered',
+    ]);
+  });
+
+  test('macOS release keeps the broker build and escape harness wired', () {
+    final project = File(
+      'macos/Runner.xcodeproj/project.pbxproj',
+    ).readAsStringSync();
+    final harness = File(
+      'scripts/verify_execution_broker.sh',
+    ).readAsStringSync();
+    final broker = File(
+      'macos/Runner/CircuitExecutionBroker.swift',
+    ).readAsStringSync();
+    final workflow = File('../.github/workflows/ci.yml').readAsStringSync();
+
+    expect(project, contains('Build Circuit execution broker'));
+    expect(project, contains('CircuitExecutionBroker.swift'));
+    expect(project, contains('swiftc -parse-as-library'));
+    expect(harness, contains('symlink escape read'));
+    expect(harness, contains('system-selected shell was denied'));
+    expect(harness, contains('path-sentinel'));
+    expect(harness, contains('broker-harness-term-sentinel'));
+    expect(harness, contains('untrusted tool root'));
+    expect(harness, contains('broker launch denial'));
+    expect(harness, contains('temporary-directory symlink'));
+    expect(harness, contains('network egress'));
+    expect(harness, contains('unrelated process inspection'));
+    expect(harness, contains('system Keychain metadata'));
+    expect(
+      broker,
+      contains(
+        'Circuit execution broker denied launch. Check the execution boundary and try again.',
+      ),
+    );
+    expect(broker, isNot(contains('error.localizedDescription')));
+    expect(
+      broker,
+      contains(
+        '/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin',
+      ),
+    );
+    expect(
+      broker,
+      isNot(contains('ProcessInfo.processInfo.environment["PATH"]')),
+    );
+    expect(broker, contains('destinationOfSymbolicLink'));
+    expect(broker, contains('isStrictDescendant'));
+    expect(broker, contains('keychainDenyRules'));
+    expect(broker, contains('Library/Keychains'));
+    expect(workflow, contains('verify_execution_broker.sh'));
+  });
+
   test('CommandTools streams stdout and stderr before exit', () async {
     final events = <CommandRunEvent>[];
     final output = await CommandTools(workingDir: '.').runCommand({
@@ -44,6 +316,89 @@ void main() {
       contains(CommandRunEventType.exited),
     );
   });
+
+  test('CommandTools redacts and records a process launch failure', () async {
+    final root = await Directory.systemTemp.createTemp(
+      'circuit-command-launch-failure-',
+    );
+    addTearDown(() => root.delete(recursive: true));
+    final missingDirectory = '${root.path}/missing-workspace';
+    final events = <CommandRunEvent>[];
+
+    final output = await CommandTools(workingDir: missingDirectory).runCommand({
+      'command': 'printf launch-sentinel',
+      'timeout': 5,
+    }, onEvent: events.add);
+
+    expect(
+      output,
+      'Error: Command process could not start. Check the execution boundary and try again.',
+    );
+    expect(events, hasLength(1));
+    expect(events.single.type, CommandRunEventType.stderr);
+    expect(
+      events.single.text,
+      'Command process could not start. Check the execution boundary and try again.',
+    );
+    expect(events.single.text, isNot(contains(root.path)));
+    expect(events.single.text, isNot(contains('launch-sentinel')));
+  });
+
+  test(
+    'CommandTools redacts an unexpected callback error and terminates its child',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-command-callback-failure-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      int? launchedPid;
+
+      final output = await CommandTools(workingDir: root.path).runCommand(
+        {'command': 'sleep 30', 'timeout': 5},
+        onEvent: (event) {
+          if (event.type != CommandRunEventType.started) return;
+          launchedPid = event.processId;
+          throw StateError('callback diagnostic contained callback-secret');
+        },
+      );
+
+      expect(
+        output,
+        'Error: Command process failed before completion. Check the execution boundary and try again.',
+      );
+      expect(output, isNot(contains('callback-secret')));
+      expect(launchedPid, isNotNull);
+      final processLookup = await Process.run('/bin/ps', [
+        '-p',
+        '$launchedPid',
+        '-o',
+        'pid=',
+      ]);
+      expect(processLookup.stdout.toString().trim(), isEmpty);
+    },
+  );
+
+  test(
+    'CommandTools stops a command that exceeds its output resource limit',
+    () async {
+      final events = <CommandRunEvent>[];
+      final output = await CommandTools(workingDir: '.', maxOutputBytes: 32)
+          .runCommand({
+            'command':
+                'python3 -c "import sys,time; sys.stdout.write(\'x\'*64); sys.stdout.flush(); time.sleep(1)"',
+            'timeout': 5,
+          }, onEvent: events.add);
+
+      expect(
+        output,
+        contains('Command output exceeded the 32 byte resource limit'),
+      );
+      expect(
+        events.map((event) => event.text).join('\n'),
+        contains('process was stopped'),
+      );
+    },
+  );
 
   test('CommandTools blocks unquoted shell control syntax', () async {
     for (final command in [
@@ -428,15 +783,9 @@ void main() {
       expect(createIssueCase, isNonNegative);
       expect(closeIssueCase, isNonNegative);
       expect(createRepoCase, isNonNegative);
-      final orchestrationMarker = source.indexOf(
-        '// Orchestration tool',
-        createIssueCase,
-      );
-      expect(orchestrationMarker, isNonNegative);
-      final mutationBranch = source.substring(
-        createIssueCase,
-        orchestrationMarker,
-      );
+      final defaultCase = source.indexOf('default:', createIssueCase);
+      expect(defaultCase, isNonNegative);
+      final mutationBranch = source.substring(createIssueCase, defaultCase);
 
       expect(mutationBranch, isNot(contains('_githubTools.execute')));
       expect(
@@ -547,6 +896,47 @@ void main() {
     );
   });
 
+  test('CommandTools cancellation terminates spawned descendants', () async {
+    final root = await Directory.systemTemp.createTemp('command-tree-cancel-');
+    addTearDown(() => root.delete(recursive: true));
+    final marker = File('${root.path}/orphan.txt');
+    final child =
+        "import time; time.sleep(2); open(r'${marker.path}', 'w').write('orphan')";
+    final parent =
+        "import subprocess,sys,time; subprocess.Popen([sys.executable, '-c', ${jsonEncode(child)}]); time.sleep(10)";
+    final tools = CommandTools(workingDir: root.path);
+
+    final running = tools.runCommand({
+      'command': 'python3 -c ${jsonEncode(parent)}',
+      'timeout': 20,
+    }, runId: 'tree-cancel');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+
+    expect(tools.cancel('tree-cancel'), isTrue);
+    await running;
+    await Future<void>.delayed(const Duration(milliseconds: 2300));
+    expect(await marker.exists(), isFalse);
+  });
+
+  test('CommandTools timeout terminates spawned descendants', () async {
+    final root = await Directory.systemTemp.createTemp('command-tree-timeout-');
+    addTearDown(() => root.delete(recursive: true));
+    final marker = File('${root.path}/orphan.txt');
+    // The command tool enforces a five-second minimum timeout. Keep the child
+    // alive longer than that threshold so a marker proves a timeout orphan.
+    final child =
+        "import time; time.sleep(8); open(r'${marker.path}', 'w').write('orphan')";
+    final parent =
+        "import subprocess,sys,time; subprocess.Popen([sys.executable, '-c', ${jsonEncode(child)}]); time.sleep(10)";
+    final output = await CommandTools(
+      workingDir: root.path,
+    ).runCommand({'command': 'python3 -c ${jsonEncode(parent)}', 'timeout': 1});
+
+    expect(output, contains('Command timed out'));
+    await Future<void>.delayed(const Duration(milliseconds: 3300));
+    expect(await marker.exists(), isFalse);
+  });
+
   test('CommandRunController tracks streamed chunks', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
@@ -564,7 +954,62 @@ void main() {
     expect(run.stdout, 'hello\n');
     expect(run.combinedOutput, 'hello');
     expect(run.exitCode, 0);
+    expect(run.exitReason, CommandExitReason.completed);
+    expect(run.environmentPolicy, 'sanitized-allowlist');
   });
+
+  test(
+    'Command runs persist logs and recover active runs as interrupted',
+    () async {
+      final root = await Directory.systemTemp.createTemp('command-run-root-');
+      final storeRoot = await Directory.systemTemp.createTemp(
+        'command-run-store-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => storeRoot.delete(recursive: true));
+      final store = CommandRunStore(baseDir: storeRoot.path);
+      final logPath = store.logPath(root.path, 'interrupted-command');
+      await store.appendLog(
+        logPath,
+        '[started] flutter test\nstdout: running\n',
+      );
+      await store.save(root.path, [
+        CommandRun(
+          id: 'interrupted-command',
+          command: 'flutter test',
+          workingDirectory: root.path,
+          timeoutSeconds: 120,
+          logPath: logPath,
+          processId: 4242,
+          status: CommandRunStatus.running,
+          startedAt: DateTime(2026),
+        ),
+      ]);
+
+      final container = ProviderContainer(
+        overrides: [commandRunStoreProvider.overrideWithValue(store)],
+      );
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      container.read(commandRunProvider);
+      for (var index = 0; index < 30; index++) {
+        final run = container.read(commandRunProvider)['interrupted-command'];
+        if (run?.exitReason == CommandExitReason.interrupted) break;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+
+      final recovered = container.read(
+        commandRunProvider,
+      )['interrupted-command']!;
+      expect(recovered.status, CommandRunStatus.failed);
+      expect(recovered.exitReason, CommandExitReason.interrupted);
+      expect(recovered.processId, 4242);
+      expect(recovered.logPath, logPath);
+      expect(await File(logPath).readAsString(), contains('flutter test'));
+      final persisted = (await store.load(root.path)).single;
+      expect(persisted.exitReason, CommandExitReason.interrupted);
+    },
+  );
 
   test(
     'CommandRunController listens to Studio runtime events, not legacy bus',
@@ -731,9 +1176,11 @@ void main() {
             workingDir: root.path,
             requestId: 'request-direct-command-turn',
             turnId: turn.id,
+            userApproved: true,
           );
 
       expect(run.status, CommandRunStatus.succeeded);
+      expect(run.exitCode, 0);
       expect(run.stdout, contains('direct-ok'));
       final updatedTurn = container
           .read(studioThreadProvider)
@@ -754,6 +1201,68 @@ void main() {
       );
       expect(verificationStep.status, TurnStepStatus.completed);
       expect(verificationStep.detail, contains('direct-ok'));
+    },
+  );
+
+  test(
+    'CommandRunController blocks unapproved direct verification commands',
+    () async {
+      final root = Directory.systemTemp.createTempSync(
+        'unapproved_verify_command_',
+      );
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final run = await container
+          .read(commandRunProvider.notifier)
+          .runVerificationCommand(
+            id: 'cmd-unapproved',
+            command: 'printf "%s" "must-not-run"',
+            workingDir: root.path,
+          );
+
+      expect(run.status, CommandRunStatus.blocked);
+      expect(run.combinedOutput, contains('requires review'));
+    },
+  );
+
+  test(
+    'CommandRunController persists a safe diagnostic when launch fails',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'circuit-command-run-launch-failure-',
+      );
+      addTearDown(() => root.delete(recursive: true));
+      final missingDirectory = '${root.path}/missing-workspace';
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      final run = await container
+          .read(commandRunProvider.notifier)
+          .runVerificationCommand(
+            id: 'cmd-launch-failure',
+            command: 'printf launch-sentinel',
+            workingDir: missingDirectory,
+            userApproved: true,
+          );
+
+      expect(run.status, CommandRunStatus.failed);
+      expect(run.exitCode, isNull);
+      expect(run.endedAt, isNotNull);
+      expect(
+        run.stderr,
+        'Command process could not start. Check the execution boundary and try again.',
+      );
+      expect(run.combinedOutput, contains('Command process could not start'));
+      expect(run.combinedOutput, isNot(contains(root.path)));
+      expect(run.combinedOutput, isNot(contains('launch-sentinel')));
+      expect(
+        run.events.map((event) => event.type),
+        contains(CommandRunEventType.stderr),
+      );
     },
   );
 

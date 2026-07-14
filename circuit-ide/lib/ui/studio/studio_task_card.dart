@@ -5,6 +5,7 @@ import '../../core/constants/design_tokens.dart';
 import '../../models/agent_workspace.dart';
 import '../../models/studio_shell.dart';
 import '../../state/theme_provider.dart';
+import 'studio_chrome.dart';
 
 class StudioTaskCard extends ConsumerWidget {
   final AgentTask task;
@@ -27,7 +28,8 @@ class StudioTaskCard extends ConsumerWidget {
     );
     final statusColor = _statusColor(tokens, task.status);
 
-    return InkWell(
+    return StudioFocusableActionSurface(
+      semanticLabel: 'Open ${summary.title}, ${summary.statusLabel} task',
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.lg),
       child: Container(
@@ -118,6 +120,7 @@ class StudioTaskCard extends ConsumerWidget {
       AgentTaskStatus.completed => tokens.success,
       AgentTaskStatus.failed => tokens.error,
       AgentTaskStatus.cancelled => tokens.textMuted,
+      AgentTaskStatus.paused => tokens.textMuted,
       AgentTaskStatus.waitingForApproval => tokens.warning,
       AgentTaskStatus.queued || AgentTaskStatus.running => tokens.accent,
     };

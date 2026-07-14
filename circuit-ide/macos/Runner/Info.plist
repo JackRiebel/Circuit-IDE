@@ -33,5 +33,20 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!--
+	 Sparkle reads these from the signed app bundle. The values are intentionally
+	 empty for local builds; release automation must inject an HTTPS appcast and
+	 its 32-byte EdDSA public key before signed distribution.
+	-->
+	<key>SUFeedURL</key>
+	<string>$(CIRCUIT_UPDATE_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>$(CIRCUIT_UPDATE_PUBLIC_ED_KEY)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>CircuitDataSchemaVersion</key>
+	<string>$(CIRCUIT_DATA_COMPATIBILITY_VERSION)</string>
 </dict>
 </plist>

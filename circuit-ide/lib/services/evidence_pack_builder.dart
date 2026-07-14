@@ -218,6 +218,7 @@ class EvidencePackBuilder {
         'artifactTemplate': 'evidence_pack',
         'sourcePrompt': prompt,
         'sourceCount': sourceBullets.length,
+        'claimCount': _claimRows(sourceBullets, sections).length,
         'unsupportedClaimCount': unsupportedBullets.length,
         'visualEvidenceCount': visualEvidenceBullets.length,
         'visualEvidenceAttachmentCount': _visualEvidenceAttachmentCount(

@@ -3,12 +3,14 @@ import 'dart:io';
 
 import 'package:circuit_ide/enums/message_role.dart';
 import 'package:circuit_ide/models/accepted_plan_context.dart';
+import 'package:circuit_ide/models/agent_tool_permission.dart';
 import 'package:circuit_ide/models/context_pack.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
+import 'package:circuit_ide/models/token_usage.dart';
 import 'package:circuit_ide/models/tool_result_envelope.dart';
 import 'package:circuit_ide/models/turn_intent.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +19,14 @@ import 'package:circuit_ide/state/studio_thread_provider.dart';
 import 'package:circuit_ide/state/studio_turn_provider.dart';
 import 'package:circuit_ide/ui/studio/studio_plan_continuation.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/performance_budget_fixture.dart';
+
+Map<String, dynamic> _decodeStudioJournalRecord(String line) {
+  final envelope = jsonDecode(line) as Map<String, dynamic>;
+  final payload = envelope['payload'];
+  return payload is Map<String, dynamic> ? payload : envelope;
+}
 
 void main() {
   test('routine Studio turn events are non-transcript by default', () {
@@ -215,10 +225,184 @@ void main() {
     expect(await File(store.summaryPath(projectA.path)).exists(), isTrue);
     final savedJson =
         jsonDecode(await File(store.historyPath(projectA.path)).readAsString())
-            as List<dynamic>;
-    expect((savedJson.single as Map<String, dynamic>)['messages'], isEmpty);
+            as Map<String, dynamic>;
+    expect(savedJson['schemaVersion'], 3);
+    final savedThreads = savedJson['payload'] as List<dynamic>;
+    expect((savedThreads.single as Map<String, dynamic>)['messages'], isEmpty);
     expect(loadedB, isEmpty);
   });
+
+  test('StudioThreadStore streams bounded summary metadata pages', () async {
+    final root = await Directory.systemTemp.createTemp('studio_thread_page_');
+    addTearDown(() => root.delete(recursive: true));
+    final store = StudioThreadStore(baseDir: '${root.path}/history');
+    final now = DateTime.utc(2026, 7, 11);
+    final threads = [
+      for (var index = 0; index < 35; index++)
+        StudioThread(
+          id: 'thread-$index',
+          title: 'Thread $index',
+          createdAt: now.add(Duration(minutes: index)),
+          updatedAt: now.add(Duration(minutes: index)),
+        ),
+    ];
+    await store.save(root.path, threads);
+
+    final first = await store.loadSummaryPage(root.path, limit: 12);
+    final second = await store.loadSummaryPage(
+      root.path,
+      offset: first.nextOffset,
+      limit: 12,
+    );
+
+    expect(first.totalCount, 35);
+    expect(first.threads, hasLength(12));
+    expect(first.hasMore, isTrue);
+    expect(second.offset, 12);
+    expect(second.threads, hasLength(12));
+    expect(
+      first.threads
+          .map((thread) => thread.id)
+          .toSet()
+          .intersection(second.threads.map((thread) => thread.id).toSet()),
+      isEmpty,
+    );
+    expect(await File(store.summaryIndexPath(root.path)).exists(), isTrue);
+  });
+
+  test(
+    'Studio thread token accounting separates latest request, session total, and persisted detail',
+    () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final controller = container.read(studioThreadProvider.notifier);
+      final thread = controller.createBlankThread(title: 'Token accounting');
+      const streamedUsage = TokenUsage(
+        promptTokens: 30,
+        cachedInputTokens: 10,
+        completionTokens: 4,
+        reasoningTokens: 2,
+        toolTokens: 1,
+        totalTokens: 34,
+      );
+      const completedRequestUsage = TokenUsage(
+        promptTokens: 100,
+        cachedInputTokens: 40,
+        completionTokens: 25,
+        reasoningTokens: 12,
+        toolTokens: 5,
+        totalTokens: 125,
+      );
+
+      controller.updateTokenUsage(thread.id, streamedUsage);
+      controller.updateTokenUsage(thread.id, completedRequestUsage);
+      var updated = container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((candidate) => candidate.id == thread.id);
+      expect(updated.tokenUsage.totalTokens, 0);
+      expect(updated.lastRequestTokenUsage.promptTokens, 100);
+      expect(updated.lastRequestTokenUsage.cachedInputTokens, 40);
+      expect(updated.lastRequestTokenUsage.reasoningTokens, 12);
+      expect(updated.lastRequestTokenUsage.toolTokens, 5);
+
+      controller.complete(thread.id, tokenUsage: completedRequestUsage);
+      updated = container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((candidate) => candidate.id == thread.id);
+      expect(updated.tokenUsage.promptTokens, 100);
+      expect(updated.tokenUsage.cachedInputTokens, 40);
+      expect(updated.tokenUsage.completionTokens, 25);
+      expect(updated.tokenUsage.reasoningTokens, 12);
+      expect(updated.tokenUsage.toolTokens, 5);
+      expect(updated.tokenUsage.totalTokens, 125);
+      expect(updated.lastRequestTokenUsage.totalTokens, 125);
+
+      final root = await Directory.systemTemp.createTemp('studio_token_usage_');
+      addTearDown(() => root.delete(recursive: true));
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      await store.save(root.path, [updated]);
+      final restored = (await store.load(root.path)).single;
+      expect(restored.tokenUsage.promptTokens, 100);
+      expect(restored.tokenUsage.cachedInputTokens, 40);
+      expect(restored.tokenUsage.completionTokens, 25);
+      expect(restored.tokenUsage.reasoningTokens, 12);
+      expect(restored.tokenUsage.toolTokens, 5);
+      expect(restored.tokenUsage.totalTokens, 125);
+      expect(restored.lastRequestTokenUsage.promptTokens, 100);
+      expect(restored.lastRequestTokenUsage.cachedInputTokens, 40);
+      expect(restored.lastRequestTokenUsage.completionTokens, 25);
+      expect(restored.lastRequestTokenUsage.reasoningTokens, 12);
+      expect(restored.lastRequestTokenUsage.toolTokens, 5);
+      expect(restored.lastRequestTokenUsage.totalTokens, 125);
+    },
+  );
+
+  test(
+    'Studio task organization metadata persists and safe lifecycle APIs work',
+    () async {
+      final root = await Directory.systemTemp.createTemp('studio-organize_');
+      addTearDown(() => root.delete(recursive: true));
+      final store = StudioThreadStore(baseDir: '${root.path}/history');
+      final archivedAt = DateTime.utc(2026, 7, 11, 14, 30);
+      final persisted = StudioThread(
+        id: 'archived-thread',
+        title: 'Keep this investigation',
+        archived: true,
+        archivedAt: archivedAt,
+        pinned: true,
+        createdAt: archivedAt.subtract(const Duration(days: 1)),
+        updatedAt: archivedAt,
+      );
+      await store.save(root.path, [persisted]);
+      final restored = await store.load(root.path);
+      expect(restored.single.archived, isTrue);
+      expect(restored.single.archivedAt, archivedAt);
+      expect(restored.single.pinned, isTrue);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final controller = container.read(studioThreadProvider.notifier);
+      final first = controller.createBlankThread(title: 'First attempt');
+      final second = controller.createBlankThread(title: 'Second attempt');
+
+      expect(controller.renameThread(first.id, 'Renamed attempt'), isTrue);
+      expect(controller.setThreadPinned(first.id, true), isTrue);
+      controller.archiveThread(first.id);
+      var updated = container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((thread) => thread.id == first.id);
+      expect(updated.title, 'Renamed attempt');
+      expect(updated.pinned, isTrue);
+      expect(updated.archivedAt, isNotNull);
+      expect(controller.restoreThread(first.id), isTrue);
+      updated = container
+          .read(studioThreadProvider)
+          .threads
+          .singleWhere((thread) => thread.id == first.id);
+      expect(updated.archived, isFalse);
+      expect(updated.archivedAt, isNull);
+
+      expect(controller.archiveThreads([first.id, second.id]), 2);
+      expect(controller.restoreThreads([first.id, second.id]), 2);
+      expect(
+        container
+            .read(studioThreadProvider)
+            .threads
+            .where((thread) => thread.id == first.id || thread.id == second.id)
+            .every((thread) => !thread.archived && thread.archivedAt == null),
+        isTrue,
+      );
+      expect(controller.archiveThreads([first.id, second.id]), 2);
+      expect(controller.deleteThread(first.id), isTrue);
+      expect(
+        container.read(studioThreadProvider).threads.map((thread) => thread.id),
+        isNot(contains(first.id)),
+      );
+    },
+  );
 
   test(
     'StudioThreadStore migrates legacy message-only threads into turns on load',
@@ -549,6 +733,51 @@ void main() {
     },
   );
 
+  test(
+    'StudioTurnController batches a 10k-token burst into bounded turn updates',
+    () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final thread = container
+          .read(studioThreadProvider.notifier)
+          .createBlankThread(title: 'Long streaming thread');
+      container
+          .read(studioTurnProvider.notifier)
+          .registerTurn(
+            requestId: 'request-stream-10k',
+            threadId: thread.id,
+            taskId: null,
+            userMessageId: 'message-stream-10k',
+            prompt: 'stream a long response',
+            model: 'gpt-5-nano',
+            contextSummary: const StudioContextSummary(projectLabel: 'project'),
+            intent: TurnIntent.chat,
+          );
+
+      var turnStateUpdates = 0;
+      final subscription = container.listen<StudioThreadState>(
+        studioThreadProvider,
+        (_, _) => turnStateUpdates++,
+      );
+      addTearDown(subscription.close);
+      final controller = container.read(studioTurnProvider.notifier);
+      for (var index = 0; index < 10000; index++) {
+        controller.appendAssistantDelta('request-stream-10k', 'x');
+      }
+
+      await Future<void>.delayed(const Duration(milliseconds: 160));
+      final streamedTurn = container
+          .read(studioThreadProvider)
+          .threads
+          .single
+          .turns
+          .single;
+      expect(streamedTurn.assistantDraft.length, 10000);
+      final budgets = await PerformanceBudgetFixture.load();
+      budgets.expectCount('stream_state_updates_10000', turnStateUpdates);
+    },
+  );
+
   test('StudioTaskLifecycleState labels user-visible thread states', () {
     final now = DateTime(2026);
 
@@ -715,7 +944,7 @@ void main() {
       expect(loaded.single.status, StudioThreadStatus.failed);
       expect(loaded.single.phase, StudioSendPhase.failed);
       expect(loaded.single.requestId, isNull);
-      expect(loaded.single.turns.single.status, StudioTurnStatus.failed);
+      expect(loaded.single.turns.single.status, StudioTurnStatus.interrupted);
       expect(
         loaded.single.turns.single.lastError,
         contains('Interrupted while CircuitCode was closed'),
@@ -780,7 +1009,7 @@ void main() {
       expect(loadedThread.phase, StudioSendPhase.failed);
       expect(loadedThread.requestId, isNull);
       expect(loadedThread.streamingContent, isEmpty);
-      expect(loadedThread.turns.single.status, StudioTurnStatus.failed);
+      expect(loadedThread.turns.single.status, StudioTurnStatus.interrupted);
       expect(
         loadedThread.turns.single.lastError,
         contains('Interrupted while CircuitCode was closed'),
@@ -1819,7 +2048,7 @@ void main() {
       final records = journalText
           .trim()
           .split('\n')
-          .map((line) => jsonDecode(line) as Map<String, dynamic>)
+          .map(_decodeStudioJournalRecord)
           .toList(growable: false);
       final toolResultRecord = records.firstWhere(
         (record) => record['kind'] == 'tool_result',
@@ -2584,7 +2813,7 @@ void main() {
       expect(events.last.detail, contains('Use safer customer wording.'));
       final journalRecords =
           (await File(store.journalPath(project.path)).readAsLines())
-              .map((line) => jsonDecode(line) as Map<String, dynamic>)
+              .map(_decodeStudioJournalRecord)
               .where((record) => record['kind'] == 'patch_transaction')
               .toList(growable: false);
       expect(journalRecords, hasLength(2));
@@ -2786,6 +3015,10 @@ void main() {
         approvalId: 'approval-command',
         approvalState: ApprovalRequestState.pending,
         approvalPreview: 'Execute: flutter test',
+        approvalGrant: ApprovalGrant.turn,
+        approvalRisk: ToolPermissionReason.commandRequiresReview,
+        approvalNormalizedAction: 'command:test:9a4e2f',
+        approvalExpiresAt: now.add(const Duration(minutes: 5)),
       );
 
       await store.save(project.path, [
@@ -2827,10 +3060,20 @@ void main() {
       expect(loadedThread.status, StudioThreadStatus.failed);
       expect(loadedThread.phase, StudioSendPhase.failed);
       expect(loadedThread.requestId, isNull);
-      expect(loadedTurn.status, StudioTurnStatus.failed);
+      expect(loadedTurn.status, StudioTurnStatus.interrupted);
       expect(loadedTurn.completedAt, isNotNull);
       expect(loadedApproval.approvalState, ApprovalRequestState.expired);
       expect(loadedApproval.approvalPreview, 'Execute: flutter test');
+      expect(loadedApproval.approvalGrant, ApprovalGrant.turn);
+      expect(
+        loadedApproval.approvalRisk,
+        ToolPermissionReason.commandRequiresReview,
+      );
+      expect(loadedApproval.approvalNormalizedAction, 'command:test:9a4e2f');
+      expect(
+        loadedApproval.approvalExpiresAt,
+        now.add(const Duration(minutes: 5)),
+      );
     },
   );
 
@@ -2912,7 +3155,7 @@ void main() {
       final journal = File(store.journalPath(project.path));
       final withoutSnapshots = (await journal.readAsLines())
           .where((line) {
-            final record = jsonDecode(line) as Map<String, dynamic>;
+            final record = _decodeStudioJournalRecord(line);
             return record['kind'] != 'thread_snapshot';
           })
           .join('\n');
@@ -2928,7 +3171,7 @@ void main() {
       expect(loadedThread.status, StudioThreadStatus.failed);
       expect(loadedThread.phase, StudioSendPhase.failed);
       expect(loadedThread.requestId, isNull);
-      expect(loadedTurn.status, StudioTurnStatus.failed);
+      expect(loadedTurn.status, StudioTurnStatus.interrupted);
       expect(loadedTurn.completedAt, isNotNull);
       expect(approvalEvents, isNotEmpty);
       expect(approvalEvents.map((event) => event.approvalState).toSet(), {
@@ -2997,7 +3240,7 @@ void main() {
       expect(loadedThread.status, StudioThreadStatus.failed);
       expect(loadedThread.phase, StudioSendPhase.failed);
       expect(loadedThread.requestId, isNull);
-      expect(loadedTurn.status, StudioTurnStatus.failed);
+      expect(loadedTurn.status, StudioTurnStatus.interrupted);
       expect(loadedTurn.acceptedPlanState, AcceptedPlanState.failed);
       expect(loadedTurn.acceptedPlanContext?.patchSetId, 'plan-1');
       expect(
@@ -3397,7 +3640,7 @@ void main() {
     final journal = File(store.journalPath(project.path));
     expect(await journal.exists(), isTrue);
     final records = (await journal.readAsLines())
-        .map((line) => jsonDecode(line) as Map<String, dynamic>)
+        .map(_decodeStudioJournalRecord)
         .toList(growable: false);
 
     expect(records.map((record) => record['kind']), contains('turn'));
@@ -3615,10 +3858,9 @@ void main() {
 
       await store.save(project.path, [thread]);
 
-      final records =
-          (await File(store.journalPath(project.path)).readAsLines())
-              .map((line) => jsonDecode(line) as Map<String, dynamic>)
-              .toList(growable: false);
+      final records = (await File(
+        store.journalPath(project.path),
+      ).readAsLines()).map(_decodeStudioJournalRecord).toList(growable: false);
       final commandRecord = records.singleWhere(
         (record) => record['kind'] == 'command_run',
       );
@@ -3889,7 +4131,7 @@ void main() {
       final journal = File(store.journalPath(project.path));
       final withoutSnapshots = (await journal.readAsLines())
           .where((line) {
-            final record = jsonDecode(line) as Map<String, dynamic>;
+            final record = _decodeStudioJournalRecord(line);
             return !{
               'thread_snapshot',
               'turn',
@@ -4583,7 +4825,7 @@ void main() {
       expect(recovered.single.phase, StudioSendPhase.failed);
       expect(recovered.single.requestId, isNull);
       final recoveredTurn = recovered.single.turns.single;
-      expect(recoveredTurn.status, StudioTurnStatus.failed);
+      expect(recoveredTurn.status, StudioTurnStatus.interrupted);
       expect(
         recoveredTurn.lastError,
         contains('Interrupted while CircuitCode was closed'),
@@ -4815,10 +5057,9 @@ void main() {
         threadWithStep(TurnStepStatus.completed),
       ]);
 
-      final records =
-          (await File(store.journalPath(project.path)).readAsLines())
-              .map((line) => jsonDecode(line) as Map<String, dynamic>)
-              .toList(growable: false);
+      final records = (await File(
+        store.journalPath(project.path),
+      ).readAsLines()).map(_decodeStudioJournalRecord).toList(growable: false);
       final stepStatuses = records
           .where((record) => record['kind'] == 'turn_step')
           .map(

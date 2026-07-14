@@ -1,12 +1,28 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
+import '../models/artifact_template.dart';
+import 'worker_cancellation.dart';
 
 class DocxArtifactRenderer {
   const DocxArtifactRenderer();
 
   static const int _tableDataRowsPerBlock = 23;
+
+  /// Builds generated Word packages off the UI isolate.
+  Future<Uint8List> renderInWorker(
+    ArtifactDocument document, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Uint8List>(
+      entryPoint: _docxRenderWorkerEntry,
+      arguments: {'document': document},
+      cancellationToken: cancellationToken,
+      decodeResult: _bytesFromWorkerResult,
+    );
+  }
 
   List<List<String>> previewRowsFor(ArtifactDocument document) {
     final tableBlockCount = _tableBlockCount(document);
@@ -230,11 +246,11 @@ class DocxArtifactRenderer {
       _DocxFile('docProps/core.xml', _bytes(_coreXml(document))),
       _DocxFile('docProps/custom.xml', _bytes(_customXml(document))),
       _DocxFile('word/document.xml', _bytes(_documentXml(document))),
-      _DocxFile('word/styles.xml', _bytes(_stylesXml())),
+      _DocxFile('word/styles.xml', _bytes(_stylesXml(document))),
       _DocxFile('word/numbering.xml', _bytes(_numberingXml())),
       _DocxFile('word/settings.xml', _bytes(_settingsXml())),
       _DocxFile('word/header1.xml', _bytes(_headerXml(document))),
-      _DocxFile('word/footer1.xml', _bytes(_footerXml())),
+      _DocxFile('word/footer1.xml', _bytes(_footerXml(document))),
       _DocxFile('word/_rels/document.xml.rels', _bytes(_documentRelsXml())),
     ];
     return _zip(files);
@@ -377,24 +393,32 @@ class DocxArtifactRenderer {
         document.citations.length;
   }
 
-  String _stylesXml() {
+  String _stylesXml(ArtifactDocument document) {
+    final template = const ArtifactTemplateRegistry().fromDocument(document);
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="Aptos" w:hAnsi="Aptos"/><w:color w:val="1F2937"/><w:sz w:val="22"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="180"/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="44"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="360"/></w:pPr><w:rPr><w:color w:val="475569"/><w:sz w:val="24"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="420" w:after="180"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="111111"/><w:sz w:val="30"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="260" w:after="140"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="334155"/><w:sz w:val="25"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="160" w:line="276" w:lineRule="auto"/></w:pPr><w:rPr><w:rFonts w:ascii="${_xml(template.fontFamily)}" w:hAnsi="${_xml(template.fontFamily)}"/><w:color w:val="1F2937"/><w:sz w:val="22"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="0" w:after="180"/></w:pPr><w:rPr><w:b/><w:color w:val="${template.primaryColor}"/><w:sz w:val="44"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Subtitle"><w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="360"/></w:pPr><w:rPr><w:color w:val="${template.accentColor}"/><w:sz w:val="24"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="420" w:after="180"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="${template.primaryColor}"/><w:sz w:val="30"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:before="260" w:after="140"/><w:keepNext/></w:pPr><w:rPr><w:b/><w:color w:val="${template.primaryColor}"/><w:sz w:val="25"/></w:rPr></w:style>'
         '<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:before="60" w:after="120"/></w:pPr><w:rPr><w:color w:val="64748B"/><w:sz w:val="19"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="CalloutLabel"><w:name w:val="Callout Label"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:b/><w:color w:val="0F766E"/><w:sz w:val="20"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="Footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="64748B"/><w:sz w:val="18"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="CalloutLabel"><w:name w:val="Callout Label"/><w:basedOn w:val="Normal"/><w:pPr><w:spacing w:after="60"/></w:pPr><w:rPr><w:b/><w:color w:val="${template.accentColor}"/><w:sz w:val="20"/></w:rPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="Footer"><w:name w:val="Footer"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="${template.primaryColor}"/><w:sz w:val="18"/></w:rPr></w:style>'
         '</w:styles>';
   }
 
   String _documentXml(ArtifactDocument document) {
     final body = StringBuffer()
       ..write(_paragraph(document.title, style: 'Title'))
-      ..write(_paragraph('CircuitCode generated report', style: 'Subtitle'))
+      ..write(
+        _paragraph(
+          _template(document).id == ArtifactTemplateRegistry.standard.id
+              ? 'CircuitCode generated report'
+              : '${_template(document).logoText} · ${_template(document).confidentialityLabel}',
+          style: 'Subtitle',
+        ),
+      )
       ..write(_leadDecisionCallout(document))
       ..write(_tableOfContentsBlock(document))
       ..write(_paragraph('Report Overview', style: 'Heading1'))
@@ -1723,21 +1747,26 @@ class DocxArtifactRenderer {
         '</w:settings>';
   }
 
-  String _footerXml() {
+  String _footerXml(ArtifactDocument document) {
+    final template = _template(document);
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr><w:r><w:t>CircuitCode - Generated artifact</w:t></w:r></w:p>'
+        '<w:p><w:pPr><w:pStyle w:val="Footer"/></w:pPr><w:r><w:t>${_xml('${template.footerText} · ${template.confidentialityLabel}')}</w:t></w:r></w:p>'
         '</w:ftr>';
   }
 
   String _headerXml(ArtifactDocument document) {
+    final template = _template(document);
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-        '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="CBD5E1"/></w:pBdr></w:pPr>'
-        '<w:r><w:rPr><w:b/><w:color w:val="334155"/></w:rPr><w:t>${_xml(_truncate(document.title, 72))}</w:t></w:r>'
-        '<w:r><w:rPr><w:color w:val="64748B"/></w:rPr><w:t xml:space="preserve">  |  CircuitCode report package</w:t></w:r>'
+        '<w:p><w:pPr><w:pStyle w:val="Footer"/><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="${template.accentColor}"/></w:pBdr></w:pPr>'
+        '<w:r><w:rPr><w:b/><w:color w:val="${template.primaryColor}"/></w:rPr><w:t>${_xml(_truncate(document.title, 72))}</w:t></w:r>'
+        '<w:r><w:rPr><w:color w:val="${template.accentColor}"/></w:rPr><w:t xml:space="preserve">  |  ${_xml(template.id == ArtifactTemplateRegistry.standard.id ? 'CircuitCode report package' : '${template.logoText} · ${template.confidentialityLabel}')}</w:t></w:r>'
         '</w:p></w:hdr>';
   }
+
+  ArtifactTemplate _template(ArtifactDocument document) =>
+      const ArtifactTemplateRegistry().fromDocument(document);
 
   Iterable<String> _paragraphs(String body) {
     return body
@@ -1846,6 +1875,26 @@ class DocxArtifactRenderer {
         .replaceAll('<', '&lt;')
         .replaceAll('>', '&gt;');
   }
+}
+
+void _docxRenderWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final document = arguments['document'];
+    if (document is! ArtifactDocument) {
+      throw StateError('Missing artifact document for DOCX rendering.');
+    }
+    replyPort.send({'result': const DocxArtifactRenderer().render(document)});
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Uint8List _bytesFromWorkerResult(Object? result) {
+  if (result is Uint8List) return result;
+  if (result is List<int>) return Uint8List.fromList(result);
+  throw StateError('Artifact renderer returned invalid bytes.');
 }
 
 class _DocxFile {

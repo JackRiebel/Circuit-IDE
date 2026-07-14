@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:circuit_ide/services/file_indexer.dart';
+import 'package:circuit_ide/services/semantic_index.dart';
+import 'package:circuit_ide/services/worker_cancellation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -77,4 +79,52 @@ const note = 'DatacenterSizingEngine appears in docs but is not declared here';
     final results = indexer.search('DatacenterSizingEngine');
     expect(results.first.relativePath, 'lib/sizing_engine.dart');
   });
+
+  test('SemanticIndex builds a queryable worker snapshot', () async {
+    final root = await Directory.systemTemp.createTemp('semantic_worker_');
+    addTearDown(() async {
+      if (await root.exists()) await root.delete(recursive: true);
+    });
+    final source = File(p.join(root.path, 'lib', 'policy_engine.dart'));
+    await source.parent.create(recursive: true);
+    await source.writeAsString('''
+class PolicyEngine {
+  bool requiresMfa(String role) => role == 'admin';
+}
+''');
+
+    final index = SemanticIndex();
+    await index.buildIndex(root.path);
+
+    expect(index.chunkCount, greaterThan(0));
+    expect(
+      index.getCandidates('requires MFA').map((chunk) => chunk.filePath),
+      contains(source.path),
+    );
+  });
+
+  test(
+    'SemanticIndex keeps its last complete snapshot when rebuild is cancelled',
+    () async {
+      final root = await Directory.systemTemp.createTemp('semantic_cancel_');
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      final source = File(p.join(root.path, 'lib', 'policy_engine.dart'));
+      await source.parent.create(recursive: true);
+      await source.writeAsString('class PolicyEngine {}');
+
+      final index = SemanticIndex();
+      await index.buildIndex(root.path);
+      final initialChunkCount = index.chunkCount;
+      final cancellation = WorkerCancellationToken()
+        ..cancel('Superseded semantic index build.');
+
+      await expectLater(
+        index.buildIndex(root.path, cancellationToken: cancellation),
+        throwsA(isA<WorkerCancelledException>()),
+      );
+      expect(index.chunkCount, initialChunkCount);
+    },
+  );
 }

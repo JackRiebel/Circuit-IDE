@@ -93,6 +93,26 @@ void main() {
   });
 
   test(
+    'SettingsNotifier replaces an aliased recent project with its bound root',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings = container.read(settingsProvider.notifier);
+
+      settings.addRecentProject('/tmp/workspace-link');
+      settings.addRecentProject('/private/tmp/workspace');
+      settings.replaceRecentProjectPath(
+        requestedPath: '/tmp/workspace-link',
+        resolvedPath: '/private/tmp/workspace',
+      );
+
+      final state = container.read(settingsProvider);
+      expect(state.recentProjects, ['/private/tmp/workspace']);
+      expect(state.lastProjectPath, '/private/tmp/workspace');
+    },
+  );
+
+  test(
     'SettingsNotifier keeps all recent projects instead of capping at ten',
     () {
       final container = ProviderContainer();
@@ -117,6 +137,11 @@ void main() {
 
 Future<void> _delete(Directory directory) async {
   if (await directory.exists()) {
-    await directory.delete(recursive: true);
+    try {
+      await directory.delete(recursive: true);
+    } on PathNotFoundException {
+      // A background persistence task can finish after the existence check
+      // and remove the temporary configuration root first.
+    }
   }
 }

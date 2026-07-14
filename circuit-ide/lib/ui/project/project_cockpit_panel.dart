@@ -165,7 +165,11 @@ class _ProjectCockpitPanelState extends ConsumerState<ProjectCockpitPanel> {
         : text;
     ref
         .read(agentWorkspaceProvider.notifier)
-        .startTask(goal: goal, profile: profile);
+        .startTask(
+          goal: goal,
+          profile: profile,
+          backgroundExecutionRequested: true,
+        );
     if (text.isNotEmpty) _promptController.clear();
   }
 
@@ -510,6 +514,7 @@ class _AgentTaskRow extends ConsumerWidget {
       AgentTaskStatus.completed => tokens.success,
       AgentTaskStatus.failed => tokens.error,
       AgentTaskStatus.cancelled => tokens.textMuted,
+      AgentTaskStatus.paused => tokens.textMuted,
       AgentTaskStatus.waitingForApproval => tokens.warning,
       AgentTaskStatus.queued || AgentTaskStatus.running => tokens.accent,
     };
@@ -607,6 +612,27 @@ class _AgentTaskRow extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: Spacing.sm),
+                if (task.status == AgentTaskStatus.paused)
+                  _SmallTextButton(
+                    icon: Icons.play_circle_outline,
+                    label: 'Resume',
+                    onTap: () => ref
+                        .read(agentWorkspaceProvider.notifier)
+                        .resumeTask(task.id),
+                  )
+                else if (task.status == AgentTaskStatus.running ||
+                    task.status == AgentTaskStatus.queued)
+                  _SmallTextButton(
+                    icon: Icons.pause_circle_outline,
+                    label: 'Pause',
+                    onTap: () => ref
+                        .read(agentWorkspaceProvider.notifier)
+                        .pauseTask(task.id),
+                  ),
+                if (task.status == AgentTaskStatus.paused ||
+                    task.status == AgentTaskStatus.running ||
+                    task.status == AgentTaskStatus.queued)
+                  const SizedBox(width: Spacing.sm),
                 if (task.status == AgentTaskStatus.running ||
                     task.status == AgentTaskStatus.queued ||
                     task.status == AgentTaskStatus.waitingForApproval)
@@ -1608,6 +1634,7 @@ IconData _taskStatusIcon(AgentTaskStatus status) {
   return switch (status) {
     AgentTaskStatus.queued => Icons.pending_outlined,
     AgentTaskStatus.running => Icons.play_circle_outline,
+    AgentTaskStatus.paused => Icons.pause_circle_outline,
     AgentTaskStatus.waitingForApproval => Icons.rate_review_outlined,
     AgentTaskStatus.completed => Icons.check_circle_outline,
     AgentTaskStatus.failed => Icons.error_outline,

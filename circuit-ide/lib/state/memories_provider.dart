@@ -5,7 +5,7 @@ import '../core/utils/logger.dart';
 import '../enums/message_role.dart';
 import '../models/chat_message.dart';
 import '../models/provider_lifecycle_event.dart';
-import 'connection_provider.dart';
+import 'studio_provider_connection.dart';
 import 'file_tree_provider.dart';
 import 'settings_provider.dart';
 import 'suggested_learning_provider.dart';
@@ -71,6 +71,9 @@ class MemoriesNotifier extends Notifier<MemoriesState> {
     String name,
     String content, {
     bool global = false,
+    MemoryProvenance provenance = MemoryProvenance.userAuthored,
+    DateTime? createdAt,
+    DateTime? lastUsedAt,
   }) async {
     final workingDir = ref.read(fileTreeProvider).rootPath;
     if (workingDir == null && !global) return;
@@ -80,8 +83,34 @@ class MemoriesNotifier extends Notifier<MemoriesState> {
       name,
       content,
       global: global,
+      provenance: provenance,
+      createdAt: createdAt,
+      lastUsedAt: lastUsedAt,
     );
     await loadMemories();
+  }
+
+  Future<void> markUsed(Iterable<Memory> memories) async {
+    final selected = memories.toList(growable: false);
+    if (selected.isEmpty) return;
+    final usedAt = DateTime.now().toUtc();
+    try {
+      await Future.wait(
+        selected.map((memory) => MemoriesLoader.markUsed(memory, at: usedAt)),
+      );
+      if (!ref.mounted) return;
+      final usedPaths = selected.map((memory) => memory.filePath).toSet();
+      state = state.copyWith(
+        memories: [
+          for (final memory in state.memories)
+            usedPaths.contains(memory.filePath)
+                ? memory.copyWith(lastUsedAt: usedAt)
+                : memory,
+        ],
+      );
+    } catch (error) {
+      Logger.warning('Could not record memory use: $error', 'Memories');
+    }
   }
 
   Future<void> deleteMemory(Memory memory) async {
@@ -99,6 +128,14 @@ class MemoriesNotifier extends Notifier<MemoriesState> {
 
     final workingDir = ref.read(fileTreeProvider).rootPath;
     if (workingDir == null) return;
+    if (containsSensitiveAutomaticLearningContent(lastUserMsg) ||
+        containsSensitiveAutomaticLearningContent(lastAssistantMsg)) {
+      Logger.info(
+        'Skipped automatic memory suggestion because the turn may contain sensitive content.',
+        'Memories',
+      );
+      return;
+    }
 
     try {
       final prompt =
@@ -133,7 +170,9 @@ If there is nothing worth remembering, respond with exactly: NONE''';
             .toLowerCase();
         final content = contentMatch.group(1)!.trim();
 
-        if (name.isNotEmpty && content.isNotEmpty) {
+        if (name.isNotEmpty &&
+            content.isNotEmpty &&
+            !containsSensitiveAutomaticLearningContent(content)) {
           ref
               .read(suggestedLearningProvider.notifier)
               .suggestMemory(name: name, content: content);
@@ -174,6 +213,13 @@ If there is nothing worth remembering, respond with exactly: NONE''';
     final text = content.toString().trim();
     return text.isEmpty ? null : text;
   }
+}
+
+bool containsSensitiveAutomaticLearningContent(String value) {
+  return RegExp(
+    r'(?:\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|secret|authorization)\b|bearer\s+[a-z0-9._~+\-/=]{8,}|-----begin [a-z ]*private key-----|\b(?:sk-[a-z0-9_-]{8,}|gh[pousr]_[a-z0-9]{8,}|akia[0-9a-z]{12,})\b|\.env\b)',
+    caseSensitive: false,
+  ).hasMatch(value);
 }
 
 final memoriesProvider = NotifierProvider<MemoriesNotifier, MemoriesState>(

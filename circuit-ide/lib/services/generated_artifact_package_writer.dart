@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/generated_artifact.dart';
@@ -179,6 +180,14 @@ class GeneratedArtifactPackageWriter {
       threadId: threadId,
       requestId: requestId,
       createdAt: DateTime.now(),
+      outputHash: sha256.convert(bytes).toString(),
+      generationRecipe: ArtifactGenerationRecipe(
+        prompt: prompt,
+        sourceContent: content,
+        compositionHash: sha256
+            .convert(utf8.encode('$prompt\n\n$content'))
+            .toString(),
+      ),
     );
   }
 
@@ -442,6 +451,7 @@ class GeneratedArtifactPackageWriter {
       GeneratedArtifactKind.excel => 'Excel',
       GeneratedArtifactKind.csv => 'CSV',
       GeneratedArtifactKind.markdown => 'Markdown',
+      GeneratedArtifactKind.html => 'HTML',
       GeneratedArtifactKind.json => 'JSON',
       GeneratedArtifactKind.pdf => 'PDF',
       GeneratedArtifactKind.powerPoint => 'PowerPoint',

@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
+
 import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/models/command_run.dart';
 import 'package:circuit_ide/models/context_pack.dart';
@@ -11,6 +13,7 @@ import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_source_artifact.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/models/studio_turn.dart';
+import 'package:circuit_ide/services/artifact_visual_preview_verifier.dart';
 import 'package:circuit_ide/state/artifact_launch_provider.dart';
 import 'package:circuit_ide/state/context_pack_provider.dart';
 import 'package:circuit_ide/state/command_run_provider.dart';
@@ -18,6 +21,7 @@ import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/git_provider.dart';
 import 'package:circuit_ide/state/patch_proposal_provider.dart';
 import 'package:circuit_ide/state/studio_code_edit_provider.dart';
+import 'package:circuit_ide/state/studio_browser_provider.dart';
 import 'package:circuit_ide/state/studio_right_drawer_provider.dart';
 import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:circuit_ide/state/studio_source_artifact_provider.dart';
@@ -26,6 +30,7 @@ import 'package:circuit_ide/ui/studio/studio_right_drawer.dart';
 import 'package:circuit_ide/ui/terminal/terminal_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -63,9 +68,12 @@ void main() {
 
     expect(
       container.read(studioRightDrawerProvider).mode,
-      StudioDrawerMode.sources,
+      StudioDrawerMode.browser,
     );
-    expect(container.read(studioRightDrawerProvider).localUrl, isNull);
+    expect(
+      container.read(studioRightDrawerProvider).localUrl,
+      'http://localhost:3000',
+    );
 
     controller.openArtifact(
       StudioSourceArtifact(
@@ -100,103 +108,46 @@ void main() {
     );
   });
 
-  testWidgets('Studio drawer hides quarantined browser preview tab', (
-    tester,
-  ) async {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
-    container
-        .read(studioRightDrawerProvider.notifier)
-        .openMode(StudioDrawerMode.code);
+  testWidgets(
+    'Studio drawer exposes only the user-controlled browser preview',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container
+          .read(studioRightDrawerProvider.notifier)
+          .openMode(StudioDrawerMode.code);
 
-    await tester.pumpWidget(
-      UncontrolledProviderScope(
-        container: container,
-        child: const MaterialApp(
-          home: Scaffold(body: Align(child: StudioRightDrawer())),
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(body: Align(child: StudioRightDrawer())),
+          ),
         ),
-      ),
-    );
+      );
 
-    expect(find.byTooltip('Open drawer view'), findsOneWidget);
+      expect(find.byTooltip('Open drawer view'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Open drawer view'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Open drawer view'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('Progress'), findsWidgets);
-    expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
-    expect(find.text('Code'), findsWidgets);
-    expect(find.text('Diff'), findsOneWidget);
-    expect(find.text('Files'), findsOneWidget);
-    expect(find.text('Terminal output'), findsOneWidget);
-    expect(find.text('Context details'), findsOneWidget);
-    expect(find.byTooltip('Browser preview'), findsNothing);
-  });
-
-  test(
-    'Studio drawer body guards stale browser mode behind feature flag',
-    () async {
-      final source = await File(
-        'lib/ui/studio/studio_right_drawer.dart',
-      ).readAsString();
-
-      expect(source, contains('StudioFeatureFlags.advancedStudioSurfaces'));
-      expect(source, contains('safeMode'));
-      expect(source, contains('StudioDrawerMode.sources'));
+      expect(find.text('Progress'), findsWidgets);
+      expect(find.text('Artifacts'), findsAtLeastNWidgets(1));
+      expect(find.text('Code'), findsWidgets);
+      expect(find.text('Diff'), findsOneWidget);
+      expect(find.text('Files'), findsOneWidget);
+      expect(find.text('Terminal output'), findsOneWidget);
+      expect(find.text('Context details'), findsOneWidget);
+      expect(find.text('Browser preview'), findsOneWidget);
     },
   );
 
-  test('Studio source artifacts quarantine browser comments', () {
+  testWidgets('empty drawer states provide a real next action', (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
-
     container
-        .read(studioSourceArtifactProvider.notifier)
-        .add(
-          StudioSourceArtifact(
-            id: 'browser-comment',
-            kind: StudioSourceArtifactKind.browserComment,
-            title: 'Browser comment',
-            subtitle: 'http://localhost:3000',
-            value: 'note',
-            threadId: 'thread-1',
-            localUrl: 'http://localhost:3000',
-            createdAt: DateTime(2026),
-          ),
-        );
-    container
-        .read(studioSourceArtifactProvider.notifier)
-        .add(
-          StudioSourceArtifact(
-            id: 'file-artifact',
-            kind: StudioSourceArtifactKind.file,
-            title: 'lib/main.dart',
-            subtitle: 'Context file',
-            value: 'lib/main.dart',
-            threadId: 'thread-1',
-            filePath: 'lib/main.dart',
-            createdAt: DateTime(2026),
-          ),
-        );
-
-    final artifacts = container
-        .read(studioSourceArtifactProvider)
-        .forThread('thread-1');
-    expect(
-      artifacts.map((artifact) => artifact.kind),
-      isNot(contains(StudioSourceArtifactKind.browserComment)),
-    );
-    expect(
-      artifacts.map((artifact) => artifact.kind),
-      contains(StudioSourceArtifactKind.file),
-    );
-  });
-
-  testWidgets('Studio drawer typography and icons match compact chrome scale', (
-    tester,
-  ) async {
-    final container = ProviderContainer();
-    addTearDown(container.dispose);
+        .read(studioRightDrawerProvider.notifier)
+        .openMode(StudioDrawerMode.code);
 
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -207,62 +158,205 @@ void main() {
       ),
     );
 
-    final title = tester.widget<Text>(find.text('Progress').first);
-    expect(title.style?.fontSize, FontSizes.sm);
-    expect(title.style?.fontWeight, FontWeight.w500);
-
-    final contextIcon = tester.widget<Icon>(
-      find.byIcon(Icons.inventory_2_outlined).first,
+    expect(find.text('No file selected'), findsOneWidget);
+    expect(find.text('Open files'), findsOneWidget);
+    await tester.tap(find.text('Open files'));
+    await tester.pumpAndSettle();
+    expect(
+      container.read(studioRightDrawerProvider).mode,
+      StudioDrawerMode.files,
     );
-    expect(contextIcon.size, 13);
-    expect(find.byTooltip('Open drawer view'), findsNothing);
-    expect(find.text('Status'), findsNothing);
-    expect(find.byTooltip('Progress'), findsOneWidget);
-    expect(find.byTooltip('Artifacts'), findsOneWidget);
-    expect(find.byTooltip('Context details'), findsOneWidget);
-    expect(find.byIcon(Icons.language), findsNothing);
+    expect(find.text('No project selected'), findsOneWidget);
+    expect(find.text('Back to projects'), findsOneWidget);
 
+    final emptyModes = [
+      (StudioDrawerMode.diff, 'No changes'),
+      (StudioDrawerMode.terminal, 'No command logs'),
+      (StudioDrawerMode.artifacts, 'No artifacts yet'),
+      (StudioDrawerMode.sources, 'No sources yet'),
+      (StudioDrawerMode.context, 'No context yet'),
+    ];
+    for (final entry in emptyModes) {
+      container.read(studioRightDrawerProvider.notifier).openMode(entry.$1);
+      await tester.pumpAndSettle();
+      expect(find.text(entry.$2), findsOneWidget);
+      expect(find.text('Start a task'), findsOneWidget);
+    }
+  });
+
+  testWidgets('Browser drawer exposes bounded user-controlled page tabs', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
     container
         .read(studioRightDrawerProvider.notifier)
-        .openMode(StudioDrawerMode.code);
+        .openMode(StudioDrawerMode.browser);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+      ),
+    );
     await tester.pump();
 
-    final modeMenuIcon = tester.widget<Icon>(find.byIcon(Icons.tune_outlined));
-    expect(modeMenuIcon.size, 13);
-
-    await tester.tap(find.byTooltip('Open drawer view'));
-    await tester.pumpAndSettle();
-
-    final codeIcon = tester.widget<Icon>(find.byIcon(Icons.code).last);
-    expect(codeIcon.size, 13);
-    final codeText = tester.widget<Text>(find.text('Code').last);
-    expect(codeText.style?.fontSize, FontSizes.xs);
-
-    await tester.tapAt(const Offset(4, 4));
-    await tester.pump();
-    container.read(studioRightDrawerProvider.notifier).toggleCollapsed();
+    expect(find.text('New page'), findsOneWidget);
+    expect(find.byTooltip('Open new browser tab'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open new browser tab'));
     await tester.pump();
 
-    expect(find.widgetWithIcon(IconButton, Icons.chevron_left), findsNothing);
-    final collapsedExpandIcon = tester.widget<Icon>(
-      find.byIcon(Icons.chevron_left),
-    );
-    expect(collapsedExpandIcon.size, 14);
-    final collapsedModeFinder = find.byIcon(Icons.radio_button_checked).first;
-    final collapsedModeIcon = tester.widget<Icon>(collapsedModeFinder);
-    expect(collapsedModeIcon.size, 13);
-    final collapsedModeContainer = tester.widget<Container>(
-      find
-          .ancestor(of: collapsedModeFinder, matching: find.byType(Container))
-          .first,
-    );
-    final collapsedModeDecoration = collapsedModeContainer.decoration;
-    expect(collapsedModeDecoration, isA<BoxDecoration>());
-    expect(
-      (collapsedModeDecoration! as BoxDecoration).borderRadius,
-      BorderRadius.circular(7),
-    );
+    expect(container.read(studioBrowserProvider).tabs, hasLength(2));
+    expect(find.text('New page'), findsNWidgets(2));
+    expect(find.byTooltip('Close New page'), findsNWidgets(2));
   });
+
+  test(
+    'Studio drawer body guards stale browser mode behind the dedicated preview flag',
+    () async {
+      final source = [
+        await File('lib/ui/studio/studio_right_drawer.dart').readAsString(),
+        await File('lib/ui/studio/studio_browser_drawer.dart').readAsString(),
+      ].join('\n');
+
+      expect(source, contains('StudioFeatureFlags.browserPreview'));
+      expect(source, contains('safeMode'));
+      expect(source, contains('StudioDrawerMode.sources'));
+      expect(source, contains('never gives the assistant browser control'));
+    },
+  );
+
+  test(
+    'Studio source artifacts quarantine notes but retain explicit selections',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      container
+          .read(studioSourceArtifactProvider.notifier)
+          .add(
+            StudioSourceArtifact(
+              id: 'browser-comment',
+              kind: StudioSourceArtifactKind.browserComment,
+              title: 'Browser comment',
+              subtitle: 'http://localhost:3000',
+              value: 'note',
+              threadId: 'thread-1',
+              localUrl: 'http://localhost:3000',
+              createdAt: DateTime(2026),
+            ),
+          );
+      container
+          .read(studioSourceArtifactProvider.notifier)
+          .add(
+            StudioSourceArtifact(
+              id: 'browser-selection',
+              kind: StudioSourceArtifactKind.browserSelection,
+              title: 'Selected browser text',
+              subtitle: 'http://localhost:3000',
+              value: 'Untrusted browser observation',
+              threadId: 'thread-1',
+              localUrl: 'http://localhost:3000',
+              createdAt: DateTime(2026),
+            ),
+          );
+      container
+          .read(studioSourceArtifactProvider.notifier)
+          .add(
+            StudioSourceArtifact(
+              id: 'file-artifact',
+              kind: StudioSourceArtifactKind.file,
+              title: 'lib/main.dart',
+              subtitle: 'Context file',
+              value: 'lib/main.dart',
+              threadId: 'thread-1',
+              filePath: 'lib/main.dart',
+              createdAt: DateTime(2026),
+            ),
+          );
+
+      final artifacts = container
+          .read(studioSourceArtifactProvider)
+          .forThread('thread-1');
+      expect(
+        artifacts.map((artifact) => artifact.kind),
+        isNot(contains(StudioSourceArtifactKind.browserComment)),
+      );
+      expect(
+        artifacts.map((artifact) => artifact.kind),
+        contains(StudioSourceArtifactKind.browserSelection),
+      );
+      expect(
+        artifacts.map((artifact) => artifact.kind),
+        contains(StudioSourceArtifactKind.file),
+      );
+    },
+  );
+
+  testWidgets(
+    'Studio drawer typography and icons use contextual compact chrome',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(body: Align(child: StudioRightDrawer())),
+          ),
+        ),
+      );
+
+      final title = tester.widget<Text>(find.text('Progress').first);
+      expect(title.style?.fontSize, FontSizes.sm);
+      expect(title.style?.fontWeight, FontWeight.w500);
+
+      expect(find.byTooltip('Open drawer view'), findsOneWidget);
+      expect(find.text('Status'), findsNothing);
+      expect(find.byTooltip('Progress'), findsNothing);
+      expect(find.byTooltip('Artifacts'), findsNothing);
+      expect(find.byTooltip('Context details'), findsOneWidget);
+      expect(find.byIcon(Icons.language), findsNothing);
+
+      container
+          .read(studioRightDrawerProvider.notifier)
+          .openMode(StudioDrawerMode.code);
+      await tester.pump();
+
+      final modeMenuIcon = tester.widget<Icon>(
+        find.byIcon(Icons.tune_outlined),
+      );
+      expect(modeMenuIcon.size, 13);
+
+      await tester.tap(find.byTooltip('Open drawer view'));
+      await tester.pumpAndSettle();
+
+      final codeIcon = tester.widget<Icon>(find.byIcon(Icons.code).last);
+      expect(codeIcon.size, 13);
+      final codeText = tester.widget<Text>(find.text('Code').last);
+      expect(codeText.style?.fontSize, FontSizes.xs);
+
+      final contextIcon = tester.widget<Icon>(
+        find.byIcon(Icons.inventory_2_outlined).last,
+      );
+      expect(contextIcon.size, 13);
+
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+      container.read(studioRightDrawerProvider.notifier).toggleCollapsed();
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithIcon(IconButton, Icons.chevron_left), findsNothing);
+      final collapsedExpandIcon = tester.widget<Icon>(
+        find.byIcon(Icons.chevron_left),
+      );
+      expect(collapsedExpandIcon.size, 14);
+      expect(find.byTooltip('Expand right panel'), findsOneWidget);
+      expect(find.byIcon(Icons.radio_button_checked), findsNothing);
+      expect(find.byTooltip('Open drawer view'), findsNothing);
+    },
+  );
 
   testWidgets('Studio terminal drawer is command-log only', (tester) async {
     final container = ProviderContainer();
@@ -3274,6 +3368,13 @@ void main() {
   testWidgets('Artifacts drawer Open and Reveal dispatch file paths', (
     tester,
   ) async {
+    const revealChannel = MethodChannel('circuitcode/file_reveal');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(revealChannel, (call) async => false);
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(revealChannel, null);
+    });
     final launched = <Uri>[];
     final container = ProviderContainer(
       overrides: [
@@ -3288,6 +3389,9 @@ void main() {
     addTearDown(() => root.deleteSync(recursive: true));
     final file = File('${root.path}/proposal.pptx')
       ..writeAsBytesSync([1, 2, 3]);
+    final preview = File('${root.path}/proposal.pptx.preview.svg')
+      ..writeAsStringSync('<svg xmlns="http://www.w3.org/2000/svg"/>');
+    final previewBytes = preview.readAsBytesSync();
     final artifact = GeneratedArtifact(
       id: 'pptx-1',
       kind: GeneratedArtifactKind.powerPoint,
@@ -3296,7 +3400,22 @@ void main() {
       filePath: file.path,
       summary: 'Created a PowerPoint deck.',
       byteSize: file.lengthSync(),
+      metadata: {
+        'visualPreviewPath': preview.path,
+        'visualPreviewSha256': sha256.convert(previewBytes).toString(),
+        'visualPreviewByteSize': previewBytes.length,
+        'visualPreviewPersistence': 'atomic-sidecar-v1',
+      },
       createdAt: DateTime(2026, 6, 30, 9, 22),
+      outputHash: sha256.convert(file.readAsBytesSync()).toString(),
+    );
+    final restored = GeneratedArtifact.fromSourceArtifact(
+      artifact.toSourceArtifact(),
+    );
+    expect(restored, isNotNull);
+    expect(
+      (await const ArtifactVisualPreviewVerifier().verify(restored!)).isValid,
+      isTrue,
     );
     container
         .read(studioSourceArtifactProvider.notifier)
@@ -3315,10 +3434,27 @@ void main() {
 
     await tester.tap(find.widgetWithText(TextButton, 'Open'));
     await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Preview'));
+    await tester.pump();
     await tester.tap(find.widgetWithText(TextButton, 'Reveal'));
     await tester.pump();
 
-    expect(launched.map((uri) => uri.toFilePath()), [file.path, root.path]);
+    expect(launched.map((uri) => uri.toFilePath()), [
+      file.path,
+      preview.path,
+      root.path,
+    ]);
+
+    preview.writeAsStringSync('<svg>substituted visual review</svg>');
+    await tester.tap(find.widgetWithText(TextButton, 'Preview'));
+    await tester.pump();
+
+    expect(launched.map((uri) => uri.toFilePath()), [
+      file.path,
+      preview.path,
+      root.path,
+    ]);
+    expect(find.textContaining('no longer matches'), findsOneWidget);
   });
 
   testWidgets('Artifacts drawer exposes CSV export targets', (tester) async {
@@ -4262,6 +4398,39 @@ void main() {
       expect(
         container.read(contextPackProvider)!.serializePrompt(),
         contains('importantThing'),
+      );
+    },
+  );
+
+  testWidgets(
+    'Context drawer identifies the effective instruction order for a live turn',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 720));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      container
+          .read(contextPackProvider.notifier)
+          .buildForCodingTask(prompt: 'Review the current turn');
+      container.read(studioRightDrawerProvider.notifier).openContext();
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(home: Scaffold(body: StudioRightDrawer())),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Effective instructions'), findsOneWidget);
+      expect(find.text('CircuitCode runtime policy'), findsOneWidget);
+      expect(
+        find.textContaining('Runtime policy → global CIRCUIT.md'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('CircuitCode policy always wins'),
+        findsOneWidget,
       );
     },
   );

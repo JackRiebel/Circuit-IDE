@@ -214,7 +214,9 @@ class ProposedPatchSet {
     String? runId,
     Object? comparisonSummary = _sentinel,
     Object? supersededBy = _sentinel,
+    List<ProposedFileEdit>? edits,
     String? checkpointId,
+    bool clearCheckpoint = false,
     PatchApprovalStatus? approvalStatus,
     Object? applyStatus = _sentinel,
     Object? conflictMessage = _sentinel,
@@ -240,9 +242,9 @@ class ProposedPatchSet {
       supersededBy: identical(supersededBy, _sentinel)
           ? this.supersededBy
           : supersededBy as String?,
-      edits: edits,
+      edits: edits ?? this.edits,
       createdAt: createdAt,
-      checkpointId: checkpointId ?? this.checkpointId,
+      checkpointId: clearCheckpoint ? null : checkpointId ?? this.checkpointId,
       approvalStatus: approvalStatus ?? this.approvalStatus,
       applyStatus: identical(applyStatus, _sentinel)
           ? this.applyStatus

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../models/diff_models.dart';
 import '../../services/diff_engine.dart';
+import '../../services/worker_cancellation.dart';
 import '../../state/editor_provider.dart';
 import '../../state/theme_provider.dart';
 import 'diff_toolbar.dart';
@@ -24,6 +25,8 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
   List<int> _changeIndices = [];
   int _currentChangeIndex = -1;
   bool _syncing = false;
+  int _diffGeneration = 0;
+  WorkerCancellationToken? _diffCancellation;
 
   @override
   void initState() {
@@ -40,6 +43,8 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
 
   @override
   void dispose() {
+    _diffGeneration++;
+    _diffCancellation?.cancel('Diff editor disposed.');
     _leftScroll.removeListener(_syncLeft);
     _rightScroll.removeListener(_syncRight);
     _leftScroll.dispose();
@@ -65,17 +70,28 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
     _syncing = false;
   }
 
-  void _computeDiff() {
+  Future<void> _computeDiff() async {
+    final generation = ++_diffGeneration;
+    _diffCancellation?.cancel('Superseded by a newer diff.');
+    final cancellation = WorkerCancellationToken();
+    _diffCancellation = cancellation;
     final editor = ref.read(editorProvider.notifier);
     final diffData = editor.getDiffData(widget.diffId);
     if (diffData == null) return;
 
-    final result = DiffEngine.diff(
-      leftContent: diffData.leftContent,
-      rightContent: diffData.rightContent,
-      leftTitle: diffData.leftTitle,
-      rightTitle: diffData.rightTitle,
-    );
+    DiffResult result;
+    try {
+      result = await DiffEngine.diffInWorker(
+        leftContent: diffData.leftContent,
+        rightContent: diffData.rightContent,
+        leftTitle: diffData.leftTitle,
+        rightTitle: diffData.rightTitle,
+        cancellationToken: cancellation,
+      );
+    } on WorkerCancelledException {
+      return;
+    }
+    if (!mounted || generation != _diffGeneration) return;
 
     // Build change index list for navigation
     final changes = <int>[];
@@ -95,8 +111,10 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
     if (_changeIndices.isEmpty) return;
 
     setState(() {
-      _currentChangeIndex =
-          (_currentChangeIndex + direction).clamp(0, _changeIndices.length - 1);
+      _currentChangeIndex = (_currentChangeIndex + direction).clamp(
+        0,
+        _changeIndices.length - 1,
+      );
     });
 
     final lineIndex = _changeIndices[_currentChangeIndex];
@@ -115,9 +133,7 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
     final tokens = ref.watch(themeProvider);
 
     if (_diffResult == null) {
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: tokens.accent));
     }
 
     final result = _diffResult!;
@@ -126,10 +142,12 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
       children: [
         DiffToolbar(
           diffResult: result,
-          onPrevChange:
-              _changeIndices.isEmpty ? null : () => _navigateToChange(-1),
-          onNextChange:
-              _changeIndices.isEmpty ? null : () => _navigateToChange(1),
+          onPrevChange: _changeIndices.isEmpty
+              ? null
+              : () => _navigateToChange(-1),
+          onNextChange: _changeIndices.isEmpty
+              ? null
+              : () => _navigateToChange(1),
         ),
         Expanded(
           child: Row(
@@ -144,10 +162,7 @@ class _DiffEditorWidgetState extends ConsumerState<DiffEditorWidget> {
                 ),
               ),
               // Divider
-              Container(
-                width: 1,
-                color: tokens.border,
-              ),
+              Container(width: 1, color: tokens.border),
               // Right panel
               Expanded(
                 child: _DiffPanel(
@@ -205,7 +220,8 @@ class _DiffPanel extends StatelessWidget {
             bgColor = Colors.transparent;
         }
 
-        final showContent = (isLeft && line.type != DiffType.added) ||
+        final showContent =
+            (isLeft && line.type != DiffType.added) ||
             (!isLeft && line.type != DiffType.removed);
 
         return Container(
@@ -235,16 +251,16 @@ class _DiffPanel extends StatelessWidget {
                     line.type == DiffType.added && !isLeft
                         ? '+'
                         : line.type == DiffType.removed && isLeft
-                            ? '-'
-                            : line.type == DiffType.modified
-                                ? '~'
-                                : '',
+                        ? '-'
+                        : line.type == DiffType.modified
+                        ? '~'
+                        : '',
                     style: TextStyle(
                       color: line.type == DiffType.added
                           ? tokens.success
                           : line.type == DiffType.removed
-                              ? tokens.error
-                              : tokens.warning,
+                          ? tokens.error
+                          : tokens.warning,
                       fontSize: FontSizes.xs,
                       fontWeight: FontWeight.w700,
                     ),

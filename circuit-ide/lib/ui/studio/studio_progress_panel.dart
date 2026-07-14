@@ -15,6 +15,7 @@ import '../../state/patch_proposal_provider.dart';
 import '../../state/studio_right_drawer_provider.dart';
 import '../../state/studio_thread_provider.dart';
 import '../../state/theme_provider.dart';
+import 'studio_chrome.dart';
 
 class StudioProgressPanel extends ConsumerWidget {
   final AgentTask? task;
@@ -104,7 +105,7 @@ class StudioProgressPanel extends ConsumerWidget {
             _PanelSectionHeader(
               title: 'Environment',
               actionTooltip: 'Open context details',
-              actionIcon: Icons.add,
+              actionIcon: StudioIcons.add,
               onAction: () =>
                   ref.read(studioRightDrawerProvider.notifier).openContext(),
             ),
@@ -222,13 +223,13 @@ class _ProgressRow extends ConsumerWidget {
 
   IconData _iconFor(String label) {
     return switch (label) {
-      'Task' => Icons.radio_button_checked,
-      'Approval' => Icons.shield_outlined,
-      'Command' => Icons.terminal_outlined,
-      'Changes' => Icons.inventory_2_outlined,
-      'Local' => Icons.computer_outlined,
-      'Branch' => Icons.account_tree_outlined,
-      _ => Icons.data_object_outlined,
+      'Task' => StudioIcons.radioButtonChecked,
+      'Approval' => StudioIcons.shieldOutlined,
+      'Command' => StudioIcons.terminalOutlined,
+      'Changes' => StudioIcons.inventory2Outlined,
+      'Local' => StudioIcons.computerOutlined,
+      'Branch' => StudioIcons.accountTreeOutlined,
+      _ => StudioIcons.dataObjectOutlined,
     };
   }
 }
@@ -263,17 +264,11 @@ class _PanelSectionHeader extends ConsumerWidget {
           ),
         ),
         if (actionIcon != null && onAction != null)
-          Tooltip(
-            message: actionTooltip ?? title,
-            child: InkWell(
-              onTap: onAction,
-              borderRadius: BorderRadius.circular(Radii.sm),
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: Icon(actionIcon, color: tokens.textMuted, size: 14),
-              ),
-            ),
+          StudioChromeIconButton(
+            tooltip: actionTooltip ?? title,
+            icon: actionIcon!,
+            iconSize: 14,
+            onTap: onAction,
           ),
       ],
     );
@@ -295,7 +290,7 @@ class _SourceDotGrid extends ConsumerWidget {
       children: [
         for (var index = 0; index < 24; index++)
           Icon(
-            Icons.language,
+            StudioIcons.language,
             size: 11,
             color: index < count
                 ? tokens.textMuted.withValues(alpha: 0.76)

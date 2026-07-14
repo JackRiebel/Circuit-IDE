@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
@@ -7,6 +8,7 @@ import '../core/utils/file_utils.dart';
 import '../core/utils/logger.dart';
 import '../models/semantic_search_models.dart';
 import 'code_chunker.dart';
+import 'worker_cancellation.dart';
 
 /// Callback for index build progress.
 typedef IndexProgressCallback = void Function(int indexed, int total);
@@ -19,17 +21,62 @@ class SemanticIndex {
   DateTime? _lastBuildTime;
 
   static const _ignoreDirs = {
-    '.git', '.dart_tool', 'build', 'node_modules', '__pycache__',
-    '.venv', 'venv', '.idea', '.vscode', 'target', '.gradle',
-    '.cache', 'dist', '.next', '.nuxt', 'coverage',
+    '.git',
+    '.dart_tool',
+    'build',
+    'node_modules',
+    '__pycache__',
+    '.venv',
+    'venv',
+    '.idea',
+    '.vscode',
+    'target',
+    '.gradle',
+    '.cache',
+    'dist',
+    '.next',
+    '.nuxt',
+    'coverage',
   };
 
   static const _sourceExtensions = {
-    '.dart', '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.kt',
-    '.rs', '.go', '.c', '.cpp', '.h', '.hpp', '.cs', '.rb',
-    '.swift', '.sh', '.bash', '.zsh', '.yaml', '.yml', '.json',
-    '.toml', '.xml', '.html', '.css', '.scss', '.sql', '.md',
-    '.r', '.lua', '.php', '.pl', '.scala', '.ex', '.exs',
+    '.dart',
+    '.py',
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.java',
+    '.kt',
+    '.rs',
+    '.go',
+    '.c',
+    '.cpp',
+    '.h',
+    '.hpp',
+    '.cs',
+    '.rb',
+    '.swift',
+    '.sh',
+    '.bash',
+    '.zsh',
+    '.yaml',
+    '.yml',
+    '.json',
+    '.toml',
+    '.xml',
+    '.html',
+    '.css',
+    '.scss',
+    '.sql',
+    '.md',
+    '.r',
+    '.lua',
+    '.php',
+    '.pl',
+    '.scala',
+    '.ex',
+    '.exs',
   };
 
   int get chunkCount => _chunks.length;
@@ -44,29 +91,32 @@ class SemanticIndex {
   Future<void> buildIndex(
     String rootPath, {
     IndexProgressCallback? onProgress,
+    WorkerCancellationToken? cancellationToken,
   }) async {
+    // Walking source trees and chunking files can dominate a frame on a medium
+    // repository. Keep all filesystem traversal, reads, and regex chunking in
+    // one worker isolate, then publish the immutable chunk snapshot here. Do
+    // not clear the previous index until a replacement snapshot is complete.
+    final snapshot = await CancellableWorker.run<Map<String, Object?>>(
+      entryPoint: _semanticIndexWorkerEntry,
+      arguments: {'rootPath': rootPath},
+      cancellationToken: cancellationToken,
+      decodeResult: (result) {
+        if (result is! Map) {
+          throw StateError(
+            'Semantic index worker returned a malformed snapshot.',
+          );
+        }
+        return Map<String, Object?>.from(result);
+      },
+    );
+    final chunks = snapshot['chunks'] as List<Object?>? ?? const [];
     _chunks.clear();
-
-    // Collect all source files first
-    final sourceFiles = <File>[];
-    await _collectSourceFiles(Directory(rootPath), sourceFiles);
-
-    final total = sourceFiles.length;
-    int indexed = 0;
-
-    for (final file in sourceFiles) {
-      try {
-        final content = await file.readAsString();
-        final language = FileUtils.getLanguageFromPath(file.path);
-        final fileChunks = _chunker.chunkFile(file.path, content, language);
-        _chunks.addAll(fileChunks);
-      } catch (e) {
-        // Skip files that can't be read (binary, permission errors, etc.)
-      }
-
-      indexed++;
-      onProgress?.call(indexed, total);
+    for (final chunk in chunks.whereType<Map>()) {
+      _chunks.add(CodeChunk.fromJson(Map<String, dynamic>.from(chunk)));
     }
+    final indexed = snapshot['indexedFiles'] as int? ?? 0;
+    onProgress?.call(indexed, indexed);
 
     _lastBuildTime = DateTime.now();
     Logger.info(
@@ -97,10 +147,7 @@ class SemanticIndex {
   }
 
   /// Incremental re-index: remove old chunks for changed files and re-chunk.
-  Future<void> updateIndex(
-    List<String> changedFiles,
-    String rootPath,
-  ) async {
+  Future<void> updateIndex(List<String> changedFiles, String rootPath) async {
     for (final filePath in changedFiles) {
       // Remove old chunks for this file
       _chunks.removeWhere((c) => c.filePath == filePath);
@@ -121,7 +168,10 @@ class SemanticIndex {
   }
 
   /// Save the index to disk as JSON.
-  Future<void> saveIndex(String rootPath) async {
+  Future<void> saveIndex(
+    String rootPath, {
+    WorkerCancellationToken? cancellationToken,
+  }) async {
     try {
       final dir = await _getIndexDir();
       final file = File(p.join(dir.path, _indexFileName(rootPath)));
@@ -130,21 +180,50 @@ class SemanticIndex {
         'buildTime': _lastBuildTime?.toIso8601String(),
         'chunks': _chunks.map((c) => c.toJson()).toList(),
       };
-      await file.writeAsString(jsonEncode(data));
+      final encoded = await CancellableWorker.run<String>(
+        entryPoint: _semanticIndexEncodeWorkerEntry,
+        arguments: {'data': data},
+        cancellationToken: cancellationToken,
+        decodeResult: (result) {
+          if (result is! String) {
+            throw StateError('Semantic index encoder returned invalid JSON.');
+          }
+          return result;
+        },
+      );
+      await file.writeAsString(encoded);
       Logger.info('Saved semantic index to ${file.path}', 'SemanticIndex');
+    } on WorkerCancelledException {
+      rethrow;
     } catch (e) {
       Logger.error('Failed to save semantic index', e);
     }
   }
 
   /// Load a previously saved index from disk.
-  Future<bool> loadIndex(String rootPath) async {
+  Future<bool> loadIndex(
+    String rootPath, {
+    WorkerCancellationToken? cancellationToken,
+  }) async {
     try {
       final dir = await _getIndexDir();
       final file = File(p.join(dir.path, _indexFileName(rootPath)));
       if (!await file.exists()) return false;
 
-      final data = jsonDecode(await file.readAsString());
+      final contents = await file.readAsString();
+      final data = await CancellableWorker.run<Map<String, Object?>?>(
+        entryPoint: _semanticIndexDecodeWorkerEntry,
+        arguments: {'contents': contents},
+        cancellationToken: cancellationToken,
+        decodeResult: (result) {
+          if (result == null) return null;
+          if (result is! Map) {
+            throw StateError('Semantic index decoder returned malformed data.');
+          }
+          return Map<String, Object?>.from(result);
+        },
+      );
+      if (data == null) return false;
       final chunkList = data['chunks'] as List<dynamic>? ?? [];
 
       _chunks.clear();
@@ -162,6 +241,8 @@ class SemanticIndex {
         'SemanticIndex',
       );
       return true;
+    } on WorkerCancelledException {
+      rethrow;
     } catch (e) {
       Logger.error('Failed to load semantic index', e);
       return false;
@@ -171,36 +252,6 @@ class SemanticIndex {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
-
-  Future<void> _collectSourceFiles(
-    Directory dir,
-    List<File> files,
-  ) async {
-    try {
-      await for (final entity in dir.list()) {
-        final name = p.basename(entity.path);
-
-        // Skip hidden files and ignored directories
-        if (name.startsWith('.') && name != '.gitignore') continue;
-        if (entity is Directory && _ignoreDirs.contains(name)) continue;
-
-        if (entity is Directory) {
-          await _collectSourceFiles(entity, files);
-        } else if (entity is File) {
-          final ext = p.extension(name).toLowerCase();
-          if (_sourceExtensions.contains(ext)) {
-            // Skip very large files (> 500KB)
-            final stat = await entity.stat();
-            if (stat.size < 500 * 1024) {
-              files.add(entity);
-            }
-          }
-        }
-      }
-    } catch (_) {
-      // Skip directories we can't read
-    }
-  }
 
   List<String> _tokenize(String text) {
     // Split on non-alphanumeric, camelCase boundaries, underscores
@@ -257,8 +308,7 @@ class SemanticIndex {
     }
 
     // Bonus for functions/methods (usually more relevant than imports)
-    if (chunk.type == ChunkType.function ||
-        chunk.type == ChunkType.method) {
+    if (chunk.type == ChunkType.function || chunk.type == ChunkType.method) {
       score *= 1.2;
     }
 
@@ -273,7 +323,9 @@ class SemanticIndex {
 
   Future<Directory> _getIndexDir() async {
     final home = Platform.environment['HOME'] ?? '/tmp';
-    final dir = Directory(p.join(home, '.config', 'circuit-ide', 'semantic-index'));
+    final dir = Directory(
+      p.join(home, '.config', 'circuit-ide', 'semantic-index'),
+    );
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -284,5 +336,107 @@ class SemanticIndex {
     // Hash the root path to create a stable file name
     final hash = rootPath.hashCode.toRadixString(16).padLeft(8, '0');
     return 'index_$hash.json';
+  }
+}
+
+void _semanticIndexWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    replyPort.send({
+      'result': _buildSemanticIndexSnapshot(
+        arguments['rootPath'] as String? ?? '',
+      ),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+void _semanticIndexEncodeWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    replyPort.send({'result': jsonEncode(arguments['data'])});
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+void _semanticIndexDecodeWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    replyPort.send({
+      'result': _decodeSemanticIndexSnapshot(
+        arguments['contents'] as String? ?? '',
+      ),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+/// Worker entry point for a complete semantic-index build.
+///
+/// Only sendable JSON-shaped data crosses the isolate boundary. The main
+/// isolate reconstructs [CodeChunk] instances after the expensive traversal,
+/// reads, and chunking are complete.
+Map<String, Object?> _buildSemanticIndexSnapshot(String rootPath) {
+  final files = <File>[];
+
+  void collect(Directory directory) {
+    try {
+      final entries = directory.listSync(followLinks: false);
+      for (final entity in entries) {
+        final name = p.basename(entity.path);
+        if (name.startsWith('.') && name != '.gitignore') continue;
+        if (entity is Directory && SemanticIndex._ignoreDirs.contains(name)) {
+          continue;
+        }
+        if (entity is Directory) {
+          collect(entity);
+          continue;
+        }
+        if (entity is! File) continue;
+        final extension = p.extension(name).toLowerCase();
+        if (!SemanticIndex._sourceExtensions.contains(extension)) continue;
+        try {
+          if (entity.lengthSync() < 500 * 1024) files.add(entity);
+        } catch (_) {
+          // Ignore files that become unavailable during the scan.
+        }
+      }
+    } catch (_) {
+      // A single unreadable directory must not fail the project index.
+    }
+  }
+
+  collect(Directory(rootPath));
+  final chunker = CodeChunker();
+  final chunks = <Map<String, dynamic>>[];
+  for (final file in files) {
+    try {
+      final content = file.readAsStringSync();
+      final language = FileUtils.getLanguageFromPath(file.path);
+      chunks.addAll(
+        chunker
+            .chunkFile(file.path, content, language)
+            .map((chunk) => chunk.toJson()),
+      );
+    } catch (_) {
+      // Skip binary, unreadable, or concurrently removed files.
+    }
+  }
+  return {'indexedFiles': files.length, 'chunks': chunks};
+}
+
+Map<String, Object?>? _decodeSemanticIndexSnapshot(String contents) {
+  try {
+    final decoded = jsonDecode(contents);
+    if (decoded is! Map) return null;
+    return Map<String, Object?>.from(decoded);
+  } catch (_) {
+    return null;
   }
 }

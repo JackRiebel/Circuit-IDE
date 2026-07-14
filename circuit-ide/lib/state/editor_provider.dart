@@ -12,14 +12,12 @@ class EditorNotifier extends Notifier<EditorState> {
   static const _uuid = Uuid();
   final Map<String, DiffData> _diffData = {};
 
-
   @override
   EditorState build() => const EditorState();
 
   Future<void> openFile(String filePath) async {
     // Check if already open
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == filePath);
+    final existingIndex = state.tabs.indexWhere((t) => t.filePath == filePath);
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -42,10 +40,7 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   void closeTab(int index) {
@@ -107,11 +102,30 @@ class EditorNotifier extends Notifier<EditorState> {
     state = state.copyWith(tabs: newTabs);
   }
 
+  void updateSelection(int index, String text, {int? startLine, int? endLine}) {
+    if (index < 0 || index >= state.tabs.length) return;
+    final normalized = text.trim();
+    final tab = state.tabs[index];
+    if (tab.selectedText == normalized &&
+        tab.selectionStartLine == startLine &&
+        tab.selectionEndLine == endLine) {
+      return;
+    }
+    final newTabs = List<EditorTab>.from(state.tabs);
+    newTabs[index] = tab.copyWith(
+      selectedText: normalized,
+      selectionStartLine: normalized.isEmpty ? null : startLine,
+      selectionEndLine: normalized.isEmpty ? null : endLine,
+    );
+    state = state.copyWith(tabs: newTabs);
+  }
+
   /// Open the settings tab (or focus it if already open)
   void openSettingsTab() {
     const settingsPath = 'circuit://settings';
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == settingsPath);
+    final existingIndex = state.tabs.indexWhere(
+      (t) => t.filePath == settingsPath,
+    );
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -126,17 +140,13 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Open the codebase map tab (or focus it if already open)
   void openCodebaseMapTab() {
     const mapPath = 'circuit://codebase-map';
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == mapPath);
+    final existingIndex = state.tabs.indexWhere((t) => t.filePath == mapPath);
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -151,17 +161,15 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Open a notebook tab (or focus it if already open)
   void openNotebookTab(String id, String name) {
     final notebookPath = 'circuit://notebook/$id';
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == notebookPath);
+    final existingIndex = state.tabs.indexWhere(
+      (t) => t.filePath == notebookPath,
+    );
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -176,10 +184,7 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Open a diff tab comparing two contents
@@ -208,10 +213,7 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Get stored diff data by id
@@ -220,8 +222,7 @@ class EditorNotifier extends Notifier<EditorState> {
   /// Open a spec-driven development tab
   void openSpecTab(String id, String name) {
     final specPath = 'circuit://spec/$id';
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == specPath);
+    final existingIndex = state.tabs.indexWhere((t) => t.filePath == specPath);
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -236,17 +237,15 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Open a runtime visualization tab
   void openRuntimeTab(String traceId, String filePath) {
     final runtimePath = 'circuit://runtime/$traceId';
-    final existingIndex =
-        state.tabs.indexWhere((t) => t.filePath == runtimePath);
+    final existingIndex = state.tabs.indexWhere(
+      (t) => t.filePath == runtimePath,
+    );
     if (existingIndex >= 0) {
       state = state.copyWith(activeTabIndex: existingIndex);
       return;
@@ -262,14 +261,13 @@ class EditorNotifier extends Notifier<EditorState> {
     );
 
     final newTabs = [...state.tabs, tab];
-    state = state.copyWith(
-      tabs: newTabs,
-      activeTabIndex: newTabs.length - 1,
-    );
+    state = state.copyWith(tabs: newTabs, activeTabIndex: newTabs.length - 1);
   }
 
   /// Open multiple diff tabs for a list of file diffs (used by Ghost Mode).
-  void openMultiDiffTab(List<({String name, String before, String after})> diffs) {
+  void openMultiDiffTab(
+    List<({String name, String before, String after})> diffs,
+  ) {
     for (final diff in diffs) {
       openDiffTab('Before', diff.name, diff.before, diff.after);
     }
@@ -288,5 +286,6 @@ class EditorNotifier extends Notifier<EditorState> {
   }
 }
 
-final editorProvider =
-    NotifierProvider<EditorNotifier, EditorState>(EditorNotifier.new);
+final editorProvider = NotifierProvider<EditorNotifier, EditorState>(
+  EditorNotifier.new,
+);

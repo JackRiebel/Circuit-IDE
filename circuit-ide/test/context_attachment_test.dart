@@ -110,8 +110,14 @@ void main() {
     expect(attachment.metadata['height'], 900);
     expect(attachment.metadata['ocrStatus'], 'not_extracted');
     expect(attachment.metadata['visionInputStatus'], 'metadata_only');
-    expect(attachment.metadata['providerPixelInputSupported'], isFalse);
-    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+    expect(
+      attachment.metadata['providerPixelInputSupported'],
+      'pending_capability_check',
+    );
+    expect(
+      attachment.metadata['analysisReliability'],
+      'metadata_pending_provider_capability_check',
+    );
     expect(
       attachment.metadata['visualAnalysisContract'],
       contains('Do not infer screenshot contents from pixels'),
@@ -173,7 +179,10 @@ void main() {
     expect(attachment.metadata['mimeType'], 'image/webp');
     expect(attachment.metadata['width'], 1920);
     expect(attachment.metadata['height'], 1080);
-    expect(attachment.metadata['analysisReliability'], 'metadata_only');
+    expect(
+      attachment.metadata['analysisReliability'],
+      'metadata_pending_provider_capability_check',
+    );
   });
 
   test('ScreenshotContextAttachmentBuilder skips unsupported files', () async {

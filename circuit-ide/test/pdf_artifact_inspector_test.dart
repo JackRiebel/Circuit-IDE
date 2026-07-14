@@ -6,7 +6,7 @@ import 'package:circuit_ide/services/pdf_artifact_renderer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('PDF inspector verifies report chrome metadata and table layout', () {
+  test('PDF inspector verifies report chrome metadata and table layout', () async {
     const document = ArtifactDocument(
       title: 'Campus Refresh Handoff (Draft)',
       summary: 'Executive handoff for the campus refresh.',
@@ -42,14 +42,36 @@ void main() {
     );
 
     final bytes = const PdfArtifactRenderer().render(document);
+    final workerBytes = await const PdfArtifactRenderer().renderInWorker(
+      document,
+    );
     final inspection = const PdfArtifactInspector().inspect(bytes);
+    final workerInspection = await const PdfArtifactInspector()
+        .inspectForArtifactInWorker(bytes);
     final text = latin1.decode(bytes, allowInvalid: true);
+
+    expect(
+      PdfArtifactInspector.metadataFor(
+        const PdfArtifactInspector().inspect(workerBytes),
+      ),
+      PdfArtifactInspector.metadataFor(inspection),
+    );
+    expect(workerInspection['pageCount'], inspection.pageCount);
+    expect(
+      workerInspection['metadata'],
+      PdfArtifactInspector.metadataFor(inspection),
+    );
 
     expect(inspection.isStructurallyValid, isTrue);
     expect(inspection.hasExpectedReportChrome, isTrue);
     expect(inspection.hasTableGrid, isTrue);
     expect(inspection.hasOutlineCatalog, isTrue);
     expect(inspection.hasOutlineTree, isTrue);
+    expect(inspection.hasMarkedContent, isTrue);
+    expect(inspection.hasStructTreeRoot, isTrue);
+    expect(inspection.hasParentTree, isTrue);
+    expect(inspection.hasTaggedPageContent, isTrue);
+    expect(inspection.hasTaggedPdfStructure, isTrue);
     expect(inspection.hasReportOverviewBookmark, isTrue);
     expect(inspection.hasLeadDecisionBookmark, isTrue);
     expect(inspection.hasExecutiveDecisionBookmark, isTrue);
@@ -82,6 +104,11 @@ void main() {
     expect(text, contains('Report Overview'));
     expect(text, contains('/PageMode /UseOutlines'));
     expect(text, contains('/Type /Outlines'));
+    expect(text, contains('/MarkInfo << /Marked true >>'));
+    expect(text, contains('/Type /StructTreeRoot'));
+    expect(text, contains('/ParentTree'));
+    expect(text, contains('/StructParents 0'));
+    expect(text, contains('/P << /MCID 0 >> BDC'));
     expect(text, contains('/Title (Report Overview)'));
     expect(text, contains('/Title (Lead Decision Callout)'));
     expect(text, contains('/Title (Executive Decision Brief)'));
@@ -155,6 +182,9 @@ void main() {
       metadata['layoutSystem'],
       'US Letter, 0.75 inch content frame, Helvetica type scale',
     );
+    expect(metadata['hasTaggedPdfStructure'], isTrue);
+    expect(metadata['pdfTaggingProfile'], 'Page-level marked reading order');
+    expect(metadata['pdfTaggedPageCount'], inspection.pageCount);
     expect(
       metadata['formFactors'],
       containsAll([

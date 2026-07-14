@@ -2,13 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../models/artifact_document.dart';
+import '../models/artifact_template.dart';
 import '../models/generated_artifact.dart';
 import 'architecture_review_pack_builder.dart';
+import 'artifact_accessibility_evaluator.dart';
 import 'artifact_readiness_evaluator.dart';
+import 'artifact_quality_matrix_evaluator.dart';
 import 'artifact_type_registry.dart';
+import 'artifact_visual_preview_renderer.dart';
+import 'artifact_workbook_layout.dart';
 import 'business_use_case_brief_builder.dart';
 import 'change_summary_diff_report_builder.dart';
 import 'chart_artifact_renderer.dart';
@@ -16,6 +22,7 @@ import 'diagram_artifact_renderer.dart';
 import 'docx_artifact_inspector.dart';
 import 'docx_artifact_renderer.dart';
 import 'evidence_pack_builder.dart';
+import 'html_artifact_renderer.dart';
 import 'implementation_plan_artifact_builder.dart';
 import 'lifecycle_eox_workbook_builder.dart';
 import 'network_topology_brief_builder.dart';
@@ -23,19 +30,29 @@ import 'pdf_artifact_inspector.dart';
 import 'pdf_artifact_renderer.dart';
 import 'powerpoint_artifact_inspector.dart';
 import 'powerpoint_artifact_renderer.dart';
+import 'powerpoint_visual_preview_renderer.dart';
 import 'product_comparison_workbook_builder.dart';
 import 'solution_sizing_workbook_builder.dart';
+import 'workbook_artifact_inspector.dart';
+import 'worker_cancellation.dart';
 
+// ADR-0005: this is the sole generated-artifact output-routing boundary.
 class GeneratedArtifactWriter {
+  static const _maximumWorkbookSheets = 48;
+  static int _stagedFileSequence = 0;
+
   final ArtifactComposer composer;
   final PowerPointArtifactRenderer powerPointRenderer;
+  final PowerPointVisualPreviewRenderer powerPointVisualPreviewRenderer;
   final DocxArtifactRenderer docxRenderer;
   final PdfArtifactRenderer pdfRenderer;
   final PdfArtifactInspector pdfInspector;
   final PowerPointArtifactInspector powerPointInspector;
   final DocxArtifactInspector docxInspector;
+  final WorkbookArtifactInspector workbookInspector;
   final DiagramArtifactRenderer diagramRenderer;
   final ChartArtifactRenderer chartRenderer;
+  final HtmlArtifactRenderer htmlRenderer;
   final LifecycleEoxWorkbookBuilder lifecycleEoxBuilder;
   final NetworkTopologyBriefBuilder networkTopologyBuilder;
   final ProductComparisonWorkbookBuilder productComparisonBuilder;
@@ -46,18 +63,26 @@ class GeneratedArtifactWriter {
   final ImplementationPlanArtifactBuilder implementationPlanBuilder;
   final ChangeSummaryDiffReportBuilder changeSummaryBuilder;
   final ArtifactReadinessEvaluator readinessEvaluator;
+  final ArtifactQualityMatrixEvaluator artifactQualityMatrixEvaluator;
+  final ArtifactAccessibilityEvaluator accessibilityEvaluator;
+  final ArtifactVisualPreviewRenderer artifactVisualPreviewRenderer;
   final ArtifactTypeRegistry artifactTypeRegistry;
+  final ArtifactTemplateRegistry artifactTemplateRegistry;
 
   const GeneratedArtifactWriter({
     this.composer = const ArtifactComposer(),
     this.powerPointRenderer = const PowerPointArtifactRenderer(),
+    this.powerPointVisualPreviewRenderer =
+        const PowerPointVisualPreviewRenderer(),
     this.docxRenderer = const DocxArtifactRenderer(),
     this.pdfRenderer = const PdfArtifactRenderer(),
     this.pdfInspector = const PdfArtifactInspector(),
     this.powerPointInspector = const PowerPointArtifactInspector(),
     this.docxInspector = const DocxArtifactInspector(),
+    this.workbookInspector = const WorkbookArtifactInspector(),
     this.diagramRenderer = const DiagramArtifactRenderer(),
     this.chartRenderer = const ChartArtifactRenderer(),
+    this.htmlRenderer = const HtmlArtifactRenderer(),
     this.lifecycleEoxBuilder = const LifecycleEoxWorkbookBuilder(),
     this.networkTopologyBuilder = const NetworkTopologyBriefBuilder(),
     this.productComparisonBuilder = const ProductComparisonWorkbookBuilder(),
@@ -68,7 +93,12 @@ class GeneratedArtifactWriter {
     this.implementationPlanBuilder = const ImplementationPlanArtifactBuilder(),
     this.changeSummaryBuilder = const ChangeSummaryDiffReportBuilder(),
     this.readinessEvaluator = const ArtifactReadinessEvaluator(),
+    this.artifactQualityMatrixEvaluator =
+        const ArtifactQualityMatrixEvaluator(),
+    this.accessibilityEvaluator = const ArtifactAccessibilityEvaluator(),
+    this.artifactVisualPreviewRenderer = const ArtifactVisualPreviewRenderer(),
     this.artifactTypeRegistry = const ArtifactTypeRegistry(),
+    this.artifactTemplateRegistry = const ArtifactTemplateRegistry(),
   });
 
   Future<GeneratedArtifact?> writeFromAssistantOutput({
@@ -78,6 +108,10 @@ class GeneratedArtifactWriter {
     required String turnId,
     required String? threadId,
     required String? requestId,
+    int artifactVersion = 1,
+    String? parentArtifactId,
+    String? templateId,
+    WorkerCancellationToken? cancellationToken,
   }) async {
     final route = artifactTypeRegistry.routeForPrompt(prompt);
     final requestedKind = route.primaryKind;
@@ -91,31 +125,59 @@ class GeneratedArtifactWriter {
 
     final baseName = _safeBaseName(prompt);
     final now = DateTime.now();
-    final document = composer.fromAssistantOutput(
-      prompt: prompt,
-      content: content,
+    final template = artifactTemplateRegistry.resolve(templateId);
+    final document = template.apply(
+      composer.fromAssistantOutput(prompt: prompt, content: content),
     );
-    final resolved = _resolveOutput(
+    final resolved = await _resolveOutput(
       requestedKind: requestedKind,
       prompt: prompt,
       content: content,
       document: document,
+      cancellationToken: cancellationToken,
     );
     if (resolved == null) return null;
 
-    final fileName = '$baseName.${resolved.extension}';
+    final fileName =
+        '${_versionedBaseName(baseName, artifactVersion)}.${resolved.extension}';
     final filePath = p.join(outputDir.path, fileName);
     final normalizedFilePath = p.normalize(filePath);
     if (!p.isWithin(root, normalizedFilePath)) return null;
-    final file = File(normalizedFilePath);
-    await file.writeAsBytes(resolved.bytes);
-    final size = await file.length();
-    final metadata = _metadataWithReadiness(
+    final persistedOutput = await _persistArtifactOutput(
+      artifactFilePath: normalizedFilePath,
       resolved: resolved,
       document: document,
-      byteSize: size,
-      route: route,
     );
+    final size = persistedOutput.byteSize;
+    final visualPreview = persistedOutput.visualPreview;
+    final metadataWithoutMatrix = {
+      ..._metadataWithReadiness(
+        resolved: resolved,
+        document: document,
+        byteSize: size,
+        route: route,
+        persistedVisualPreviewMetadata: visualPreview.metadata,
+      ),
+      ...{
+        'visualPreviewPath': visualPreview.path,
+        'visualPreviewFormat': visualPreview.extension,
+        'visualPreviewSha256': visualPreview.sha256,
+        'visualPreviewByteSize': visualPreview.byteSize,
+        'visualPreviewPersistence': 'atomic-sidecar-v1',
+      },
+    };
+    final metadata = {
+      ...metadataWithoutMatrix,
+      ...artifactQualityMatrixEvaluator.metadataFor(
+        kind: resolved.kind,
+        document: document,
+        bytes: resolved.bytes,
+        extension: resolved.extension,
+        previewRows: resolved.previewRows,
+        metadata: metadataWithoutMatrix,
+        visualPreviewPersisted: true,
+      ),
+    };
     return GeneratedArtifact(
       id: turnId,
       kind: resolved.kind,
@@ -130,6 +192,14 @@ class GeneratedArtifactWriter {
       threadId: threadId,
       requestId: requestId,
       createdAt: now,
+      version: artifactVersion,
+      parentArtifactId: parentArtifactId,
+      outputHash: sha256.convert(resolved.bytes).toString(),
+      generationRecipe: _generationRecipe(
+        prompt: prompt,
+        content: content,
+        template: template,
+      ),
     );
   }
 
@@ -141,6 +211,10 @@ class GeneratedArtifactWriter {
     required String turnId,
     required String? threadId,
     required String? requestId,
+    int artifactVersion = 1,
+    String? parentArtifactId,
+    String? templateId,
+    WorkerCancellationToken? cancellationToken,
   }) async {
     if (content.trim().isEmpty) return null;
     final root = p.normalize(rootPath);
@@ -150,32 +224,60 @@ class GeneratedArtifactWriter {
     }
     await outputDir.create(recursive: true);
 
-    final document = composer.fromAssistantOutput(
-      prompt: prompt,
-      content: content,
+    final template = artifactTemplateRegistry.resolve(templateId);
+    final document = template.apply(
+      composer.fromAssistantOutput(prompt: prompt, content: content),
     );
-    final resolved = _resolveOutput(
+    final resolved = await _resolveOutput(
       requestedKind: targetKind,
       prompt: prompt,
       content: content,
       document: document,
+      cancellationToken: cancellationToken,
     );
     if (resolved == null) return null;
 
     final baseName = _safeBaseName(prompt);
-    final fileName = '$baseName.${resolved.extension}';
+    final fileName =
+        '${_versionedBaseName(baseName, artifactVersion)}.${resolved.extension}';
     final filePath = p.join(outputDir.path, fileName);
     final normalizedFilePath = p.normalize(filePath);
     if (!p.isWithin(root, normalizedFilePath)) return null;
-    final file = File(normalizedFilePath);
-    await file.writeAsBytes(resolved.bytes);
-    final size = await file.length();
-    final metadata = _metadataWithReadiness(
+    final persistedOutput = await _persistArtifactOutput(
+      artifactFilePath: normalizedFilePath,
       resolved: resolved,
       document: document,
-      byteSize: size,
-      route: artifactTypeRegistry.routeForPrompt(prompt),
     );
+    final size = persistedOutput.byteSize;
+    final visualPreview = persistedOutput.visualPreview;
+    final metadataWithoutMatrix = {
+      ..._metadataWithReadiness(
+        resolved: resolved,
+        document: document,
+        byteSize: size,
+        route: artifactTypeRegistry.routeForPrompt(prompt),
+        persistedVisualPreviewMetadata: visualPreview.metadata,
+      ),
+      ...{
+        'visualPreviewPath': visualPreview.path,
+        'visualPreviewFormat': visualPreview.extension,
+        'visualPreviewSha256': visualPreview.sha256,
+        'visualPreviewByteSize': visualPreview.byteSize,
+        'visualPreviewPersistence': 'atomic-sidecar-v1',
+      },
+    };
+    final metadata = {
+      ...metadataWithoutMatrix,
+      ...artifactQualityMatrixEvaluator.metadataFor(
+        kind: resolved.kind,
+        document: document,
+        bytes: resolved.bytes,
+        extension: resolved.extension,
+        previewRows: resolved.previewRows,
+        metadata: metadataWithoutMatrix,
+        visualPreviewPersisted: true,
+      ),
+    };
     return GeneratedArtifact(
       id: turnId,
       kind: resolved.kind,
@@ -190,6 +292,14 @@ class GeneratedArtifactWriter {
       threadId: threadId,
       requestId: requestId,
       createdAt: DateTime.now(),
+      version: artifactVersion,
+      parentArtifactId: parentArtifactId,
+      outputHash: sha256.convert(resolved.bytes).toString(),
+      generationRecipe: _generationRecipe(
+        prompt: prompt,
+        content: content,
+        template: template,
+      ),
     );
   }
 
@@ -198,8 +308,13 @@ class GeneratedArtifactWriter {
     required ArtifactDocument document,
     required int byteSize,
     required ArtifactRouteDecision route,
+    Map<String, Object?> persistedVisualPreviewMetadata = const {},
   }) {
     final descriptor = _descriptorForRoute(route, resolved.kind);
+    final resolvedMetadata = {
+      ...resolved.metadata,
+      ...persistedVisualPreviewMetadata,
+    };
     final quality = readinessEvaluator.metadataFor(
       kind: resolved.kind,
       status: resolved.status,
@@ -207,17 +322,26 @@ class GeneratedArtifactWriter {
       previewRows: resolved.previewRows,
       count: resolved.sheetCount,
       byteSize: byteSize,
-      metadata: resolved.metadata,
+      metadata: resolvedMetadata,
+      contractFields: descriptor.contractFields,
+    );
+    final accessibility = accessibilityEvaluator.metadataFor(
+      kind: resolved.kind,
+      document: document,
+      previewRows: resolved.previewRows,
+      metadata: resolvedMetadata,
     );
     return {
-      ...resolved.metadata,
+      ...document.metadata,
+      ...resolvedMetadata,
       ..._documentStructureMetadata(document),
       ..._descriptorMetadata(
         descriptor: descriptor,
         route: route,
         kind: resolved.kind,
       ),
-      ..._artifactSpecializationMetadata(resolved.metadata),
+      ..._artifactSpecializationMetadata(resolvedMetadata),
+      ...accessibility,
       ...quality,
     };
   }
@@ -230,6 +354,8 @@ class GeneratedArtifactWriter {
       'artifactDiagramCount': document.diagrams.length,
       'artifactAppendixCount': document.appendices.length,
       'artifactSourceDataCount': document.sourceData.length,
+      'artifactCitationCount': document.citations.length,
+      'artifactHasSources': document.citations.isNotEmpty,
       if (document.exportMetadata.hasData)
         'artifactExportMetadata': {
           'requestedFormats': document.exportMetadata.requestedFormats,
@@ -284,6 +410,9 @@ class GeneratedArtifactWriter {
           .toList(growable: false),
       'artifactRouteLabel': route.label,
       'artifactContractLabel': route.contractLabel,
+      'artifactContractFields': descriptor.contractFields
+          .map((field) => field.label)
+          .toList(growable: false),
       'artifactRequestedKind': route.requestedKind?.name,
       'artifactProducedKind': kind.name,
     };
@@ -326,6 +455,7 @@ class GeneratedArtifactWriter {
       GeneratedArtifactKind.excel => 'Excel Workbook',
       GeneratedArtifactKind.csv => 'CSV Dataset',
       GeneratedArtifactKind.markdown => 'Markdown Document',
+      GeneratedArtifactKind.html => 'HTML Document',
       GeneratedArtifactKind.json => 'JSON Artifact',
       GeneratedArtifactKind.pdf => 'PDF Report',
       GeneratedArtifactKind.powerPoint => 'PowerPoint Deck',
@@ -336,12 +466,13 @@ class GeneratedArtifactWriter {
     };
   }
 
-  _ResolvedArtifact? _resolveOutput({
+  Future<_ResolvedArtifact?> _resolveOutput({
     required GeneratedArtifactKind requestedKind,
     required String prompt,
     required String content,
     required ArtifactDocument document,
-  }) {
+    WorkerCancellationToken? cancellationToken,
+  }) async {
     var documentForOutput = document;
     if (businessUseCaseBuilder.matches(prompt) &&
         (requestedKind == GeneratedArtifactKind.docx ||
@@ -410,13 +541,29 @@ class GeneratedArtifactWriter {
 
     if (requestedKind == GeneratedArtifactKind.powerPoint) {
       final slideCount = powerPointRenderer.slideCountFor(documentForOutput);
-      final bytes = powerPointRenderer.render(documentForOutput);
-      final inspection = powerPointInspector.inspect(bytes);
+      final bytes = await powerPointRenderer.renderInWorker(
+        documentForOutput,
+        cancellationToken: cancellationToken,
+      );
+      final inspectionMetadata = await powerPointInspector
+          .inspectMetadataInWorker(
+            bytes,
+            expectedSlideCount: slideCount,
+            cancellationToken: cancellationToken,
+          );
+      if (inspectionMetadata['pptxStructuralValid'] != true) {
+        throw StateError(
+          'Generated PowerPoint failed structural inspection: ${inspectionMetadata['pptxInspectionFailedChecks']}',
+        );
+      }
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
       final topologyBrief = networkTopologyBuilder.matches(prompt);
       final evidencePack = evidencePackBuilder.matches(prompt);
+      final visualPreview = powerPointVisualPreviewRenderer.renderDeck(
+        documentForOutput,
+      );
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.powerPoint,
         status: GeneratedArtifactStatus.ready,
@@ -438,20 +585,41 @@ class GeneratedArtifactWriter {
         metadata: {
           ...documentForOutput.metadata,
           ...powerPointRenderer.metadataFor(documentForOutput),
-          ...inspection.toMetadata(expectedSlideCount: slideCount),
+          ...inspectionMetadata,
+          ...visualPreview.metadata,
         },
+        visualPreviewBytes: visualPreview.bytes,
+        visualPreviewExtension: 'svg',
       );
     }
 
     if (requestedKind == GeneratedArtifactKind.docx) {
-      final bytes = docxRenderer.render(documentForOutput);
-      final inspection = docxInspector.inspect(bytes);
+      final bytes = await docxRenderer.renderInWorker(
+        documentForOutput,
+        cancellationToken: cancellationToken,
+      );
+      final inspectionMetadata = await docxInspector.inspectMetadataInWorker(
+        bytes,
+        cancellationToken: cancellationToken,
+      );
+      if (inspectionMetadata['docxStructuralValid'] != true) {
+        throw StateError(
+          'Generated DOCX failed structural inspection: ${inspectionMetadata['docxInspectionFailedChecks']}',
+        );
+      }
       final businessUseCase = businessUseCaseBuilder.matches(prompt);
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final evidencePack = evidencePackBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
       final topologyBrief = networkTopologyBuilder.matches(prompt);
+      final previewRows = docxRenderer.previewRowsFor(documentForOutput);
+      final visualPreview = artifactVisualPreviewRenderer.render(
+        kind: GeneratedArtifactKind.docx,
+        document: documentForOutput,
+        previewRows: previewRows,
+        unitCount: documentForOutput.sections.length,
+      );
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.docx,
         status: GeneratedArtifactStatus.ready,
@@ -470,26 +638,49 @@ class GeneratedArtifactWriter {
             : topologyBrief
             ? 'Created a topology report with inventory, validated links, capacity checks, failure-domain review, assumptions, and sources.'
             : 'Created a Word report with ${documentForOutput.sections.length} sections from the response structure.',
-        previewRows: docxRenderer.previewRowsFor(documentForOutput),
+        previewRows: previewRows,
         sheetCount: documentForOutput.sections.length,
         metadata: {
           ...documentForOutput.metadata,
           ...docxRenderer.metadataFor(documentForOutput),
-          ...inspection.toMetadata(),
+          ...inspectionMetadata,
+          ...visualPreview.metadata,
         },
+        visualPreviewBytes: visualPreview.bytes,
+        visualPreviewExtension: 'svg',
       );
     }
 
     if (requestedKind == GeneratedArtifactKind.pdf) {
-      final bytes = pdfRenderer.render(documentForOutput);
-      final inspection = pdfInspector.inspect(bytes);
-      final pageCount = inspection.pageCount > 0
-          ? inspection.pageCount
+      final bytes = await pdfRenderer.renderInWorker(
+        documentForOutput,
+        cancellationToken: cancellationToken,
+      );
+      final inspectionResult = await pdfInspector.inspectForArtifactInWorker(
+        bytes,
+        cancellationToken: cancellationToken,
+      );
+      final inspectedPageCount = inspectionResult['pageCount'] as int? ?? 0;
+      final inspectionMetadata = Map<String, Object?>.from(
+        inspectionResult['metadata'] as Map,
+      );
+      final pageCount = inspectedPageCount > 0
+          ? inspectedPageCount
           : _pdfPageCount(bytes);
       final architectureReview = architectureReviewBuilder.matches(prompt);
       final implementationPlan = implementationPlanBuilder.matches(prompt);
       final changeSummary = changeSummaryBuilder.matches(prompt);
       final topologyBrief = networkTopologyBuilder.matches(prompt);
+      final previewRows = pdfRenderer.previewRowsFor(
+        documentForOutput,
+        pageCount: pageCount,
+      );
+      final visualPreview = artifactVisualPreviewRenderer.render(
+        kind: GeneratedArtifactKind.pdf,
+        document: documentForOutput,
+        previewRows: previewRows,
+        unitCount: pageCount,
+      );
       return _ResolvedArtifact(
         kind: GeneratedArtifactKind.pdf,
         status: GeneratedArtifactStatus.ready,
@@ -504,16 +695,16 @@ class GeneratedArtifactWriter {
             : topologyBrief
             ? 'Created a topology PDF report with inventory, validated links, capacity checks, failure-domain review, assumptions, and sources.'
             : 'Created a PDF report with ${documentForOutput.sections.length} sections from the response structure.',
-        previewRows: pdfRenderer.previewRowsFor(
-          documentForOutput,
-          pageCount: pageCount,
-        ),
+        previewRows: previewRows,
         sheetCount: pageCount,
         metadata: {
           ...documentForOutput.metadata,
           ...pdfRenderer.metadataFor(documentForOutput),
-          ..._pdfInspectionMetadata(inspection),
+          ...inspectionMetadata,
+          ...visualPreview.metadata,
         },
+        visualPreviewBytes: visualPreview.bytes,
+        visualPreviewExtension: 'svg',
       );
     }
 
@@ -606,7 +797,37 @@ class GeneratedArtifactWriter {
         tables = _extractTables(content);
       }
       if (tables.isNotEmpty && requestedKind == GeneratedArtifactKind.excel) {
-        final workbook = _xlsxBytes(tables);
+        final workbookTables = tables
+            .take(_maximumWorkbookSheets)
+            .toList(growable: false);
+        final workbook = _xlsxBytes(
+          workbookTables,
+          template: artifactTemplateRegistry.fromDocument(documentForOutput),
+        );
+        final workbookInspectionMetadata = await workbookInspector
+            .inspectMetadataInWorker(
+              workbook,
+              cancellationToken: cancellationToken,
+            );
+        if (workbookInspectionMetadata['workbookStructuralValid'] != true) {
+          throw StateError(
+            'Generated workbook failed structural inspection: ${workbookInspectionMetadata['workbookInspectionFailedChecks']}',
+          );
+        }
+        final visualPreview = artifactVisualPreviewRenderer.render(
+          kind: GeneratedArtifactKind.excel,
+          document: documentForOutput,
+          previewRows: workbookTables.first.rows,
+          unitCount: workbookTables.length,
+          workbookSheets: workbookTables
+              .map(
+                (table) => ArtifactVisualPreviewSheet(
+                  name: table.name,
+                  rows: table.rows,
+                ),
+              )
+              .toList(growable: false),
+        );
         return _ResolvedArtifact(
           kind: GeneratedArtifactKind.excel,
           status: GeneratedArtifactStatus.ready,
@@ -618,12 +839,26 @@ class GeneratedArtifactWriter {
               ? 'Created a product comparison matrix with executive decision, hard gates, source confidence, migration suitability, lifecycle runway, implementation impact, and source sheets.'
               : sizingWorkbook
               ? 'Created a solution sizing workbook with executive summary, site distribution, PoE/closet power, WAN, licensing, risks, recommendations, validation, and source sheets.'
-              : tables.length == 1
+              : workbookTables.length == 1
               ? 'Created an Excel workbook with formatted headers and frozen first row.'
-              : 'Created an Excel workbook with ${tables.length} sheets, formatted headers, and frozen first rows.',
-          previewRows: tables.first.rows.take(6).toList(growable: false),
-          sheetCount: tables.length,
-          metadata: workbookMetadata,
+              : 'Created an Excel workbook with ${workbookTables.length} sheets, formatted headers, and frozen first rows.',
+          previewRows: workbookTables.first.rows
+              .take(6)
+              .toList(growable: false),
+          sheetCount: workbookTables.length,
+          visualPreviewBytes: visualPreview.bytes,
+          visualPreviewExtension: 'svg',
+          metadata: {
+            ...workbookMetadata,
+            ...workbookInspectionMetadata,
+            ...visualPreview.metadata,
+            'workbookInputSheetCount': tables.length,
+            'workbookPackagedSheetCount': workbookTables.length,
+            'workbookSheetLimit': _maximumWorkbookSheets,
+            'workbookSheetsTruncated': tables.length > workbookTables.length,
+            'workbookWrapTextEnabled': true,
+            'workbookRowHeightsAdjusted': true,
+          },
         );
       }
       if (tables.isNotEmpty) {
@@ -725,6 +960,21 @@ class GeneratedArtifactWriter {
       );
     }
 
+    if (requestedKind == GeneratedArtifactKind.html) {
+      final rendered = htmlRenderer.render(documentForOutput);
+      return _ResolvedArtifact(
+        kind: GeneratedArtifactKind.html,
+        status: GeneratedArtifactStatus.ready,
+        extension: 'html',
+        bytes: rendered.bytes,
+        summary:
+            'Created a semantic HTML document from the shared artifact composition.',
+        previewRows: documentForOutput.previewRows,
+        sheetCount: documentForOutput.sections.length,
+        metadata: rendered.metadata,
+      );
+    }
+
     if (requestedKind == GeneratedArtifactKind.markdown &&
         networkTopologyBuilder.matches(prompt)) {
       final topologyDocument = networkTopologyBuilder.build(
@@ -782,9 +1032,25 @@ class GeneratedArtifactWriter {
       kind: requestedKind,
       status: GeneratedArtifactStatus.ready,
       extension: 'md',
-      bytes: utf8.encode(content.trim()),
+      bytes: utf8.encode(_templatedMarkdown(documentForOutput, content)),
       summary: 'Created a Markdown artifact.',
+      metadata: documentForOutput.metadata,
     );
+  }
+
+  String _templatedMarkdown(ArtifactDocument document, String content) {
+    final template = artifactTemplateRegistry.fromDocument(document);
+    final body = content.trim();
+    return [
+      '<!-- CircuitCode template: ${template.id} v${template.version} -->',
+      '',
+      '**${template.logoText} · ${template.confidentialityLabel}**',
+      '',
+      body,
+      '',
+      '---',
+      template.footerText,
+    ].join('\n').trim();
   }
 
   String _topologyMermaidMarkdown({
@@ -943,16 +1209,21 @@ class GeneratedArtifactWriter {
     return escaped;
   }
 
-  Uint8List _xlsxBytes(List<_TableData> tables) {
-    final workbookTables = tables.take(48).toList(growable: false);
+  Uint8List _xlsxBytes(
+    List<_TableData> tables, {
+    required ArtifactTemplate template,
+  }) {
+    final workbookTables = tables
+        .take(_maximumWorkbookSheets)
+        .toList(growable: false);
     final files = <_ZipFileEntry>[
       _ZipFileEntry(
         '[Content_Types].xml',
         _utf8Bytes(_contentTypesXml(workbookTables.length)),
       ),
       _ZipFileEntry('_rels/.rels', _utf8Bytes(_rootRelsXml())),
-      _ZipFileEntry('docProps/app.xml', _utf8Bytes(_appXml())),
-      _ZipFileEntry('docProps/core.xml', _utf8Bytes(_coreXml())),
+      _ZipFileEntry('docProps/app.xml', _utf8Bytes(_appXml(template))),
+      _ZipFileEntry('docProps/core.xml', _utf8Bytes(_coreXml(template))),
       _ZipFileEntry(
         'xl/workbook.xml',
         _utf8Bytes(_workbookXml(workbookTables)),
@@ -961,7 +1232,7 @@ class GeneratedArtifactWriter {
         'xl/_rels/workbook.xml.rels',
         _utf8Bytes(_workbookRelsXml(workbookTables.length)),
       ),
-      _ZipFileEntry('xl/styles.xml', _utf8Bytes(_stylesXml())),
+      _ZipFileEntry('xl/styles.xml', _utf8Bytes(_stylesXml(template))),
       for (var i = 0; i < workbookTables.length; i++)
         _ZipFileEntry(
           'xl/worksheets/sheet${i + 1}.xml',
@@ -999,14 +1270,16 @@ class GeneratedArtifactWriter {
         '</Relationships>';
   }
 
-  String _appXml() {
+  String _appXml(ArtifactTemplate template) {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" '
         'xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
-        '<Application>CircuitCode</Application></Properties>';
+        '<Application>${_xmlText(template.logoText)}</Application>'
+        '<Company>${_xmlText(template.organizationName)}</Company>'
+        '</Properties>';
   }
 
-  String _coreXml() {
+  String _coreXml(ArtifactTemplate template) {
     final now = DateTime.now().toUtc().toIso8601String();
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" '
@@ -1049,14 +1322,14 @@ class GeneratedArtifactWriter {
     return buffer.toString();
   }
 
-  String _stylesXml() {
+  String _stylesXml(ArtifactTemplate template) {
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<fonts count="2"><font><sz val="11"/><name val="Aptos"/></font><font><b/><sz val="11"/><name val="Aptos"/></font></fonts>'
-        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE7EEF2"/><bgColor indexed="64"/></patternFill></fill></fills>'
+        '<fonts count="2"><font><sz val="11"/><name val="${_xmlAttr(template.fontFamily)}"/></font><font><b/><sz val="11"/><name val="${_xmlAttr(template.fontFamily)}"/></font></fonts>'
+        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF${template.primaryColor}"/><bgColor indexed="64"/></patternFill></fill></fills>'
         '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
         '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'
+        '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>'
         '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
         '</styleSheet>';
   }
@@ -1084,7 +1357,11 @@ class GeneratedArtifactWriter {
           ),
         );
       }
-      rows.add('<row r="${rowIndex + 1}">${cells.join()}</row>');
+      final lineCount = _requiredRowLineCount(table, row);
+      final height = lineCount > 1
+          ? ' ht="${ArtifactWorkbookLayout.emittedRowHeightPoints(lineCount).toStringAsFixed(1)}" customHeight="1"'
+          : '';
+      rows.add('<row r="${rowIndex + 1}"$height>${cells.join()}</row>');
     }
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
@@ -1102,13 +1379,26 @@ class GeneratedArtifactWriter {
     required bool header,
   }) {
     final ref = '${_columnName(columnIndex)}${rowIndex + 1}';
-    final style = header ? ' s="1"' : '';
+    final styleIndex = header
+        ? _requiresWrap(value)
+              ? 3
+              : 1
+        : _requiresWrap(value)
+        ? 2
+        : null;
+    final style = styleIndex == null ? '' : ' s="$styleIndex"';
     final numeric = _numericValue(value);
     if (!header && numeric != null) {
       return '<c r="$ref"$style><v>$numeric</v></c>';
     }
     return '<c r="$ref" t="inlineStr"$style><is><t>${_xmlText(value)}</t></is></c>';
   }
+
+  bool _requiresWrap(String value) =>
+      ArtifactWorkbookLayout.requiresWrap(value);
+
+  int _requiredRowLineCount(_TableData table, List<String> row) =>
+      ArtifactWorkbookLayout.requiredRowLineCount(table.rows, row);
 
   String? _numericValue(String value) {
     final normalized = value.trim().replaceAll(',', '');
@@ -1124,15 +1414,8 @@ class GeneratedArtifactWriter {
     return double.tryParse(normalized)?.toString();
   }
 
-  double _columnWidth(_TableData table, int columnIndex) {
-    var width = 10;
-    for (final row in table.rows.take(80)) {
-      if (columnIndex >= row.length) continue;
-      final length = row[columnIndex].length;
-      if (length > width) width = length;
-    }
-    return width.clamp(10, 42).toDouble() + 2;
-  }
+  double _columnWidth(_TableData table, int columnIndex) =>
+      ArtifactWorkbookLayout.columnWidth(table.rows, columnIndex);
 
   String _columnName(int zeroBasedIndex) {
     var index = zeroBasedIndex;
@@ -1191,81 +1474,116 @@ class GeneratedArtifactWriter {
     return base.length > 48 ? base.substring(0, 48) : base;
   }
 
+  String _versionedBaseName(String baseName, int artifactVersion) {
+    final normalizedVersion = artifactVersion < 1 ? 1 : artifactVersion;
+    return normalizedVersion == 1 ? baseName : '$baseName-v$normalizedVersion';
+  }
+
+  Future<_PersistedArtifactOutput> _persistArtifactOutput({
+    required String artifactFilePath,
+    required _ResolvedArtifact resolved,
+    required ArtifactDocument document,
+  }) async {
+    // Publish immutable review evidence before the customer file. A failed
+    // file commit can leave only an unreferenced sidecar; it can never expose
+    // a new artifact that lacks its corresponding review snapshot.
+    final visualPreview = await _writeVisualPreview(
+      artifactFilePath,
+      resolved,
+      document: document,
+    );
+    try {
+      await _writeBytesAtomically(File(artifactFilePath), resolved.bytes);
+    } catch (_) {
+      if (visualPreview.createdByThisWrite &&
+          await File(visualPreview.path).exists()) {
+        await File(visualPreview.path).delete();
+      }
+      rethrow;
+    }
+    return _PersistedArtifactOutput(
+      byteSize: resolved.bytes.length,
+      visualPreview: visualPreview,
+    );
+  }
+
+  Future<_PersistedVisualPreview> _writeVisualPreview(
+    String artifactFilePath,
+    _ResolvedArtifact resolved, {
+    required ArtifactDocument document,
+  }) async {
+    final generatedPreview =
+        resolved.visualPreviewBytes == null ||
+            resolved.visualPreviewExtension == null ||
+            resolved.visualPreviewExtension!.trim().isEmpty
+        ? artifactVisualPreviewRenderer.render(
+            kind: resolved.kind,
+            document: document,
+            previewRows: resolved.previewRows,
+            unitCount: resolved.sheetCount > 0
+                ? resolved.sheetCount
+                : document.sections.length,
+          )
+        : null;
+    final bytes = resolved.visualPreviewBytes ?? generatedPreview!.bytes;
+    final extension = resolved.visualPreviewExtension ?? 'svg';
+    final digest = sha256.convert(bytes).toString();
+    // Snapshot paths are content-addressed, so regeneration cannot replace
+    // the review evidence recorded for a previous artifact version.
+    final preview = File(
+      '$artifactFilePath.preview-${digest.substring(0, 16)}.$extension',
+    );
+    var createdByThisWrite = false;
+    if (!await preview.exists()) {
+      await _writeBytesAtomically(preview, bytes);
+      createdByThisWrite = true;
+    }
+    return _PersistedVisualPreview(
+      path: preview.path,
+      extension: extension,
+      sha256: digest,
+      byteSize: bytes.length,
+      createdByThisWrite: createdByThisWrite,
+      metadata: generatedPreview?.metadata ?? const {},
+    );
+  }
+
+  Future<void> _writeBytesAtomically(File target, List<int> bytes) async {
+    if (!await target.parent.exists()) {
+      await target.parent.create(recursive: true);
+    }
+    final staged = File(
+      '${target.path}.staging-${DateTime.now().microsecondsSinceEpoch}-$pid-${_stagedFileSequence++}',
+    );
+    try {
+      await staged.writeAsBytes(bytes, flush: true);
+      // Both paths are siblings, so macOS replaces the file in one rename
+      // rather than exposing a partial customer artifact or preview.
+      await staged.rename(target.path);
+    } finally {
+      if (await staged.exists()) await staged.delete();
+    }
+  }
+
+  ArtifactGenerationRecipe _generationRecipe({
+    required String prompt,
+    required String content,
+    required ArtifactTemplate template,
+  }) {
+    final composition = '$prompt\n\n$content';
+    return ArtifactGenerationRecipe(
+      prompt: prompt,
+      sourceContent: content,
+      compositionHash: sha256.convert(utf8.encode(composition)).toString(),
+      templateId: template.id,
+      templateVersion: template.version,
+    );
+  }
+
   int _pdfPageCount(List<int> bytes) {
     final text = latin1.decode(bytes, allowInvalid: true);
     final count = RegExp(r'/Type /Page\b').allMatches(text).length;
     return count <= 0 ? 1 : count;
-  }
-
-  Map<String, Object?> _pdfInspectionMetadata(
-    PdfArtifactInspection inspection,
-  ) {
-    final failedChecks = <String>[
-      if (!inspection.hasPdfHeader) 'PDF header missing',
-      if (!inspection.hasCatalog) 'Catalog missing',
-      if (!inspection.hasXref) 'xref missing',
-      if (!inspection.hasTrailer) 'Trailer/startxref missing',
-      if (!inspection.hasPageCountConsistency) 'Page count mismatch',
-      if (!inspection.hasResolvableBookmarkDestinations)
-        'Bookmark destinations do not resolve',
-      if (!inspection.hasExpectedReportChrome)
-        'Expected report chrome incomplete',
-      if (!inspection.hasRenderSafeTextFrame)
-        'Text frame is outside safe bounds',
-    ];
-    return {
-      'pdfInspectionVersion': '1.0',
-      'pdfInspectionStatus': inspection.isStructurallyValid
-          ? (inspection.hasExpectedReportChrome
-                ? 'Verified'
-                : 'Structurally valid - review chrome')
-          : 'Failed',
-      'pdfStructuralValid': inspection.isStructurallyValid,
-      'pdfExpectedReportChrome': inspection.hasExpectedReportChrome,
-      'pdfInspectionFailedChecks': failedChecks,
-      'pdfInspectionFailedCheckCount': failedChecks.length,
-      'pdfParsedTitle': inspection.title,
-      'pdfParsedPageCount': inspection.pageCount,
-      'pdfObjectCount': inspection.objectCount,
-      'pdfHasHeader': inspection.hasPdfHeader,
-      'pdfHasCatalog': inspection.hasCatalog,
-      'pdfHasXref': inspection.hasXref,
-      'pdfHasTrailer': inspection.hasTrailer,
-      'pdfHasOutlineTree': inspection.hasOutlineTree,
-      'pdfHasReportOverviewBookmark': inspection.hasReportOverviewBookmark,
-      'pdfHasLeadDecisionBookmark': inspection.hasLeadDecisionBookmark,
-      'pdfHasExecutiveDecisionBookmark':
-          inspection.hasExecutiveDecisionBookmark,
-      'pdfHasValidationBookmark': inspection.hasValidationBookmark,
-      'pdfHasResolvableBookmarkDestinations':
-          inspection.hasResolvableBookmarkDestinations,
-      'pdfHasPageCountConsistency': inspection.hasPageCountConsistency,
-      'pdfHasRenderSafeTextFrame': inspection.hasRenderSafeTextFrame,
-      'pdfHasCircuitHeader': inspection.hasCircuitHeader,
-      'pdfHasCircuitFooter': inspection.hasCircuitFooter,
-      'pdfHasPageNumberFooter': inspection.hasPageNumberFooter,
-      'pdfHasLeadDecisionCallout': inspection.hasLeadDecisionCallout,
-      'pdfHasExecutiveDecisionBrief': inspection.hasExecutiveDecisionBrief,
-      'pdfHasRecommendationSummary': inspection.hasRecommendationSummary,
-      'pdfHasRiskRegister': inspection.hasRiskRegister,
-      'pdfHasNextStepActionPlan': inspection.hasNextStepActionPlan,
-      'pdfHasStakeholderReadout': inspection.hasStakeholderReadout,
-      'pdfHasEvidenceConfidenceMatrix': inspection.hasEvidenceConfidenceMatrix,
-      'pdfHasApprovalGates': inspection.hasApprovalGates,
-      'pdfHasValidationChecklist': inspection.hasValidationChecklist,
-      'pdfHasCustomerHandoffScorecard': inspection.hasCustomerHandoffScorecard,
-      'pdfHasCustomerHandoffReadinessMatrix':
-          inspection.hasCustomerHandoffReadinessMatrix,
-      'pdfHasDecisionLog': inspection.hasDecisionLog,
-      'pdfHasDecisionSignOff': inspection.hasDecisionSignOff,
-      'pdfHasExternalHandoffManifest':
-          inspection.hasVisibleExternalHandoffManifest &&
-          inspection.hasExternalHandoffManifest,
-      'pdfHasCustomQualityInfo': inspection.hasCustomQualityInfo,
-      'pdfHasVisualVerificationManifest':
-          inspection.hasVisualVerificationManifest,
-      'pdfHasExplicitTableGeometry': inspection.hasExplicitTableGeometry,
-    };
   }
 }
 
@@ -1278,6 +1596,8 @@ class _ResolvedArtifact {
   final List<List<String>> previewRows;
   final int sheetCount;
   final Map<String, Object?> metadata;
+  final List<int>? visualPreviewBytes;
+  final String? visualPreviewExtension;
 
   const _ResolvedArtifact({
     required this.kind,
@@ -1288,6 +1608,36 @@ class _ResolvedArtifact {
     this.previewRows = const [],
     this.sheetCount = 0,
     this.metadata = const {},
+    this.visualPreviewBytes,
+    this.visualPreviewExtension,
+  });
+}
+
+class _PersistedVisualPreview {
+  final String path;
+  final String extension;
+  final String sha256;
+  final int byteSize;
+  final bool createdByThisWrite;
+  final Map<String, Object?> metadata;
+
+  const _PersistedVisualPreview({
+    required this.path,
+    required this.extension,
+    required this.sha256,
+    required this.byteSize,
+    required this.createdByThisWrite,
+    this.metadata = const {},
+  });
+}
+
+class _PersistedArtifactOutput {
+  final int byteSize;
+  final _PersistedVisualPreview visualPreview;
+
+  const _PersistedArtifactOutput({
+    required this.byteSize,
+    required this.visualPreview,
   });
 }
 

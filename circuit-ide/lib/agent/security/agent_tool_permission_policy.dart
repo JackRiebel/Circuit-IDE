@@ -3,13 +3,34 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 
 import '../../models/agent_tool_permission.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/turn_intent.dart';
 import 'command_sanitizer.dart';
 
+// ADR-0003: provider output never bypasses local tool policy enforcement.
 class AgentToolPermissionPolicy {
+  /// Inventory of every first-party operation that can reach the tool
+  /// dispatcher. Adding a registry tool without adding it here fails the
+  /// boundary test rather than silently inheriting an ambiguous decision.
+  static final registeredToolNames = Set<String>.unmodifiable({
+    ..._readOnlyTools,
+    'write_file',
+    'edit_file',
+    'propose_patch',
+    'apply_patch_set',
+    'run_command',
+    'delegate_subagent',
+    'git_branch',
+    ..._gitMutationTools,
+    ..._networkTools,
+    'write_artifact',
+  });
+
   final String workingDir;
   final ToolPermissionRequest request;
+  final WorkspacePermissionDisposition networkDisposition;
+  final List<WorkspaceNetworkRule> networkRules;
 
   const AgentToolPermissionPolicy({
     required this.workingDir,
@@ -17,16 +38,35 @@ class AgentToolPermissionPolicy {
       intent: TurnIntent.ask,
       phase: ToolPermissionPhase.inspect,
     ),
+    this.networkDisposition = WorkspacePermissionDisposition.review,
+    this.networkRules = const [],
   });
 
   ToolPermissionDecision evaluate(ToolCallInfo toolCall) {
     final name = toolCall.name;
+    if (_looksLikeComputerUseTool(name)) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.computerUseDisabled,
+        message:
+            'Computer-use tools are disabled. Studio does not expose desktop-control actions.',
+      );
+    }
+    if (name == 'write_artifact') return _artifactOutputDecision(toolCall);
     final intentContract = IntentContract.forIntent(request.intent);
     if (!intentContract.mayExposeTools) {
       return const ToolPermissionDecision(
         verdict: ToolPermissionVerdict.deny,
         reason: ToolPermissionReason.unknownTool,
         message: 'Tools are not available for this conversational turn.',
+      );
+    }
+    if (name == 'delegate_subagent') {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.ask,
+        reason: ToolPermissionReason.delegationRequiresReview,
+        message:
+            'Delegating bounded context to a subagent requires review before another provider request starts.',
       );
     }
     if (_githubMutationTools.contains(name)) {
@@ -82,6 +122,14 @@ class AgentToolPermissionPolicy {
       final domain = request.networkDomain ?? _networkDomain(toolCall);
       final blockedTarget = _blockedNetworkDecision(accessKind, domain);
       if (blockedTarget != null) return blockedTarget;
+      final ruleDecision = _networkRuleDecision(
+        domain,
+        toolCall,
+        _networkGrantKey(name, accessKind, domain, toolCall: toolCall),
+      );
+      if (ruleDecision != null) return ruleDecision;
+      final defaultDecision = _defaultNetworkDecision(domain);
+      if (defaultDecision != null) return defaultDecision;
       final granted = _grantDecision(
         toolCall,
         'Network tool approved for this turn (${_networkDescription(accessKind, domain)}).',
@@ -148,7 +196,7 @@ class AgentToolPermissionPolicy {
       final granted = _grantDecision(
         toolCall,
         'Git mutation approved for this turn.',
-        _toolGrantKey(name),
+        _approvalGrantKey(toolCall),
       );
       if (granted != null) return granted;
       return const ToolPermissionDecision(
@@ -164,8 +212,61 @@ class AgentToolPermissionPolicy {
     );
   }
 
+  static bool hasRegisteredRoute(String toolName) {
+    return !_looksLikeComputerUseTool(toolName) &&
+        (registeredToolNames.contains(toolName) || toolName.startsWith('mcp_'));
+  }
+
+  static bool _looksLikeComputerUseTool(String name) {
+    // Tool names come from remote providers and MCP servers, so underscore
+    // casing is not a trustworthy boundary. Normalize camelCase, dotted, and
+    // dashed aliases before applying the fail-closed desktop-control deny.
+    // This runs before MCP risk metadata, preventing a connector from
+    // classifying a screen or input action as "read-only" to reach a generic
+    // route.
+    final normalized = name
+        .replaceAllMapped(
+          RegExp(r'([a-z0-9])([A-Z])'),
+          (match) => '${match.group(1)}_${match.group(2)}',
+        )
+        .replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')
+        .toLowerCase();
+    return RegExp(
+      r'(^|_)(computer|desktop|screen|screenshot|mouse|keyboard|accessibility|cursor|pointer|click|double_click|drag|scroll|key_press|press_key|type|type_text|type_input|input_text)(_|$)',
+    ).hasMatch(normalized);
+  }
+
   String approvalGrantKeyFor(ToolCallInfo toolCall) {
     return _approvalGrantKey(toolCall);
+  }
+
+  ToolPermissionDecision _artifactOutputDecision(ToolCallInfo toolCall) {
+    if (!request.allowArtifactOutput) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.writeRequiresReview,
+        message:
+            'Artifact output is only available after the user explicitly requests a generated file.',
+      );
+    }
+    final rawPath = toolCall.arguments['path'] as String? ?? '';
+    final normalized = p.normalize(_sanitizePathInput(rawPath));
+    if (normalized != 'outputs' && !normalized.startsWith('outputs/')) {
+      return const ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.pathOutsideWorkspace,
+        message:
+            'Generated artifacts may only be written inside the workspace outputs directory.',
+      );
+    }
+    final pathDecision = _pathDecisionForRawPath(normalized);
+    if (pathDecision != null) return pathDecision;
+    return const ToolPermissionDecision(
+      verdict: ToolPermissionVerdict.allow,
+      reason: ToolPermissionReason.artifactOutputApproved,
+      message:
+          'User-requested artifact output is limited to the workspace outputs directory.',
+    );
   }
 
   ToolPermissionDecision _writeDecision(ToolCallInfo toolCall) {
@@ -201,7 +302,7 @@ class AgentToolPermissionPolicy {
     final granted = _grantDecision(
       toolCall,
       'File write approved for this turn.',
-      _toolGrantKey(toolCall.name),
+      _approvalGrantKey(toolCall),
     );
     if (granted != null) return granted;
     return const ToolPermissionDecision(
@@ -280,6 +381,16 @@ class AgentToolPermissionPolicy {
       final domain = request.networkDomain ?? _networkDomainFromText(command);
       final blockedTarget = _blockedNetworkDecision(accessKind, domain);
       if (blockedTarget != null) return blockedTarget;
+      final grantKey = _commandGrantKey(
+        category,
+        accessKind: accessKind,
+        domain: domain,
+        command: command,
+      );
+      final ruleDecision = _networkRuleDecision(domain, toolCall, grantKey);
+      if (ruleDecision != null) return ruleDecision;
+      final defaultDecision = _defaultNetworkDecision(domain);
+      if (defaultDecision != null) return defaultDecision;
       final granted = _grantDecision(
         toolCall,
         'Network shell command approved for this turn (${_networkDescription(accessKind, domain)}).',
@@ -461,7 +572,7 @@ class AgentToolPermissionPolicy {
     final granted = _grantDecision(
       toolCall,
       'Branch mutation approved for this turn.',
-      _gitBranchGrantKey(action),
+      _approvalGrantKey(toolCall),
     );
     if (granted != null) return granted;
     return const ToolPermissionDecision(
@@ -878,6 +989,115 @@ class AgentToolPermissionPolicy {
     );
   }
 
+  ToolPermissionDecision? _networkRuleDecision(
+    String? domain,
+    ToolCallInfo toolCall,
+    String grantKey,
+  ) {
+    final normalized = domain?.trim().toLowerCase();
+    if (normalized == null || normalized.isEmpty) return null;
+    final matches = networkRules
+        .where((candidate) {
+          final pattern = WorkspaceNetworkRule.normalizePublicDomain(
+            candidate.domain,
+          );
+          if (pattern == null) return false;
+          return pattern == normalized ||
+              (pattern.startsWith('*.') &&
+                  normalized.endsWith(pattern.substring(1)) &&
+                  normalized.length > pattern.length - 1);
+        })
+        .toList(growable: false);
+    final rule =
+        matches
+            .where(
+              (candidate) =>
+                  candidate.disposition == WorkspaceNetworkRuleDisposition.deny,
+            )
+            .firstOrNull ??
+        (matches.isEmpty
+            ? null
+            : (matches..sort(
+                    (left, right) =>
+                        right.domain.length.compareTo(left.domain.length),
+                  ))
+                  .first);
+    if (rule == null) return null;
+    if (rule.disposition == WorkspaceNetworkRuleDisposition.deny) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message: 'Network policy denies $normalized.',
+      );
+    }
+    final method = request.networkMethod.trim().toUpperCase();
+    if (!rule.methods.contains(method)) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message: 'Network policy denies $method for $normalized.',
+      );
+    }
+    if (request.networkUpload && !rule.allowUpload) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message: 'Network policy denies uploads to $normalized.',
+      );
+    }
+    if (request.networkFollowsRedirect && !rule.allowRedirects) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message: 'Network policy denies redirects for $normalized.',
+      );
+    }
+    if (request.networkUsesCredentials && !rule.allowCredentials) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message: 'Network policy denies credential use for $normalized.',
+      );
+    }
+    if (rule.disposition == WorkspaceNetworkRuleDisposition.allow) {
+      return ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.allow,
+        reason: ToolPermissionReason.approvalGranted,
+        message: 'Network policy allows $method for $normalized.',
+      );
+    }
+    final granted = _grantDecision(
+      toolCall,
+      'Network policy approval granted for $method to $normalized.',
+      grantKey,
+    );
+    if (granted != null) return granted;
+    return ToolPermissionDecision(
+      verdict: ToolPermissionVerdict.ask,
+      reason: ToolPermissionReason.networkRequiresReview,
+      message: 'Network policy requires review for $method to $normalized.',
+    );
+  }
+
+  ToolPermissionDecision? _defaultNetworkDecision(String? domain) {
+    return switch (networkDisposition) {
+      WorkspacePermissionDisposition.block => ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.deny,
+        reason: ToolPermissionReason.networkRequiresReview,
+        message:
+            'Project network policy blocks public network access${domain == null ? '' : ' to $domain'}.',
+      ),
+      WorkspacePermissionDisposition.allow => ToolPermissionDecision(
+        verdict: ToolPermissionVerdict.allow,
+        reason: ToolPermissionReason.approvalGranted,
+        message:
+            'Project network policy allows public network access${domain == null ? '' : ' to $domain'}.',
+      ),
+      WorkspacePermissionDisposition.review ||
+      WorkspacePermissionDisposition.warn => null,
+    };
+  }
+
   ToolPermissionDecision? _grantDecision(
     ToolCallInfo toolCall,
     String message,
@@ -901,7 +1121,8 @@ class AgentToolPermissionPolicy {
   String onceApprovalGrantKeyFor(ToolCallInfo toolCall) =>
       _onceGrantKey(toolCall);
 
-  String _onceGrantKey(ToolCallInfo toolCall) => 'once:${toolCall.id}';
+  String _onceGrantKey(ToolCallInfo toolCall) =>
+      'once:${toolCall.id}:${_approvalGrantKey(toolCall)}';
 
   String _approvalGrantKey(ToolCallInfo toolCall) {
     final name = toolCall.name;
@@ -932,9 +1153,11 @@ class AgentToolPermissionPolicy {
     if (name == 'git_branch') {
       final action = (toolCall.arguments['action'] as String? ?? 'list')
           .toLowerCase();
-      return _gitBranchGrantKey(action);
+      return '${_gitBranchGrantKey(action)}:${_toolArgumentsFingerprint(toolCall)}';
     }
-    if (_gitMutationTools.contains(name)) return _toolGrantKey(name);
+    if (_gitMutationTools.contains(name)) {
+      return '${_toolGrantKey(name)}:${_toolArgumentsFingerprint(toolCall)}';
+    }
     if (name.startsWith('mcp_')) {
       final mcpName = request.mcpToolName ?? name;
       final mcpRisk = request.mcpToolRisk == McpToolRisk.unknown
@@ -942,7 +1165,7 @@ class AgentToolPermissionPolicy {
           : request.mcpToolRisk;
       return _mcpGrantKey(mcpName, mcpRisk);
     }
-    return _toolGrantKey(name);
+    return '${_toolGrantKey(name)}:${_toolArgumentsFingerprint(toolCall)}';
   }
 
   String _toolGrantKey(String toolName) => 'tool:${toolName.toLowerCase()}';
@@ -980,9 +1203,7 @@ class AgentToolPermissionPolicy {
     ToolCallInfo? toolCall,
   }) {
     final normalizedDomain = domain?.trim().toLowerCase();
-    final fingerprint = normalizedDomain == null || normalizedDomain.isEmpty
-        ? _toolArgumentsFingerprint(toolCall)
-        : null;
+    final fingerprint = _toolArgumentsFingerprint(toolCall);
     return [
       'network',
       toolName.toLowerCase(),

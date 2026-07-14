@@ -9,11 +9,13 @@ import 'package:circuit_ide/enums/event_type.dart';
 import 'package:circuit_ide/models/accepted_plan_context.dart';
 import 'package:circuit_ide/models/agent_preflight.dart';
 import 'package:circuit_ide/models/agent_request.dart';
-import 'package:circuit_ide/models/agent_run.dart';
+import 'package:circuit_ide/models/agent_workspace.dart';
 import 'package:circuit_ide/models/chat_message.dart';
 import 'package:circuit_ide/models/confirmation_request.dart';
+import 'package:circuit_ide/models/context_attachment.dart';
 import 'package:circuit_ide/models/provider_lifecycle_event.dart';
 import 'package:circuit_ide/models/reviewed_edit.dart';
+import 'package:circuit_ide/models/settings_model.dart';
 import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/models/studio_request_lifecycle.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
@@ -57,6 +59,282 @@ void main() {
       expect(
         result.issues.map((issue) => issue.recoveryAction),
         contains(AgentPreflightRecoveryAction.reconnect),
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime blocks image and tool requests for a text-only model',
+    () async {
+      final container = ProviderContainer(
+        overrides: [
+          settingsProvider.overrideWith(_TextOnlySettingsNotifier.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      final image = ContextAttachment(
+        id: 'unsupported-image',
+        type: ContextAttachmentType.image,
+        label: 'screen.png',
+        path: '/tmp/screen.png',
+        createdAt: DateTime(2026),
+      );
+
+      final imagePreflight = await container
+          .read(agentTurnRuntimeProvider.notifier)
+          .preflightMessage('Review this screenshot.', [image]);
+      final toolsPreflight = await container
+          .read(agentTurnRuntimeProvider.notifier)
+          .preflightMessage(
+            'Inspect this project.',
+            const [],
+            requiresTools: true,
+          );
+      container.read(settingsProvider.notifier).setThinkingMode(true);
+
+      expect(
+        imagePreflight.issues.map((issue) => issue.message),
+        contains(
+          contains(
+            'The selected model does not advertise image input. Remove the image',
+          ),
+        ),
+      );
+      expect(container.read(settingsProvider).thinkingMode, isFalse);
+      expect(
+        toolsPreflight.issues.map((issue) => issue.message),
+        contains(
+          'The selected model does not advertise tool calling. Choose a tools-capable model or use Chat mode.',
+        ),
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime carries project network policy into typed connector requests',
+    () async {
+      final provider = _RequestCapturingProvider([
+        const [
+          ChatChunk(content: 'Policy received.'),
+          ChatChunk(finishReason: 'stop', isDone: true),
+        ],
+      ]);
+      final harness = await _RuntimeHarness.create(
+        provider: provider,
+        networkDisposition: WorkspacePermissionDisposition.block,
+        networkRules: const [
+          WorkspaceNetworkRule(
+            domain: 'chat-ai.cisco.com',
+            disposition: WorkspaceNetworkRuleDisposition.allow,
+            methods: ['POST'],
+            allowUpload: true,
+            allowCredentials: true,
+          ),
+        ],
+      );
+      addTearDown(harness.dispose);
+      final thread = harness.registerTurn(
+        requestId: 'connector-policy-runtime',
+        prompt: 'Confirm the policy snapshot.',
+        intent: TurnIntent.chat,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: 'connector-policy-runtime',
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Confirm the policy snapshot.',
+            attachments: const [],
+            modelHistory: const <ChatMessage>[],
+            toolMode: AgentToolMode.chat,
+            intent: TurnIntent.chat,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Confirm the policy snapshot.',
+            finishTask: false,
+          );
+
+      expect(provider.requests, hasLength(1));
+      final policy = provider.requests.single.connectorNetworkPolicy;
+      expect(policy.networkDisposition, WorkspacePermissionDisposition.block);
+      expect(policy.networkRules, hasLength(1));
+      expect(policy.networkRules.single.domain, 'chat-ai.cisco.com');
+      expect(
+        policy.networkRules.single.disposition,
+        WorkspaceNetworkRuleDisposition.allow,
+      );
+      expect(
+        () => policy.networkRules.add(
+          const WorkspaceNetworkRule(domain: 'unexpected.example'),
+        ),
+        throwsUnsupportedError,
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime waits for connector network review before provider transport',
+    () async {
+      final provider = _ReviewingRequestProvider([
+        const [
+          ChatChunk(content: 'Connector review approved.'),
+          ChatChunk(finishReason: 'stop', isDone: true),
+        ],
+      ]);
+      final harness = await _RuntimeHarness.create(
+        provider: provider,
+        networkDisposition: WorkspacePermissionDisposition.block,
+        networkRules: const [
+          WorkspaceNetworkRule(
+            domain: 'connector.example.com',
+            disposition: WorkspaceNetworkRuleDisposition.ask,
+            methods: ['POST'],
+            allowUpload: true,
+            allowCredentials: true,
+          ),
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'connector-review-runtime';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Confirm the connector review.',
+        intent: TurnIntent.chat,
+      );
+
+      final runFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Confirm the connector review.',
+            attachments: const [],
+            modelHistory: const <ChatMessage>[],
+            toolMode: AgentToolMode.chat,
+            intent: TurnIntent.chat,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Confirm the connector review.',
+            finishTask: false,
+          );
+
+      const approvalId = '$requestId:connector-network';
+      await _waitUntil(() {
+        final turn = harness.thread(thread.id).turns.single;
+        return turn.events.any(
+          (event) =>
+              event.type == StudioTurnEventType.approvalRequest &&
+              event.approvalId == approvalId &&
+              event.approvalState == ApprovalRequestState.pending,
+        );
+      });
+      final waitingTurn = harness.thread(thread.id).turns.single;
+      expect(
+        harness.thread(thread.id).status,
+        StudioThreadStatus.waitingForApproval,
+      );
+      expect(provider.requests, isEmpty);
+      final approval = waitingTurn.events.singleWhere(
+        (event) => event.approvalId == approvalId,
+      );
+      expect(approval.toolName, 'connector_network');
+      expect(approval.approvalPreview, contains('Circuit model connector'));
+      expect(
+        approval.approvalWarnings,
+        contains(contains('scoped to this turn')),
+      );
+
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .approveOnce(approvalId);
+      await runFuture;
+
+      expect(provider.requests, hasLength(1));
+      expect(
+        provider
+            .requests
+            .single
+            .connectorNetworkPolicy
+            .approvedConnectorOrigins,
+        contains('https://connector.example.com'),
+      );
+      expect(harness.thread(thread.id).status, StudioThreadStatus.done);
+      expect(
+        harness.thread(thread.id).turns.single.status,
+        StudioTurnStatus.completed,
+      );
+    },
+  );
+
+  test(
+    'AgentTurnRuntime rejects a declined connector network review before transport',
+    () async {
+      final provider = _ReviewingRequestProvider(const []);
+      final harness = await _RuntimeHarness.create(
+        provider: provider,
+        networkDisposition: WorkspacePermissionDisposition.block,
+        networkRules: const [
+          WorkspaceNetworkRule(
+            domain: 'connector.example.com',
+            disposition: WorkspaceNetworkRuleDisposition.ask,
+            methods: ['POST'],
+            allowUpload: true,
+            allowCredentials: true,
+          ),
+        ],
+      );
+      addTearDown(harness.dispose);
+      const requestId = 'connector-review-rejected';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Reject the connector review.',
+        intent: TurnIntent.chat,
+      );
+      final runFuture = harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Reject the connector review.',
+            attachments: const [],
+            modelHistory: const <ChatMessage>[],
+            toolMode: AgentToolMode.chat,
+            intent: TurnIntent.chat,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Reject the connector review.',
+            finishTask: false,
+          );
+
+      const approvalId = '$requestId:connector-network';
+      await _waitUntil(() {
+        return harness
+            .thread(thread.id)
+            .turns
+            .single
+            .events
+            .any(
+              (event) =>
+                  event.type == StudioTurnEventType.approvalRequest &&
+                  event.approvalId == approvalId &&
+                  event.approvalState == ApprovalRequestState.pending,
+            );
+      });
+      harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .rejectApproval(approvalId);
+      await runFuture;
+
+      expect(provider.requests, isEmpty);
+      final rejectedTurn = harness.thread(thread.id).turns.single;
+      expect(rejectedTurn.status, StudioTurnStatus.failed);
+      expect(rejectedTurn.lastError, contains('approval was declined'));
+      expect(
+        rejectedTurn.events
+            .singleWhere((event) => event.approvalId == approvalId)
+            .approvalState,
+        ApprovalRequestState.rejected,
       );
     },
   );
@@ -1750,6 +2028,90 @@ void main() {
   );
 
   test(
+    'AgentTurnRuntime deduplicates repeated equivalent tool calls before execution',
+    () async {
+      final harness = await _RuntimeHarness.create(
+        rounds: const [
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'repeat-one',
+              toolCallName: 'read_file',
+              toolCallArguments: '{"path":"repeat.txt"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'repeat-two',
+              toolCallName: 'read_file',
+              toolCallArguments: '{"path":"repeat.txt"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+          [
+            ChatChunk(
+              toolCallIndex: 0,
+              toolCallId: 'repeat-three',
+              toolCallName: 'read_file',
+              toolCallArguments: '{"path":"repeat.txt"}',
+            ),
+            ChatChunk(finishReason: 'tool_calls', isDone: true),
+          ],
+        ],
+      );
+      addTearDown(harness.dispose);
+      await File(
+        p.join(harness.root.path, 'repeat.txt'),
+      ).writeAsString('one\n');
+
+      const requestId = 'repeated-tool-loop-stop';
+      final thread = harness.registerTurn(
+        requestId: requestId,
+        prompt: 'Fix the vague issue',
+        intent: TurnIntent.code,
+      );
+
+      await harness.container
+          .read(agentTurnRuntimeProvider.notifier)
+          .startTurn(
+            requestId: requestId,
+            threadId: thread.id,
+            taskId: null,
+            outboundText: 'Fix the vague issue',
+            attachments: const [],
+            modelHistory: const <ChatMessage>[],
+            toolMode: AgentToolMode.fix,
+            intent: TurnIntent.code,
+            model: 'gpt-5-nano',
+            retryPrompt: 'Fix the vague issue',
+            finishTask: false,
+          );
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      final turn = harness
+          .thread(thread.id)
+          .turns
+          .singleWhere((candidate) => candidate.requestId == requestId);
+      expect(turn.status, StudioTurnStatus.completed);
+      expect(turn.toolResults.map((result) => result.toolCallId), [
+        'repeat-one',
+        'repeat-two',
+      ]);
+      expect(
+        turn.events
+            .where(
+              (event) => event.type == StudioTurnEventType.assistantMessage,
+            )
+            .single
+            .content,
+        contains('same tool step repeated without new progress'),
+      );
+    },
+  );
+
+  test(
     'AgentTurnRuntime app-side apply rejects stale multi-file patch without partial writes',
     () async {
       final harness = await _RuntimeHarness.create(
@@ -2662,7 +3024,7 @@ void main() {
       );
       expect(restoredPatch.applyStatus, PatchApplyStatus.restored);
       expect(restoredPatch.changedFiles, restored.changedFiles);
-      expect(restoredState.message, 'Restored 3 files.');
+      expect(restoredState.message, startsWith('Restored 3 files.'));
     },
   );
 
@@ -6974,7 +7336,7 @@ void main() {
   );
 
   test(
-    'AgentTurnRuntime cancellation closes turn, lane, run, and diagnostics',
+    'AgentTurnRuntime cancellation closes the persisted turn without legacy lane state',
     () async {
       final provider = _CancellableProvider();
       final harness = await _RuntimeHarness.create(provider: provider);
@@ -7039,20 +7401,21 @@ void main() {
         harness.container
             .read(agentRequestProvider)[AgentRequestLane.chat]
             ?.status,
-        AgentRequestStatus.done,
+        AgentRequestStatus.idle,
       );
       expect(
         harness.container
             .read(agentRequestProvider)[AgentRequestLane.chat]
             ?.cancelRequested,
-        isTrue,
+        isFalse,
       );
-      final recentRun = harness.container
-          .read(agentRunProvider)
-          .recentRuns
-          .firstWhere((run) => run.id == requestId);
-      expect(recentRun.status, AgentRunStatus.cancelled);
-      expect(recentRun.cancelRequested, isTrue);
+      expect(
+        harness.container
+            .read(agentRunProvider)
+            .recentRuns
+            .where((run) => run.id == requestId),
+        isEmpty,
+      );
     },
   );
 
@@ -7113,16 +7476,18 @@ void main() {
         ),
         isNot(contains(ProviderLifecycleEventKind.failed)),
       );
-      final recentRun = harness.container
-          .read(agentRunProvider)
-          .recentRuns
-          .firstWhere((run) => run.id == requestId);
-      expect(recentRun.status, AgentRunStatus.cancelled);
+      expect(
+        harness.container
+            .read(agentRunProvider)
+            .recentRuns
+            .where((run) => run.id == requestId),
+        isEmpty,
+      );
     },
   );
 
   test(
-    'AgentTurnRuntime timeout closes turn, lane, run, and diagnostics',
+    'AgentTurnRuntime timeout closes the persisted turn without legacy lane state',
     () async {
       final provider = _CancellableProvider();
       final harness = await _RuntimeHarness.create(
@@ -7183,14 +7548,15 @@ void main() {
         harness.container
             .read(agentRequestProvider)[AgentRequestLane.chat]
             ?.status,
-        AgentRequestStatus.failed,
+        AgentRequestStatus.idle,
       );
-      final recentRun = harness.container
-          .read(agentRunProvider)
-          .recentRuns
-          .firstWhere((run) => run.id == requestId);
-      expect(recentRun.status, AgentRunStatus.failed);
-      expect(recentRun.error, contains('timed out'));
+      expect(
+        harness.container
+            .read(agentRunProvider)
+            .recentRuns
+            .where((run) => run.id == requestId),
+        isEmpty,
+      );
     },
   );
 }
@@ -7223,6 +7589,9 @@ class _RuntimeHarness {
     List<List<ChatChunk>>? rounds,
     AIProvider? provider,
     Duration? turnTimeout,
+    WorkspacePermissionDisposition networkDisposition =
+        WorkspacePermissionDisposition.review,
+    List<WorkspaceNetworkRule> networkRules = const [],
   }) async {
     final root = await Directory.systemTemp.createTemp('studio_runtime_');
     final service = AgentService();
@@ -7231,7 +7600,11 @@ class _RuntimeHarness {
       provider: effectiveProvider,
       model: 'gpt-5-nano',
       workspaceRoot: root.path,
-      permissionPolicy: AgentToolPermissionPolicy(workingDir: root.path),
+      permissionPolicy: AgentToolPermissionPolicy(
+        workingDir: root.path,
+        networkDisposition: networkDisposition,
+        networkRules: networkRules,
+      ),
       events: service.events,
       onProviderEvent: (event) {
         service.events.emit(EventType.providerLifecycle, {
@@ -7381,6 +7754,42 @@ class _ScriptedProvider implements AIProvider {
   Future<List<ConnectorModelInfo>> refreshModels() async => const [
     ConnectorModelInfo(id: 'gpt-5-nano', displayName: 'GPT-5 nano'),
   ];
+}
+
+class _RequestCapturingProvider extends _ScriptedProvider
+    implements ImageCapableProvider {
+  final List<ProviderChatRequest> requests = [];
+
+  _RequestCapturingProvider(super.rounds);
+
+  @override
+  Stream<ChatChunk> chatWithRequest(ProviderChatRequest request) {
+    requests.add(request);
+    return chat(
+      request.messages,
+      model: request.model,
+      tools: request.tools,
+      systemPrompt: request.systemPrompt,
+      temperature: request.temperature,
+      maxTokens: request.maxTokens,
+    );
+  }
+}
+
+class _ReviewingRequestProvider extends _RequestCapturingProvider
+    implements ProviderConnectorNetworkPolicyAware {
+  _ReviewingRequestProvider(super.rounds);
+
+  @override
+  List<ProviderConnectorNetworkRequirement> get connectorNetworkRequirements =>
+      const [
+        ProviderConnectorNetworkRequirement(
+          url: 'https://connector.example.com/v1/chat',
+          label: 'Circuit model connector',
+          usesWorkspaceUpload: true,
+          usesCredentials: true,
+        ),
+      ];
 }
 
 class _GatedPlanToolProvider implements AIProvider {
@@ -8009,4 +8418,20 @@ Future<void> _waitUntil(bool Function() condition) async {
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
   fail('Timed out waiting for condition.');
+}
+
+class _TextOnlySettingsNotifier extends SettingsNotifier {
+  @override
+  SettingsModel build() => const SettingsModel(
+    ciscoModel: 'text-only',
+    connectorModels: [
+      ConnectorModelInfo(
+        id: 'text-only',
+        displayName: 'Text only',
+        contextWindow: 1000,
+        supportsTools: false,
+        supportsImageInput: false,
+      ),
+    ],
+  );
 }

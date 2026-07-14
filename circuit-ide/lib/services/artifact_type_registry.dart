@@ -1,4 +1,5 @@
 import '../models/generated_artifact.dart';
+import 'artifact_contract.dart';
 
 class ArtifactTypeDescriptor {
   final String id;
@@ -10,6 +11,7 @@ class ArtifactTypeDescriptor {
   final List<String> verificationChecks;
   final List<GeneratedArtifactKind> packageKinds;
   final String previewSurface;
+  final List<ArtifactContractField> contractFields;
 
   const ArtifactTypeDescriptor({
     required this.id,
@@ -30,6 +32,7 @@ class ArtifactTypeDescriptor {
     ],
     this.packageKinds = const [],
     this.previewSurface = 'Artifact preview',
+    this.contractFields = const [],
   });
 
   GeneratedArtifactKind get primaryKind => supportedKinds.first;
@@ -167,6 +170,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Topology readiness',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.topologyGraph,
+        ArtifactContractField.topologyCapacity,
+      ],
       verificationChecks: [
         'SVG root parses',
         'Editable Mermaid source is packaged',
@@ -190,6 +201,15 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Review package',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.reviewFindings,
+        ArtifactContractField.reviewRisks,
+        ArtifactContractField.reviewValidation,
+      ],
       verificationChecks: [
         'Findings matrix is present',
         'Risk and validation metadata persists',
@@ -209,6 +229,15 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Sizing workbook',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.poeBudget,
+        ArtifactContractField.wanThroughput,
+        ArtifactContractField.candidateValidation,
+      ],
       verificationChecks: [
         'Sizing sheets parse',
         'PoE/WAN validation metadata persists',
@@ -231,6 +260,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.json,
       ],
       previewSurface: 'Lifecycle report',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.lifecycleDateAuthority,
+        ArtifactContractField.replacementSuitability,
+      ],
       verificationChecks: [
         'Lifecycle sheets parse',
         'EoX caveat metadata persists',
@@ -252,6 +289,15 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Comparison matrix',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.comparisonCandidates,
+        ArtifactContractField.fitScoring,
+        ArtifactContractField.hardGateValidation,
+      ],
       verificationChecks: [
         'Comparison sheets parse',
         'Fit-score metadata persists',
@@ -275,6 +321,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Business brief package',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.businessUseCases,
+        ArtifactContractField.businessValueMetrics,
+      ],
       verificationChecks: [
         'Brief narrative renders',
         'Use-case and evidence metadata persists',
@@ -351,6 +405,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Chart summary',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.chartData,
+        ArtifactContractField.chartDecisionThresholds,
+      ],
       verificationChecks: [
         'SVG chart root parses',
         'Chart signal metadata persists',
@@ -389,6 +451,14 @@ class ArtifactTypeRegistry {
         GeneratedArtifactKind.pdf,
       ],
       previewSurface: 'Evidence register',
+      contractFields: [
+        ArtifactContractField.assumptions,
+        ArtifactContractField.checkedDate,
+        ArtifactContractField.confidence,
+        ArtifactContractField.sources,
+        ArtifactContractField.evidenceClaims,
+        ArtifactContractField.claimDisposition,
+      ],
       verificationChecks: [
         'Claim/source register is present',
         'Checked-date and confidence metadata persists',
@@ -548,6 +618,13 @@ class ArtifactTypeRegistry {
     final normalized = prompt.toLowerCase();
     final primary = requestedKind ?? detectGeneratedArtifactKind(prompt);
     final requestedKinds = _explicitlyRequestedKinds(normalized);
+    // HTML is a generic projection of the shared ArtifactDocument. It remains
+    // compatible with a domain descriptor (topology, evidence, plan, etc.)
+    // instead of forcing callers onto a separate web-only route.
+    if (requestedKinds.length == 1 &&
+        requestedKinds.single == GeneratedArtifactKind.html) {
+      return const [GeneratedArtifactKind.html];
+    }
     if (_canUseGenericMixedDeliverableRoute(resolvedDescriptor)) {
       final mixedDeliverableTargets = _mixedDeliverableTargets(
         normalized,
@@ -726,6 +803,7 @@ String _artifactKindLabel(GeneratedArtifactKind kind) {
     GeneratedArtifactKind.csv => 'CSV dataset',
     GeneratedArtifactKind.json => 'JSON artifact',
     GeneratedArtifactKind.markdown => 'Markdown document',
+    GeneratedArtifactKind.html => 'HTML document',
     GeneratedArtifactKind.pdf => 'PDF report',
     GeneratedArtifactKind.powerPoint => 'PowerPoint deck',
     GeneratedArtifactKind.docx => 'Word report',
@@ -771,6 +849,10 @@ List<GeneratedArtifactKind> _explicitlyRequestedKinds(String normalized) {
 
   addIf(RegExp(r'\b(pdf)\b').hasMatch(normalized), GeneratedArtifactKind.pdf);
   addIf(RegExp(r'\b(json)\b').hasMatch(normalized), GeneratedArtifactKind.json);
+  addIf(
+    RegExp(r'\b(html|web page|webpage)\b').hasMatch(normalized),
+    GeneratedArtifactKind.html,
+  );
   addIf(
     RegExp(r'\b(excel|xlsx|spreadsheet|workbook)\b').hasMatch(normalized),
     GeneratedArtifactKind.excel,

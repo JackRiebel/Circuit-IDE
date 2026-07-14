@@ -379,6 +379,13 @@ class LifecycleEoxWorkbookBuilder {
       hasOfficialSource: hasOfficialSource,
       hasCheckedDate: hasCheckedDate,
     );
+    final hasValidatedReplacementSuitability =
+        migrationHintCount == 0 &&
+        hasOfficialSource &&
+        hasCheckedDate &&
+        unknownDateCount == 0 &&
+        replacementRows.isNotEmpty &&
+        shortlistRows.isNotEmpty;
     return {
       'artifact': 'lifecycle_eox_workbook',
       'workbookKind': 'lifecycle_eox',
@@ -420,6 +427,10 @@ class LifecycleEoxWorkbookBuilder {
       ),
       'hasOfficialLifecycleSource': hasOfficialSource,
       'hasCheckedDateEvidence': hasCheckedDate,
+      // A vendor EoX replacement PID is only a suggested migration hint.
+      // This gate can pass only when current-fit evidence is separately
+      // established; the presence of a migration hint always keeps it false.
+      'hasValidatedReplacementSuitability': hasValidatedReplacementSuitability,
       'lifecycleQualityManifestVersion': '1.0',
       'lifecycleEvidencePolicy': _stringRows(evidencePolicyRows),
       'lifecycleEvidencePolicyCount': evidencePolicyRows.length,

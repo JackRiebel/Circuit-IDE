@@ -1,7 +1,14 @@
 import 'dart:convert';
+import 'dart:isolate';
+
+import 'worker_cancellation.dart';
+import 'office_package_relationship_inspector.dart';
+import 'zip_package_integrity.dart';
 
 class DocxArtifactInspection {
   final bool hasZipHeader;
+  final bool hasValidZipContainer;
+  final bool hasResolvablePackageRelationships;
   final bool hasContentTypes;
   final bool hasDocument;
   final bool hasStyles;
@@ -47,6 +54,8 @@ class DocxArtifactInspection {
 
   const DocxArtifactInspection({
     required this.hasZipHeader,
+    required this.hasValidZipContainer,
+    required this.hasResolvablePackageRelationships,
     required this.hasContentTypes,
     required this.hasDocument,
     required this.hasStyles,
@@ -93,6 +102,8 @@ class DocxArtifactInspection {
 
   bool get isStructurallyValid =>
       hasZipHeader &&
+      hasValidZipContainer &&
+      hasResolvablePackageRelationships &&
       hasContentTypes &&
       hasDocument &&
       hasStyles &&
@@ -134,6 +145,8 @@ class DocxArtifactInspection {
   Map<String, Object?> toMetadata() {
     final checks = <String, bool>{
       'ZIP package header': hasZipHeader,
+      'ZIP central-directory integrity': hasValidZipContainer,
+      'OOXML relationship targets': hasResolvablePackageRelationships,
       '[Content_Types].xml': hasContentTypes,
       'word/document.xml': hasDocument,
       'word/styles.xml': hasStyles,
@@ -174,6 +187,8 @@ class DocxArtifactInspection {
       'docxDeclaredWordCount': declaredWordCount,
       'docxDeclaredParagraphCount': declaredParagraphCount,
       'docxHasContentTypes': hasContentTypes,
+      'docxZipContainerValid': hasValidZipContainer,
+      'docxRelationshipTargetsValid': hasResolvablePackageRelationships,
       'docxHasDocumentXml': hasDocument,
       'docxHasStylesXml': hasStyles,
       'docxHasNumberingXml': hasNumbering,
@@ -227,15 +242,29 @@ class DocxArtifactInspection {
 class DocxArtifactInspector {
   const DocxArtifactInspector();
 
+  /// Parses the generated package on a worker isolate before publication.
+  Future<Map<String, Object?>> inspectMetadataInWorker(
+    List<int> bytes, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Map<String, Object?>>(
+      entryPoint: _docxInspectionWorkerEntry,
+      arguments: {'bytes': bytes},
+      cancellationToken: cancellationToken,
+      decodeResult: _metadataFromWorkerResult,
+    );
+  }
+
   DocxArtifactInspection inspect(List<int> bytes) {
+    final zipInspection = const ZipPackageInspector().inspect(bytes);
+    final relationshipInspection = const OfficePackageRelationshipInspector()
+        .inspect(zipInspection);
     final text = utf8.decode(bytes, allowMalformed: true);
     return DocxArtifactInspection(
-      hasZipHeader:
-          bytes.length >= 4 &&
-          bytes[0] == 0x50 &&
-          bytes[1] == 0x4b &&
-          bytes[2] == 0x03 &&
-          bytes[3] == 0x04,
+      hasZipHeader: zipInspection.hasZipHeader,
+      hasValidZipContainer: zipInspection.isStructurallyValid,
+      hasResolvablePackageRelationships:
+          relationshipInspection.hasResolvableInternalTargets,
       hasContentTypes: text.contains('[Content_Types].xml'),
       hasDocument:
           text.contains('word/document.xml') && text.contains('<w:document'),
@@ -248,10 +277,10 @@ class DocxArtifactInspector {
       hasFooter: text.contains('word/footer1.xml') && text.contains('<w:ftr'),
       hasCoreProperties:
           text.contains('docProps/core.xml') &&
-          text.contains('<dc:creator>CircuitCode</dc:creator>'),
+          RegExp(r'<dc:creator>[^<]+</dc:creator>').hasMatch(text),
       hasExtendedProperties:
           text.contains('docProps/app.xml') &&
-          text.contains('<Application>CircuitCode</Application>'),
+          RegExp(r'<Application>[^<]+</Application>').hasMatch(text),
       hasCustomProperties:
           text.contains('docProps/custom.xml') &&
           text.contains('CircuitReportQualityManifest'),
@@ -290,8 +319,9 @@ class DocxArtifactInspector {
           text.contains('Handoff approval'),
       hasAssumptionsAppendix: text.contains('Appendix A: Assumptions'),
       hasSourcesAppendix: text.contains('Appendix B: Sources / Evidence'),
-      hasCircuitHeader: text.contains('CircuitCode report package'),
-      hasCircuitFooter: text.contains('CircuitCode - Generated artifact'),
+      hasCircuitHeader: text.contains('<w:hdr') && text.contains('<w:pBdr>'),
+      hasCircuitFooter:
+          text.contains('<w:ftr') && text.contains('w:val="Footer"'),
       hasEnterpriseStyles:
           text.contains('Aptos') &&
           text.contains('Heading1') &&
@@ -342,4 +372,27 @@ class DocxArtifactInspector {
       .replaceAll('&gt;', '>')
       .replaceAll('&lt;', '<')
       .replaceAll('&amp;', '&');
+}
+
+void _docxInspectionWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final bytes = arguments['bytes'];
+    if (bytes is! List<int>) {
+      throw StateError('Missing DOCX bytes for inspection.');
+    }
+    replyPort.send({
+      'result': const DocxArtifactInspector().inspect(bytes).toMetadata(),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Map<String, Object?> _metadataFromWorkerResult(Object? result) {
+  if (result is! Map) {
+    throw StateError('Artifact inspector returned malformed metadata.');
+  }
+  return Map<String, Object?>.from(result);
 }

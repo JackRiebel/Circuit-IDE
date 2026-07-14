@@ -45,6 +45,21 @@ void main() {
       expect(state.isActive, isTrue);
     });
 
+    test('keeps queued workspace tasks distinct from executing work', () {
+      final state = TaskDisplayState.derive(
+        task: _task(status: AgentTaskStatus.queued),
+        isChatProcessing: false,
+        isChatStreaming: false,
+        hasAssistantResponse: false,
+        hasPendingApproval: false,
+        commands: const [],
+      );
+
+      expect(state.kind, TaskDisplayKind.queued);
+      expect(state.label, 'Queued');
+      expect(state.isActive, isTrue);
+    });
+
     test('marks completed chat responses as done', () {
       final messages = [
         ChatMessage(

@@ -707,6 +707,7 @@ class _AgentTaskTimelineRow extends ConsumerWidget {
       AgentTaskStatus.completed => tokens.success,
       AgentTaskStatus.failed => tokens.error,
       AgentTaskStatus.cancelled => tokens.textMuted,
+      AgentTaskStatus.paused => tokens.textMuted,
       AgentTaskStatus.waitingForApproval => tokens.warning,
       AgentTaskStatus.queued || AgentTaskStatus.running => tokens.accent,
     };

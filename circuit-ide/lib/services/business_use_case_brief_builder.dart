@@ -226,6 +226,14 @@ class BusinessUseCaseBriefBuilder {
       businessTables,
       'Customer Handoff Matrix',
     ).skip(1).toList(growable: false);
+    final useCaseRows = _tableRows(
+      businessTables,
+      'Use Case Prioritization Matrix',
+    ).skip(1).toList(growable: false);
+    final valueMetricRows = _tableRows(
+      businessTables,
+      'Value Metrics Plan',
+    ).skip(1).toList(growable: false);
     final tables = [...businessTables, ...document.tables];
 
     return ArtifactDocument(
@@ -240,6 +248,8 @@ class BusinessUseCaseBriefBuilder {
         'artifactTemplate': 'business_use_case_brief',
         'sourcePrompt': prompt,
         'businessBriefTables': tables.length,
+        'businessUseCaseCount': useCaseRows.length,
+        'businessValueMetricCount': valueMetricRows.length,
         'hasBusinessCaseReadinessScorecard': readinessRows.isNotEmpty,
         'businessCaseReadinessScorecardCount': readinessRows.length,
         'businessCaseReviewReadyCount': _readinessCount(

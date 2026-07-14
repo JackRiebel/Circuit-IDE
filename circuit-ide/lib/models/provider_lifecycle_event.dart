@@ -1,7 +1,12 @@
+import '../agent/security/audit_logger.dart';
+
+final _providerDiagnosticRedactor = AuditRedactor();
+
 enum ProviderLifecycleEventKind {
   requestSent,
   toolExposure,
   authFailed,
+  reconnecting,
   connected,
   firstByte,
   noFirstByte,
@@ -49,8 +54,12 @@ class ProviderLifecycleEvent {
     'kind': kind.name,
     'timestamp': timestamp.toIso8601String(),
     'model': model,
-    'detail': detail,
-    'rawDiagnostic': rawDiagnostic,
+    'detail': detail == null
+        ? null
+        : _providerDiagnosticRedactor.redactDiagnostic(detail!),
+    'rawDiagnostic': rawDiagnostic == null
+        ? null
+        : _providerDiagnosticRedactor.redactedDiagnosticBody(rawDiagnostic!),
   };
 
   static ProviderLifecycleEvent? fromJson(Map<String, dynamic> json) {
@@ -66,8 +75,16 @@ class ProviderLifecycleEvent {
             DateTime.tryParse(json['timestamp'] as String? ?? '') ??
             DateTime.now(),
         model: json['model'] as String? ?? '',
-        detail: json['detail'] as String?,
-        rawDiagnostic: json['rawDiagnostic'] as String?,
+        detail: (json['detail'] as String?) == null
+            ? null
+            : _providerDiagnosticRedactor.redactDiagnostic(
+                json['detail'] as String,
+              ),
+        rawDiagnostic: (json['rawDiagnostic'] as String?) == null
+            ? null
+            : _providerDiagnosticRedactor.redactedDiagnosticBody(
+                json['rawDiagnostic'] as String,
+              ),
       );
     } catch (_) {
       return null;

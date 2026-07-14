@@ -2,13 +2,18 @@ import 'dart:io';
 
 import 'package:circuit_ide/core/constants/design_tokens.dart';
 import 'package:circuit_ide/models/command_descriptor.dart';
+import 'package:circuit_ide/models/studio_shell.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
+import 'package:circuit_ide/state/studio_shell_provider.dart';
 import 'package:circuit_ide/ui/command_palette/command_palette.dart';
 import 'package:circuit_ide/ui/layout/tools_panel.dart';
 import 'package:circuit_ide/ui/studio/studio_chrome.dart';
 import 'package:circuit_ide/ui/studio/studio_left_rail.dart';
+import 'package:circuit_ide/ui/studio/studio_prompt_composer.dart';
+import 'package:circuit_ide/ui/studio/studio_rail_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -89,6 +94,135 @@ void main() {
     expect(commandRowSize.height, 38);
   });
 
+  testWidgets('Command palette keeps search focus during keyboard selection', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    String? executed;
+    container.read(commandPaletteProvider.notifier).registerCommands([
+      CommandDescriptor(
+        id: 'first',
+        title: 'First command',
+        category: 'Test',
+        icon: Icons.looks_one_outlined,
+        run: () => executed = 'first',
+      ),
+      CommandDescriptor(
+        id: 'second',
+        title: 'Second command',
+        category: 'Test',
+        icon: Icons.looks_two_outlined,
+        run: () => executed = 'second',
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: Scaffold(body: CommandPalette())),
+      ),
+    );
+    await tester.pump();
+    final inputFocus = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode;
+    expect(inputFocus?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    expect(inputFocus?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pump();
+    expect(executed, 'second');
+    expect(container.read(commandPaletteProvider).isOpen, isFalse);
+  });
+
+  testWidgets('Command palette restores the prior editor focus when closed', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final editorFocus = FocusNode(debugLabel: 'test-editor-focus');
+    addTearDown(editorFocus.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, child) {
+              final paletteOpen = ref.watch(commandPaletteProvider).isOpen;
+              return Scaffold(
+                body: Stack(
+                  children: [
+                    TextField(
+                      focusNode: editorFocus,
+                      decoration: const InputDecoration(labelText: 'Editor'),
+                    ),
+                    if (paletteOpen) const CommandPalette(),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    editorFocus.requestFocus();
+    await tester.pump();
+    expect(editorFocus.hasFocus, isTrue);
+
+    container.read(commandPaletteProvider.notifier).open();
+    await tester.pump();
+    final paletteFocus = tester
+        .widget<TextField>(find.byType(TextField).last)
+        .focusNode;
+    expect(paletteFocus?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pump();
+    await tester.pump();
+
+    expect(container.read(commandPaletteProvider).isOpen, isFalse);
+    expect(editorFocus.hasFocus, isTrue);
+  });
+
+  testWidgets('Studio composer retains keyboard focus through Studio updates', (
+    tester,
+  ) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: StudioPromptComposer(
+              hintText: 'Ask Circuit',
+              onSubmit: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    final composerFocus = tester
+        .widget<TextField>(find.byType(TextField))
+        .focusNode!;
+    composerFocus.requestFocus();
+    await tester.pump();
+    expect(composerFocus.hasFocus, isTrue);
+
+    container
+        .read(studioShellProvider.notifier)
+        .setPromptMode(StudioPromptMode.review);
+    container.read(studioShellProvider.notifier).setPlanModeEnabled(true);
+    await tester.pump();
+
+    expect(composerFocus.hasFocus, isTrue);
+  });
+
   testWidgets('Studio rail row keeps project icons on compact rail scale', (
     tester,
   ) async {
@@ -158,7 +292,13 @@ void main() {
     final actionSize = tester.getSize(
       find.byTooltip('New thread in CircuitCode'),
     );
-    expect(actionSize, const Size(22, 22));
+    expect(
+      actionSize,
+      const Size(
+        StudioChromeIconButton.minimumTargetSize,
+        StudioChromeIconButton.minimumTargetSize,
+      ),
+    );
   });
 
   testWidgets('Studio chrome icon buttons use soft compact corners', (

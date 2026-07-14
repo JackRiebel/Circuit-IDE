@@ -4,7 +4,12 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../agent/security/agent_tool_permission_policy.dart';
+import '../agent/tools/command_tools.dart';
+import '../models/agent_tool_permission.dart';
 import '../models/project_profile.dart';
+import '../models/tool_call_info.dart';
+import '../models/turn_intent.dart';
 import '../services/project_detector.dart';
 import 'agent_run_provider.dart';
 import 'file_tree_provider.dart';
@@ -106,7 +111,10 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
     return state.commands.where((command) => command.enabled).take(4).toList();
   }
 
-  Future<VerificationResultSummary> runCommand(ProjectCommand command) async {
+  Future<VerificationResultSummary> runCommand(
+    ProjectCommand command, {
+    bool userApproved = false,
+  }) async {
     final rootPath = state.rootPath;
     if (rootPath == null) {
       return VerificationResultSummary(
@@ -119,20 +127,52 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
     }
 
     final started = DateTime.now();
-    try {
-      final result = await Process.run(
-        '/bin/zsh',
-        ['-lc', command.command],
-        workingDirectory: rootPath,
-      ).timeout(Duration(seconds: command.timeoutSeconds));
-      final output = [
-        (result.stdout as String).trim(),
-        (result.stderr as String).trim(),
-      ].where((part) => part.isNotEmpty).join('\n');
+    final toolCall = ToolCallInfo(
+      id: 'project-check-${command.id}',
+      name: 'run_command',
+      arguments: {
+        'command': command.command,
+        'timeout': command.timeoutSeconds,
+      },
+    );
+    final basePolicy = AgentToolPermissionPolicy(
+      workingDir: rootPath,
+      request: const ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+      ),
+    );
+    final decision = AgentToolPermissionPolicy(
+      workingDir: rootPath,
+      request: ToolPermissionRequest(
+        intent: TurnIntent.verify,
+        phase: ToolPermissionPhase.verify,
+        approvalGrant: userApproved ? ApprovalGrant.turn : ApprovalGrant.none,
+        approvalGrantKey: userApproved
+            ? basePolicy.approvalGrantKeyFor(toolCall)
+            : null,
+      ),
+    ).evaluate(toolCall);
+    if (!decision.allowed) {
       return VerificationResultSummary(
         command: command.command,
-        passed: result.exitCode == 0,
-        exitCode: result.exitCode,
+        passed: false,
+        exitCode: -1,
+        duration: DateTime.now().difference(started),
+        output: 'Command blocked: ${decision.message}',
+      );
+    }
+
+    try {
+      final output = await CommandTools(workingDir: rootPath).runCommand({
+        'command': command.command,
+        'timeout': command.timeoutSeconds,
+      });
+      final exitCode = _exitCodeFromCommandOutput(output);
+      return VerificationResultSummary(
+        command: command.command,
+        passed: exitCode == 0,
+        exitCode: exitCode,
         duration: DateTime.now().difference(started),
         output: output,
       );
@@ -145,6 +185,12 @@ class ProjectProfileController extends Notifier<ProjectProfile> {
         output: e.toString(),
       );
     }
+  }
+
+  int _exitCodeFromCommandOutput(String output) {
+    final match = RegExp(r'\[exit code: (-?\d+)\]').firstMatch(output);
+    if (match != null) return int.parse(match.group(1)!);
+    return output.startsWith('Error:') ? -1 : 0;
   }
 
   List<ProjectCommand> _commandsFromDetection(

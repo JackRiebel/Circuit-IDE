@@ -4,6 +4,7 @@ enum ToolPermissionVerdict { allow, ask, deny }
 
 enum ToolPermissionReason {
   readOnlyInsideWorkspace,
+  artifactOutputApproved,
   writeRequiresReview,
   patchTransactionApproved,
   approvalGranted,
@@ -11,9 +12,11 @@ enum ToolPermissionReason {
   gitMutationRequiresReview,
   networkRequiresReview,
   mcpRequiresReview,
+  delegationRequiresReview,
   pathOutsideWorkspace,
   dangerousCommand,
   secretPath,
+  computerUseDisabled,
   unknownTool,
 }
 
@@ -64,9 +67,14 @@ class ToolPermissionRequest {
   final ApprovalGrant approvalGrant;
   final bool hasAcceptedPlan;
   final bool allowPatchTransaction;
+  final bool allowArtifactOutput;
   final CommandCategory commandCategory;
   final NetworkAccessKind networkAccessKind;
   final String? networkDomain;
+  final String networkMethod;
+  final bool networkUpload;
+  final bool networkFollowsRedirect;
+  final bool networkUsesCredentials;
   final McpToolRisk mcpToolRisk;
   final String? mcpToolName;
   final String? approvalGrantKey;
@@ -77,9 +85,14 @@ class ToolPermissionRequest {
     this.approvalGrant = ApprovalGrant.none,
     this.hasAcceptedPlan = false,
     this.allowPatchTransaction = false,
+    this.allowArtifactOutput = false,
     this.commandCategory = CommandCategory.unknown,
     this.networkAccessKind = NetworkAccessKind.none,
     this.networkDomain,
+    this.networkMethod = 'GET',
+    this.networkUpload = false,
+    this.networkFollowsRedirect = false,
+    this.networkUsesCredentials = false,
     this.mcpToolRisk = McpToolRisk.unknown,
     this.mcpToolName,
     this.approvalGrantKey,

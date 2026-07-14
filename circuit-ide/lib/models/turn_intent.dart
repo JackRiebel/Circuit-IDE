@@ -2,6 +2,121 @@ import 'studio_shell.dart';
 
 enum TurnIntent { chat, ask, plan, code, review, verify }
 
+/// The source of the intent decision retained with a Studio turn.
+///
+/// Deterministic rules always run first. A model can only classify the small
+/// residual set that those rules deliberately leave ambiguous, and an invalid
+/// or low-confidence response becomes an Ask turn instead of an inferred
+/// mutation or command request.
+enum IntentRoutingSource { deterministic, model, safeFallback }
+
+/// An inspectable, serializable result of intent routing.
+///
+/// This is intentionally separate from [TurnIntent] so the user-facing turn
+/// contract remains small while diagnostics can explain why tools and
+/// workspace access were or were not enabled.
+class IntentRoutingDecision {
+  final TurnIntent intent;
+  final double confidence;
+  final String reason;
+  final IntentRoutingSource source;
+  final bool requiresModelClassifier;
+
+  const IntentRoutingDecision({
+    required this.intent,
+    required this.confidence,
+    required this.reason,
+    required this.source,
+    this.requiresModelClassifier = false,
+  });
+
+  String get confidenceLabel => '${(confidence * 100).round()}%';
+
+  IntentRoutingDecision resolvedByModel({
+    required TurnIntent intent,
+    required double confidence,
+    required String reason,
+  }) {
+    return IntentRoutingDecision(
+      intent: intent,
+      confidence: confidence.clamp(0, 1).toDouble(),
+      reason: reason,
+      source: IntentRoutingSource.model,
+    );
+  }
+
+  IntentRoutingDecision safeFallback(String fallbackReason) {
+    return IntentRoutingDecision(
+      intent: TurnIntent.ask,
+      confidence: confidence.clamp(0, 1).toDouble(),
+      reason: fallbackReason,
+      source: IntentRoutingSource.safeFallback,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'intent': intent.name,
+    'confidence': confidence,
+    'reason': reason,
+    'source': source.name,
+    'requiresModelClassifier': requiresModelClassifier,
+  };
+
+  static IntentRoutingDecision? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    final rawIntent = json['intent'] as String?;
+    final rawConfidence = json['confidence'];
+    final rawReason = json['reason'] as String?;
+    if (rawIntent == null || rawConfidence is! num || rawReason == null) {
+      return null;
+    }
+    final intent = TurnIntent.values.where((value) => value.name == rawIntent);
+    if (intent.isEmpty) return null;
+    return IntentRoutingDecision(
+      intent: intent.first,
+      confidence: rawConfidence.toDouble().clamp(0, 1).toDouble(),
+      reason: rawReason,
+      source: IntentRoutingSource.values.firstWhere(
+        (value) => value.name == json['source'],
+        orElse: () => IntentRoutingSource.deterministic,
+      ),
+      requiresModelClassifier:
+          json['requiresModelClassifier'] as bool? ?? false,
+    );
+  }
+}
+
+/// The constrained, provider-facing schema for ambiguous intent routing.
+///
+/// Model adapters do not receive tool definitions, history, workspace paths,
+/// or context attachments for this request. Parsing rejects extra/malformed
+/// content so an LLM response can never silently widen permissions.
+class IntentModelClassification {
+  final TurnIntent intent;
+  final double confidence;
+  final String reason;
+
+  const IntentModelClassification({
+    required this.intent,
+    required this.confidence,
+    required this.reason,
+  });
+
+  static const jsonSchema = <String, dynamic>{
+    'type': 'object',
+    'additionalProperties': false,
+    'required': ['intent', 'confidence', 'reason'],
+    'properties': {
+      'intent': {
+        'type': 'string',
+        'enum': ['chat', 'ask', 'plan', 'code', 'review', 'verify'],
+      },
+      'confidence': {'type': 'number', 'minimum': 0, 'maximum': 1},
+      'reason': {'type': 'string', 'maxLength': 240},
+    },
+  };
+}
+
 enum IntentContractKind {
   conversational,
   readOnly,
@@ -101,43 +216,145 @@ class IntentContract {
 class IntentClassifier {
   const IntentClassifier._();
 
+  /// A model result must clear this bar before it can replace an Ask fallback.
+  static const minimumModelConfidence = 0.78;
+
   static TurnIntent classify(
+    String prompt, {
+    required StudioPromptMode promptMode,
+    required bool planModeEnabled,
+  }) => classifyDecision(
+    prompt,
+    promptMode: promptMode,
+    planModeEnabled: planModeEnabled,
+  ).intent;
+
+  /// Classifies known-safe requests synchronously and identifies the narrow
+  /// residual set that may benefit from the constrained model classifier.
+  ///
+  /// Callers that cannot or should not reach a model still receive Ask for
+  /// ambiguity. This replaces the old behavior of treating the selected
+  /// composer mode as evidence that an unspecified action was safe to run.
+  static IntentRoutingDecision classifyDecision(
     String prompt, {
     required StudioPromptMode promptMode,
     required bool planModeEnabled,
   }) {
     final normalized = _normalize(prompt);
-    if (normalized.isEmpty) return TurnIntent.chat;
-    if (_isConversational(normalized)) return TurnIntent.chat;
-    if (_looksLikeProductInceptionRequest(normalized)) return TurnIntent.ask;
-    if (planModeEnabled) return TurnIntent.plan;
-    if (_looksLikePlanRequest(normalized)) return TurnIntent.plan;
-    if (_looksLikeSourceFileOutputRequest(normalized)) return TurnIntent.code;
+    if (normalized.isEmpty) {
+      return _deterministic(TurnIntent.chat, 'Empty composer text.');
+    }
+    if (_isConversational(normalized)) {
+      return _deterministic(
+        TurnIntent.chat,
+        'Short conversational or continuation acknowledgement.',
+      );
+    }
+    if (_looksLikeProductInceptionRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.ask,
+        'Broad product idea requires collaborative discovery before implementation.',
+      );
+    }
+    if (planModeEnabled) {
+      return _deterministic(
+        TurnIntent.plan,
+        'Plan Mode explicitly requested a reviewable implementation plan.',
+      );
+    }
+    if (_looksLikePlanRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.plan,
+        'Prompt explicitly asks for a plan before changes.',
+      );
+    }
+    if (_looksLikeSourceFileOutputRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.code,
+        'Explicit source-file output request.',
+      );
+    }
     if (_looksLikeGeneratedDataArtifactRequest(normalized)) {
-      return TurnIntent.code;
+      return _deterministic(
+        TurnIntent.code,
+        'Explicit generated data artifact file request.',
+      );
     }
     if (_looksLikeDocumentArtifactFileOutputRequest(normalized)) {
-      return TurnIntent.plan;
+      return _deterministic(
+        TurnIntent.plan,
+        'Document artifact file output requires a reviewable plan.',
+      );
     }
-    if (_looksLikeDesignArtifactRequest(normalized)) return TurnIntent.plan;
-    if (_looksLikeReviewRequest(normalized)) return TurnIntent.review;
-    if (_looksLikeAdvisoryQuestion(normalized)) return TurnIntent.ask;
-    if (_looksLikeReadOnlyQuestion(normalized)) return TurnIntent.ask;
-    if (_requestsChatOnlyOutput(normalized)) return TurnIntent.ask;
-    if (_looksLikeKnowledgeArtifactRequest(normalized)) return TurnIntent.ask;
-    if (_looksLikeEnterpriseAdvisoryRequest(normalized)) return TurnIntent.ask;
+    if (_looksLikeDesignArtifactRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.plan,
+        'Visual artifact file output requires a reviewable plan.',
+      );
+    }
+    if (_hasExplicitFileOutputRequest(normalized) &&
+        _hasMutationRequest(normalized) &&
+        !_requestsChatOnlyOutput(normalized)) {
+      return _deterministic(
+        TurnIntent.code,
+        'Explicit file-targeted modification request.',
+      );
+    }
+    if (_looksLikeReviewRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.review,
+        'Read-only change review request.',
+      );
+    }
+    if (_looksLikeAdvisoryQuestion(normalized) ||
+        _looksLikeReadOnlyQuestion(normalized) ||
+        _requestsChatOnlyOutput(normalized) ||
+        _looksLikeKnowledgeArtifactRequest(normalized) ||
+        _looksLikeEnterpriseAdvisoryRequest(normalized)) {
+      return _deterministic(
+        TurnIntent.ask,
+        'Prompt asks for an answer, research, or inspection without a declared mutation.',
+      );
+    }
     if (_looksLikeImplementationWithVerification(normalized)) {
-      return TurnIntent.code;
+      return _deterministic(
+        TurnIntent.code,
+        'Implementation request; verification remains a later approved turn.',
+      );
     }
-    if (_looksLikeOperationalCommand(normalized)) return TurnIntent.verify;
-    if (_looksLikeVerification(normalized)) return TurnIntent.verify;
-    return switch (promptMode) {
-      StudioPromptMode.ask => TurnIntent.ask,
-      StudioPromptMode.code => TurnIntent.code,
-      StudioPromptMode.fix => TurnIntent.code,
-      StudioPromptMode.review => TurnIntent.review,
-    };
+    if (_hasMutationRequest(normalized) &&
+        !_hasNoMutationConstraint(normalized)) {
+      return _deterministic(
+        TurnIntent.code,
+        'Explicit implementation or modification request.',
+      );
+    }
+    if (_looksLikeOperationalCommand(normalized) ||
+        _looksLikeVerification(normalized)) {
+      return _deterministic(
+        TurnIntent.verify,
+        'Explicit operational or verification request.',
+      );
+    }
+    return const IntentRoutingDecision(
+      intent: TurnIntent.ask,
+      confidence: 0.42,
+      reason:
+          'The request does not declare a safe enough turn contract; ask before exposing mutation or command tools.',
+      source: IntentRoutingSource.safeFallback,
+      requiresModelClassifier: true,
+    );
   }
+
+  static IntentRoutingDecision _deterministic(
+    TurnIntent intent,
+    String reason,
+  ) => IntentRoutingDecision(
+    intent: intent,
+    confidence: 0.99,
+    reason: reason,
+    source: IntentRoutingSource.deterministic,
+  );
 
   static bool isConversational(String prompt) {
     return _isConversational(_normalize(prompt));
@@ -242,6 +459,11 @@ class IntentClassifier {
     if (exact.contains(normalized)) return true;
     if (RegExp(
       r'^(hi|hello|hey|yo|howdy)[!\s]*(circuit|there)?[!\s]*$',
+    ).hasMatch(normalized)) {
+      return true;
+    }
+    if (RegExp(
+      r'^(good morning|good afternoon|good evening)[!\s]*(circuit|there)?[!\s]*$',
     ).hasMatch(normalized)) {
       return true;
     }
@@ -431,7 +653,16 @@ class IntentClassifier {
     if (_requestsChatOnlyOutput(normalized)) return false;
     if (_hasExplicitFileOutputRequest(normalized)) return false;
     if (_hasExplicitExistingSurfaceMutation(normalized)) return false;
-    if (_hasImplementationReadySignal(normalized)) return false;
+    // A generic product noun such as "tool", "dashboard", or "portal" is
+    // not enough to skip discovery. Only an explicit file/current-surface
+    // mutation, or a concrete implementation target paired with a declared
+    // framework, proves the user has crossed from inception into coding.
+    if (_hasExplicitFileOutputRequest(normalized) ||
+        _hasExplicitExistingSurfaceMutation(normalized) ||
+        (_hasConcreteImplementationTarget(normalized) &&
+            _hasFrameworkSignal(normalized))) {
+      return false;
+    }
     if (RegExp(
       r'\b(build|create|make|design)\s+(the\s+)?(app|application|project|site|website|frontend|backend)\s+(to|for|onto)\s+(my\s+)?(desktop|mac|macos)\b',
     ).hasMatch(normalized)) {
@@ -487,7 +718,7 @@ class IntentClassifier {
           r'^(can|could|would|will)\s+you\s+(please\s+)?(help\s+me\s+)?(build|create|make|design|develop|prototype)\b',
         ).hasMatch(normalized) ||
         RegExp(
-          r'^(help\s+me|work\s+with\s+me|walk\s+me\s+through)\s+(build|create|make|design|develop|prototype)\b',
+          r'^(help\s+(me|us)|work\s+with\s+(me|us)|walk\s+(me|us)\s+through)\s+(build|create|make|design|develop|prototype)\b',
         ).hasMatch(normalized) ||
         RegExp(
           r'^(build|create|make|design|develop|prototype)\s+(me\s+)?(a|an|the)?\b',
@@ -532,7 +763,7 @@ class IntentClassifier {
 
   static bool _hasBroadProductObject(String normalized) {
     return RegExp(
-          r'\b(something|app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|solution|crm|cms|erp|internal tool|admin tool|website|site|web app|mobile app|desktop app)\b',
+          r'\b(something|app|application|tool|product|platform|system|saas|dashboard|calculator|portal|workflow|workspace|solution|crm|cms|erp|internal tool|admin tool|website|site|web app|mobile app|desktop app)\b',
         ).hasMatch(normalized) ||
         RegExp(
           r'\b([a-z0-9]+\s+){0,3}(tracker|planner|manager|assistant|generator|analyzer|analyser|sizer|estimator|recommender|validator|visualizer|visualiser)\b',
@@ -832,7 +1063,16 @@ class IntentClassifier {
 
   static bool _hasMutationRequest(String normalized) {
     if (RegExp(
-      r'\b(write|edit|fix|add|delete|implement|apply|generate|scaffold|patch)\b',
+      r'\b(write|edit|fix|add|update|delete|remove|refactor|implement|apply|generate|scaffold|patch)\b',
+    ).hasMatch(normalized)) {
+      return true;
+    }
+    // A concrete code target remains an implementation request even when a
+    // user opens with a greeting (for example, "hello, build a script").
+    // Keep broader product ideas in discovery; this only covers an explicit
+    // source-level target that can safely enter the coding contract.
+    if (RegExp(
+      r'\b(build|create|make)\s+(?:me\s+)?(?:the\s+|this\s+|that\s+|a\s+|an\s+|new\s+)?(script|test|spec|component|widget|class|function|service|api|endpoint|route|provider|controller|model|schema)\b',
     ).hasMatch(normalized)) {
       return true;
     }

@@ -10,11 +10,7 @@ class InlineCompletion extends ConsumerWidget {
   final double lineHeight;
   final double charWidth;
 
-  const InlineCompletion({
-    super.key,
-    this.lineHeight = 20,
-    this.charWidth = 8,
-  });
+  const InlineCompletion({super.key, this.lineHeight = 20, this.charWidth = 8});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,16 +24,18 @@ class InlineCompletion extends ConsumerWidget {
     return Positioned(
       top: (state.cursorLine - 1) * lineHeight,
       left: state.cursorColumn * charWidth,
-      child: KeyboardListener(
-        focusNode: FocusNode(),
-        onKeyEvent: (event) {
+      child: Focus(
+        onKeyEvent: (_, event) {
           if (event is KeyDownEvent) {
             if (event.logicalKey == LogicalKeyboardKey.tab) {
               ref.read(inlineCompletionProvider.notifier).accept();
+              return KeyEventResult.handled;
             } else if (event.logicalKey == LogicalKeyboardKey.escape) {
               ref.read(inlineCompletionProvider.notifier).dismiss();
+              return KeyEventResult.handled;
             }
           }
+          return KeyEventResult.ignored;
         },
         child: Row(
           mainAxisSize: MainAxisSize.min,

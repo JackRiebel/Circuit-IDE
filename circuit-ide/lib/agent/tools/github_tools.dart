@@ -1,4 +1,10 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+
+import '../security/pinned_network_http_client.dart';
+
+typedef GitHubHostAddressResolver = NetworkHostAddressResolver;
 
 class GitHubTools {
   static const _baseUrl = 'https://api.github.com';
@@ -6,16 +12,27 @@ class GitHubTools {
   String? _token;
   late final Dio _dio;
 
-  GitHubTools() {
-    _dio = Dio(BaseOptions(
-      baseUrl: _baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 30),
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'CircuitIDE/1.0',
-      },
-    ));
+  GitHubTools({Dio? dio, GitHubHostAddressResolver? hostAddressResolver}) {
+    _dio =
+        dio ??
+        createPinnedNetworkDio(
+          hostAddressResolver: hostAddressResolver ?? InternetAddress.lookup,
+          allowExplicitLoopback: false,
+          options: BaseOptions(
+            baseUrl: _baseUrl,
+            connectTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(seconds: 30),
+            headers: {
+              'Accept': 'application/vnd.github.v3+json',
+              'User-Agent': 'CircuitIDE/1.0',
+            },
+          ),
+        );
+    // The GitHub token is origin-scoped. A redirect could send it to a host
+    // the user never reviewed, so require the configured API origin to return
+    // a final response instead of following any 3xx destination.
+    _dio.options.followRedirects = false;
+    _dio.options.maxRedirects = 0;
   }
 
   void configure({required String token}) {
@@ -31,7 +48,10 @@ class GitHubTools {
     }
 
     try {
-      return switch (toolName) {
+      // Await inside this try block. Returning a request Future directly would
+      // let asynchronous transport failures bypass the redacted error mapping
+      // below, including a connection-factory network-boundary refusal.
+      return await switch (toolName) {
         'github_whoami' => _whoami(),
         'github_list_repos' => _listRepos(args),
         'github_get_repo' => _getRepo(args),
@@ -48,13 +68,28 @@ class GitHubTools {
       };
     } on DioException catch (e) {
       final status = e.response?.statusCode;
-      final body = e.response?.data;
-      if (status == 401) return 'Error: GitHub authentication failed. Check your token.';
-      if (status == 403) return 'Error: GitHub rate limit or permission denied.';
+      if (status == 401) {
+        return 'Error: GitHub authentication failed. Check your token.';
+      }
+      if (status == 403) {
+        return 'Error: GitHub rate limit or permission denied.';
+      }
       if (status == 404) return 'Error: GitHub resource not found.';
-      return 'GitHub API error ($status): ${body ?? e.message}';
-    } catch (e) {
-      return 'Error: $e';
+      if (status != null) return 'GitHub API error ($status).';
+      return 'Error: GitHub request failed.';
+    } on NetworkTargetBlockedException {
+      return 'Error: GitHub network request was blocked.';
+    } on ArgumentError {
+      // Tool names are selected from the registered GitHub surface. Do not
+      // reflect an arbitrary name (or any model-supplied malformed value)
+      // into a model-visible result.
+      return 'Error: Unknown GitHub tool.';
+    } catch (_) {
+      // A connector, codec, or transport implementation can include raw
+      // response text in an unexpected exception. GitHub calls are
+      // credentialed, so preserve the same redacted failure boundary used for
+      // Dio failures instead of reflecting that diagnostic into Studio.
+      return 'Error: GitHub request failed.';
     }
   }
 
@@ -72,11 +107,10 @@ class GitHubTools {
     final sort = args['sort'] as String? ?? 'updated';
     final perPage = args['per_page'] as int? ?? 30;
 
-    final response = await _dio.get('/user/repos', queryParameters: {
-      'sort': sort,
-      'per_page': perPage,
-      'type': 'owner',
-    });
+    final response = await _dio.get(
+      '/user/repos',
+      queryParameters: {'sort': sort, 'per_page': perPage, 'type': 'owner'},
+    );
 
     final repos = response.data as List;
     if (repos.isEmpty) return 'No repositories found.';
@@ -116,17 +150,18 @@ class GitHubTools {
     final repo = args['repo'] as String;
     final state = args['state'] as String? ?? 'open';
 
-    final response = await _dio.get('/repos/$owner/$repo/issues', queryParameters: {
-      'state': state,
-      'per_page': 30,
-    });
+    final response = await _dio.get(
+      '/repos/$owner/$repo/issues',
+      queryParameters: {'state': state, 'per_page': 30},
+    );
 
     final issues = response.data as List;
     if (issues.isEmpty) return 'No $state issues found.';
 
     final lines = issues.where((i) => i['pull_request'] == null).map((i) {
       final issue = i as Map<String, dynamic>;
-      final labels = (issue['labels'] as List?)
+      final labels =
+          (issue['labels'] as List?)
               ?.map((l) => (l as Map)['name'])
               .join(', ') ??
           '';
@@ -145,9 +180,8 @@ class GitHubTools {
     final response = await _dio.get('/repos/$owner/$repo/issues/$number');
     final issue = response.data as Map<String, dynamic>;
 
-    final labels = (issue['labels'] as List?)
-            ?.map((l) => (l as Map)['name'])
-            .join(', ') ??
+    final labels =
+        (issue['labels'] as List?)?.map((l) => (l as Map)['name']).join(', ') ??
         'none';
 
     return '#${issue['number']} ${issue['title']}\n'
@@ -165,10 +199,10 @@ class GitHubTools {
     final title = args['title'] as String;
     final body = args['body'] as String? ?? '';
 
-    final response = await _dio.post('/repos/$owner/$repo/issues', data: {
-      'title': title,
-      'body': body,
-    });
+    final response = await _dio.post(
+      '/repos/$owner/$repo/issues',
+      data: {'title': title, 'body': body},
+    );
 
     final issue = response.data as Map<String, dynamic>;
     return 'Created issue #${issue['number']}: ${issue['title']}\n'
@@ -180,9 +214,10 @@ class GitHubTools {
     final repo = args['repo'] as String;
     final number = args['number'] as int;
 
-    await _dio.patch('/repos/$owner/$repo/issues/$number', data: {
-      'state': 'closed',
-    });
+    await _dio.patch(
+      '/repos/$owner/$repo/issues/$number',
+      data: {'state': 'closed'},
+    );
 
     return 'Issue #$number closed.';
   }
@@ -192,10 +227,10 @@ class GitHubTools {
     final repo = args['repo'] as String;
     final state = args['state'] as String? ?? 'open';
 
-    final response = await _dio.get('/repos/$owner/$repo/pulls', queryParameters: {
-      'state': state,
-      'per_page': 30,
-    });
+    final response = await _dio.get(
+      '/repos/$owner/$repo/pulls',
+      queryParameters: {'state': state, 'per_page': 30},
+    );
 
     final prs = response.data as List;
     if (prs.isEmpty) return 'No $state pull requests found.';
@@ -231,10 +266,10 @@ class GitHubTools {
   Future<String> _searchRepos(Map<String, dynamic> args) async {
     final query = args['query'] as String;
 
-    final response = await _dio.get('/search/repositories', queryParameters: {
-      'q': query,
-      'per_page': 10,
-    });
+    final response = await _dio.get(
+      '/search/repositories',
+      queryParameters: {'q': query, 'per_page': 10},
+    );
 
     final data = response.data as Map<String, dynamic>;
     final items = data['items'] as List;
@@ -252,10 +287,10 @@ class GitHubTools {
   Future<String> _searchIssues(Map<String, dynamic> args) async {
     final query = args['query'] as String;
 
-    final response = await _dio.get('/search/issues', queryParameters: {
-      'q': query,
-      'per_page': 10,
-    });
+    final response = await _dio.get(
+      '/search/issues',
+      queryParameters: {'q': query, 'per_page': 10},
+    );
 
     final data = response.data as Map<String, dynamic>;
     final items = data['items'] as List;
@@ -277,12 +312,15 @@ class GitHubTools {
     final description = args['description'] as String? ?? '';
     final private_ = args['private'] as bool? ?? false;
 
-    final response = await _dio.post('/user/repos', data: {
-      'name': name,
-      'description': description,
-      'private': private_,
-      'auto_init': true,
-    });
+    final response = await _dio.post(
+      '/user/repos',
+      data: {
+        'name': name,
+        'description': description,
+        'private': private_,
+        'auto_init': true,
+      },
+    );
 
     final repo = response.data as Map<String, dynamic>;
     return 'Created repository: ${repo['full_name']}\n'

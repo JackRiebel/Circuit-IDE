@@ -45,6 +45,16 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     );
   }
 
+  void openPatchReview(String patchSetId) {
+    state = state.copyWith(
+      mode: StudioDrawerMode.diff,
+      collapsed: false,
+      diffId: patchSetId,
+      patchFilePath: null,
+      selectedArtifactId: null,
+    );
+  }
+
   void openRepositoryDiff() {
     state = state.copyWith(
       mode: StudioDrawerMode.diff,
@@ -60,7 +70,7 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
   }
 
   void openBrowser(String url) {
-    if (!StudioFeatureFlags.advancedStudioSurfaces) {
+    if (!StudioFeatureFlags.browserPreview) {
       state = state.copyWith(
         mode: StudioDrawerMode.sources,
         collapsed: false,
@@ -107,7 +117,7 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
 
   StudioDrawerMode _safeMode(StudioDrawerMode mode) {
     if (mode == StudioDrawerMode.browser &&
-        !StudioFeatureFlags.advancedStudioSurfaces) {
+        !StudioFeatureFlags.browserPreview) {
       return StudioDrawerMode.sources;
     }
     return mode;
@@ -117,9 +127,12 @@ class StudioRightDrawerController extends Notifier<StudioRightDrawerState> {
     return switch (kind) {
       StudioSourceArtifactKind.localUrl ||
       StudioSourceArtifactKind.webSource ||
-      StudioSourceArtifactKind.browserComment => _safeMode(
+      StudioSourceArtifactKind.browserComment ||
+      StudioSourceArtifactKind.browserSelection => _safeMode(
         StudioDrawerMode.browser,
       ),
+      StudioSourceArtifactKind.browserVisualSnapshot =>
+        StudioDrawerMode.sources,
       StudioSourceArtifactKind.file => StudioDrawerMode.code,
       StudioSourceArtifactKind.generatedArtifact => StudioDrawerMode.artifacts,
       StudioSourceArtifactKind.diff ||

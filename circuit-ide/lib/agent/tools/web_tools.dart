@@ -1,20 +1,31 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../security/network_address_policy.dart';
+import '../security/pinned_network_http_client.dart';
+import '../../services/research_evidence_evaluator.dart';
+
+typedef HostAddressResolver = NetworkHostAddressResolver;
+
 class WebTools {
   final Dio _dio;
+  final HostAddressResolver _hostAddressResolver;
 
-  WebTools({Dio? dio})
+  WebTools({Dio? dio, HostAddressResolver? hostAddressResolver})
     : _dio =
           dio ??
-          Dio(
-            BaseOptions(
+          createPinnedNetworkDio(
+            hostAddressResolver: hostAddressResolver ?? InternetAddress.lookup,
+            allowExplicitLoopback: false,
+            options: BaseOptions(
               connectTimeout: const Duration(seconds: 15),
               receiveTimeout: const Duration(seconds: 30),
               headers: {'User-Agent': 'CircuitIDE/1.0'},
             ),
-          );
+          ),
+      _hostAddressResolver = hostAddressResolver ?? InternetAddress.lookup;
 
   Future<String> execute(
     String toolName,
@@ -33,6 +44,7 @@ class WebTools {
     required bool allowNetwork,
   }) async {
     final url = args['url'] as String?;
+    var safeTarget = 'the requested URL';
     if (url == null || url.isEmpty) {
       return 'Error: url is required';
     }
@@ -40,15 +52,17 @@ class WebTools {
     try {
       final uri = Uri.tryParse(url);
       if (uri == null || !uri.hasScheme) {
-        return 'Error: Invalid URL: $url';
+        return 'Error: Invalid URL';
       }
       final validationError = _validateFetchUri(uri);
       if (validationError != null) return validationError;
+      safeTarget = _citationSafeUrl(uri);
       if (!allowNetwork) {
         return 'Error: Network tool requires review before fetching external URLs';
       }
 
-      final response = await _safeGet(uri);
+      final fetched = await _safeGet(uri);
+      final response = fetched.response;
 
       if (response.statusCode != null && response.statusCode! >= 400) {
         return 'Error: HTTP ${response.statusCode}';
@@ -56,36 +70,40 @@ class WebTools {
 
       final body = response.data ?? '';
       final contentType = response.headers.value('content-type') ?? '';
-
-      if (contentType.contains('application/json')) {
-        try {
-          final json = jsonDecode(body);
-          final pretty = const JsonEncoder.withIndent('  ').convert(json);
-          return _truncate(pretty, 50000);
-        } catch (_) {
-          return _truncate(body, 50000);
-        }
-      }
-
-      if (contentType.contains('text/html')) {
-        return _truncate(_htmlToMarkdown(body), 50000);
-      }
-
-      return _truncate(body, 50000);
+      final formatted = contentType.contains('application/json')
+          ? () {
+              try {
+                final json = jsonDecode(body);
+                final pretty = const JsonEncoder.withIndent('  ').convert(json);
+                return _truncate(pretty, 50000);
+              } catch (_) {
+                return _truncate(body, 50000);
+              }
+            }()
+          : contentType.contains('text/html')
+          ? _truncate(_htmlToMarkdown(body), 50000)
+          : _truncate(body, 50000);
+      // Cite the final, validated response URL rather than the request URL.
+      // A redirect can legitimately move a source to its canonical location;
+      // retaining the first URL would make the provenance line misleading.
+      return _withResearchSource(
+        _sanitizeUrlReferences(formatted),
+        fetched.uri,
+      );
     } on StateError catch (e) {
       final message = e.message;
       if (message.startsWith('Error: ')) return message;
-      return 'Error fetching $url: $message';
+      return 'Error fetching $safeTarget: request failed';
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout) {
-        return 'Error: Connection timed out for $url';
+        return 'Error: Connection timed out for $safeTarget';
       }
       if (e.type == DioExceptionType.receiveTimeout) {
-        return 'Error: Response timed out for $url';
+        return 'Error: Response timed out for $safeTarget';
       }
-      return 'Error fetching $url: ${e.message}';
-    } catch (e) {
-      return 'Error fetching $url: $e';
+      return 'Error fetching $safeTarget: request failed';
+    } catch (_) {
+      return 'Error fetching $safeTarget: request failed';
     }
   }
 
@@ -103,22 +121,25 @@ class WebTools {
       return 'Error: Network tool requires review before searching the web';
     }
 
-    // Use DuckDuckGo HTML endpoint as a simple search fallback
+    // The fixed search endpoint has the same network boundary as arbitrary
+    // fetches. Search-origin DNS can be rebound and the endpoint can redirect,
+    // so never let Dio follow either path outside the per-hop validation used
+    // for `web_fetch`.
     try {
-      final encoded = Uri.encodeComponent(query);
-      final response = await _dio.get<String>(
-        'https://html.duckduckgo.com/html/?q=$encoded',
-        options: Options(
-          responseType: ResponseType.plain,
-          headers: {
-            'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          },
-        ),
+      final fetched = await _safeGet(
+        Uri.https('html.duckduckgo.com', '/html/', {'q': query}),
+        headers: const {
+          'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
       );
-
-      final body = response.data ?? '';
+      final body = fetched.response.data ?? '';
       return _parseSearchResults(body);
+    } on StateError catch (e) {
+      final message = e.message;
+      return message.startsWith('Error: ')
+          ? message
+          : 'Error searching: $message';
     } on DioException catch (e) {
       if (e.type == DioExceptionType.connectionTimeout) {
         return 'Error: Search connection timed out';
@@ -126,25 +147,36 @@ class WebTools {
       if (e.type == DioExceptionType.receiveTimeout) {
         return 'Error: Search response timed out';
       }
-      return 'Error searching: ${e.message}';
-    } catch (e) {
-      return 'Error searching: $e';
+      return 'Error searching: request failed';
+    } catch (_) {
+      return 'Error searching: request failed';
     }
   }
 
-  Future<Response<String>> _safeGet(Uri uri) async {
+  Future<_SafeWebResponse> _safeGet(
+    Uri uri, {
+    Map<String, String>? headers,
+  }) async {
     var current = uri;
     for (var redirectCount = 0; redirectCount <= 5; redirectCount++) {
+      final resolutionError = await _validateResolvedFetchUri(current);
+      if (resolutionError != null) {
+        throw StateError(resolutionError);
+      }
       final response = await _dio.getUri<String>(
         current,
         options: Options(
           responseType: ResponseType.plain,
+          headers: headers,
           followRedirects: false,
+          maxRedirects: 0,
           validateStatus: (status) => status != null && status < 400,
         ),
       );
       final status = response.statusCode ?? 0;
-      if (!_isRedirectStatus(status)) return response;
+      if (!_isRedirectStatus(status)) {
+        return _SafeWebResponse(response: response, uri: current);
+      }
 
       final location = response.headers.value('location');
       if (location == null || location.trim().isEmpty) {
@@ -158,6 +190,33 @@ class WebTools {
       current = next;
     }
     throw StateError('Too many redirects');
+  }
+
+  /// Hostname validation alone does not defend against DNS rebinding. Resolve
+  /// every hop immediately before the request and reject the whole fetch if
+  /// any answer is local, private, link-local, metadata, or reserved space.
+  /// Redirects re-enter this guard rather than inheriting the first target's
+  /// approval.
+  Future<String?> _validateResolvedFetchUri(Uri uri) async {
+    final host = _normalizeHost(uri.host);
+    try {
+      final addresses = await _hostAddressResolver(host);
+      if (addresses.isEmpty) {
+        return 'Error: Network target blocked: $host did not resolve to a public address';
+      }
+      for (final address in addresses) {
+        final normalizedAddress = _normalizeHost(address.address);
+        final blockedReason = _blockedHostReason(normalizedAddress);
+        if (blockedReason != null) {
+          return 'Error: Network target blocked: resolved address $normalizedAddress is not allowed ($blockedReason)';
+        }
+      }
+      return null;
+    } on SocketException {
+      return 'Error: Network target blocked: $host could not be resolved safely';
+    } catch (_) {
+      return 'Error: Network target blocked: $host could not be resolved safely';
+    }
   }
 
   bool _isRedirectStatus(int status) =>
@@ -186,71 +245,11 @@ class WebTools {
     return null;
   }
 
-  String _normalizeHost(String host) {
-    var normalized = host.trim().toLowerCase();
-    if (normalized.startsWith('[') && normalized.endsWith(']')) {
-      normalized = normalized.substring(1, normalized.length - 1);
-    }
-    while (normalized.endsWith('.')) {
-      normalized = normalized.substring(0, normalized.length - 1);
-    }
-    return normalized;
-  }
+  String _normalizeHost(String host) =>
+      NetworkAddressPolicy.normalizeHost(host);
 
-  String? _blockedHostReason(String host) {
-    if (host == 'localhost' ||
-        host == 'localhost.localdomain' ||
-        host.endsWith('.localhost')) {
-      return 'localhost access is not allowed';
-    }
-    if (host.endsWith('.local') ||
-        host.endsWith('.internal') ||
-        host.endsWith('.lan')) {
-      return 'private network hostnames are not allowed';
-    }
-    if (!host.contains('.') && !_isIpv6Literal(host)) {
-      return 'single-label/internal hostnames are not allowed';
-    }
-    if (_looksLikeAmbiguousIpv4Alias(host)) {
-      return 'ambiguous numeric IPv4 hostnames are not allowed';
-    }
-    final ipv4Reason = _blockedIpv4Reason(host);
-    if (ipv4Reason != null) return ipv4Reason;
-    final ipv6Reason = _blockedIpv6Reason(host);
-    if (ipv6Reason != null) return ipv6Reason;
-    return null;
-  }
-
-  String? _blockedIpv4Reason(String host) {
-    final match = RegExp(
-      r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$',
-    ).firstMatch(host);
-    if (match == null) return null;
-    final octets = [
-      for (var i = 1; i <= 4; i++) int.tryParse(match.group(i) ?? ''),
-    ];
-    if (octets.any((octet) => octet == null || octet < 0 || octet > 255)) {
-      return 'invalid IPv4 address';
-    }
-    final first = octets[0]!;
-    final second = octets[1]!;
-    if (first == 0) return 'unspecified IPv4 addresses are not allowed';
-    if (first == 10) return 'private IPv4 addresses are not allowed';
-    if (first == 127) return 'loopback IPv4 addresses are not allowed';
-    if (first == 169 && second == 254) {
-      return 'link-local and metadata IPv4 addresses are not allowed';
-    }
-    if (first == 172 && second >= 16 && second <= 31) {
-      return 'private IPv4 addresses are not allowed';
-    }
-    if (first == 192 && second == 168) {
-      return 'private IPv4 addresses are not allowed';
-    }
-    if (first >= 224) {
-      return 'multicast/reserved IPv4 addresses are not allowed';
-    }
-    return null;
-  }
+  String? _blockedHostReason(String host) =>
+      NetworkAddressPolicy.publicHostBlockReason(host);
 
   String? _validateSearchQuery(String query) {
     final urlLikePattern = RegExp(
@@ -320,50 +319,6 @@ class WebTools {
     return uri.host;
   }
 
-  bool _looksLikeAmbiguousIpv4Alias(String host) {
-    if (_isIpv6Literal(host) || !host.contains('.')) return false;
-    final labels = host.split('.');
-    final allNumericOrHex = labels.every((label) {
-      if (label.isEmpty) return false;
-      return RegExp(r'^\d+$').hasMatch(label) ||
-          RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label);
-    });
-    if (!allNumericOrHex) return false;
-    if (labels.length != 4) return true;
-    return labels.any((label) {
-      if (RegExp(r'^0x[0-9a-f]+$', caseSensitive: false).hasMatch(label)) {
-        return true;
-      }
-      return label.length > 1 && label.startsWith('0');
-    });
-  }
-
-  bool _isIpv6Literal(String host) => host.contains(':');
-
-  String? _blockedIpv6Reason(String host) {
-    if (!_isIpv6Literal(host)) return null;
-    final normalized = host.toLowerCase();
-    if (normalized == '::' || normalized == '0:0:0:0:0:0:0:0') {
-      return 'unspecified IPv6 addresses are not allowed';
-    }
-    if (normalized == '::1' || normalized == '0:0:0:0:0:0:0:1') {
-      return 'loopback IPv6 addresses are not allowed';
-    }
-    if (normalized.startsWith('fe80:')) {
-      return 'link-local IPv6 addresses are not allowed';
-    }
-    if (normalized.startsWith('fc') || normalized.startsWith('fd')) {
-      return 'unique-local IPv6 addresses are not allowed';
-    }
-    if (normalized.startsWith('ff')) {
-      return 'multicast IPv6 addresses are not allowed';
-    }
-    if (normalized.startsWith('::ffff:')) {
-      return _blockedIpv4Reason(normalized.substring('::ffff:'.length));
-    }
-    return null;
-  }
-
   String _parseSearchResults(String html) {
     final results = <String>[];
     final linkPattern = RegExp(
@@ -388,11 +343,15 @@ class WebTools {
       final snippet = i < snippets.length
           ? _stripHtml(snippets[i].group(1) ?? '').trim()
           : '';
-      final url = i < urls.length
+      final rawUrl = i < urls.length
           ? _stripHtml(urls[i].group(1) ?? '').trim()
           : '';
+      final url = _researchCandidateUrl(rawUrl);
 
-      if (title.isNotEmpty) {
+      // A search result is only a candidate. Keep it canonical and fetchable
+      // before exposing it to the model, so tracking parameters and unsafe
+      // schemes/hosts cannot be carried from a result page into provenance.
+      if (title.isNotEmpty && url.isNotEmpty) {
         results.add('${i + 1}. $title\n   $url\n   $snippet');
       }
     }
@@ -494,4 +453,49 @@ class WebTools {
     if (text.length <= maxLength) return text;
     return '${text.substring(0, maxLength)}\n\n[Content truncated at $maxLength characters]';
   }
+
+  String _citationSafeUrl(Uri uri) => Uri(
+    scheme: uri.scheme,
+    host: uri.host,
+    port: uri.hasPort ? uri.port : null,
+    path: uri.path.isEmpty ? '/' : uri.path,
+  ).toString();
+
+  /// Remote content can reflect its requested URL or include tracking links.
+  /// Normalize HTTP(S) references before that content reaches the research
+  /// transcript, matching the provenance footer and evidence-artifact rule.
+  String _sanitizeUrlReferences(String value) {
+    return value.replaceAllMapped(
+      RegExp(r'''https?://[^\s<>"')\]]+''', caseSensitive: false),
+      (match) {
+        final uri = Uri.tryParse(match.group(0)!);
+        return uri == null || _validateFetchUri(uri) != null
+            ? '[unsafe URL omitted]'
+            : _citationSafeUrl(uri);
+      },
+    );
+  }
+
+  String _researchCandidateUrl(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || _validateFetchUri(uri) != null) return '';
+    return _citationSafeUrl(uri);
+  }
+
+  /// Web research answers need a citation-safe, stable source line. Query and
+  /// fragment values are intentionally removed so copied citations cannot
+  /// carry accidental tracking identifiers or user-supplied sensitive values.
+  String _withResearchSource(String content, Uri uri) {
+    final checkedAt = DateTime.now().toUtc();
+    final record = ResearchSourceRecord(uri: uri, checkedAt: checkedAt);
+    final checked = checkedAt.toIso8601String().substring(0, 10);
+    return '$content\n\nSource: ${record.citationUrl}\nChecked: $checked\nURL authority signal: ${record.authority().name}\nPublication date: unknown — verify freshness before relying on date-sensitive claims.';
+  }
+}
+
+class _SafeWebResponse {
+  final Response<String> response;
+  final Uri uri;
+
+  const _SafeWebResponse({required this.response, required this.uri});
 }

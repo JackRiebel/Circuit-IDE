@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agent/mcp/mcp_config.dart';
 import '../../core/constants/design_tokens.dart';
 import '../../services/mcp_process_manager.dart';
 import '../../state/mcp_hub_provider.dart';
@@ -15,18 +16,14 @@ class McpServerCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
-    final isConnected =
-        server.connectionState == McpConnectionState.connected;
+    final isConnected = server.connectionState == McpConnectionState.connected;
     final isConnecting =
         server.connectionState == McpConnectionState.connecting;
-    final hasError =
-        server.connectionState == McpConnectionState.error;
+    final hasError = server.connectionState == McpConnectionState.error;
     final hasScript = server.config.scriptPath != null;
     final hasEnvVars = server.config.requiredEnvVars.isNotEmpty;
-    final isProcessRunning =
-        server.processState == McpProcessState.running;
-    final isProcessStarting =
-        server.processState == McpProcessState.starting;
+    final isProcessRunning = server.processState == McpProcessState.running;
+    final isProcessStarting = server.processState == McpProcessState.starting;
 
     return Container(
       margin: const EdgeInsets.only(bottom: Spacing.md),
@@ -38,8 +35,8 @@ class McpServerCard extends ConsumerWidget {
           color: isConnected
               ? tokens.success.withValues(alpha: 0.3)
               : hasError
-                  ? tokens.error.withValues(alpha: 0.3)
-                  : tokens.border,
+              ? tokens.error.withValues(alpha: 0.3)
+              : tokens.border,
         ),
       ),
       child: Column(
@@ -56,10 +53,10 @@ class McpServerCard extends ConsumerWidget {
                   color: isConnected
                       ? tokens.success
                       : isConnecting
-                          ? tokens.warning
-                          : hasError
-                              ? tokens.error
-                              : tokens.textMuted,
+                      ? tokens.warning
+                      : hasError
+                      ? tokens.error
+                      : tokens.textMuted,
                 ),
               ),
               const SizedBox(width: Spacing.md),
@@ -156,6 +153,69 @@ class McpServerCard extends ConsumerWidget {
             ],
           ),
 
+          const SizedBox(height: Spacing.sm),
+          Text(
+            '${server.config.connectorKind.label} · ${server.config.requestedScopes.isEmpty ? 'No declared scopes' : server.config.requestedScopes.join(', ')}',
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            server.config.dataAccessSummary.isEmpty
+                ? server.config.connectorKind.defaultDataAccessSummary
+                : server.config.dataAccessSummary,
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xxs,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          Wrap(
+            spacing: Spacing.md,
+            runSpacing: Spacing.sm,
+            children: [
+              Text(
+                'Consent: ${_auditTime(server.config.consentedAt)}',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                ),
+              ),
+              Text(
+                'Tested: ${_auditTime(server.config.lastTestedAt)}',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                ),
+              ),
+              Text(
+                'Used: ${_auditTime(server.config.lastUsedAt)}',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          Wrap(
+            spacing: Spacing.sm,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => ref
+                    .read(mcpHubProvider.notifier)
+                    .testServerConnection(server.config.name),
+                icon: const Icon(Icons.health_and_safety_outlined, size: 13),
+                label: const Text('Test connection'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _confirmRevoke(context, ref, server.config),
+                icon: const Icon(Icons.link_off_outlined, size: 13),
+                label: const Text('Revoke access'),
+              ),
+            ],
+          ),
+
           // Token status (for servers with requiredEnvVars)
           if (hasEnvVars) ...[
             const SizedBox(height: Spacing.sm),
@@ -170,10 +230,7 @@ class McpServerCard extends ConsumerWidget {
             const SizedBox(height: Spacing.sm),
             Text(
               server.error!,
-              style: TextStyle(
-                color: tokens.error,
-                fontSize: FontSizes.xxs,
-              ),
+              style: TextStyle(color: tokens.error, fontSize: FontSizes.xxs),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -190,6 +247,40 @@ class McpServerCard extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _auditTime(DateTime? value) {
+  if (value == null) return 'not yet';
+  final local = value.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+}
+
+Future<void> _confirmRevoke(
+  BuildContext context,
+  WidgetRef ref,
+  McpServerConfig config,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('Revoke ${config.connectorKind.label} access?'),
+      content: const Text(
+        'This disconnects the server, removes its Keychain tokens, and clears local consent. You will need to configure and approve it again.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: const Text('Revoke'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  await ref.read(mcpHubProvider.notifier).revokeServerConsent(config.name);
 }
 
 class _ProcessStateChip extends StatelessWidget {
@@ -210,10 +301,7 @@ class _ProcessStateChip extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Spacing.md,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(Radii.pill),
@@ -297,18 +385,11 @@ class _TokenStatusRow extends ConsumerWidget {
       },
       child: Row(
         children: [
-          Icon(
-            Icons.key,
-            size: 10,
-            color: tokens.textMuted,
-          ),
+          Icon(Icons.key, size: 10, color: tokens.textMuted),
           const SizedBox(width: Spacing.sm),
           Text(
             'Tokens: ${requiredEnvVars.length} required',
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xxs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
           ),
           const SizedBox(width: Spacing.sm),
           Text(

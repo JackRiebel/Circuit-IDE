@@ -1,5 +1,6 @@
 import '../models/artifact_document.dart';
 import '../models/generated_artifact.dart';
+import 'artifact_contract.dart';
 
 class ArtifactReadinessEvaluator {
   const ArtifactReadinessEvaluator();
@@ -12,12 +13,21 @@ class ArtifactReadinessEvaluator {
     required int count,
     required int byteSize,
     required Map<String, Object?> metadata,
+    List<ArtifactContractField> contractFields = const [],
   }) {
     final gaps = <String>{
       ..._metadataStringList(metadata, 'validationGaps'),
       ..._metadataStringList(metadata, 'evidenceGaps'),
     };
     final gates = <String>{};
+    for (final field in contractFields) {
+      final present = _hasContractField(field, document, metadata);
+      if (present) {
+        gates.add('Contract: ${field.label}');
+      } else {
+        gaps.add(_unknownContractField(field));
+      }
+    }
 
     if (byteSize > 0) {
       gates.add('File generated');
@@ -39,6 +49,13 @@ class ArtifactReadinessEvaluator {
       gaps.add('Preview data is missing');
     }
 
+    _applyVisualPreviewQuality(
+      kind: kind,
+      metadata: metadata,
+      gates: gates,
+      gaps: gaps,
+    );
+
     switch (kind) {
       case GeneratedArtifactKind.excel:
       case GeneratedArtifactKind.csv:
@@ -55,6 +72,14 @@ class ArtifactReadinessEvaluator {
           gates.add('Header and data rows detected');
         } else {
           gaps.add('Tabular output needs at least one data row');
+        }
+        if (kind == GeneratedArtifactKind.excel &&
+            _metadataBool(metadata, 'workbookSheetsTruncated')) {
+          gaps.add('Workbook input exceeds the generated sheet limit');
+        }
+        if (kind == GeneratedArtifactKind.excel &&
+            _metadataBool(metadata, 'workbookRowHeightsAdjusted')) {
+          gates.add('Wrapped workbook rows have explicit height capacity');
         }
       case GeneratedArtifactKind.powerPoint:
         if (count >= 3) {
@@ -128,6 +153,7 @@ class ArtifactReadinessEvaluator {
         gates.add('Structured data artifact');
         if (byteSize < 2) gaps.add('JSON payload is empty');
       case GeneratedArtifactKind.markdown:
+      case GeneratedArtifactKind.html:
       case GeneratedArtifactKind.report:
         if (document.summary.trim().isNotEmpty) {
           gates.add('Document summary present');
@@ -186,6 +212,257 @@ class ArtifactReadinessEvaluator {
     };
   }
 
+  void _applyVisualPreviewQuality({
+    required GeneratedArtifactKind kind,
+    required Map<String, Object?> metadata,
+    required Set<String> gates,
+    required Set<String> gaps,
+  }) {
+    if (kind == GeneratedArtifactKind.powerPoint) {
+      _applyPowerPointVisualPreviewQuality(
+        metadata: metadata,
+        gates: gates,
+        gaps: gaps,
+      );
+      return;
+    }
+    if (kind == GeneratedArtifactKind.docx ||
+        kind == GeneratedArtifactKind.pdf ||
+        kind == GeneratedArtifactKind.excel) {
+      _applyStructuralVisualPreviewQuality(
+        kind: kind,
+        metadata: metadata,
+        gates: gates,
+        gaps: gaps,
+      );
+    }
+  }
+
+  void _applyPowerPointVisualPreviewQuality({
+    required Map<String, Object?> metadata,
+    required Set<String> gates,
+    required Set<String> gaps,
+  }) {
+    if (_metadataString(metadata, 'pptxVisualPreviewRenderer').isEmpty) {
+      gaps.add('PowerPoint visual preview is missing');
+      return;
+    }
+    final titleOverflow = _metadataBool(
+      metadata,
+      'pptxVisualPreviewHasTitleOverflow',
+    );
+    final contentOverflow = _metadataBool(
+      metadata,
+      'pptxVisualPreviewHasContentOverflow',
+    );
+    if (titleOverflow) {
+      gaps.add('PowerPoint visual preview title overflows its review frame');
+    }
+    if (contentOverflow) {
+      gaps.add('PowerPoint visual preview content overflows its review frame');
+    }
+    if (!titleOverflow && !contentOverflow) {
+      gates.add('PowerPoint visual preview geometry passed');
+    }
+  }
+
+  void _applyStructuralVisualPreviewQuality({
+    required GeneratedArtifactKind kind,
+    required Map<String, Object?> metadata,
+    required Set<String> gates,
+    required Set<String> gaps,
+  }) {
+    final label = switch (kind) {
+      GeneratedArtifactKind.docx => 'Word report',
+      GeneratedArtifactKind.pdf => 'PDF report',
+      GeneratedArtifactKind.excel => 'Excel workbook',
+      _ => 'Artifact',
+    };
+    if (_metadataString(metadata, 'artifactVisualPreviewRenderer').isEmpty) {
+      gaps.add('$label structural visual preview is missing');
+      return;
+    }
+    final titleOverflow = _metadataBool(
+      metadata,
+      'artifactVisualPreviewHasTitleOverflow',
+    );
+    final contentOverflow = _metadataBool(
+      metadata,
+      'artifactVisualPreviewHasContentOverflow',
+    );
+    final tableOverflow = _metadataBool(
+      metadata,
+      'artifactVisualPreviewHasTableOverflow',
+    );
+    final rowHeightOverflow = _metadataBool(
+      metadata,
+      'artifactVisualPreviewHasRowHeightOverflow',
+    );
+    if (titleOverflow) {
+      gaps.add('$label structural preview title overflows its review frame');
+    }
+    if (contentOverflow) {
+      gaps.add('$label structural preview content overflows its review frame');
+    }
+    if (tableOverflow) {
+      gaps.add(
+        rowHeightOverflow
+            ? '$label structural preview has a row beyond the supported Excel height'
+            : '$label structural preview table may clip generated values',
+      );
+    }
+    if (!titleOverflow && !contentOverflow && !tableOverflow) {
+      gates.add('$label structural preview geometry passed');
+    }
+    // The sidecar is intentionally a deterministic structural view. Keep the
+    // native macOS/Office render as a separately recorded CI/release proof
+    // instead of mislabelling the SVG as a platform render.
+    gates.add('$label structural review sidecar available');
+  }
+
+  bool _hasContractField(
+    ArtifactContractField field,
+    ArtifactDocument document,
+    Map<String, Object?> metadata,
+  ) {
+    return switch (field) {
+      ArtifactContractField.assumptions =>
+        document.assumptions.isNotEmpty ||
+            (_metadataInt(metadata, 'assumptionCount') ?? 0) > 0,
+      ArtifactContractField.sources =>
+        document.citations.isNotEmpty ||
+            (_metadataInt(metadata, 'citationCount') ?? 0) > 0 ||
+            (_metadataInt(metadata, 'sourceCount') ?? 0) > 0 ||
+            (_metadataInt(metadata, 'sourceSheetCount') ?? 0) > 0 ||
+            _metadataBool(metadata, 'hasSourceEvidence'),
+      ArtifactContractField.checkedDate => _hasCheckedDate(document, metadata),
+      ArtifactContractField.confidence => _hasExplicitConfidence(
+        document,
+        metadata,
+      ),
+      ArtifactContractField.topologyGraph =>
+        (_metadataInt(metadata, 'nodeCount') ?? 0) > 0 &&
+            (_metadataInt(metadata, 'edgeCount') ?? 0) > 0,
+      ArtifactContractField.topologyCapacity =>
+        _metadataBool(metadata, 'hasCapacityChecks') &&
+            _metadataBool(metadata, 'hasTopologyValidationGate'),
+      ArtifactContractField.reviewFindings =>
+        (_metadataInt(metadata, 'architectureFindingCount') ?? 0) > 0,
+      ArtifactContractField.reviewRisks =>
+        (_metadataInt(metadata, 'architectureRiskCount') ?? 0) > 0,
+      ArtifactContractField.reviewValidation =>
+        (_metadataInt(metadata, 'architectureValidationCount') ?? 0) > 0,
+      ArtifactContractField.poeBudget => _metadataBool(
+        metadata,
+        'hasPoeBudget',
+      ),
+      ArtifactContractField.wanThroughput => _metadataBool(
+        metadata,
+        'hasWanThroughput',
+      ),
+      ArtifactContractField.candidateValidation => _metadataBool(
+        metadata,
+        'hasCandidateValidation',
+      ),
+      ArtifactContractField.lifecycleDateAuthority =>
+        _metadataBool(metadata, 'hasOfficialLifecycleSource') &&
+            _metadataBool(metadata, 'hasCheckedDateEvidence') &&
+            (_metadataInt(metadata, 'unknownLifecycleDateCount') ?? 0) == 0,
+      ArtifactContractField.replacementSuitability => _metadataBool(
+        metadata,
+        'hasValidatedReplacementSuitability',
+      ),
+      ArtifactContractField.comparisonCandidates =>
+        (_metadataInt(metadata, 'candidateCount') ?? 0) >= 2,
+      ArtifactContractField.fitScoring =>
+        (_metadataInt(metadata, 'shortlistCount') ?? 0) > 0,
+      ArtifactContractField.hardGateValidation =>
+        (_metadataInt(metadata, 'hardGateEvaluationCount') ?? 0) > 0 &&
+            (_metadataInt(metadata, 'mustHaveComplianceCount') ?? 0) > 0,
+      ArtifactContractField.businessUseCases =>
+        (_metadataInt(metadata, 'businessUseCaseCount') ?? 0) > 0,
+      ArtifactContractField.businessValueMetrics =>
+        (_metadataInt(metadata, 'businessValueMetricCount') ?? 0) > 0,
+      ArtifactContractField.chartData =>
+        (_metadataInt(metadata, 'pointCount') ?? 0) > 0,
+      ArtifactContractField.chartDecisionThresholds =>
+        _metadataBool(metadata, 'hasThresholdGuidance') &&
+            _metadataBool(metadata, 'hasDecisionMatrix'),
+      ArtifactContractField.evidenceClaims =>
+        (_metadataInt(metadata, 'claimCount') ?? 0) > 0,
+      ArtifactContractField.claimDisposition =>
+        (_metadataInt(metadata, 'claimDispositionCount') ?? 0) > 0,
+    };
+  }
+
+  bool _hasCheckedDate(
+    ArtifactDocument document,
+    Map<String, Object?> metadata,
+  ) {
+    final metadataDates = [
+      ..._metadataStringList(metadata, 'checkedDates'),
+      metadata['checkedDate']?.toString() ?? '',
+      metadata['checkedDateStatus']?.toString() ?? '',
+    ];
+    if (metadataDates.any(_containsConcreteDate)) return true;
+    return _documentText(document).split('\n').any(_containsConcreteDate);
+  }
+
+  bool _hasExplicitConfidence(
+    ArtifactDocument document,
+    Map<String, Object?> metadata,
+  ) {
+    final metadataValue = metadata['confidence'] ?? metadata['confidenceScore'];
+    if (metadataValue != null &&
+        metadataValue.toString().trim().isNotEmpty &&
+        metadataValue.toString().trim().toLowerCase() != 'unknown') {
+      return true;
+    }
+    return RegExp(
+      r'\bconfidence\s*(?:level\s*)?(?:is|:|-)?\s*(?:high|medium|low|validated|confirmed)\b',
+      caseSensitive: false,
+    ).hasMatch(_documentText(document));
+  }
+
+  bool _containsConcreteDate(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty ||
+        normalized.contains('not provided') ||
+        normalized.contains('tbd') ||
+        normalized.contains('needs lookup')) {
+      return false;
+    }
+    return RegExp(
+      r'\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+20\d{2}\b|\b\d{1,2}[-/](?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-/]20\d{2}\b',
+      caseSensitive: false,
+    ).hasMatch(value);
+  }
+
+  String _documentText(ArtifactDocument document) {
+    return [
+      document.title,
+      document.summary,
+      ...document.assumptions,
+      ...document.citations,
+      for (final section in document.sections) ...[
+        section.title,
+        section.body,
+        ...section.bullets,
+      ],
+      for (final table in document.tables) ...[
+        table.title,
+        for (final row in table.rows) ...row,
+      ],
+    ].join('\n');
+  }
+
+  String _unknownContractField(ArtifactContractField field) {
+    if (field == ArtifactContractField.replacementSuitability) {
+      return 'Unknown ${field.label} — EoX migration hints are not final recommendations';
+    }
+    return 'Unknown ${field.label}';
+  }
+
   int _scoreFor({
     required GeneratedArtifactStatus status,
     required int gateCount,
@@ -242,6 +519,9 @@ class ArtifactReadinessEvaluator {
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '');
   }
+
+  String _metadataString(Map<String, Object?> metadata, String key) =>
+      metadata[key]?.toString().trim() ?? '';
 
   bool _metadataBool(Map<String, Object?> metadata, String key) {
     final value = metadata[key];

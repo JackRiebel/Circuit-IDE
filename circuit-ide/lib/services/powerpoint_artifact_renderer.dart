@@ -1,8 +1,30 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/artifact_document.dart';
+import '../models/artifact_template.dart';
+import 'worker_cancellation.dart';
+
+/// A format-neutral projection of one generated deck slide for durable review.
+///
+/// The PowerPoint package writer remains the source of truth. This projection
+/// is intentionally limited to slide copy and table rows so structural visual
+/// QA can cover every generated slide without exposing package internals.
+class PowerPointSlideReview {
+  final String title;
+  final String eyebrow;
+  final String kind;
+  final List<String> contentLines;
+
+  const PowerPointSlideReview({
+    required this.title,
+    required this.eyebrow,
+    required this.kind,
+    required this.contentLines,
+  });
+}
 
 class PowerPointArtifactRenderer {
   const PowerPointArtifactRenderer();
@@ -11,6 +33,19 @@ class PowerPointArtifactRenderer {
   static const int _maxTablesInDeck = 4;
   static const int _tableDataRowsPerSlide = 6;
   static const int _sectionBulletsPerSlide = 7;
+
+  /// Builds generated PowerPoint packages off the UI isolate.
+  Future<Uint8List> renderInWorker(
+    ArtifactDocument document, {
+    WorkerCancellationToken? cancellationToken,
+  }) {
+    return CancellableWorker.run<Uint8List>(
+      entryPoint: _powerPointRenderWorkerEntry,
+      arguments: {'document': document},
+      cancellationToken: cancellationToken,
+      decodeResult: _powerPointBytesFromWorkerResult,
+    );
+  }
 
   int slideCountFor(ArtifactDocument document) {
     return _slidesFor(document).take(_maxSlides).length;
@@ -30,6 +65,27 @@ class PowerPointArtifactRenderer {
           _slideRoleFor(slides[i]),
         ],
     ];
+  }
+
+  /// Returns every bounded deck slide in the same order as the PPTX package.
+  ///
+  /// Used only by the persisted structural visual-review artifact. It does
+  /// not purport to be an Office rendering or alter deck composition.
+  List<PowerPointSlideReview> reviewSlidesFor(ArtifactDocument document) {
+    return _slidesFor(document)
+        .take(_maxSlides)
+        .map(
+          (slide) => PowerPointSlideReview(
+            title: slide.title,
+            eyebrow: slide.eyebrow,
+            kind: slide.kind.label,
+            contentLines: [
+              ...slide.bullets,
+              for (final row in slide.tableRows) row.join(' | '),
+            ],
+          ),
+        )
+        .toList(growable: false);
   }
 
   Map<String, Object?> metadataFor(ArtifactDocument document) {
@@ -120,6 +176,10 @@ class PowerPointArtifactRenderer {
       'handoffStatus': _handoffStatusFor(validationGaps),
       'decisionAsk': _decisionAskFor(document, sections),
       'slideCount': slides.length,
+      'hasAccessibleSlideTitles':
+          slides.isNotEmpty &&
+          slides.every((slide) => slide.title.trim().isNotEmpty),
+      'hasLogicalSlideReadingOrder': slides.isNotEmpty,
       'theme': theme.label,
       'audience': _audienceFor(document),
       'deckPurpose': _deckPurposeFor(document),
@@ -2261,7 +2321,7 @@ class PowerPointArtifactRenderer {
         '${_textBox(id: 5, name: 'Title', x: 600000, y: 680000, w: 10800000, h: 900000, text: _xml(slide.title), size: titleSize, bold: true)}'
         '$body'
         '${_deckStatusStrip(statusStrip, theme: theme)}'
-        '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: 'CircuitCode - Generated artifact - ${theme.label} theme', size: 1000, bold: false, color: theme.mutedText)}'
+        '${_textBox(id: 90, name: 'Footer', x: 600000, y: 6420000, w: 7600000, h: 260000, text: _xml(theme.footerText), size: 1000, bold: false, color: theme.mutedText)}'
         '${_textBox(id: 91, name: 'Slide number', x: 10450000, y: 6420000, w: 1200000, h: 260000, text: 'Slide $slideNumber of $totalSlides', size: 1000, bold: false, color: theme.mutedText)}'
         '</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>';
   }
@@ -2407,7 +2467,7 @@ class PowerPointArtifactRenderer {
         y: 748000,
         w: 2440000,
         h: 180000,
-        text: 'CircuitCode enterprise artifact',
+        text: _xml('${theme.logoText} · ${theme.confidentialityLabel}'),
         size: 1050,
         bold: true,
         color: theme.bodyText,
@@ -3039,6 +3099,28 @@ class PowerPointArtifactRenderer {
   }
 }
 
+void _powerPointRenderWorkerEntry(Map<String, Object?> arguments) {
+  final replyPort = arguments['replyPort'];
+  if (replyPort is! SendPort) return;
+  try {
+    final document = arguments['document'];
+    if (document is! ArtifactDocument) {
+      throw StateError('Missing artifact document for PowerPoint rendering.');
+    }
+    replyPort.send({
+      'result': const PowerPointArtifactRenderer().render(document),
+    });
+  } catch (error) {
+    replyPort.send({'error': error.toString()});
+  }
+}
+
+Uint8List _powerPointBytesFromWorkerResult(Object? result) {
+  if (result is Uint8List) return result;
+  if (result is List<int>) return Uint8List.fromList(result);
+  throw StateError('Artifact renderer returned invalid bytes.');
+}
+
 class _DeckSlide {
   final String title;
   final String eyebrow;
@@ -3123,6 +3205,7 @@ enum _DeckSlideKind {
 
 class _DeckTheme {
   final String label;
+  final bool isLight;
   final String canvas;
   final String panel;
   final String tile;
@@ -3132,9 +3215,14 @@ class _DeckTheme {
   final String secondaryText;
   final String mutedText;
   final String headerText;
+  final String primaryAccent;
+  final String logoText;
+  final String footerText;
+  final String confidentialityLabel;
 
   const _DeckTheme._({
     required this.label,
+    required this.isLight,
     required this.canvas,
     required this.panel,
     required this.tile,
@@ -3144,9 +3232,14 @@ class _DeckTheme {
     required this.secondaryText,
     required this.mutedText,
     required this.headerText,
+    required this.primaryAccent,
+    required this.logoText,
+    required this.footerText,
+    required this.confidentialityLabel,
   });
 
   factory _DeckTheme.forDocument(ArtifactDocument document) {
+    final template = const ArtifactTemplateRegistry().fromDocument(document);
     final prompt = '${document.metadata['prompt'] ?? ''}'.toLowerCase();
     final explicitTheme = '${document.metadata['theme'] ?? ''}'.toLowerCase();
     final wantsLight =
@@ -3155,8 +3248,9 @@ class _DeckTheme {
         prompt.contains('white background') ||
         prompt.contains('customer-facing light');
     if (wantsLight) {
-      return const _DeckTheme._(
+      return _DeckTheme._(
         label: 'Light',
+        isLight: true,
         canvas: 'F8FAFC',
         panel: 'FFFFFF',
         tile: 'EEF2F7',
@@ -3166,10 +3260,17 @@ class _DeckTheme {
         secondaryText: '475569',
         mutedText: '64748B',
         headerText: '111111',
+        primaryAccent: template.accentColor,
+        logoText: template.logoText,
+        footerText: template.id == ArtifactTemplateRegistry.standard.id
+            ? 'CircuitCode - Generated artifact - Light theme'
+            : template.footerText,
+        confidentialityLabel: template.confidentialityLabel,
       );
     }
-    return const _DeckTheme._(
+    return _DeckTheme._(
       label: 'Dark',
+      isLight: false,
       canvas: '161616',
       panel: '202020',
       tile: '242424',
@@ -3179,11 +3280,17 @@ class _DeckTheme {
       secondaryText: 'C4C7CC',
       mutedText: '8A8F98',
       headerText: '111111',
+      primaryAccent: template.accentColor,
+      logoText: template.logoText,
+      footerText: template.id == ArtifactTemplateRegistry.standard.id
+          ? 'CircuitCode - Generated artifact - Dark theme'
+          : template.footerText,
+      confidentialityLabel: template.confidentialityLabel,
     );
   }
 
   String accentFor(_DeckSlideKind kind) {
-    return switch (kind) {
+    final originalAccent = switch (kind) {
       _DeckSlideKind.title => '7FB7B2',
       _DeckSlideKind.agenda => '7A9CC6',
       _DeckSlideKind.talkTrack => '7FB7B2',
@@ -3208,10 +3315,11 @@ class _DeckTheme {
       _DeckSlideKind.sources => '7A9CC6',
       _DeckSlideKind.content => '7FB7B2',
     };
+    return primaryAccent.isEmpty ? originalAccent : primaryAccent;
   }
 
   String backgroundFor(_DeckSlideKind kind) {
-    if (label == 'Light') {
+    if (isLight) {
       return switch (kind) {
         _DeckSlideKind.title || _DeckSlideKind.sectionDivider => 'F8FAFC',
         _DeckSlideKind.snapshot ||

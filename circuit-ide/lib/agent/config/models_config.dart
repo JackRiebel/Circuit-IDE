@@ -15,6 +15,10 @@ class ModelsConfig {
       inputCostPer1k: 0,
       outputCostPer1k: 0,
       supportsTools: true,
+      supportsImageInput: true,
+      supportsJsonSchema: true,
+      supportsReasoning: true,
+      tokenSemantics: ProviderTokenSemantics.inputAndOutput,
     ),
     ModelInfo(
       id: 'gemini-3.1-flash-lite',
@@ -23,6 +27,10 @@ class ModelsConfig {
       inputCostPer1k: 0,
       outputCostPer1k: 0,
       supportsTools: true,
+      supportsImageInput: true,
+      supportsJsonSchema: true,
+      supportsReasoning: true,
+      tokenSemantics: ProviderTokenSemantics.inputAndOutput,
     ),
   ];
 

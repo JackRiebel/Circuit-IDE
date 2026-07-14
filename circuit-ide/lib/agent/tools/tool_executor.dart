@@ -8,6 +8,7 @@ import '../../core/utils/logger.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/tool_result_envelope.dart';
 import '../../models/agent_tool_permission.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/checkpoint.dart';
 import '../../models/command_run.dart';
 import '../../models/confirmation_request.dart';
@@ -19,15 +20,19 @@ import '../security/agent_tool_permission_policy.dart';
 import '../security/command_sanitizer.dart';
 import '../verification_command_filter.dart' as verification_command_filter;
 import '../mcp/mcp_client.dart';
+import '../../models/subagent_delegation.dart';
 import 'tool_registry.dart';
 import 'file_tools.dart';
 import 'git_tools.dart';
 import 'command_tools.dart';
 import 'web_tools.dart';
 import 'github_tools.dart';
-import 'orchestrate_tool.dart';
 
 typedef ConfirmationCallback = Future<bool> Function(ConfirmationRequest);
+typedef SubagentDelegationHandler =
+    Future<SubagentDelegationResult> Function(
+      SubagentDelegationRequest request,
+    );
 
 class ToolExecutionResult {
   final String toolCallId;
@@ -63,8 +68,12 @@ class ToolExecutionResult {
 
 class ToolExecutor {
   final String workingDir;
+  final WorkspacePermissionDisposition networkDisposition;
+  final List<WorkspaceNetworkRule> networkRules;
   final ConfirmationCallback? onConfirmationNeeded;
   final void Function(ToolCallInfo)? onToolCallUpdate;
+  final SubagentDelegationHandler? onSubagentDelegation;
+  final void Function()? onCancelSubagents;
   bool autoApprove;
 
   late final FileTools _fileTools;
@@ -78,7 +87,6 @@ class ToolExecutor {
   );
   final _secretDetector = SecretDetector();
   McpClient? _mcpClient;
-  OrchestrateToolExecutor? _orchestrateTool;
 
   /// Checkpoint manager for snapshotting files before writes/edits.
   late final CheckpointManager checkpointManager;
@@ -88,8 +96,12 @@ class ToolExecutor {
 
   ToolExecutor({
     required this.workingDir,
+    this.networkDisposition = WorkspacePermissionDisposition.review,
+    this.networkRules = const [],
     this.onConfirmationNeeded,
     this.onToolCallUpdate,
+    this.onSubagentDelegation,
+    this.onCancelSubagents,
     this.autoApprove = false,
   }) {
     _fileTools = FileTools(workingDir: workingDir);
@@ -103,6 +115,8 @@ class ToolExecutor {
   AgentToolPermissionPolicy get _permissionPolicy => AgentToolPermissionPolicy(
     workingDir: workingDir,
     request: _permissionRequest,
+    networkDisposition: networkDisposition,
+    networkRules: networkRules,
   );
 
   void setPermissionRequest(ToolPermissionRequest request) {
@@ -134,11 +148,6 @@ class ToolExecutor {
   /// Set the MCP client for proxying MCP tool calls
   void setMcpClient(McpClient? client) {
     _mcpClient = client;
-  }
-
-  /// Set the orchestration tool executor for subagent spawning
-  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
-    _orchestrateTool = tool;
   }
 
   /// Execute tool calls, running read-only tools in parallel
@@ -244,10 +253,13 @@ class ToolExecutor {
           toolCall: toolCall,
           preview: preview,
           warnings: warnings,
+          risk: permission.reason,
+          normalizedAction: _permissionPolicy.approvalGrantKeyFor(toolCall),
         );
 
         final approved = await onConfirmationNeeded!(request);
-        if (!approved) {
+        if (!approved || request.isExpired) {
+          final expired = request.isExpired;
           onToolCallUpdate?.call(
             updated.copyWith(
               status: ToolStatus.cancelled,
@@ -257,13 +269,17 @@ class ToolExecutor {
           return ToolExecutionResult(
             toolCallId: toolCall.id,
             toolName: toolCall.name,
-            result: 'Action rejected by user.',
+            result: expired
+                ? 'Approval expired before the action ran.'
+                : 'Action rejected by user.',
             wasCancelled: true,
             envelope: ToolResultEnvelope(
               toolCallId: toolCall.id,
               toolName: toolCall.name,
               status: ToolResultStatus.cancelled,
-              summary: 'Action rejected by user.',
+              summary: expired
+                  ? 'Approval expired before the action ran.'
+                  : 'Action rejected by user.',
             ),
           );
         }
@@ -292,6 +308,7 @@ class ToolExecutor {
         return applyResult;
       }
 
+      SubagentDelegationResult? delegationResult;
       final result = toolCall.name == 'run_command'
           ? await _executeCommandTool(
               toolCall,
@@ -299,6 +316,11 @@ class ToolExecutor {
               permission,
               approvedByReview: approvedByReview,
             )
+          : toolCall.name == 'delegate_subagent'
+          ? await _delegateSubagent(toolCall).then((value) {
+              delegationResult = value;
+              return value.toPromptBlock();
+            })
           : await _dispatch(
               toolCall.name,
               toolCall.arguments,
@@ -339,11 +361,14 @@ class ToolExecutor {
           retryable: resultIsError,
           data: {
             'rawResult': result,
+            if (delegationResult != null)
+              'delegation': delegationResult!.toJson(),
             if (toolCall.name == 'run_command')
               'command': toolCall.arguments['command'],
             ..._commandResultData(commandExitCode),
             if (toolCall.name == 'propose_patch') ...toolCall.arguments,
           },
+          artifacts: delegationResult?.artifacts ?? const [],
         ),
       );
     } catch (e) {
@@ -437,7 +462,23 @@ class ToolExecutor {
     );
   }
 
-  int cancelActiveCommands() => _commandTools.cancelAll();
+  int cancelActiveCommands() {
+    onCancelSubagents?.call();
+    return _commandTools.cancelAll();
+  }
+
+  Future<SubagentDelegationResult> _delegateSubagent(
+    ToolCallInfo toolCall,
+  ) async {
+    if (onSubagentDelegation == null) {
+      throw StateError(
+        'Subagent delegation is unavailable because this Studio runtime has no isolated delegation service.',
+      );
+    }
+    return onSubagentDelegation!(
+      SubagentDelegationRequest.fromToolArguments(toolCall.arguments),
+    );
+  }
 
   Future<ToolExecutionResult> _executeApplyPatchSet(
     ToolCallInfo toolCall,
@@ -975,6 +1016,8 @@ class ToolExecutor {
       // Command tools
       case 'run_command':
         return 'Error: run_command must run through the reviewed command execution path.';
+      case 'delegate_subagent':
+        return 'Error: delegate_subagent must run through the isolated delegation path.';
 
       // Web tools
       case 'web_fetch':
@@ -996,13 +1039,6 @@ class ToolExecutor {
       case 'github_close_issue':
       case 'github_create_repo':
         return 'Error: GitHub mutation tools are unavailable in Studio turns until the connector is explicitly feature-enabled and scoped.';
-
-      // Orchestration tool
-      case 'orchestrate':
-        if (_orchestrateTool == null) {
-          return 'Error: Orchestration not available';
-        }
-        return _orchestrateTool!.execute(args);
 
       default:
         // MCP tool dispatch
@@ -1049,6 +1085,12 @@ class ToolExecutor {
         return 'Propose patch: $title';
       case 'run_command':
         return 'Execute: ${args['command'] ?? ''}';
+      case 'delegate_subagent':
+        final task = (args['task'] as String? ?? '').trim();
+        final grant = (args['tool_grant'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .join(', ');
+        return 'Delegate bounded task: ${task.isEmpty ? 'Untitled task' : task}${grant.isEmpty ? '' : ' (tools: $grant)'}';
       case 'git_commit':
         return 'Commit: ${args['message'] ?? ''}';
       case 'github_create_issue':

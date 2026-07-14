@@ -4,9 +4,14 @@ import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 
 import '../models/context_attachment.dart';
+import 'local_ocr_service.dart';
 
 class ScreenshotContextAttachmentBuilder {
-  const ScreenshotContextAttachmentBuilder();
+  final LocalOcrService ocrService;
+
+  const ScreenshotContextAttachmentBuilder({
+    this.ocrService = const LocalOcrService(),
+  });
 
   static const supportedExtensions = {'.png', '.jpg', '.jpeg', '.gif', '.webp'};
 
@@ -35,8 +40,14 @@ class ScreenshotContextAttachmentBuilder {
     final dimensions = _dimensionsFor(bytes);
     final extension = p.extension(path).replaceFirst('.', '').toUpperCase();
     final mimeType = _mimeTypeForExtension(p.extension(path));
+    final estimatedVisionTokens = _estimateVisionTokens(
+      dimensions,
+      bytes.length,
+    );
+    final ocr = await ocrService.extract(imagePath: path, imageBytes: bytes);
     final sidecar = await _sidecarTextFor(path);
     final hasSidecar = sidecar != null && sidecar.text.trim().isNotEmpty;
+    final hasOcr = ocr != null;
     final facts = [
       'Image attachment for visual-evidence review.',
       'File: ${p.basename(path)}',
@@ -47,15 +58,24 @@ class ScreenshotContextAttachmentBuilder {
       else
         'Dimensions: not detected',
       'Visual evidence status: screenshot/image file is attached as context metadata.',
-      if (hasSidecar)
+      if (hasOcr)
+        'OCR status: ${ocr.engine} extracted ${ocr.blocks.length} text regions at ${(ocr.averageConfidence * 100).round()}% average confidence.'
+      else if (hasSidecar)
         'OCR/description sidecar status: attached from ${sidecar.pathLabel}.'
       else
         'OCR status: not extracted locally.',
-      'Vision model status: not sent as pixel input by the current Circuit connector.',
-      if (hasSidecar)
+      if (hasOcr) 'OCR source image SHA-256: ${ocr.sourceImageSha256}.',
+      if (hasOcr)
+        'OCR bounding boxes: ${ocr.blocks.length} normalized regions are attached as reviewable provenance.',
+      'Vision model status: pending selected-model capability check.',
+      'Estimated vision input: ~$estimatedVisionTokens tokens before provider resizing.',
+      if (hasOcr)
+        'OCR fallback contract: extracted text, confidence, and normalized boxes are distinct from pixel-level model vision and may be removed by deleting this attachment.'
+      else if (hasSidecar)
         'Sidecar text can be used as extracted/user-provided visual evidence, but pixel-level claims still require OCR/vision validation.'
       else
         'Visual analysis contract: do not claim to inspect pixels, read text, identify UI details, or infer layout from this image unless the user described those details in text.',
+      if (hasOcr) 'OCR text:\n${ocr.text}',
       if (hasSidecar) 'Attached visual text:\n${sidecar.text}',
       'Safe use: cite the screenshot as provided evidence, ask for a description or OCR/vision integration when pixel-level review is required, and preserve file metadata in any handoff artifact.',
       'Recommended artifact role: visual evidence appendix for UX reviews, bug reports, implementation plans, and customer handoff packages.',
@@ -68,31 +88,42 @@ class ScreenshotContextAttachmentBuilder {
       path: path,
       content: facts.join('\n'),
       resolutionStatus: ContextAttachmentResolutionStatus.resolved,
-      estimatedTokens: 48,
+      estimatedTokens: estimatedVisionTokens,
       metadata: {
         'artifactRole': 'visual_evidence',
         'format': extension.isEmpty ? 'unknown' : extension,
         'mimeType': mimeType,
         'byteSize': bytes.length,
+        'estimatedVisionTokens': estimatedVisionTokens,
         if (dimensions != null) 'width': dimensions.width,
         if (dimensions != null) 'height': dimensions.height,
-        'ocrStatus': hasSidecar ? 'sidecar_attached' : 'not_extracted',
-        'visionInputStatus': hasSidecar
+        'ocrStatus': hasOcr
+            ? 'local_or_approved_extracted'
+            : hasSidecar
+            ? 'sidecar_attached'
+            : 'not_extracted',
+        if (hasOcr) ...ocr.toMetadata(),
+        'visionInputStatus': hasOcr
+            ? 'ocr_fallback_available'
+            : hasSidecar
             ? 'metadata_plus_sidecar_text'
             : 'metadata_only',
-        'providerPixelInputSupported': false,
-        'analysisReliability': hasSidecar
+        'providerPixelInputSupported': 'pending_capability_check',
+        'analysisReliability': hasOcr
+            ? 'ocr_text_with_confidence_and_bounding_boxes'
+            : hasSidecar
             ? 'metadata_plus_user_or_ocr_sidecar'
-            : 'metadata_only',
+            : 'metadata_pending_provider_capability_check',
         if (hasSidecar) 'sidecarPath': sidecar.path,
         if (hasSidecar) 'sidecarByteSize': sidecar.byteSize,
         'visualAnalysisContract':
-            'Do not infer screenshot contents from pixels; use metadata and user-provided description only.',
+            'Do not infer screenshot contents from pixels until the selected provider confirms image capability; otherwise use metadata and user-provided description only.',
         'recommendedArtifactRole': 'visual_evidence_appendix',
-        'recommendedFollowUp':
-            'Ask for OCR/vision integration or a user description before making pixel-level claims.',
+        'recommendedFollowUp': hasOcr
+            ? 'Review or remove the local OCR regions; choose a vision-capable model before making pixel-level layout or visual-style claims.'
+            : 'Choose a vision-capable model, request OCR/vision integration, or provide a user description before making pixel-level claims.',
         'handoffUse':
-            'Attach as visual evidence metadata; request OCR/vision integration before relying on unseen pixels.',
+            'Attach as visual evidence; preserve the capability decision before relying on pixels.',
       },
       createdAt: DateTime.now(),
     );
@@ -273,6 +304,16 @@ class ScreenshotContextAttachmentBuilder {
       '.webp' => 'image/webp',
       _ => 'application/octet-stream',
     };
+  }
+
+  int _estimateVisionTokens(_ImageDimensions? dimensions, int byteLength) {
+    if (dimensions != null && dimensions.width > 0 && dimensions.height > 0) {
+      return ((dimensions.width * dimensions.height) / 750).ceil().clamp(
+        85,
+        4096,
+      );
+    }
+    return (byteLength / 900).ceil().clamp(85, 4096);
   }
 }
 

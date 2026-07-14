@@ -1,16 +1,36 @@
-# circuit_ide
+# CircuitCode Flutter desktop app
 
-A new Flutter project.
+This directory contains the supported CircuitCode product.
 
-## Getting Started
+## Development
 
-This project is a starting point for a Flutter application.
+```bash
+flutter pub get
+flutter run -d macos
+```
 
-A few resources to get you started if this is your first Flutter project:
+Use the pinned Flutter release declared in `pubspec.yaml` (3.41.2). Before
+submitting a change, run:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+flutter build macos --release
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Product boundaries
+
+Studio turns are the supported conversational workflow. The app makes a
+distinction between read-only inspection, patch proposal, app-side patch
+application, command verification, Git mutation, network access, and MCP
+dispatch. A model prompt or project instruction is guidance only; client policy
+and approval state decide whether a tool may run.
+
+For architecture, provider behavior, credentials, security limitations, and
+release instructions, see the repository-level documentation:
+
+- [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+- [`../docs/PROVIDER_PROTOCOL.md`](../docs/PROVIDER_PROTOCOL.md)
+- [`../docs/SECURITY.md`](../docs/SECURITY.md)
+- [`../docs/RELEASE.md`](../docs/RELEASE.md)

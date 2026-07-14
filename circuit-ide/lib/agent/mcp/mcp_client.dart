@@ -1,17 +1,23 @@
 import '../../core/utils/logger.dart';
+import '../../models/connector_provenance.dart';
 import '../providers/provider_interface.dart';
 import 'mcp_config.dart';
 import 'mcp_transport.dart';
 
 /// Manages connections to MCP servers and exposes their tools
 class McpClient {
-  final bool allowUnsafeMcpCalls;
   final Map<String, _McpConnection> _connections = {};
   final List<McpToolInfo> _availableTools = [];
+  final List<ConnectorResultProvenance> _recentProvenance = [];
 
-  McpClient({this.allowUnsafeMcpCalls = false});
+  void Function(String serverName)? onServerUsed;
+
+  McpClient({this.onServerUsed});
 
   List<McpToolInfo> get availableTools => List.unmodifiable(_availableTools);
+
+  List<ConnectorResultProvenance> get recentProvenance =>
+      List.unmodifiable(_recentProvenance);
 
   bool get hasConnections => _connections.isNotEmpty;
 
@@ -42,22 +48,50 @@ class McpClient {
         );
       }
 
-      if (toolsResponse.result != null) {
-        final toolsList =
-            (toolsResponse.result as Map<String, dynamic>)['tools'] as List?;
-        if (toolsList != null) {
-          for (final tool in toolsList) {
-            final t = tool as Map<String, dynamic>;
-            tools.add(
-              McpToolInfo(
-                serverName: config.name,
-                name: t['name'] as String,
-                description: t['description'] as String? ?? '',
-                inputSchema: t['inputSchema'] as Map<String, dynamic>? ?? {},
-              ),
-            );
-          }
+      final result = toolsResponse.result;
+      if (result is! Map<String, dynamic>) {
+        throw const McpConnectionException(
+          'MCP tools/list returned an invalid response envelope.',
+        );
+      }
+      final toolsList = result['tools'];
+      if (toolsList is! List) {
+        throw const McpConnectionException(
+          'MCP tools/list response is missing its tools array.',
+        );
+      }
+      final declaredNames = <String>{};
+      for (final rawTool in toolsList) {
+        if (rawTool is! Map) {
+          throw const McpConnectionException(
+            'MCP tools/list contains malformed tool metadata.',
+          );
         }
+        final tool = Map<String, dynamic>.from(rawTool);
+        final name = tool['name'];
+        final schema = tool['inputSchema'];
+        if (name is! String ||
+            name.trim().isEmpty ||
+            schema != null && schema is! Map) {
+          throw const McpConnectionException(
+            'MCP tools/list contains a tool without valid name/schema metadata.',
+          );
+        }
+        if (!declaredNames.add(name)) {
+          throw McpConnectionException(
+            'MCP tools/list contains duplicate tool name "$name".',
+          );
+        }
+        tools.add(
+          McpToolInfo(
+            serverName: config.name,
+            name: name,
+            description: tool['description'] as String? ?? '',
+            inputSchema: schema == null
+                ? const <String, dynamic>{}
+                : Map<String, dynamic>.from(schema as Map),
+          ),
+        );
       }
 
       _connections[config.name] = _McpConnection(
@@ -117,23 +151,10 @@ class McpClient {
             return 'MCP error: ${response.error?['message'] ?? 'Unknown error'}';
           }
 
-          final result = response.result;
-          if (result is Map<String, dynamic>) {
-            final content = result['content'] as List?;
-            final isToolError = result['isError'] == true;
-            if (content != null && content.isNotEmpty) {
-              final text = content
-                  .map((c) {
-                    final item = c as Map<String, dynamic>;
-                    return item['text'] as String? ?? item.toString();
-                  })
-                  .join('\n');
-              return isToolError ? 'MCP error: $text' : text;
-            }
-            if (isToolError) return 'MCP error: ${result.toString()}';
-          }
-
-          return result?.toString() ?? 'No result';
+          final text = _resultText(response);
+          if (text.startsWith('MCP error:')) return text;
+          onServerUsed?.call(connection.config.name);
+          return _withProvenance(connection.config, toolName, text);
         } catch (e) {
           return 'MCP tool error: $e';
         }
@@ -175,23 +196,10 @@ class McpClient {
         return 'MCP error: ${response.error?['message'] ?? 'Unknown error'}';
       }
 
-      final result = response.result;
-      if (result is Map<String, dynamic>) {
-        final content = result['content'] as List?;
-        final isToolError = result['isError'] == true;
-        if (content != null && content.isNotEmpty) {
-          final text = content
-              .map((c) {
-                final item = c as Map<String, dynamic>;
-                return item['text'] as String? ?? item.toString();
-              })
-              .join('\n');
-          return isToolError ? 'MCP error: $text' : text;
-        }
-        if (isToolError) return 'MCP error: ${result.toString()}';
-      }
-
-      return result?.toString() ?? 'No result';
+      final text = _resultText(response);
+      if (text.startsWith('MCP error:')) return text;
+      onServerUsed?.call(serverName);
+      return _withProvenance(connection.config, toolName, text);
     } catch (e) {
       return 'MCP tool error: $e';
     }
@@ -233,7 +241,6 @@ class McpClient {
     Map<String, dynamic> arguments, {
     String? serverName,
   }) {
-    if (allowUnsafeMcpCalls) return null;
     if (_looksNetworkBacked(toolName, arguments, serverName: serverName)) {
       return 'Error: MCP tool blocked: MCP browser, web, URL, or network tools require explicit scoped review before dispatch.';
     }
@@ -245,6 +252,75 @@ class McpClient {
       _McpDispatchRisk.unknown =>
         'Error: MCP tool blocked: Unknown MCP tools require explicit scoped review before dispatch.',
     };
+  }
+
+  String _resultText(JsonRpcMessage response) {
+    final result = response.result;
+    if (result is Map<String, dynamic>) {
+      final content = result['content'] as List?;
+      final isToolError = result['isError'] == true;
+      if (content != null && content.isNotEmpty) {
+        final text = content
+            .map((item) {
+              if (item is! Map) return item.toString();
+              final values = Map<String, dynamic>.from(item);
+              return values['text'] as String? ?? values.toString();
+            })
+            .join('\n');
+        return isToolError ? 'MCP error: $text' : text;
+      }
+      if (isToolError) return 'MCP error: ${result.toString()}';
+    }
+    return result?.toString() ?? 'No result';
+  }
+
+  String _withProvenance(
+    McpServerConfig config,
+    String toolName,
+    String result,
+  ) {
+    final fetchedAt = DateTime.now().toUtc();
+    final provenance = ConnectorResultProvenance(
+      sourceId:
+          'mcp:${config.name}:$toolName:${fetchedAt.microsecondsSinceEpoch}',
+      objectReference: _safeObjectReference(config.url),
+      fetchedAt: fetchedAt,
+      permissions: config.requestedScopes,
+      citationSafeExcerpt: _citationSafeExcerpt(result),
+    );
+    _recentProvenance.add(provenance);
+    if (_recentProvenance.length > 50) _recentProvenance.removeAt(0);
+    return '${provenance.toPromptBlock()}\n\nConnector result:\n${provenance.citationSafeExcerpt}';
+  }
+
+  String _safeObjectReference(String rawUrl) {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) return rawUrl.split('?').first;
+    return Uri(
+      scheme: uri.scheme,
+      host: uri.host,
+      port: uri.hasPort ? uri.port : null,
+      path: uri.path,
+    ).toString();
+  }
+
+  String _citationSafeExcerpt(String value) {
+    final redacted = value
+        .replaceAll(
+          RegExp(r'bearer\s+[A-Za-z0-9._~+/-]+', caseSensitive: false),
+          'Bearer [redacted]',
+        )
+        .replaceAll(
+          RegExp(
+            r'(token|api[_-]?key|secret)\s*[:=]\s*[^\s,;]+',
+            caseSensitive: false,
+          ),
+          '[redacted connector credential]',
+        )
+        .trim();
+    return redacted.length <= 1200
+        ? redacted
+        : '${redacted.substring(0, 1197)}...';
   }
 
   _McpDispatchRisk _riskFromToolName(String toolName) {

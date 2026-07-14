@@ -126,9 +126,7 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
   }
 
   void setExecutionMode(StudioExecutionMode mode) {
-    final supportedMode =
-        mode == StudioExecutionMode.local ||
-            StudioFeatureFlags.advancedStudioSurfaces
+    final supportedMode = StudioFeatureFlags.advancedStudioSurfaces
         ? mode
         : StudioExecutionMode.local;
     state = state.copyWith(executionMode: supportedMode);
@@ -139,6 +137,23 @@ class StudioShellNotifier extends Notifier<StudioShellState> {
         ? agentId
         : SpecialistAgentId.auto;
     state = state.copyWith(specialistAgentId: supportedAgent);
+  }
+
+  void setCustomAgent(String? agentId) {
+    final normalized = agentId?.trim();
+    state = state.copyWith(
+      customAgentId: normalized == null || normalized.isEmpty
+          ? null
+          : normalized,
+      autoCustomAgent: false,
+    );
+  }
+
+  void setAutoCustomAgent(bool enabled) {
+    state = state.copyWith(
+      autoCustomAgent: enabled,
+      customAgentId: enabled ? null : state.customAgentId,
+    );
   }
 
   void setComposerText(String text) {

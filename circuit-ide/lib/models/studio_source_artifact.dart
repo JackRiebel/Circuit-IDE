@@ -8,6 +8,8 @@ enum StudioSourceArtifactKind {
   webSource,
   toolResult,
   browserComment,
+  browserSelection,
+  browserVisualSnapshot,
   gitChange,
   gitHunk,
   terminalSession,
