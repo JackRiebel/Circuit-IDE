@@ -2679,6 +2679,9 @@ void main() {
     );
 
     expect(container.read(settingsProvider).thinkingMode, false);
+    await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Turn thinking mode on'), findsOneWidget);
     await tester.tap(find.byTooltip('Turn thinking mode on'));
     await tester.pumpAndSettle();
     expect(container.read(settingsProvider).thinkingMode, true);
