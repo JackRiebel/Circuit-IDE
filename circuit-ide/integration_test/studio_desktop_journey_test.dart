@@ -298,9 +298,9 @@ void main() {
         reason: verificationRun.combinedOutput,
       );
       // `test -f` intentionally reports success through its exit status rather
-      // than stdout. That makes the journey prove the patch landed without
-      // depending on a Node/npm installation outside the broker's safe PATH.
-      expect(verificationRun.combinedOutput, isEmpty);
+      // than stdout. The command-run model renders that empty successful output
+      // explicitly, proving the patch landed without an ambient Node/npm.
+      expect(verificationRun.combinedOutput, '(no output)');
 
       final appliedThread = container
           .read(studioThreadProvider)
