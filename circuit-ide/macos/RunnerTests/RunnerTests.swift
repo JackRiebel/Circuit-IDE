@@ -154,7 +154,7 @@ private final class LocalBrowserFixtureServer {
       throw NSError(
         domain: "CircuitCodeBrowserFixture",
         code: 1,
-        userInfo: [NSLocalizedDescriptionKey: "The local browser fixture server did not start."],
+        userInfo: [NSLocalizedDescriptionKey: "The local browser fixture server did not start."]
       )
     }
   }
