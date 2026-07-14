@@ -51,6 +51,13 @@ struct CircuitExecutionBroker {
         .map(canonicalToolRoot)
       let temporaryDirectory = try makeTemporaryDirectory(in: workspace)
       defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+      let networkProxy: CircuitNetworkEgressProxy?
+      if request.allowNetwork {
+        networkProxy = try CircuitNetworkEgressProxy.start()
+      } else {
+        networkProxy = nil
+      }
+      defer { networkProxy?.stop() }
 
       try setResourceLimits(cpuSeconds: request.cpuLimitSeconds)
       let profile = sandboxProfile(
@@ -58,13 +65,14 @@ struct CircuitExecutionBroker {
         workspaceAliases: workspaceAliases,
         temporaryDirectory: temporaryDirectory,
         toolRoots: toolRoots,
-        allowNetwork: request.allowNetwork
+        networkProxyPort: networkProxy?.port
       )
       try run(
         request.command,
         workspace: workspace,
         temporaryDirectory: temporaryDirectory,
-        sandboxProfile: profile
+        sandboxProfile: profile,
+        networkProxyPort: networkProxy?.port
       )
     } catch {
       FileHandle.standardError.write(
@@ -243,7 +251,7 @@ struct CircuitExecutionBroker {
     workspaceAliases: [String],
     temporaryDirectory: URL,
     toolRoots: [URL],
-    allowNetwork: Bool
+    networkProxyPort: UInt16?
   ) -> String {
     // These are exact OS/runtime locations, never user home or application
     // data. In particular, do not grant `/usr` or `/Library` as a whole:
@@ -266,6 +274,10 @@ struct CircuitExecutionBroker {
       "/var/db/xcode_select_link",
       "/private/var/db/xcode_select_link",
       "/private/var/db/timezone",
+      // Apple's curl/OpenSSL compatibility layer consults this system TLS
+      // configuration before it can validate a proxied HTTPS peer. Grant only
+      // the configuration subtree, never the broader mutable `/private/etc`.
+      "/private/etc/ssl",
     ]
     var seenWorkspacePaths = Set<String>()
     let workspacePaths = (workspaceAliases + [workspace.path])
@@ -332,7 +344,16 @@ struct CircuitExecutionBroker {
             (subpath \(sandboxLiteral("/Library")))
             (require-not (subpath \(sandboxLiteral("/Library/Developer"))))))
     """
-    let networkRule = allowNetwork ? "(allow network-outbound)" : ""
+    // A reviewed network command never receives generic outbound sockets.
+    // Instead, it can reach only the broker-owned loopback proxy. That proxy
+    // validates DNS answers and connects directly to the selected public IP,
+    // so a command cannot bypass policy through rebinding, a custom resolver,
+    // proxy environment changes, or a direct socket call.
+    let networkRule = networkProxyPort.map { port in
+      // Seatbelt accepts the canonical `localhost` selector here rather than
+      // a numeric loopback literal. The proxy itself binds only 127.0.0.1.
+      "(allow network-outbound (remote ip \"localhost:\(port)\"))"
+    } ?? ""
 
     return """
     (version 1)
@@ -366,7 +387,8 @@ struct CircuitExecutionBroker {
     _ command: [String],
     workspace: URL,
     temporaryDirectory: URL,
-    sandboxProfile: String
+    sandboxProfile: String,
+    networkProxyPort: UInt16?
   ) throws {
     guard let executable = command.first, executable.hasPrefix("/") else {
       throw BrokerError.invalidArgument("Expected an absolute shell executable.")
@@ -388,7 +410,7 @@ struct CircuitExecutionBroker {
     let standardError = Pipe()
     process.standardOutput = standardOutput
     process.standardError = standardError
-    process.environment = [
+    var environment = [
       "HOME": temporaryDirectory.path,
       "TMPDIR": temporaryDirectory.path,
       "TMP": temporaryDirectory.path,
@@ -396,6 +418,21 @@ struct CircuitExecutionBroker {
       "PATH": sanitizedPath,
       "TERM": "dumb",
     ]
+    if let networkProxyPort {
+      let proxy = "http://127.0.0.1:\(networkProxyPort)"
+      // Set both conventional spellings. The child's sandbox profile permits
+      // only this loopback peer, so a command that disables these variables or
+      // uses a raw socket still fails closed instead of reaching a host.
+      environment["http_proxy"] = proxy
+      environment["https_proxy"] = proxy
+      environment["all_proxy"] = proxy
+      environment["HTTP_PROXY"] = proxy
+      environment["HTTPS_PROXY"] = proxy
+      environment["ALL_PROXY"] = proxy
+      environment["no_proxy"] = ""
+      environment["NO_PROXY"] = ""
+    }
+    process.environment = environment
     try process.run()
     let outputGroup = DispatchGroup()
     forward(standardOutput, to: .standardOutput, in: outputGroup)

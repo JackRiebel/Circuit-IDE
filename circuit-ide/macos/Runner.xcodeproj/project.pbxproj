@@ -332,6 +332,7 @@
 			);
 			inputPaths = (
 				"$(PROJECT_DIR)/Runner/CircuitExecutionBroker.swift",
+				"$(PROJECT_DIR)/Runner/CircuitNetworkEgressProxy.swift",
 			);
 			name = "Build Circuit execution broker";
 			outputPaths = (
@@ -339,7 +340,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nSOURCE=\"${PROJECT_DIR}/Runner/CircuitExecutionBroker.swift\"\nHELPERS=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Helpers\"\nBROKER=\"${HELPERS}/CircuitExecutionBroker\"\nmkdir -p \"$HELPERS\"\nxcrun --sdk macosx swiftc -parse-as-library -O \"$SOURCE\" -o \"$BROKER\"\nchmod 755 \"$BROKER\"\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none \"$BROKER\"\nfi\n";
+			shellScript = "set -eu\nSOURCE=\"${PROJECT_DIR}/Runner/CircuitExecutionBroker.swift\"\nPROXY_SOURCE=\"${PROJECT_DIR}/Runner/CircuitNetworkEgressProxy.swift\"\nHELPERS=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Helpers\"\nBROKER=\"${HELPERS}/CircuitExecutionBroker\"\nINTERMEDIATE=\"${TARGET_TEMP_DIR}/CircuitExecutionBroker\"\nmkdir -p \"$HELPERS\" \"$(dirname \"$INTERMEDIATE\")\"\n# macOS 26 rejects sandbox-exec for a helper compiled directly at an .app\n# path. Compile in Xcode's temporary build area, then package that verified\n# linker-signed executable as the broker source staged at command launch.\nxcrun --sdk macosx swiftc -parse-as-library -O \"$SOURCE\" \"$PROXY_SOURCE\" -o \"$INTERMEDIATE\"\ncp \"$INTERMEDIATE\" \"$BROKER\"\nchmod 755 \"$BROKER\"\n# macOS 26 rejects sandbox-exec from a helper force-signed with the local\n# ad-hoc identity. Keep swiftc's valid linker signature for local Release\n# verification; a Developer-ID helper requires separate clean-Mac proof.\nif [ \"${CODE_SIGNING_ALLOWED:-NO}\" = \"YES\" ] && [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ] && [ \"${EXPANDED_CODE_SIGN_IDENTITY}\" != \"-\" ]; then\n  /usr/bin/codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none \"$BROKER\"\nfi\n";
 		};
 		3399D490228B24CF009A79C7 /* ShellScript */ = {
 			isa = PBXShellScriptBuildPhase;

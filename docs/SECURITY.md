@@ -30,6 +30,11 @@ than provider-prompt suggestions.
 - Secret paths, destructive commands, nested shells, unapproved network use,
   private network targets, and outside-workspace command paths are blocked in
   the Studio execution path.
+- A macOS brokered command with reviewed public-network access receives only a
+  broker-owned loopback HTTP(S) proxy. Direct child sockets remain blocked;
+  the proxy resolves each requested host once, rejects every private,
+  reserved, or ambiguous answer, and connects only to the selected numeric
+  public address. Proxy-incompatible raw egress fails closed.
 - Agent commands and MCP child processes receive an allowlisted base
   environment. Connector-declared tokens are injected explicitly, and child
   stdout/stderr is redacted before diagnostic logging.
@@ -56,7 +61,7 @@ than provider-prompt suggestions.
 | Control | Threat addressed | Current enforcement/evidence |
 | --- | --- | --- |
 | CC-SEC-001 | Credential theft from local files | Keychain-only storage and fail-closed migration tests. |
-| CC-SEC-002 | Model/child escape to host resources | Shared policy plus the packaged `CircuitExecutionBroker`: a default-deny workspace/tool/network profile, sanitized child environment, CPU/file-descriptor limits, and an escape harness. The `sandbox-exec` implementation, clean-Mac run, and notarized Keychain proof remain open. |
+| CC-SEC-002 | Model/child escape to host resources | Shared policy plus the packaged `CircuitExecutionBroker`: a default-deny workspace/tool profile, loopback-only DNS-validating network proxy, sanitized child environment, CPU/file-descriptor limits, and an escape harness. The `sandbox-exec` implementation, clean-Mac run, and notarized Keychain proof remain open. |
 | CC-SEC-003 | Unexpected inbound network surface | Release/debug entitlement inspection and final signed-app verification. |
 | CC-SEC-004 | Environment/secret inheritance | Allowlisted child environments plus output redaction tests. |
 | CC-SEC-005 | Ungoverned tool or mutation route | One policy inventory and boundary-route tests. |
@@ -87,15 +92,27 @@ records those links in [RELEASE_READINESS_CHECKLIST.md](RELEASE_READINESS_CHECKL
 
 Release builds bundle a separately signed `CircuitExecutionBroker` that
 applies a default-deny Seatbelt profile before launching a reviewed command.
+On macOS 26, `sandbox-exec` refuses an executable launched directly from an
+`.app` bundle, so CircuitCode first verifies that bundled helper and atomically
+stages a fresh owner-only copy in a private per-user runtime directory. A
+missing, invalid, or unstaged helper fails closed rather than falling back to
+a direct shell.
 It permits the approved workspace, bounded system tool roots, a private
-workspace temporary directory, and only explicitly approved network egress;
-the escape harness covers outside-root/symlink reads, writes, process
-inspection, environment leakage, network egress, and broad tool-root
-rejection. This is meaningful OS-level isolation, but it is not a claim of
+workspace temporary directory, and only a broker-owned loopback proxy for a
+reviewed network command. The command cannot connect directly to a network
+peer: the proxy validates all DNS answers and opens its own pinned public-IP
+socket. The escape harness covers outside-root/symlink reads, writes, process
+inspection, environment leakage, direct-network bypass, private-target proxy
+rejection, proxied public egress, and broad tool-root rejection. This is
+meaningful OS-level isolation, but it is not a claim of
 complete host isolation: the profile still relies on deprecated
 `sandbox-exec`, and clean-Mac/Developer-ID/notarized Keychain-escape evidence
-is required before `CC-SEC-002` can close. Network, connector, storage,
-audit-log, and approval hardening remain tracked by `CC-SEC-002` and
+is required before `CC-SEC-002` can close. On the current macOS 26 host,
+`sandbox-exec` refuses the helper when it runs directly from an app bundle; the
+verified fresh owner-only staging step avoids that refusal, and the exact
+embedded Release helper passes the staged packaged escape harness. That local
+evidence does not replace the planned XPC migration or signed clean-Mac proof.
+Network, connector, storage, audit-log, and approval hardening remain tracked by `CC-SEC-002` and
 `CC-SEC-005` through `CC-SEC-009` in the Product Parity Master Checklist.
 
 ## Reporting and operation

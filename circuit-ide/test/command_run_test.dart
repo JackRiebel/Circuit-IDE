@@ -157,7 +157,7 @@ void main() {
     expect(launch.arguments, isNot(contains('/')));
   });
 
-  test('a configured packaged broker completes a sanitized command', () async {
+  test('a configured packaged broker stages outside its app bundle', () async {
     final brokerPath = Platform.environment['CIRCUIT_SOAK_BROKER_PATH']?.trim();
     if (!Platform.isMacOS ||
         brokerPath == null ||
@@ -169,8 +169,20 @@ void main() {
     final root = await Directory.systemTemp.createTemp('broker-command-');
     addTearDown(() => root.delete(recursive: true));
     await File('${root.path}/lib/marker.dart').create(recursive: true);
-    MacOsExecutionBoundary.debugBrokerExecutableOverride = brokerPath;
+    final contents = Directory('${root.path}/CircuitCode.app/Contents');
+    final bundledBroker = File(
+      '${contents.path}/Helpers/CircuitExecutionBroker',
+    );
+    await bundledBroker.parent.create(recursive: true);
+    await File(brokerPath).copy(bundledBroker.path);
+    final stagingDirectory = Directory('${root.path}/broker-runtime');
+    MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride =
+        contents.path;
+    MacOsExecutionBoundary.debugBrokerStagingDirectoryOverride =
+        stagingDirectory.path;
     addTearDown(() {
+      MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride = null;
+      MacOsExecutionBoundary.debugBrokerStagingDirectoryOverride = null;
       MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
     });
 
@@ -186,6 +198,13 @@ void main() {
           .where((entry) => entry.startsWith('/'))
           .toList(growable: false),
     );
+    expect(launch.brokered, isTrue);
+    expect(
+      File(launch.executable).parent.resolveSymbolicLinksSync(),
+      stagingDirectory.resolveSymbolicLinksSync(),
+    );
+    expect(launch.executable, isNot(startsWith(contents.path)));
+    expect(File(launch.executable).existsSync(), isTrue);
     try {
       final process = await Process.start(
         launch.executable,
@@ -199,6 +218,13 @@ void main() {
     } on ProcessException catch (error) {
       fail('packaged_broker_process_start_${error.errorCode}');
     }
+
+    // CommandTools runs in the test host rather than a real app bundle. Keep
+    // the proven staged executable as its explicit broker so this verifies
+    // the same sanitized command path without granting a developer fallback.
+    MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride = null;
+    MacOsExecutionBoundary.debugBrokerStagingDirectoryOverride = null;
+    MacOsExecutionBoundary.debugBrokerExecutableOverride = launch.executable;
 
     final events = <CommandRunEvent>[];
     final output = await CommandTools(workingDir: root.path).runCommand({
@@ -263,11 +289,18 @@ void main() {
     final broker = File(
       'macos/Runner/CircuitExecutionBroker.swift',
     ).readAsStringSync();
+    final boundary = File(
+      'lib/agent/security/macos_execution_boundary.dart',
+    ).readAsStringSync();
     final workflow = File('../.github/workflows/ci.yml').readAsStringSync();
 
     expect(project, contains('Build Circuit execution broker'));
     expect(project, contains('CircuitExecutionBroker.swift'));
+    expect(project, contains('CircuitNetworkEgressProxy.swift'));
     expect(project, contains('swiftc -parse-as-library'));
+    expect(project, contains('TARGET_TEMP_DIR'));
+    expect(project, contains(r'cp \"$INTERMEDIATE\" \"$BROKER\"'));
+    expect(project, contains(r'EXPANDED_CODE_SIGN_IDENTITY}\" != \"-'));
     expect(harness, contains('symlink escape read'));
     expect(harness, contains('system-selected shell was denied'));
     expect(harness, contains('path-sentinel'));
@@ -276,6 +309,12 @@ void main() {
     expect(harness, contains('broker launch denial'));
     expect(harness, contains('temporary-directory symlink'));
     expect(harness, contains('network egress'));
+    expect(harness, contains('loopback-only network proxy environment'));
+    expect(harness, contains('direct network egress bypass'));
+    expect(harness, contains('pinned public network egress'));
+    expect(harness, contains('private target through network proxy'));
+    expect(harness, contains('staged_broker'));
+    expect(harness, contains('codesign --verify --strict'));
     expect(harness, contains('unrelated process inspection'));
     expect(harness, contains('unreviewed Library metadata'));
     expect(harness, contains('reviewed Command Line Tools lookup'));
@@ -304,6 +343,20 @@ void main() {
     expect(broker, isNot(contains('      "/Library",')));
     expect(broker, contains('keychainDenyRules'));
     expect(broker, contains('Library/Keychains'));
+    expect(broker, contains('CircuitNetworkEgressProxy.start'));
+    expect(broker, contains('networkProxyPort'));
+    expect(broker, contains(r'remote ip \"localhost:'));
+    expect(
+      broker,
+      isNot(
+        contains(
+          'let networkRule = allowNetwork ? "(allow network-outbound)" : ""',
+        ),
+      ),
+    );
+    expect(boundary, contains('_stageBundledBroker'));
+    expect(boundary, contains('debugBrokerStagingDirectoryOverride'));
+    expect(boundary, contains('/usr/bin/codesign'));
     expect(workflow, contains('verify_execution_broker.sh'));
   });
 

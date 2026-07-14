@@ -2,6 +2,8 @@
 # Exercises the packaged CircuitExecutionBroker from an ordinary macOS process.
 # This must run after a macOS app build, not inside an already sandboxed tool,
 # because macOS refuses a second Seatbelt profile in an inherited sandbox.
+# macOS 26 also refuses sandbox-exec from a binary located inside an `.app`,
+# so this mirrors the app's verified fresh staging to a private runtime path.
 set -euo pipefail
 
 broker="${1:-}"
@@ -25,6 +27,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
+if ! /usr/bin/codesign --verify --strict "$broker"; then
+  echo "Circuit execution broker signature verification failed: $broker" >&2
+  exit 65
+fi
+staged_broker="$root/CircuitExecutionBroker"
+cp "$broker" "$staged_broker"
+chmod 700 "$staged_broker"
+broker="$staged_broker"
+
 mkdir -p "$workspace" "$outside"
 printf 'workspace-visible\n' > "$workspace/input.txt"
 printf 'outside-secret\n' > "$outside/secret.txt"
@@ -41,6 +52,16 @@ run_broker() {
   "$broker" \
     --workspace "$workspace" \
     --network deny \
+    --cpu-limit 10 \
+    -- /bin/sh -c "$1" \
+    >"$stdout" \
+    2>"$stderr"
+}
+
+run_broker_with_network() {
+  "$broker" \
+    --workspace "$workspace" \
+    --network allow \
     --cpu-limit 10 \
     -- /bin/sh -c "$1" \
     >"$stdout" \
@@ -80,6 +101,26 @@ expect_denied() {
   fi
 }
 
+expect_network_allowed() {
+  : > "$stdout"
+  : > "$stderr"
+  if ! run_broker_with_network "$2"; then
+    fail "$1 should be permitted with reviewed network access"
+  fi
+}
+
+expect_network_denied() {
+  : > "$stdout"
+  : > "$stderr"
+  set +e
+  run_broker_with_network "$2"
+  local status=$?
+  set -e
+  if [[ "$status" -eq 0 ]]; then
+    fail "$1 unexpectedly succeeded with reviewed network access"
+  fi
+}
+
 expect_allowed \
   "workspace read/write" \
   'value="$(cat input.txt)"; test "$value" = "workspace-visible"; printf "broker-created\n" > output.txt; test -f output.txt'
@@ -94,6 +135,33 @@ expect_allowed \
 expect_allowed \
   "core dumps disabled" \
   'test "$(ulimit -c)" = "0"'
+
+# Reviewed network access is mediated by a fresh broker-owned loopback HTTP
+# proxy. Its port is intentionally ephemeral; the child receives no direct
+# public-network capability or inherited proxy configuration.
+expect_network_allowed \
+  "loopback-only network proxy environment" \
+  'case "$HTTPS_PROXY" in http://127.0.0.1:*) ;; *) exit 82 ;; esac; test "$HTTPS_PROXY" = "$https_proxy"; test "$HTTPS_PROXY" = "$ALL_PROXY"; test -z "$NO_PROXY"'
+
+# A reviewed command may attempt to unset the proxy or ask curl to bypass it.
+# Seatbelt still permits only the broker's loopback port, so such direct egress
+# must fail before an arbitrary DNS result or public socket can be used.
+expect_network_denied \
+  "direct network egress bypass" \
+  '/usr/bin/curl --noproxy "*" -fsS --connect-timeout 2 --max-time 5 https://example.com/ >/dev/null'
+
+# The normal proxy-aware path remains available after review. The proxy itself
+# resolves and pins the public peer; the child only has a loopback socket.
+expect_network_allowed \
+  "pinned public network egress" \
+  '/usr/bin/curl -fsS --connect-timeout 5 --max-time 10 https://example.com/ >/dev/null'
+
+# Network review never authorizes local/private targets. This request reaches
+# the loopback proxy first; it must reject its target rather than allowing a
+# command to probe a local service through the reviewed network capability.
+expect_network_denied \
+  "private target through network proxy" \
+  '/usr/bin/curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:9/ >/dev/null'
 
 expect_allowed \
   "process and output-file resource limits" \

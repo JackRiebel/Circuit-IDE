@@ -53,6 +53,10 @@ abstract final class MacOsExecutionBoundary {
   /// Test-only override for a temporary bundled broker path.
   static String? debugBrokerExecutableOverride;
 
+  /// Test-only override for the private directory where a packaged broker is
+  /// staged immediately before execution.
+  static String? debugBrokerStagingDirectoryOverride;
+
   /// Test-only override for the `Contents` directory of a packaged app.
   ///
   /// This is deliberately a directory, not an executable path, so tests can
@@ -121,8 +125,80 @@ abstract final class MacOsExecutionBoundary {
     }
     if (contentsDirectory == null) return null;
     final candidate = File('${contentsDirectory.path}/Helpers/$_brokerName');
-    return candidate.existsSync() ? candidate.path : null;
+    if (!candidate.existsSync() || !_isCodeSigned(candidate)) return null;
+    return _stageBundledBroker(candidate);
   }
+
+  /// macOS 26 refuses to apply a `sandbox-exec` profile from an executable
+  /// located inside an `.app` bundle. The bundle copy remains the signed,
+  /// verified source of truth; for each launch, copy it atomically to a
+  /// private per-user runtime directory outside the bundle, lock its mode to
+  /// the current user, and execute only that fresh copy. A packaged app still
+  /// fails closed if either validation or staging cannot complete.
+  static String? _stageBundledBroker(File bundledBroker) {
+    File? temporary;
+    try {
+      final directory = _brokerStagingDirectory();
+      if (directory == null || _isSymbolicLink(directory.path)) return null;
+      directory.createSync(recursive: true);
+      final resolvedDirectory = Directory(directory.resolveSymbolicLinksSync());
+      if (_isSymbolicLink(resolvedDirectory.path)) return null;
+
+      final destination = File('${resolvedDirectory.path}/$_brokerName');
+      temporary = File(
+        '${resolvedDirectory.path}/.$_brokerName-$pid-${DateTime.now().microsecondsSinceEpoch}',
+      );
+      bundledBroker.copySync(temporary.path);
+      final chmod = Process.runSync('/bin/chmod', ['700', temporary.path]);
+      if (chmod.exitCode != 0) {
+        temporary.deleteSync();
+        return null;
+      }
+      if (!_isCodeSigned(temporary)) {
+        temporary.deleteSync();
+        return null;
+      }
+      temporary.renameSync(destination.path);
+      return destination.path;
+    } catch (_) {
+      try {
+        if (temporary?.existsSync() == true) temporary!.deleteSync();
+      } catch (_) {
+        // The copied file is inaccessible to the command sandbox; leave
+        // cleanup to the next successful staging attempt if deletion fails.
+      }
+      return null;
+    }
+  }
+
+  static Directory? _brokerStagingDirectory() {
+    final override = debugBrokerStagingDirectoryOverride;
+    if (override != null && override.trim().isNotEmpty) {
+      return Directory(override).absolute;
+    }
+    final home = Platform.environment['HOME']?.trim();
+    if (home == null || home.isEmpty) return null;
+    return Directory(
+      '$home/Library/Application Support/CircuitCode/ExecutionBroker',
+    );
+  }
+
+  static bool _isCodeSigned(File file) {
+    try {
+      return Process.runSync('/usr/bin/codesign', [
+            '--verify',
+            '--strict',
+            file.path,
+          ]).exitCode ==
+          0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _isSymbolicLink(String path) =>
+      FileSystemEntity.typeSync(path, followLinks: false) ==
+      FileSystemEntityType.link;
 
   /// Returns a packaged app's `Contents` directory, never merely the parent
   /// of an arbitrary executable. Development, test, and command-line hosts
