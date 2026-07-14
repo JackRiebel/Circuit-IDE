@@ -360,7 +360,10 @@ void main() {
         'artifactPrimaryAction': 'Review remaining acceptance gates',
         'accessibilityStatus': 'Manual review required',
       },
-      createdAt: DateTime.utc(2026, 7, 13, 15),
+      // The drawer intentionally renders local wall-clock timestamps. Keep
+      // this visual fixture local as well so the checked-in golden is stable
+      // on developer machines and UTC-hosted CI.
+      createdAt: DateTime(2026, 7, 13, 10),
     );
     final source = artifact.toSourceArtifact();
     container.read(studioSourceArtifactProvider.notifier).add(source);
