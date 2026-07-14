@@ -55,6 +55,14 @@ the endpoint path, prompt, response text, headers, token, app key, or provider
 diagnostic. An optional `CIRCUIT_STAGING_TIMEOUT_SECONDS` may be set between
 10 and 240 seconds.
 
+After this workflow is present on `main`, a maintainer can dispatch **Circuit
+provider staging acceptance** from Actions. Configure the credential names
+above as GitHub Actions secrets and the optional endpoint/model names as
+repository variables. The workflow runs only when manually dispatched; it is
+not a pull-request check and the probe emits only its redacted JSON evidence.
+Select **run_vision** only after `CIRCUIT_STAGING_VISION_MODEL` names a
+vision-capable model.
+
 For a configured model that advertises image input, the same protected
 credential variables can run `scripts/verify_vision_staging.sh`. It sends one generated,
 two-color PNG through the real adapter, asks for the color occupying its left

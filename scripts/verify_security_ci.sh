@@ -3,6 +3,7 @@ set -euo pipefail
 
 workflow=".github/workflows/ci.yml"
 fixture_workflow=".github/workflows/security-scan-fixture-exercise.yml"
+staging_workflow=".github/workflows/provider-staging-acceptance.yml"
 
 if [[ ! -f "$workflow" ]]; then
   echo "Missing required CI workflow: $workflow" >&2
@@ -21,6 +22,14 @@ require_fixture() {
   local pattern="$1"
   if ! grep -Fq -- "$pattern" "$fixture_workflow"; then
     echo "CI security fixture exercise is missing: $pattern" >&2
+    exit 1
+  fi
+}
+
+require_staging() {
+  local pattern="$1"
+  if ! grep -Fq -- "$pattern" "$staging_workflow"; then
+    echo "Provider staging acceptance workflow is missing: $pattern" >&2
     exit 1
   fi
 }
@@ -47,4 +56,19 @@ require_fixture 'github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8'
 require_fixture '--lockfile "osv-scanner:$fixture/osv-scanner-deps.json"'
 require_fixture 'scanner_exit" -ne 1'
 
-echo 'Security CI topology and the manually dispatched scanner-fixture exercise are present.'
+if [[ ! -f "$staging_workflow" ]]; then
+  echo "Missing protected provider staging workflow: $staging_workflow" >&2
+  exit 1
+fi
+
+if grep -Fq -- 'pull_request:' "$staging_workflow"; then
+  echo 'Provider staging acceptance must not run on pull requests.' >&2
+  exit 1
+fi
+
+require_staging 'workflow_dispatch:'
+require_staging 'CIRCUIT_STAGING_APP_KEY: ${{ secrets.CIRCUIT_STAGING_APP_KEY }}'
+require_staging 'bash scripts/verify_provider_staging.sh'
+require_staging 'bash scripts/verify_vision_staging.sh'
+
+echo 'Security CI topology, scanner-fixture exercise, and protected provider staging workflow are present.'

@@ -1,0 +1,53 @@
+name: Circuit provider staging acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_vision:
+        description: Also exercise the configured vision-capable staging model.
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# Staging credentials must never be exposed to normal PR CI. This workflow is
+# manually dispatched from the default branch only after the repository owner
+# configures the protected secret/variable names documented in PROVIDER_PROTOCOL.md.
+concurrency:
+  group: circuitcode-provider-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: "3.41.2"
+  CIRCUIT_STAGING_APP_KEY: ${{ secrets.CIRCUIT_STAGING_APP_KEY }}
+  CIRCUIT_STAGING_CLIENT_ID: ${{ secrets.CIRCUIT_STAGING_CLIENT_ID }}
+  CIRCUIT_STAGING_CLIENT_SECRET: ${{ secrets.CIRCUIT_STAGING_CLIENT_SECRET }}
+  CIRCUIT_STAGING_ACCESS_TOKEN: ${{ secrets.CIRCUIT_STAGING_ACCESS_TOKEN }}
+  CIRCUIT_STAGING_CHAT_BASE_URL: ${{ vars.CIRCUIT_STAGING_CHAT_BASE_URL }}
+  CIRCUIT_STAGING_MODEL: ${{ vars.CIRCUIT_STAGING_MODEL }}
+  CIRCUIT_STAGING_VISION_MODEL: ${{ vars.CIRCUIT_STAGING_VISION_MODEL }}
+
+jobs:
+  provider-protocol-and-stream:
+    name: Provider protocol and streaming acceptance
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: circuit-ide
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Restore Flutter packages
+        run: flutter pub get
+      - name: Verify redacted protocol and streaming lifecycle
+        run: bash scripts/verify_provider_staging.sh
+      - name: Verify redacted vision pixel acceptance
+        if: ${{ inputs.run_vision }}
+        run: bash scripts/verify_vision_staging.sh
