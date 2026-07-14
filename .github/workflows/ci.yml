@@ -81,6 +81,12 @@ jobs:
         run: bash scripts/artifact_quality_matrix_suite.sh
 
       - name: Run desktop Studio integration journey
+        env:
+          # Hosted GitHub runners have no foregroundable WindowServer. The
+          # script stays strict by default; only this non-interactive CI step
+          # permits the tested Flutter fallback, while native RunnerTests and
+          # clean-Mac acceptance cover the host/UI boundary separately.
+          CIRCUIT_ALLOW_HEADLESS_DESKTOP_FALLBACK: "1"
         run: bash scripts/desktop_integration_suite.sh
 
       - name: Run Flutter test suite

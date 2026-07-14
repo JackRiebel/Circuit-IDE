@@ -28,6 +28,17 @@ if (( test_status != 0 )); then
   exit "$test_status"
 fi
 if grep -Fq -- 'Failed to foreground app; open returned' "$output"; then
+  if [[ "${CIRCUIT_ALLOW_HEADLESS_DESKTOP_FALLBACK:-}" == "1" ]]; then
+    echo 'Desktop journey passed its deterministic Flutter coverage, but this host could not foreground a macOS app.'
+    echo 'Headless fallback was explicitly allowed; clean interactive macOS foreground acceptance remains required.'
+    if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+      {
+        printf '%s\n' '### Desktop Studio journey host boundary'
+        printf '%s\n' 'The deterministic Studio journey passed, but this hosted macOS runner could not foreground a GUI app. CI retained the Flutter journey plus the separate native RunnerTests smoke; a clean interactive Mac must still retain the foreground and Release-bundle acceptance result.'
+      } >> "$GITHUB_STEP_SUMMARY"
+    fi
+    exit 0
+  fi
   echo 'Desktop integration journey did not foreground the macOS app host.' >&2
   exit 1
 fi
