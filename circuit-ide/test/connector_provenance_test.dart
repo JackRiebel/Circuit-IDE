@@ -53,8 +53,7 @@ void main() {
       final client = McpClient(onServerUsed: used.add);
       final config = McpServerConfig(
         name: 'records',
-        url:
-            'http://${server.address.address}:${server.port}/mcp?token=private',
+        url: 'http://${server.address.address}:${server.port}/mcp',
         requestedScopes: const ['records:read'],
       );
       await client.connectServer(config);

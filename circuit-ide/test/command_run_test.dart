@@ -974,8 +974,12 @@ void main() {
       final storeRoot = await Directory.systemTemp.createTemp(
         'command-run-store-',
       );
-      addTearDown(() => root.delete(recursive: true));
-      addTearDown(() => storeRoot.delete(recursive: true));
+      addTearDown(() async {
+        if (await root.exists()) await root.delete(recursive: true);
+      });
+      addTearDown(() async {
+        if (await storeRoot.exists()) await storeRoot.delete(recursive: true);
+      });
       final store = CommandRunStore(baseDir: storeRoot.path);
       final logPath = store.logPath(root.path, 'interrupted-command');
       await store.appendLog(
@@ -1015,7 +1019,15 @@ void main() {
       expect(recovered.processId, 4242);
       expect(recovered.logPath, logPath);
       expect(await File(logPath).readAsString(), contains('flutter test'));
-      final persisted = (await store.load(root.path)).single;
+      var persisted = (await store.load(root.path)).single;
+      for (
+        var index = 0;
+        index < 30 && persisted.exitReason != CommandExitReason.interrupted;
+        index++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        persisted = (await store.load(root.path)).single;
+      }
       expect(persisted.exitReason, CommandExitReason.interrupted);
     },
   );
