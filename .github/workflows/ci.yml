@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A newer revision of the same PR supersedes every earlier full macOS run.
+# Keep distinct PRs and protected-branch pushes independent.
+concurrency:
+  group: circuitcode-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
