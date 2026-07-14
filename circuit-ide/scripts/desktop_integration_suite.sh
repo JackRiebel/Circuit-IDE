@@ -27,7 +27,7 @@ set -e
 if (( test_status != 0 )); then
   exit "$test_status"
 fi
-if rg -Fq 'Failed to foreground app; open returned' "$output"; then
+if grep -Fq -- 'Failed to foreground app; open returned' "$output"; then
   echo 'Desktop integration journey did not foreground the macOS app host.' >&2
   exit 1
 fi

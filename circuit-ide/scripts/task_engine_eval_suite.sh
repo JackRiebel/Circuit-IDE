@@ -40,12 +40,12 @@ for required in \
   '"code"' \
   '"review"' \
   '"verify"'; do
-  if ! rg -Fq "$required" "$report_path"; then
+  if ! grep -Fq -- "$required" "$report_path"; then
     echo "Task-engine evaluation report is missing required field: $required" >&2
     exit 1
   fi
 done
-if ! rg -q -e '"promptRoutingScenarioCount":[1-9][0-9]*' "$report_path"; then
+if ! grep -q -e '"promptRoutingScenarioCount":[1-9][0-9]*' "$report_path"; then
   echo 'Task-engine evaluation report has no prompt-routing fixtures.' >&2
   exit 1
 fi

@@ -19,14 +19,14 @@ for requirement in \
   'Sync is opt-in per project and remains disabled by default.' \
   'No conflict resolver may apply a remote patch, reuse an approval, start a' \
   'Two-device simulations cover append ordering'; do
-  if ! rg -Fq "$requirement" "$adr"; then
+  if ! grep -Fq -- "$requirement" "$adr"; then
     echo "Local-first sync ADR is missing its required boundary: $requirement" >&2
     exit 1
   fi
 done
 
 contract='lib/services/local_first_sync_contract.dart'
-if rg -n 'dart:io|HttpClient|Socket|WebSocket|Dio|package:http' "$contract"; then
+if grep -nE -- 'dart:io|HttpClient|Socket|WebSocket|Dio|package:http' "$contract"; then
   echo 'The pre-approval local-first sync contract must not gain a transport dependency.' >&2
   exit 1
 fi
@@ -36,12 +36,12 @@ if [[ ! -f "$encryption" ]]; then
   echo 'Missing local encrypted-envelope foundation.' >&2
   exit 1
 fi
-if rg -n 'dart:io|HttpClient|Socket|WebSocket|Dio|package:http' "$encryption"; then
+if grep -nE -- 'dart:io|HttpClient|Socket|WebSocket|Dio|package:http' "$encryption"; then
   echo 'The local encrypted-envelope foundation must not gain a transport dependency.' >&2
   exit 1
 fi
 for requirement in 'AesGcm.with256bits' 'aad:' 'FlutterSecureStorage'; do
-  if ! rg -Fq "$requirement" "$encryption"; then
+  if ! grep -Fq -- "$requirement" "$encryption"; then
     echo "Local encrypted-envelope foundation is missing required control: $requirement" >&2
     exit 1
   fi
@@ -52,12 +52,12 @@ if [[ ! -f "$journal" ]]; then
   echo 'Missing local encrypted sync journal.' >&2
   exit 1
 fi
-if rg -n 'HttpClient|Socket|WebSocket|Dio|package:http' "$journal"; then
+if grep -nE -- 'HttpClient|Socket|WebSocket|Dio|package:http' "$journal"; then
   echo 'The local encrypted sync journal must not gain a transport dependency.' >&2
   exit 1
 fi
 for requirement in 'LocalFirstSyncEncryptedJournal' 'LocalFirstSyncEnvelopeCipher' 'rename'; do
-  if ! rg -Fq "$requirement" "$journal"; then
+  if ! grep -Fq -- "$requirement" "$journal"; then
     echo "Local encrypted sync journal is missing required control: $requirement" >&2
     exit 1
   fi

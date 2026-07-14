@@ -22,7 +22,7 @@ fi
 
 is_excepted() {
   local path="$1"
-  rg -Fq "\`$path\`" "$EXCEPTIONS_FILE"
+  grep -Fq -- "\`$path\`" "$EXCEPTIONS_FILE"
 }
 
 check_directory() {
