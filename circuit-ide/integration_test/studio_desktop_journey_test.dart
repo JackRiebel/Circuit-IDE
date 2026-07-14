@@ -262,7 +262,7 @@ void main() {
                   patch.applyStatus == PatchApplyStatus.applied &&
                   patch.verificationRequested &&
                   patch.verificationSuggestions.any(
-                    (command) => command == 'npm --version',
+                    (command) => command == 'test -f lib/journey_marker.dart',
                   ),
             ),
       );
@@ -289,13 +289,18 @@ void main() {
       final verificationRun = container
           .read(commandRunProvider)
           .values
-          .singleWhere((run) => run.command == 'npm --version');
+          .singleWhere(
+            (run) => run.command == 'test -f lib/journey_marker.dart',
+          );
       expect(
         verificationRun.status.name,
         'succeeded',
         reason: verificationRun.combinedOutput,
       );
-      expect(verificationRun.combinedOutput, isNotEmpty);
+      // `test -f` intentionally reports success through its exit status rather
+      // than stdout. That makes the journey prove the patch landed without
+      // depending on a Node/npm installation outside the broker's safe PATH.
+      expect(verificationRun.combinedOutput, isEmpty);
 
       final appliedThread = container
           .read(studioThreadProvider)
@@ -540,7 +545,7 @@ class _DesktopJourneyProvider implements AIProvider {
         toolCallId: 'desktop-journey-patch',
         toolCallName: 'propose_patch',
         toolCallArguments:
-            '{"title":"Create desktop journey marker","summary":"Add the requested local marker.","verification_steps":["npm --version"],"files":[{"path":"lib/journey_marker.dart","intent":"Create a local desktop integration marker","operation":"create","content":"const desktopJourneyMarker = true;\\n"}]}',
+            '{"title":"Create desktop journey marker","summary":"Add the requested local marker.","verification_steps":["test -f lib/journey_marker.dart"],"files":[{"path":"lib/journey_marker.dart","intent":"Create a local desktop integration marker","operation":"create","content":"const desktopJourneyMarker = true;\\n"}]}',
       );
       yield const ChatChunk(isDone: true, finishReason: 'tool_calls');
       return;
