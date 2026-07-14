@@ -214,9 +214,71 @@ jobs:
           output-file: CircuitCode-source.spdx.json
           upload-release-assets: false
 
+  security-scanner-fixture-exercise:
+    name: Security scanner fixture exercise
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Install pinned scanner binaries
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.29.0
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8
+
+      - name: Require scanners to reject isolated temporary fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/circuitcode-scanner-fixtures"
+          gitleaks_fixture="$root/gitleaks"
+          osv_fixture="$root/osv"
+          trap 'rm -rf "$root"' EXIT
+          umask 077
+          mkdir -p "$gitleaks_fixture" "$osv_fixture"
+
+          access_key="$(printf '%s%s' 'AKIA' '1234567890ABCDEF')"
+          secret_key="$(printf '%s%s%s' 'wJalrXUtnFEMI/K7MDENG/' 'bPxRfiCY' 'EXAMPLEKEY')"
+          printf 'aws_access_key_id = "%s"\naws_secret_access_key = "%s"\n' \
+            "$access_key" "$secret_key" > "$gitleaks_fixture/fixture.env"
+          printf '%s\n' \
+            '{' \
+            '  "results": [' \
+            '    {' \
+            '      "packages": [' \
+            '        {' \
+            '          "package": {' \
+            '            "name": "lodash",' \
+            '            "version": "4.17.20",' \
+            '            "ecosystem": "npm"' \
+            '          }' \
+            '        }' \
+            '      ]' \
+            '    }' \
+            '  ]' \
+            '}' > "$osv_fixture/osv-scanner-deps.json"
+
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" dir "$gitleaks_fixture" >/dev/null 2>&1
+          gitleaks_exit="$?"
+          "$(go env GOPATH)/bin/osv-scanner" \
+            --lockfile "osv-scanner:$osv_fixture/osv-scanner-deps.json" >/dev/null 2>&1
+          osv_exit="$?"
+          set -e
+
+          if [[ "$gitleaks_exit" -eq 0 ]]; then
+            echo "Gitleaks accepted its controlled temporary fixture" >&2
+            exit 1
+          fi
+          if [[ "$osv_exit" -ne 1 ]]; then
+            echo "OSV did not report the controlled temporary vulnerable fixture" >&2
+            exit 1
+          fi
+
   all-checks:
     name: All CircuitCode checks passed
-    needs: [product-boundary, flutter-macos, security-red-team, secret-scan, dependency-vulnerability-scan, sbom]
+    needs: [product-boundary, flutter-macos, security-red-team, secret-scan, dependency-vulnerability-scan, sbom, security-scanner-fixture-exercise]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -227,7 +289,8 @@ jobs:
              [[ "${{ needs.security-red-team.result }}" != "success" ]] || \
              [[ "${{ needs.secret-scan.result }}" != "success" ]] || \
              [[ "${{ needs.dependency-vulnerability-scan.result }}" != "success" ]] || \
-             [[ "${{ needs.sbom.result }}" != "success" ]]; then
+             [[ "${{ needs.sbom.result }}" != "success" ]] || \
+             [[ "${{ needs.security-scanner-fixture-exercise.result }}" != "success" ]]; then
             echo "One or more required CircuitCode checks failed"
             exit 1
           fi

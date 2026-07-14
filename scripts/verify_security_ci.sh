@@ -42,6 +42,11 @@ require 'secret-scan'
 require 'dependency-vulnerability-scan'
 require 'sbom'
 require 'security-events: write'
+require 'security-scanner-fixture-exercise:'
+require 'github.com/zricethezav/gitleaks/v8@v8.29.0'
+require 'github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8'
+require 'needs: [product-boundary, flutter-macos, security-red-team, secret-scan, dependency-vulnerability-scan, sbom, security-scanner-fixture-exercise]'
+require 'needs.security-scanner-fixture-exercise.result'
 
 if [[ ! -f "$fixture_workflow" ]]; then
   echo "Missing required CI scanner fixture workflow: $fixture_workflow" >&2
