@@ -19,10 +19,13 @@ class MainFlutterWindow: NSWindow, NSDraggingDestination {
       self.center()
     }
 
-    RegisterGeneratedPlugins(registry: flutterViewController)
+    // App-owned launch and credential channels must be available before Dart
+    // starts its first method-channel request. Plugin registration can take
+    // longer than that first request on a cold packaged launch.
     (NSApp.delegate as? AppDelegate)?.attachPackagedSmokeController(
       flutterViewController
     )
+    RegisterGeneratedPlugins(registry: flutterViewController)
     registerForDraggedTypes([.fileURL])
 
     super.awakeFromNib()

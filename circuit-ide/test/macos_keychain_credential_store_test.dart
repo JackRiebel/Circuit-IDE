@@ -44,4 +44,25 @@ void main() {
       expect(values, isEmpty);
     },
   );
+
+  test('macOS host binds the credential bridge to Flutter startup', () async {
+    final source = await File('macos/Runner/AppDelegate.swift').readAsString();
+
+    expect(source, contains('packagedSmokeController ??'));
+    expect(
+      source,
+      contains(
+        'func attachPackagedSmokeController(_ controller: FlutterViewController)',
+      ),
+    );
+    expect(source, contains('configureSecureCredentialsChannel()'));
+
+    final windowSource = await File(
+      'macos/Runner/MainFlutterWindow.swift',
+    ).readAsString();
+    expect(
+      windowSource.indexOf('attachPackagedSmokeController'),
+      lessThan(windowSource.indexOf('RegisterGeneratedPlugins')),
+    );
+  });
 }

@@ -68,21 +68,43 @@ class FlutterSecureCredentialStore implements SecureCredentialStore {
 /// available only inside the application process and has no file fallback.
 class MacosKeychainCredentialStore implements SecureCredentialStore {
   static const _channel = MethodChannel('circuitcode/secure_credentials');
+  static const _channelRetryAttempts = 40;
+  static const _channelRetryDelay = Duration(milliseconds: 50);
 
   const MacosKeychainCredentialStore();
 
   @override
   Future<void> delete({required String key}) async {
-    await _channel.invokeMethod<void>('delete', {'key': key});
+    await _withNativeChannelRetry(
+      () => _channel.invokeMethod<void>('delete', {'key': key}),
+    );
   }
 
   @override
-  Future<String?> read({required String key}) =>
-      _channel.invokeMethod<String>('read', {'key': key});
+  Future<String?> read({required String key}) => _withNativeChannelRetry(
+    () => _channel.invokeMethod<String>('read', {'key': key}),
+  );
 
   @override
   Future<void> write({required String key, required String value}) async {
-    await _channel.invokeMethod<void>('write', {'key': key, 'value': value});
+    await _withNativeChannelRetry(
+      () => _channel.invokeMethod<void>('write', {'key': key, 'value': value}),
+    );
+  }
+
+  /// Flutter can start Dart a fraction of a second before AppKit exposes the
+  /// main controller. Retry only the local missing-handler race; Keychain
+  /// errors still surface immediately and never fall back to disk.
+  Future<T> _withNativeChannelRetry<T>(Future<T> Function() request) async {
+    for (var attempt = 0; attempt < _channelRetryAttempts; attempt++) {
+      try {
+        return await request();
+      } on MissingPluginException {
+        if (attempt == _channelRetryAttempts - 1) rethrow;
+        await Future<void>.delayed(_channelRetryDelay);
+      }
+    }
+    throw StateError('Secure credential channel retry loop exhausted.');
   }
 }
 

@@ -140,7 +140,8 @@ class AppDelegate: FlutterAppDelegate, SPUUpdaterDelegate {
     if secureCredentialsChannel != nil {
       return
     }
-    guard let controller = mainFlutterWindow?.contentViewController as? FlutterViewController else {
+    guard let controller = packagedSmokeController ??
+        (mainFlutterWindow?.contentViewController as? FlutterViewController) else {
       return
     }
     let channel = FlutterMethodChannel(
@@ -298,6 +299,11 @@ class AppDelegate: FlutterAppDelegate, SPUUpdaterDelegate {
   /// user, agent, or tool surface.
   func attachPackagedSmokeController(_ controller: FlutterViewController) {
     packagedSmokeController = controller
+    // MainFlutterWindow creates the Flutter controller before AppKit's launch
+    // callback is guaranteed to expose mainFlutterWindow. Bind the credential
+    // store here as well, so Settings cannot race a missing native handler on
+    // a fresh packaged launch.
+    configureSecureCredentialsChannel()
     configurePackagedSmokeChannel()
   }
 
