@@ -19,7 +19,7 @@ for heading in \
   "Recover from interruption or failure" \
   "Data, diagnostics, and privacy" \
   "Control and failure coverage"; do
-  rg -Fq "$heading" "$guide"
+  grep -Fq "$heading" "$guide"
 done
 
 for heading in \
@@ -28,12 +28,12 @@ for heading in \
   "Context, permissions, and outputs" \
   "Test and version a package" \
   "Connector and plugin review"; do
-  rg -Fq "$heading" "$authoring"
+  grep -Fq "$heading" "$authoring"
 done
 
-rg -Fq '"kind": "circuit.agent-definition"' "$sample"
-rg -Fq '"schemaVersion": 4' "$sample"
-rg -Fq '"kind": "circuit.plugin"' "$plugin_authoring"
-rg -Fq 'hmac-sha256' "$plugin_authoring"
+grep -Fq '"kind": "circuit.agent-definition"' "$sample"
+grep -Fq '"schemaVersion": 4' "$sample"
+grep -Fq '"kind": "circuit.plugin"' "$plugin_authoring"
+grep -Fq 'hmac-sha256' "$plugin_authoring"
 
 echo "CircuitCode user and agent-authoring documentation coverage verified."

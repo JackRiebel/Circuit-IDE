@@ -16,15 +16,15 @@ test ! -e "$ROOT_DIR/pyproject.toml"
 test ! -e "$ROOT_DIR/docs/SETUP.md"
 
 bash -n "$LAUNCHER"
-if rg -n "python[0-9.]* .*circuit_|circuit_ide_gui|Circuit IDE Launcher" \
+if grep -nE "python[0-9.]* .*circuit_|circuit_ide_gui|Circuit IDE Launcher" \
   "$LAUNCHER"; then
   echo "The root launcher must not start a retired Python product." >&2
   exit 1
 fi
 
-rg -q "The supported application is the Flutter" "$ROOT_DIR/README.md"
-rg -q "desktop product in" "$ROOT_DIR/README.md"
-rg -q "flutter run -d macos" "$LAUNCHER"
-rg -q "Flutter application in .circuit-ide/." "$ROOT_DIR/docs/ARCHITECTURE.md"
+grep -q "The supported application is the Flutter" "$ROOT_DIR/README.md"
+grep -q "desktop product in" "$ROOT_DIR/README.md"
+grep -q "flutter run -d macos" "$LAUNCHER"
+grep -q "Flutter application in .circuit-ide/." "$ROOT_DIR/docs/ARCHITECTURE.md"
 
 echo "Canonical Flutter product boundary verified."
