@@ -185,6 +185,20 @@ fi
 # The default-deny Seatbelt profile has no process-inspection capability.
 expect_denied "unrelated process inspection" '/bin/ps -p 1 -o pid='
 
+# `/Library` is mutable machine-wide data, not an approved command root. The
+# broker may allow a reviewed `/Library/Developer` tool root, but it must never
+# turn that narrow runtime exception into general Library metadata access.
+expect_denied \
+  "unreviewed Library metadata" \
+  '/usr/bin/stat /Library >/dev/null'
+
+# The reviewed Command Line Tools root retains only the macOS-owned selector
+# it needs. This protects ordinary developer verification without reopening
+# general `/Library` machine data.
+expect_allowed \
+  "reviewed Command Line Tools lookup" \
+  '/usr/bin/xcrun --show-sdk-path >/dev/null'
+
 # System and user Keychain stores are not command inputs. The broker grants
 # system runtime roots for executable resolution, so assert that its explicit
 # Keychain deny remains effective before a reviewed process can inspect the

@@ -277,6 +277,8 @@ void main() {
     expect(harness, contains('temporary-directory symlink'));
     expect(harness, contains('network egress'));
     expect(harness, contains('unrelated process inspection'));
+    expect(harness, contains('unreviewed Library metadata'));
+    expect(harness, contains('reviewed Command Line Tools lookup'));
     expect(harness, contains('system Keychain metadata'));
     expect(
       broker,
@@ -297,6 +299,9 @@ void main() {
     );
     expect(broker, contains('destinationOfSymbolicLink'));
     expect(broker, contains('isStrictDescendant'));
+    expect(broker, contains('unreviewedLibraryDenyRule'));
+    expect(broker, isNot(contains('      "/usr",')));
+    expect(broker, isNot(contains('      "/Library",')));
     expect(broker, contains('keychainDenyRules'));
     expect(broker, contains('Library/Keychains'));
     expect(workflow, contains('verify_execution_broker.sh'));

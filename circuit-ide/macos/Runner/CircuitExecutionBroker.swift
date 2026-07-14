@@ -245,19 +245,26 @@ struct CircuitExecutionBroker {
     toolRoots: [URL],
     allowNetwork: Bool
   ) -> String {
-    // These are OS/runtime locations, never user home or application data.
+    // These are exact OS/runtime locations, never user home or application
+    // data. In particular, do not grant `/usr` or `/Library` as a whole:
+    // `/usr/local` and most of `/Library` are mutable machine-wide data, not
+    // part of the command runtime. Optional Homebrew/local-tool access is
+    // instead granted only through the reviewed `toolRoots` request below.
     let systemRoots = [
       "/System",
-      "/usr",
+      "/usr/bin",
+      "/usr/sbin",
       "/bin",
       "/sbin",
-      "/Library",
-      "/opt/homebrew",
-      "/usr/local",
+      "/Library/Developer",
       // `/bin/sh` resolves through this macOS-managed selector on current
       // systems. It is an OS runtime location, not a caller-controlled
       // writable `/private/var` allowance.
       "/private/var/select",
+      // `xcrun` reads only this macOS-managed developer-tool selector before
+      // resolving an SDK beneath the reviewed `/Library/Developer` root.
+      "/var/db/xcode_select_link",
+      "/private/var/db/xcode_select_link",
       "/private/var/db/timezone",
     ]
     var seenWorkspacePaths = Set<String>()
@@ -313,6 +320,18 @@ struct CircuitExecutionBroker {
             (subpath \(sandboxLiteral(path))))
       """
     }.joined(separator: "\n")
+    // `system.sb` intentionally retains some broad compatibility allowances
+    // for ordinary macOS processes. Reassert the command boundary after that
+    // import: machine-wide Library data is not part of the runtime. The one
+    // explicit exception is Apple's Command Line Tools/SDK root, which is a
+    // reviewed executable root and may be required by a command that invokes
+    // the system `xcrun` launcher.
+    let unreviewedLibraryDenyRule = """
+    (deny file-read* file-read-metadata file-test-existence file-write*
+          (require-all
+            (subpath \(sandboxLiteral("/Library")))
+            (require-not (subpath \(sandboxLiteral("/Library/Developer"))))))
+    """
     let networkRule = allowNetwork ? "(allow network-outbound)" : ""
 
     return """
@@ -328,6 +347,7 @@ struct CircuitExecutionBroker {
     \(executeRules)
     \(rootMetadataRules)
     \(workspaceRules)
+    \(unreviewedLibraryDenyRule)
     \(keychainDenyRules)
     (allow file-read* (subpath \(sandboxLiteral(temporaryDirectory.path))))
     (allow file-write* (subpath \(sandboxLiteral(temporaryDirectory.path))))
