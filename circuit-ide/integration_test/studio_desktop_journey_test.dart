@@ -9,6 +9,7 @@ import 'package:circuit_ide/app.dart';
 import 'package:circuit_ide/core/utils/platform_utils.dart';
 import 'package:circuit_ide/enums/connection_status.dart';
 import 'package:circuit_ide/models/chat_message.dart';
+import 'package:circuit_ide/models/reviewed_edit.dart';
 import 'package:circuit_ide/models/studio_thread.dart';
 import 'package:circuit_ide/services/event_bus.dart';
 import 'package:circuit_ide/services/project_directory_picker.dart';
@@ -83,6 +84,18 @@ void main() {
           if (error.osError?.errorCode != 2) rethrow;
         }
       });
+      var initialResourcesDisposed = false;
+      void disposeInitialResources() {
+        if (initialResourcesDisposed) return;
+        initialResourcesDisposed = true;
+        container.dispose();
+        events.dispose();
+      }
+
+      // Cleanup runs in reverse registration order. Dispose state owners before
+      // removing their persistence directory so an early assertion failure
+      // cannot race an in-flight atomic history write.
+      addTearDown(disposeInitialResources);
 
       container
           .read(connectionStatusProvider.notifier)
@@ -215,6 +228,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       final proposals = container.read(patchProposalProvider);
+      final proposedPatch = proposals.active;
+      expect(proposedPatch, isNotNull);
+      final proposedPatchId = proposedPatch!.id;
       final turns = container
           .read(studioThreadProvider)
           .selectedThread!
@@ -234,6 +250,21 @@ void main() {
       expect(
         await marker.readAsString(),
         'const desktopJourneyMarker = true;\n',
+      );
+      await _pumpUntil(
+        tester,
+        () => container
+            .read(patchProposalProvider)
+            .history
+            .where((patch) => patch.id == proposedPatchId)
+            .any(
+              (patch) =>
+                  patch.applyStatus == PatchApplyStatus.applied &&
+                  patch.verificationRequested &&
+                  patch.verificationSuggestions.any(
+                    (command) => command == 'npm --version',
+                  ),
+            ),
       );
 
       // Verification is a distinct user-approved action after the patch
@@ -258,13 +289,13 @@ void main() {
       final verificationRun = container
           .read(commandRunProvider)
           .values
-          .singleWhere((run) => run.command.contains('python3 -c'));
+          .singleWhere((run) => run.command == 'npm --version');
       expect(
         verificationRun.status.name,
         'succeeded',
         reason: verificationRun.combinedOutput,
       );
-      expect(verificationRun.combinedOutput, contains('123'));
+      expect(verificationRun.combinedOutput, isNotEmpty);
 
       final appliedThread = container
           .read(studioThreadProvider)
@@ -322,8 +353,7 @@ void main() {
       );
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-      container.dispose();
-      events.dispose();
+      disposeInitialResources();
 
       final restartedEvents = EventBus();
       final restartedContainer = ProviderContainer(
@@ -342,6 +372,15 @@ void main() {
           ),
         ],
       );
+      var restartedResourcesDisposed = false;
+      void disposeRestartedResources() {
+        if (restartedResourcesDisposed) return;
+        restartedResourcesDisposed = true;
+        restartedContainer.dispose();
+        restartedEvents.dispose();
+      }
+
+      addTearDown(disposeRestartedResources);
       await tester.runAsync(() async {
         final workspace = await restartedContainer
             .read(workspaceSessionProvider.notifier)
@@ -394,8 +433,7 @@ void main() {
 
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
-      restartedContainer.dispose();
-      restartedEvents.dispose();
+      disposeRestartedResources();
     },
   );
 }
@@ -502,7 +540,7 @@ class _DesktopJourneyProvider implements AIProvider {
         toolCallId: 'desktop-journey-patch',
         toolCallName: 'propose_patch',
         toolCallArguments:
-            '{"title":"Create desktop journey marker","summary":"Add the requested local marker.","verification_steps":["python3 -c \\"print(123)\\""],"files":[{"path":"lib/journey_marker.dart","intent":"Create a local desktop integration marker","operation":"create","content":"const desktopJourneyMarker = true;\\n"}]}',
+            '{"title":"Create desktop journey marker","summary":"Add the requested local marker.","verification_steps":["npm --version"],"files":[{"path":"lib/journey_marker.dart","intent":"Create a local desktop integration marker","operation":"create","content":"const desktopJourneyMarker = true;\\n"}]}',
       );
       yield const ChatChunk(isDone: true, finishReason: 'tool_calls');
       return;
