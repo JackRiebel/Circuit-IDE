@@ -61,7 +61,9 @@ above as GitHub Actions secrets and the optional endpoint/model names as
 repository variables. The workflow runs only when manually dispatched; it is
 not a pull-request check and the probe emits only its redacted JSON evidence.
 Select **run_vision** only after `CIRCUIT_STAGING_VISION_MODEL` names a
-vision-capable model.
+vision-capable model. Successful protocol/stream and optional vision evidence
+is retained for 90 days as a separate GitHub artifact; it contains only the
+redacted JSON emitted by the probes.
 
 For a configured model that advertises image input, the same protected
 credential variables can run `scripts/verify_vision_staging.sh`. It sends one generated,

@@ -33,6 +33,7 @@ jobs:
   provider-protocol-and-stream:
     name: Provider protocol and streaming acceptance
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: circuit-ide
@@ -47,7 +48,26 @@ jobs:
       - name: Restore Flutter packages
         run: flutter pub get
       - name: Verify redacted protocol and streaming lifecycle
-        run: bash scripts/verify_provider_staging.sh
+        run: |
+          set -o pipefail
+          bash scripts/verify_provider_staging.sh | tee "$RUNNER_TEMP/provider-staging-evidence.jsonl"
+      - name: Retain redacted protocol and streaming evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-staging-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/provider-staging-evidence.jsonl
+          if-no-files-found: error
+          retention-days: 90
       - name: Verify redacted vision pixel acceptance
         if: ${{ inputs.run_vision }}
-        run: bash scripts/verify_vision_staging.sh
+        run: |
+          set -o pipefail
+          bash scripts/verify_vision_staging.sh | tee "$RUNNER_TEMP/vision-staging-evidence.jsonl"
+      - name: Retain redacted vision evidence
+        if: ${{ inputs.run_vision && success() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vision-staging-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/vision-staging-evidence.jsonl
+          if-no-files-found: error
+          retention-days: 90
