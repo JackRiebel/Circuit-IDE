@@ -644,8 +644,25 @@ CircuitCode reaches the target product class when all of the following are true:
   - Complete when: screenshot tasks can identify visible UI details from actual pixels, and unsupported models clearly refuse rather than pretend.
   - Verify: image fixture evals and provider payload contract tests.
 
-- [ ] **CC-MM-002 — Add OCR as a transparent fallback.**
+- [x] **CC-MM-002 — Add OCR as a transparent fallback.**
   - Priority: P1
+  - Completed (2026-07-14): `LocalOcrService` uses the on-device macOS Vision
+    text recognizer first and accepts an approved structured sidecar only when
+    its SHA-256 matches the attached image. Every accepted extraction retains
+    the engine, text, average confidence, normalized bounding boxes, and
+    source-image hash. The image preview exposes the OCR provenance as
+    selectable, reviewable text and explicitly explains that removing the
+    request-local image attachment removes its text and regions. OCR text is
+    never presented as pixel understanding: the attachment contract and
+    generated visual-evidence artifacts require OCR/vision/user-description
+    validation before pixel-level claims, and a text-only provider receives
+    hash-validated OCR text without image pixels.
+  - Verification (2026-07-14): `flutter test
+    test/local_ocr_service_test.dart test/studio_image_directive_test.dart
+    test/provider_image_input_builder_test.dart --reporter expanded` passes,
+    covering valid and stale hash provenance, normalized regions, text-only
+    fallback delivery without pixels, and image-capability refusal. `flutter
+    analyze` passes.
   - Implementation: local or approved OCR with confidence, bounding boxes, source image hash, and explicit distinction from model vision.
   - Complete when: OCR text is reviewable, removable, and never represented as pixel-level understanding.
   - Verify: OCR accuracy fixtures and provenance UI tests.
