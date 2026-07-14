@@ -143,6 +143,28 @@ class NetworkAddressPolicy {
     if (_isIpv4Mapped(bytes)) {
       return _blockedIpv4OctetsReason(bytes.sublist(12));
     }
+    // IPv4-compatible IPv6 forms (for example, ::127.0.0.1) are deprecated,
+    // but some socket stacks still accept them. Do not let that alternate
+    // spelling bypass the IPv4 private/loopback policy, and do not treat it as
+    // an explicit loopback sidecar address.
+    if (_isIpv4Compatible(bytes)) {
+      return _blockedIpv4OctetsReason(bytes.sublist(12)) ??
+          'IPv4-compatible IPv6 addresses are not allowed';
+    }
+    // 6to4, Teredo, and NAT64 prefixes can tunnel or translate to an IPv4
+    // peer outside the address that the URI appears to name. Circuit's
+    // outbound product paths have no requirement for these legacy/special
+    // routes, so fail closed rather than attempting to infer their eventual
+    // IPv4 destination.
+    if (_isSixToFour(bytes)) {
+      return '6to4 IPv6 addresses are not allowed';
+    }
+    if (_isTeredo(bytes)) {
+      return 'Teredo IPv6 addresses are not allowed';
+    }
+    if (_isWellKnownNat64(bytes) || _isLocalUseNat64(bytes)) {
+      return 'NAT64 IPv6 addresses are not allowed';
+    }
     if (bytes[0] == 0x20 &&
         bytes[1] == 0x01 &&
         bytes[2] == 0x0d &&
@@ -159,6 +181,33 @@ class NetworkAddressPolicy {
       bytes.sublist(0, 10).every((byte) => byte == 0) &&
       bytes[10] == 0xff &&
       bytes[11] == 0xff;
+
+  static bool _isIpv4Compatible(List<int> bytes) =>
+      bytes.sublist(0, 12).every((byte) => byte == 0);
+
+  static bool _isSixToFour(List<int> bytes) =>
+      bytes[0] == 0x20 && bytes[1] == 0x02;
+
+  static bool _isTeredo(List<int> bytes) =>
+      bytes[0] == 0x20 &&
+      bytes[1] == 0x01 &&
+      bytes[2] == 0x00 &&
+      bytes[3] == 0x00;
+
+  static bool _isWellKnownNat64(List<int> bytes) =>
+      bytes[0] == 0x00 &&
+      bytes[1] == 0x64 &&
+      bytes[2] == 0xff &&
+      bytes[3] == 0x9b &&
+      bytes.sublist(4, 12).every((byte) => byte == 0);
+
+  static bool _isLocalUseNat64(List<int> bytes) =>
+      bytes[0] == 0x00 &&
+      bytes[1] == 0x64 &&
+      bytes[2] == 0xff &&
+      bytes[3] == 0x9b &&
+      bytes[4] == 0x00 &&
+      bytes[5] == 0x01;
 
   static bool _looksLikeAmbiguousIpv4Alias(String host) {
     if (host.contains(':') || !host.contains('.')) return false;

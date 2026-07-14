@@ -18,6 +18,7 @@ flutter test test/command_run_test.dart \
 
 echo "== Security red-team: credentialed redirects and DNS boundary enforcement =="
 flutter test \
+  test/network_address_policy_test.dart \
   test/cisco_provider_stream_test.dart \
   test/cisco_token_authenticator_test.dart \
   test/credentialed_transport_redirect_test.dart \
