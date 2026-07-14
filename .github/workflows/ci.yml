@@ -92,6 +92,12 @@ jobs:
       - name: Run Flutter test suite
         run: flutter test
 
+      - name: Restore the app target for native XCTest
+        # `flutter test` temporarily points Flutter-Generated.xcconfig at its
+        # per-test listener, then removes that listener. Regenerate the Debug
+        # app target before Xcode builds the real host for RunnerTests.
+        run: flutter build macos --debug
+
       - name: Run native macOS app-host integration smoke
         run: >-
           xcodebuild test
