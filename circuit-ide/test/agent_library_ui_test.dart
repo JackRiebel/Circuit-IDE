@@ -13,14 +13,19 @@ void main() {
   testWidgets(
     'Agent Library shows requested capability risk before enabling a saved agent',
     (tester) async {
-      final root = await Directory.systemTemp.createTemp('agent-library-ui-');
-      addTearDown(() => root.delete(recursive: true));
-      final storage = AgentConfigStorage(agentsDir: root.path);
+      final root = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('agent-library-ui-'),
+      );
+      expect(root, isNotNull);
+      final tempRoot = root!;
+      addTearDown(() => tempRoot.delete(recursive: true));
+      final storage = AgentConfigStorage(agentsDir: tempRoot.path);
       final config = AgentConfigModel(
         id: 'safe-reviewer',
         name: 'Safe reviewer',
         description: 'Reviews a bounded change.',
         allowedTools: const {'read_file'},
+        contextPolicy: AgentContextPolicy.userProvidedOnly,
         enabled: false,
         evaluationSuite: const AgentEvaluationSuite(
           cases: [
@@ -33,15 +38,20 @@ void main() {
         ),
         createdAt: DateTime(2026, 7, 11),
       );
-      await storage.save(config);
+      expect(config.validate(), isEmpty);
+      expect(config.evaluationReport.passedGate, isTrue);
+      final container = ProviderContainer(
+        overrides: [
+          agentManagerProvider.overrideWith(
+            () => _LoadedAgentManagerNotifier(storage: storage, config: config),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
 
       await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            agentManagerProvider.overrideWith(
-              () => AgentManagerNotifier(storage: storage),
-            ),
-          ],
+        UncontrolledProviderScope(
+          container: container,
           child: const MaterialApp(
             home: Scaffold(
               body: SizedBox(
@@ -53,17 +63,23 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.text('Disabled'), findsOneWidget);
       expect(find.textContaining('Requested tools: read_file'), findsOneWidget);
       expect(find.textContaining('Low risk'), findsOneWidget);
 
       await tester.tap(find.text('Enable'));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(find.text('Enable Safe reviewer?'), findsOneWidget);
-      expect(find.textContaining('Requested tools: read_file'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.text('Requested tools: read_file'),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.textContaining(
           'Every tool action remains subject to Studio approval',
@@ -73,9 +89,23 @@ void main() {
 
       await tester.tap(find.text('Enable after review'));
       await tester.pumpAndSettle();
+      final enableError = await tester.runAsync(
+        () => container
+            .read(agentManagerProvider.notifier)
+            .setConfigEnabled(config.id, true),
+      );
+      expect(enableError, isNull);
+      await tester.pump();
 
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(
+        container.read(agentManagerProvider).configs.single.enabled,
+        isTrue,
+      );
       expect(find.text('Enabled'), findsOneWidget);
-      expect((await storage.loadAll()).single.enabled, isTrue);
+      final savedConfigs = await tester.runAsync(storage.loadAll);
+      expect(savedConfigs, isNotNull);
+      expect(savedConfigs!.single.enabled, isTrue);
     },
   );
 
@@ -122,4 +152,13 @@ void main() {
       isFalse,
     );
   });
+}
+
+class _LoadedAgentManagerNotifier extends AgentManagerNotifier {
+  final AgentConfigModel config;
+
+  _LoadedAgentManagerNotifier({required super.storage, required this.config});
+
+  @override
+  AgentManagerState build() => AgentManagerState(configs: [config]);
 }
