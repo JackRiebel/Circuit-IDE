@@ -408,11 +408,23 @@ void main() {
       final diagnosticsSource = await File(
         'lib/ui/studio/studio_settings_diagnostics.dart',
       ).readAsString();
+      final credentialsSource = await File(
+        'lib/ui/settings/credential_card.dart',
+      ).readAsString();
+      final configSource = await File(
+        'lib/agent/config/config.dart',
+      ).readAsString();
 
       expect(settingsSource, contains('StudioThreadHistoryRecoveryPanel'));
       expect(settingsSource, contains('StudioProjectTransferPanel'));
       expect(settingsSource, contains('StudioDiagnosticRetentionPanel'));
       expect(settingsSource, contains('StudioCrashReportingPanel'));
+      expect(settingsSource, contains('Circuit API credentials'));
+      expect(settingsSource, contains('CredentialCard(includeGithub: false)'));
+      expect(credentialsSource, contains("label: 'Client ID'"));
+      expect(credentialsSource, contains("label: 'Client Secret'"));
+      expect(credentialsSource, contains("label: 'App Key'"));
+      expect(configSource, contains('FlutterSecureCredentialStore'));
       expect(recoverySource, contains('StudioProjectTransferService'));
       expect(recoverySource, contains('repairStorage'));
       expect(recoverySource, contains('exportRecoveryBundle'));

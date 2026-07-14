@@ -11,6 +11,7 @@ import '../../models/settings_model.dart';
 import '../../state/settings_provider.dart';
 import '../../state/studio_provider_connection.dart';
 import '../../state/theme_provider.dart';
+import '../settings/credential_card.dart';
 import 'studio_chrome.dart';
 import 'studio_settings_diagnostics.dart';
 import 'studio_network_policy_settings.dart';
@@ -79,6 +80,11 @@ class StudioSettingsView extends ConsumerWidget {
               trailing: const _ConnectorHealthControl(),
             ),
           ],
+        ),
+        const SizedBox(height: Spacing.lg),
+        const _SettingsSection(
+          title: 'Circuit API credentials',
+          children: [CredentialCard(includeGithub: false)],
         ),
         const SizedBox(height: Spacing.lg),
         const _SettingsSection(

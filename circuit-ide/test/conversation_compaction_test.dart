@@ -162,16 +162,97 @@ void main() {
     expect(find.text('Historical turns restored'), findsOneWidget);
     await tester.pump(const Duration(seconds: 1));
   });
+
+  testWidgets(
+    'streaming growth keeps a reader anchored while they inspect history',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final notifier = container.read(studioThreadProvider.notifier);
+      final thread = notifier.createBlankThread(title: 'Anchored history');
+      final timestamp = DateTime.utc(2026, 7, 14, 12);
+      for (var index = 0; index < 3; index++) {
+        expect(
+          notifier.upsertTurn(
+            thread.id,
+            _turn(
+              index,
+              threadId: thread.id,
+              prompt: List.filled(80, 'Historical turn $index.').join(' '),
+            ),
+          ),
+          isTrue,
+        );
+      }
+      final streamingTurn = StudioTurn(
+        id: 'streaming-turn',
+        threadId: thread.id,
+        requestId: 'streaming-request',
+        userMessageId: 'streaming-message',
+        prompt: 'Explain the implementation.',
+        model: 'gpt-5',
+        contextSummary: const StudioContextSummary(projectLabel: 'project'),
+        status: StudioTurnStatus.streaming,
+        assistantDraft: List.filled(120, 'Initial streamed detail.').join(' '),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      );
+      expect(notifier.upsertTurn(thread.id, streamingTurn), isTrue);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: SizedBox(width: 1200, height: 800, child: StudioTaskView()),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final transcript = find.byWidgetPredicate(
+        (widget) => widget is ListView && widget.cacheExtent != null,
+      );
+      expect(transcript, findsOneWidget);
+      final position = tester.widget<ListView>(transcript).controller!.position;
+      expect(position.maxScrollExtent, greaterThan(100));
+      position.jumpTo(position.maxScrollExtent * 0.35);
+      await tester.pump();
+      final anchoredPixels = position.pixels;
+      final previousExtent = position.maxScrollExtent;
+
+      expect(
+        notifier.upsertTurn(
+          thread.id,
+          streamingTurn.copyWith(
+            assistantDraft:
+                '${streamingTurn.assistantDraft} ${List.filled(160, 'Later streamed detail.').join(' ')}',
+            updatedAt: timestamp.add(const Duration(seconds: 1)),
+          ),
+        ),
+        isTrue,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(position.maxScrollExtent, greaterThan(previousExtent));
+      expect(position.pixels, closeTo(anchoredPixels, 1));
+      expect(position.pixels, lessThan(position.maxScrollExtent));
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
 }
 
-StudioTurn _turn(int index, {String threadId = 'thread'}) {
+StudioTurn _turn(int index, {String threadId = 'thread', String? prompt}) {
   final now = DateTime.utc(2026, 7, 1).add(Duration(minutes: index));
   return StudioTurn(
     id: 'turn-$index',
     threadId: threadId,
     requestId: 'request-$index',
     userMessageId: 'message-$index',
-    prompt: 'Task $index',
+    prompt: prompt ?? 'Task $index',
     model: 'gpt-5',
     contextSummary: const StudioContextSummary(projectLabel: 'project'),
     status: index == 2 ? StudioTurnStatus.failed : StudioTurnStatus.completed,
