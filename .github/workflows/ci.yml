@@ -267,6 +267,11 @@ jobs:
           osv_exit="$?"
           set -e
 
+          # The exit codes are safe aggregate evidence: neither fixture data
+          # nor scanner output is retained or printed.
+          echo "Controlled Gitleaks exit: $gitleaks_exit"
+          echo "Controlled OSV exit: $osv_exit"
+
           if [[ "$gitleaks_exit" -eq 0 ]]; then
             echo "Gitleaks accepted its controlled temporary fixture" >&2
             exit 1
