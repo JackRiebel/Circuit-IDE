@@ -5,8 +5,7 @@ class GitTools {
 
   GitTools({required this.workingDir});
 
-  Future<(bool, String)> _runGit(List<String> args,
-      {int timeout = 30}) async {
+  Future<(bool, String)> _runGit(List<String> args, {int timeout = 30}) async {
     try {
       final result = await Process.run(
         'git',

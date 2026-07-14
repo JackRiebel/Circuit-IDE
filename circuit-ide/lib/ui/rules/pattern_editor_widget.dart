@@ -115,7 +115,9 @@ class _PatternEditorWidgetState extends ConsumerState<PatternEditorWidget> {
                       fillColor: tokens.bgDark,
                       hintText: 'e.g., lib/ui/**/*.dart',
                       hintStyle: TextStyle(
-                          color: tokens.textMuted, fontSize: FontSizes.xs),
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.xs,
+                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: Spacing.md,
                         vertical: Spacing.sm,
@@ -202,9 +204,7 @@ class _PatternChip extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(Radii.sm),
         color: tokens.accent.withValues(alpha: 0.1),
-        border: Border.all(
-          color: tokens.accent.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

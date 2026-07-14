@@ -18,9 +18,7 @@ class McpHubPanel extends ConsumerWidget {
     final hubState = ref.watch(mcpHubProvider);
 
     if (hubState.isLoading) {
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: tokens.accent));
     }
 
     return Column(
@@ -60,28 +58,32 @@ class McpHubPanel extends ConsumerWidget {
                   padding: const EdgeInsets.all(Spacing.lg),
                   children: [
                     // Server cards
-                    ...hubState.servers.map((server) => Dismissible(
-                          key: ValueKey(server.config.name),
-                          direction: DismissDirection.endToStart,
-                          background: Container(
-                            alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: Spacing.xl),
-                            color: tokens.error.withValues(alpha: 0.1),
-                            child: Icon(Icons.delete,
-                                color: tokens.error, size: 16),
+                    ...hubState.servers.map(
+                      (server) => Dismissible(
+                        key: ValueKey(server.config.name),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: Spacing.xl),
+                          color: tokens.error.withValues(alpha: 0.1),
+                          child: Icon(
+                            Icons.delete,
+                            color: tokens.error,
+                            size: 16,
                           ),
-                          onDismissed: (_) {
-                            ref
-                                .read(mcpHubProvider.notifier)
-                                .removeServer(server.config.name);
-                          },
-                          child: McpServerCard(server: server),
-                        )),
+                        ),
+                        onDismissed: (_) {
+                          ref
+                              .read(mcpHubProvider.notifier)
+                              .removeServer(server.config.name);
+                        },
+                        child: McpServerCard(server: server),
+                      ),
+                    ),
 
                     // Bot Agent section divider
                     Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: Spacing.lg),
+                      padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
                       child: Row(
                         children: [
                           Expanded(
@@ -91,7 +93,8 @@ class McpHubPanel extends ConsumerWidget {
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: Spacing.lg),
+                              horizontal: Spacing.lg,
+                            ),
                             child: Text(
                               'BOT AGENT',
                               style: TextStyle(
@@ -187,26 +190,16 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.extension_outlined,
-            size: 32,
-            color: tokens.textMuted,
-          ),
+          Icon(Icons.extension_outlined, size: 32, color: tokens.textMuted),
           const SizedBox(height: Spacing.lg),
           Text(
             'No MCP servers configured',
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
           ),
           const SizedBox(height: Spacing.md),
           Text(
             'Add a server to extend AI capabilities',
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
         ],
       ),
@@ -225,25 +218,15 @@ class _BotAgentSetup extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.bgLighter,
         borderRadius: BorderRadius.circular(Radii.md),
-        border: Border.all(
-          color: tokens.border,
-          style: BorderStyle.solid,
-        ),
+        border: Border.all(color: tokens.border, style: BorderStyle.solid),
       ),
       child: Column(
         children: [
-          Icon(
-            Icons.smart_toy_outlined,
-            size: 24,
-            color: tokens.textMuted,
-          ),
+          Icon(Icons.smart_toy_outlined, size: 24, color: tokens.textMuted),
           const SizedBox(height: Spacing.md),
           Text(
             'No bot agent configured',
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
           ),
           const SizedBox(height: Spacing.lg),
           InkWell(

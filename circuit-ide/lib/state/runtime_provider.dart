@@ -34,7 +34,8 @@ class RuntimeNotifier extends Notifier<ExecutionTrace?> {
           ? 'Focus on the function "$functionName".'
           : 'Analyze the main entry point or primary function.';
 
-      final prompt = '''Analyze the following code and produce a simulated execution trace.
+      final prompt =
+          '''Analyze the following code and produce a simulated execution trace.
 For each step in the execution, provide:
 - The function name being executed
 - The line number (approximate)
@@ -73,7 +74,9 @@ SUMMARY:<one line summary>''';
       ref.read(editorProvider.notifier).openRuntimeTab(trace.id, filePath);
 
       Logger.info(
-          'Runtime trace generated: ${trace.frames.length} frames', 'Runtime');
+        'Runtime trace generated: ${trace.frames.length} frames',
+        'Runtime',
+      );
     } catch (e) {
       Logger.error('Runtime analysis failed', e);
       _analyzing = false;
@@ -108,7 +111,10 @@ SUMMARY:<one line summary>''';
   }
 
   ExecutionTrace _parseTrace(
-      String response, String filePath, String? functionName) {
+    String response,
+    String filePath,
+    String? functionName,
+  ) {
     final frames = <RuntimeFrame>[];
     String? summary;
     List<RuntimeVariable> currentVars = [];
@@ -121,42 +127,48 @@ SUMMARY:<one line summary>''';
         // Save previous vars to previous frame
         if (frames.isNotEmpty && currentVars.isNotEmpty) {
           final last = frames.removeLast();
-          frames.add(RuntimeFrame(
-            id: last.id,
-            frameNumber: last.frameNumber,
-            functionName: last.functionName,
-            filePath: last.filePath,
-            lineNumber: last.lineNumber,
-            variables: currentVars,
-            isCurrent: last.isCurrent,
-            annotation: last.annotation,
-          ));
+          frames.add(
+            RuntimeFrame(
+              id: last.id,
+              frameNumber: last.frameNumber,
+              functionName: last.functionName,
+              filePath: last.filePath,
+              lineNumber: last.lineNumber,
+              variables: currentVars,
+              isCurrent: last.isCurrent,
+              annotation: last.annotation,
+            ),
+          );
         }
         currentVars = [];
 
         final parts = trimmed.substring(6).split('|');
         if (parts.length >= 4) {
-          frames.add(RuntimeFrame(
-            id: _uuid.v4().substring(0, 8),
-            frameNumber: frameCount,
-            functionName: parts[1].trim(),
-            filePath: filePath,
-            lineNumber: int.tryParse(parts[2].trim()) ?? 0,
-            isCurrent: frameCount == 0,
-            annotation: parts[3].trim(),
-          ));
+          frames.add(
+            RuntimeFrame(
+              id: _uuid.v4().substring(0, 8),
+              frameNumber: frameCount,
+              functionName: parts[1].trim(),
+              filePath: filePath,
+              lineNumber: int.tryParse(parts[2].trim()) ?? 0,
+              isCurrent: frameCount == 0,
+              annotation: parts[3].trim(),
+            ),
+          );
           frameCount++;
         }
       } else if (trimmed.startsWith('VAR:')) {
         final parts = trimmed.substring(4).split('|');
         if (parts.length >= 3) {
-          currentVars.add(RuntimeVariable(
-            name: parts[0].trim(),
-            type: parts[1].trim(),
-            value: parts[2].trim(),
-            isModified: parts.length > 3 &&
-                parts[3].trim().toLowerCase() == 'true',
-          ));
+          currentVars.add(
+            RuntimeVariable(
+              name: parts[0].trim(),
+              type: parts[1].trim(),
+              value: parts[2].trim(),
+              isModified:
+                  parts.length > 3 && parts[3].trim().toLowerCase() == 'true',
+            ),
+          );
         }
       } else if (trimmed.startsWith('SUMMARY:')) {
         summary = trimmed.substring(8).trim();
@@ -166,31 +178,35 @@ SUMMARY:<one line summary>''';
     // Attach last set of vars
     if (frames.isNotEmpty && currentVars.isNotEmpty) {
       final last = frames.removeLast();
-      frames.add(RuntimeFrame(
-        id: last.id,
-        frameNumber: last.frameNumber,
-        functionName: last.functionName,
-        filePath: last.filePath,
-        lineNumber: last.lineNumber,
-        variables: currentVars,
-        isCurrent: last.isCurrent,
-        annotation: last.annotation,
-      ));
+      frames.add(
+        RuntimeFrame(
+          id: last.id,
+          frameNumber: last.frameNumber,
+          functionName: last.functionName,
+          filePath: last.filePath,
+          lineNumber: last.lineNumber,
+          variables: currentVars,
+          isCurrent: last.isCurrent,
+          annotation: last.annotation,
+        ),
+      );
     }
 
     // If parsing failed, create a single informational frame
     if (frames.isEmpty) {
-      frames.add(RuntimeFrame(
-        id: _uuid.v4().substring(0, 8),
-        frameNumber: 0,
-        functionName: functionName ?? 'main',
-        filePath: filePath,
-        lineNumber: 1,
-        isCurrent: true,
-        annotation: response.length > 200
-            ? response.substring(0, 200)
-            : response,
-      ));
+      frames.add(
+        RuntimeFrame(
+          id: _uuid.v4().substring(0, 8),
+          frameNumber: 0,
+          functionName: functionName ?? 'main',
+          filePath: filePath,
+          lineNumber: 1,
+          isCurrent: true,
+          annotation: response.length > 200
+              ? response.substring(0, 200)
+              : response,
+        ),
+      );
     }
 
     return ExecutionTrace(
@@ -208,5 +224,6 @@ Output ONLY structured frames in the specified format. No extra commentary.
 Be precise about line numbers and variable values.''';
 }
 
-final runtimeProvider =
-    NotifierProvider<RuntimeNotifier, ExecutionTrace?>(RuntimeNotifier.new);
+final runtimeProvider = NotifierProvider<RuntimeNotifier, ExecutionTrace?>(
+  RuntimeNotifier.new,
+);

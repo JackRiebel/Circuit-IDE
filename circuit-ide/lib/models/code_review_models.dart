@@ -39,7 +39,9 @@ class ReviewAnnotation {
   }
 
   factory ReviewAnnotation.fromJson(
-      Map<String, dynamic> json, String filePath) {
+    Map<String, dynamic> json,
+    String filePath,
+  ) {
     return ReviewAnnotation(
       id: const Uuid().v4(),
       filePath: filePath,
@@ -93,8 +95,8 @@ class CodeReview {
     this.overallAssessment,
     this.verdict = ReviewVerdict.pass,
     this.isReviewing = false,
-  })  : id = id ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       timestamp = timestamp ?? DateTime.now();
 
   CodeReview copyWith({
     List<FileReviewResult>? fileResults,

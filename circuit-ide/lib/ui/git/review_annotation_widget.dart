@@ -48,9 +48,7 @@ class _ReviewAnnotationWidgetState
               ? severityColor.withValues(alpha: 0.08)
               : severityColor.withValues(alpha: 0.04),
           borderRadius: BorderRadius.circular(Radii.sm),
-          border: Border.all(
-            color: severityColor.withValues(alpha: 0.15),
-          ),
+          border: Border.all(color: severityColor.withValues(alpha: 0.15)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -90,11 +88,7 @@ class _ReviewAnnotationWidgetState
                 ),
                 const Spacer(),
                 if (annotation.isFixed)
-                  Icon(
-                    Icons.check_circle,
-                    size: 14,
-                    color: tokens.success,
-                  )
+                  Icon(Icons.check_circle, size: 14, color: tokens.success)
                 else ...[
                   if (annotation.suggestedFix != null)
                     _ActionButton(

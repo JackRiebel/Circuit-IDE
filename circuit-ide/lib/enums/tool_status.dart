@@ -1,7 +1,1 @@
-enum ToolStatus {
-  pending,
-  running,
-  success,
-  error,
-  cancelled,
-}
+enum ToolStatus { pending, running, success, error, cancelled }

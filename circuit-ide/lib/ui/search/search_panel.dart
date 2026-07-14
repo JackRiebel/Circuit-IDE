@@ -21,7 +21,9 @@ class SearchPanel extends ConsumerStatefulWidget {
 class _SearchPanelState extends ConsumerState<SearchPanel> {
   final _controller = TextEditingController();
   final _debouncer = Debouncer(delay: const Duration(milliseconds: 300));
-  final _semanticDebouncer = Debouncer(delay: const Duration(milliseconds: 600));
+  final _semanticDebouncer = Debouncer(
+    delay: const Duration(milliseconds: 600),
+  );
 
   @override
   void dispose() {
@@ -82,9 +84,7 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                 onChanged: (value) {
                   if (isSemanticMode) {
                     _semanticDebouncer.call(() {
-                      ref
-                          .read(semanticSearchProvider.notifier)
-                          .search(value);
+                      ref.read(semanticSearchProvider.notifier).search(value);
                     });
                   } else {
                     _debouncer.call(() {
@@ -147,10 +147,7 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
             ],
           ),
         ),
-        Container(
-          height: 1,
-          color: tokens.border.withValues(alpha: 0.3),
-        ),
+        Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
 
         // Indexing status (shown above results when indexing)
         if (isSemanticMode && semanticState.isIndexing)
@@ -192,9 +189,9 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                       return SearchResultItem(
                         result: searchState.results[index],
                         onTap: () {
-                          ref.read(editorProvider.notifier).openFile(
-                                searchState.results[index].filePath,
-                              );
+                          ref
+                              .read(editorProvider.notifier)
+                              .openFile(searchState.results[index].filePath);
                         },
                       );
                     },
@@ -244,8 +241,8 @@ class _OptionChipState extends ConsumerState<_OptionChip> {
               color: widget.isActive
                   ? tokens.accent.withValues(alpha: 0.15)
                   : _isHovered
-                      ? tokens.accent.withValues(alpha: 0.05)
-                      : Colors.transparent,
+                  ? tokens.accent.withValues(alpha: 0.05)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(Radii.xs),
               border: Border.all(
                 color: widget.isActive

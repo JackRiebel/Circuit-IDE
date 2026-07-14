@@ -40,12 +40,10 @@ class EditorTabBar extends ConsumerWidget {
                   filePath: tab.filePath,
                   isActive: isActive,
                   isModified: tab.isModified,
-                  onTap: () => ref
-                      .read(editorProvider.notifier)
-                      .setActiveTab(index),
-                  onClose: () => ref
-                      .read(editorProvider.notifier)
-                      .closeTab(index),
+                  onTap: () =>
+                      ref.read(editorProvider.notifier).setActiveTab(index),
+                  onClose: () =>
+                      ref.read(editorProvider.notifier).closeTab(index),
                 );
               },
             ),
@@ -102,97 +100,99 @@ class _EditorTabState extends ConsumerState<_EditorTab> {
               _showContextMenu(context, details.globalPosition);
             },
             child: Container(
-          constraints: const BoxConstraints(maxWidth: 200),
-          padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
-          decoration: BoxDecoration(
-            color: widget.isActive
-                ? tokens.tabActive
-                : _isHovered
+              constraints: const BoxConstraints(maxWidth: 200),
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+              decoration: BoxDecoration(
+                color: widget.isActive
+                    ? tokens.tabActive
+                    : _isHovered
                     ? tokens.tabHover
                     : tokens.tabInactive,
-            border: Border(
-              top: BorderSide(
-                color: widget.isActive
-                    ? tokens.tabIndicator
-                    : Colors.transparent,
-                width: 2,
+                border: Border(
+                  top: BorderSide(
+                    color: widget.isActive
+                        ? tokens.tabIndicator
+                        : Colors.transparent,
+                    width: 2,
+                  ),
+                  right: BorderSide(
+                    color: tokens.border.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
+                ),
               ),
-              right: BorderSide(
-                color: tokens.border.withValues(alpha: 0.3),
-                width: 1,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    widget.filePath == 'circuit://settings'
+                        ? Icons.tune_outlined
+                        : widget.filePath.startsWith('circuit://diff/')
+                        ? Icons.compare_outlined
+                        : widget.filePath.startsWith('circuit://spec/')
+                        ? Icons.description_outlined
+                        : widget.filePath.startsWith('circuit://runtime/')
+                        ? Icons.timeline_outlined
+                        : FileIconTheme.getIcon(widget.fileName),
+                    size: 14,
+                    color: widget.filePath == 'circuit://settings'
+                        ? tokens.textSecondary
+                        : widget.filePath.startsWith('circuit://diff/')
+                        ? tokens.warning
+                        : widget.filePath.startsWith('circuit://spec/')
+                        ? tokens.accent
+                        : widget.filePath.startsWith('circuit://runtime/')
+                        ? tokens.success
+                        : FileIconTheme.getColor(widget.fileName),
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      widget.fileName,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: widget.isActive
+                            ? tokens.textPrimary
+                            : tokens.textSecondary,
+                        fontSize: FontSizes.sm,
+                        fontWeight: widget.isActive
+                            ? FontWeight.w500
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  if (widget.isModified) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: tokens.accent,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: widget.onClose,
+                      child: AnimatedOpacity(
+                        duration: AnimationDurations.fast,
+                        opacity: _isHovered || widget.isActive ? 0.7 : 0,
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: tokens.textMuted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                widget.filePath == 'circuit://settings'
-                    ? Icons.tune_outlined
-                    : widget.filePath.startsWith('circuit://diff/')
-                        ? Icons.compare_outlined
-                        : widget.filePath.startsWith('circuit://spec/')
-                            ? Icons.description_outlined
-                            : widget.filePath.startsWith('circuit://runtime/')
-                                ? Icons.timeline_outlined
-                                : FileIconTheme.getIcon(widget.fileName),
-                size: 14,
-                color: widget.filePath == 'circuit://settings'
-                    ? tokens.textSecondary
-                    : widget.filePath.startsWith('circuit://diff/')
-                        ? tokens.warning
-                        : widget.filePath.startsWith('circuit://spec/')
-                            ? tokens.accent
-                            : widget.filePath.startsWith('circuit://runtime/')
-                                ? tokens.success
-                                : FileIconTheme.getColor(widget.fileName),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(
-                  widget.fileName,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: widget.isActive
-                        ? tokens.textPrimary
-                        : tokens.textSecondary,
-                    fontSize: FontSizes.sm,
-                    fontWeight: widget.isActive ? FontWeight.w500 : FontWeight.w400,
-                  ),
-                ),
-              ),
-              if (widget.isModified) ...[
-                const SizedBox(width: 4),
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: tokens.accent,
-                  ),
-                ),
-              ],
-              const SizedBox(width: 4),
-              MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: widget.onClose,
-                  child: AnimatedOpacity(
-                    duration: AnimationDurations.fast,
-                    opacity: _isHovered || widget.isActive ? 0.7 : 0,
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: tokens.textMuted,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
-      ),
-      ),
       ),
     );
   }
@@ -219,10 +219,7 @@ class _EditorTabState extends ConsumerState<_EditorTab> {
           value: 'close',
           child: Text(
             'Close Tab',
-            style: TextStyle(
-              color: tokens.textPrimary,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
           ),
         ),
         if (isSourceFile)

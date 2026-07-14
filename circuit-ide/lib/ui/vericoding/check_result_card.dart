@@ -68,9 +68,7 @@ class _CheckResultCardState extends ConsumerState<CheckResultCard> {
                   ),
                   const SizedBox(width: Spacing.sm),
                   Icon(
-                    _expanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
+                    _expanded ? Icons.expand_less : Icons.expand_more,
                     size: 16,
                     color: tokens.textMuted,
                   ),
@@ -84,7 +82,11 @@ class _CheckResultCardState extends ConsumerState<CheckResultCard> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(
-                  Spacing.md, 0, Spacing.md, Spacing.md),
+                Spacing.md,
+                0,
+                Spacing.md,
+                Spacing.md,
+              ),
               child: Container(
                 padding: const EdgeInsets.all(Spacing.md),
                 decoration: BoxDecoration(

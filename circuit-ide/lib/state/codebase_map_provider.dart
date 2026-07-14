@@ -28,16 +28,47 @@ const _clusterColors = [
 
 /// Directories to ignore when building the graph.
 const _ignoredDirs = {
-  '.git', '.dart_tool', 'build', 'node_modules', '__pycache__',
-  '.venv', 'venv', '.idea', '.vscode', 'target', '.gradle',
-  '.cache', 'dist', '.next', '.nuxt', 'coverage',
+  '.git',
+  '.dart_tool',
+  'build',
+  'node_modules',
+  '__pycache__',
+  '.venv',
+  'venv',
+  '.idea',
+  '.vscode',
+  'target',
+  '.gradle',
+  '.cache',
+  'dist',
+  '.next',
+  '.nuxt',
+  'coverage',
 };
 
 /// File extensions to ignore.
 const _ignoreExtensions = {
-  '.lock', '.log', '.cache', '.pyc', '.class', '.o', '.obj',
-  '.exe', '.dll', '.so', '.dylib', '.png', '.jpg', '.jpeg',
-  '.gif', '.ico', '.svg', '.woff', '.woff2', '.ttf', '.eot',
+  '.lock',
+  '.log',
+  '.cache',
+  '.pyc',
+  '.class',
+  '.o',
+  '.obj',
+  '.exe',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.ico',
+  '.svg',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.eot',
 };
 
 class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
@@ -123,12 +154,14 @@ class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
             externalNodes[targetId] = extNode;
           }
 
-          edges.add(GraphEdge(
-            sourceId: relativePath,
-            targetId: targetId,
-            importStatement: imp.rawStatement,
-            isRelative: imp.isRelative,
-          ));
+          edges.add(
+            GraphEdge(
+              sourceId: relativePath,
+              targetId: targetId,
+              importStatement: imp.rawStatement,
+              isRelative: imp.isRelative,
+            ),
+          );
         }
       }
 
@@ -145,12 +178,14 @@ class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
       final clusters = <GraphCluster>[];
       int colorIdx = 0;
       for (final entry in dirMap.entries) {
-        clusters.add(GraphCluster(
-          directoryPath: entry.key,
-          label: entry.key.isEmpty ? '(root)' : entry.key,
-          color: _clusterColors[colorIdx % _clusterColors.length],
-          nodeIds: entry.value,
-        ));
+        clusters.add(
+          GraphCluster(
+            directoryPath: entry.key,
+            label: entry.key.isEmpty ? '(root)' : entry.key,
+            color: _clusterColors[colorIdx % _clusterColors.length],
+            nodeIds: entry.value,
+          ),
+        );
         colorIdx++;
       }
 
@@ -218,31 +253,25 @@ class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
     int ticks = 0;
     const maxTicks = 300;
 
-    _layoutTimer = Timer.periodic(
-      const Duration(milliseconds: 16),
-      (timer) {
-        ticks++;
-        final mutableNodes = List<GraphNode>.from(state.nodes);
-        final converged = _engine.step(mutableNodes, state.edges);
+    _layoutTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      ticks++;
+      final mutableNodes = List<GraphNode>.from(state.nodes);
+      final converged = _engine.step(mutableNodes, state.edges);
 
-        // Update cluster bounds
-        final updatedClusters = _computeClusterBounds(
-          state.clusters,
-          mutableNodes,
-        );
+      // Update cluster bounds
+      final updatedClusters = _computeClusterBounds(
+        state.clusters,
+        mutableNodes,
+      );
 
-        state = state.copyWith(
-          nodes: mutableNodes,
-          clusters: updatedClusters,
-        );
+      state = state.copyWith(nodes: mutableNodes, clusters: updatedClusters);
 
-        if (converged || ticks >= maxTicks) {
-          timer.cancel();
-          _layoutTimer = null;
-          state = state.copyWith(isLayoutRunning: false);
-        }
-      },
-    );
+      if (converged || ticks >= maxTicks) {
+        timer.cancel();
+        _layoutTimer = null;
+        state = state.copyWith(isLayoutRunning: false);
+      }
+    });
   }
 
   List<GraphCluster> _computeClusterBounds(
@@ -293,8 +322,7 @@ class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
     }
 
     final updatedNodes = [
-      for (final node in state.nodes)
-        node.copyWith(isSelected: node.id == id),
+      for (final node in state.nodes) node.copyWith(isSelected: node.id == id),
     ];
 
     state = state.copyWith(
@@ -337,7 +365,8 @@ class CodebaseMapNotifier extends Notifier<CodebaseGraphState> {
     final inEdges = state.edges.where((e) => e.targetId == nodeId).toList();
     final outEdges = state.edges.where((e) => e.sourceId == nodeId).toList();
 
-    final prompt = '''Explain the role of this file in the codebase.
+    final prompt =
+        '''Explain the role of this file in the codebase.
 File: ${node.id}
 Extension: ${node.extension}
 Directory: ${node.directory ?? '(root)'}
@@ -350,7 +379,8 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
       final service = ref.read(agentServiceProvider);
       if (!service.isConnected) {
         state = state.copyWith(
-          aiExplanation: 'AI is not connected. Connect to an AI provider first.',
+          aiExplanation:
+              'AI is not connected. Connect to an AI provider first.',
         );
         return;
       }
@@ -369,9 +399,7 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
         ];
         state = state.copyWith(nodes: updatedNodes);
       } else {
-        state = state.copyWith(
-          aiExplanation: 'AI returned no response.',
-        );
+        state = state.copyWith(aiExplanation: 'AI returned no response.');
       }
     } catch (e) {
       state = state.copyWith(aiExplanation: 'Error: $e');
@@ -386,10 +414,7 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
       case GraphViewMode.force:
         // Re-run force layout
         final repositioned = _engine.initializePositions(state.nodes);
-        state = state.copyWith(
-          nodes: repositioned,
-          isLayoutRunning: true,
-        );
+        state = state.copyWith(nodes: repositioned, isLayoutRunning: true);
         _startLayoutSimulation();
       case GraphViewMode.hierarchical:
         final laid = _engine.layoutHierarchical(state.nodes, state.edges);
@@ -429,5 +454,5 @@ Give a brief 2-3 sentence explanation of what this file likely does and its role
 
 final codebaseMapProvider =
     NotifierProvider<CodebaseMapNotifier, CodebaseGraphState>(
-  CodebaseMapNotifier.new,
-);
+      CodebaseMapNotifier.new,
+    );

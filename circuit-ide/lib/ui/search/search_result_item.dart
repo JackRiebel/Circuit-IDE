@@ -100,13 +100,13 @@ class _SearchResultItemState extends ConsumerState<SearchResultItem> {
                         fontSize: FontSizes.xs,
                         fontFamily: 'JetBrains Mono',
                         fontWeight: FontWeight.w600,
-                        backgroundColor:
-                            tokens.accent.withValues(alpha: 0.15),
+                        backgroundColor: tokens.accent.withValues(alpha: 0.15),
                       ),
                     ),
                     TextSpan(
-                      text: widget.result.lineContent
-                          .substring(widget.result.matchEnd),
+                      text: widget.result.lineContent.substring(
+                        widget.result.matchEnd,
+                      ),
                       style: TextStyle(
                         color: tokens.textSecondary,
                         fontSize: FontSizes.xs,

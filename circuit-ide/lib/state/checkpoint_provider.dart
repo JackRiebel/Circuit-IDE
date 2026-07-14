@@ -45,9 +45,7 @@ class CheckpointNotifier extends Notifier<CheckpointState> {
     final service = ref.read(agentServiceProvider);
     service.events.on(EventType.checkpointCreated, (event) {
       final checkpoint = event.data['checkpoint'] as Checkpoint;
-      state = state.copyWith(
-        checkpoints: [checkpoint, ...state.checkpoints],
-      );
+      state = state.copyWith(checkpoints: [checkpoint, ...state.checkpoints]);
     });
   }
 
@@ -85,5 +83,5 @@ class CheckpointNotifier extends Notifier<CheckpointState> {
 
 final checkpointProvider =
     NotifierProvider<CheckpointNotifier, CheckpointState>(
-  CheckpointNotifier.new,
-);
+      CheckpointNotifier.new,
+    );

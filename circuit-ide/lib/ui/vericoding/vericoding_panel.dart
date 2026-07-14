@@ -20,10 +20,7 @@ class VericodingPanel extends ConsumerWidget {
 
     if (vstate.isLoading) {
       return Center(
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: tokens.accent,
-        ),
+        child: CircularProgressIndicator(strokeWidth: 2, color: tokens.accent),
       );
     }
 
@@ -81,7 +78,8 @@ class _HeaderBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final run = vstate.currentRun;
-    final isRunning = run != null &&
+    final isRunning =
+        run != null &&
         (run.status == VericodeRunStatus.runningChecks ||
             run.status == VericodeRunStatus.fixing ||
             run.status == VericodeRunStatus.rerunning ||
@@ -89,7 +87,9 @@ class _HeaderBar extends ConsumerWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md, vertical: Spacing.sm),
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
@@ -101,9 +101,9 @@ class _HeaderBar extends ConsumerWidget {
           ToggleSwitch(
             value: vstate.config.enabled,
             onChanged: (v) {
-              ref.read(vericodingProvider.notifier).updateConfig(
-                    vstate.config.copyWith(enabled: v),
-                  );
+              ref
+                  .read(vericodingProvider.notifier)
+                  .updateConfig(vstate.config.copyWith(enabled: v));
             },
             width: 34,
             height: 18,
@@ -127,8 +127,7 @@ class _HeaderBar extends ConsumerWidget {
               icon: Icons.stop_rounded,
               label: 'Cancel',
               color: tokens.error,
-              onTap: () =>
-                  ref.read(vericodingProvider.notifier).cancel(),
+              onTap: () => ref.read(vericodingProvider.notifier).cancel(),
             )
           else
             _CompactButton(
@@ -152,8 +151,11 @@ class _HeaderBar extends ConsumerWidget {
                     ref.read(vericodingProvider.notifier).autoDetectChecks(),
                 child: Padding(
                   padding: const EdgeInsets.all(4),
-                  child: Icon(Icons.auto_fix_high,
-                      size: 15, color: tokens.textMuted),
+                  child: Icon(
+                    Icons.auto_fix_high,
+                    size: 15,
+                    color: tokens.textMuted,
+                  ),
                 ),
               ),
             ),
@@ -171,8 +173,11 @@ class _HeaderBar extends ConsumerWidget {
               },
               child: Padding(
                 padding: const EdgeInsets.all(4),
-                child: Icon(Icons.tune_outlined,
-                    size: 15, color: tokens.textMuted),
+                child: Icon(
+                  Icons.tune_outlined,
+                  size: 15,
+                  color: tokens.textMuted,
+                ),
               ),
             ),
           ),
@@ -259,16 +264,41 @@ class _StatusCard extends ConsumerWidget {
     final status = run?.status ?? VericodeRunStatus.idle;
 
     final (label, color, icon) = switch (status) {
-      VericodeRunStatus.idle => ('Ready', tokens.textMuted, Icons.circle_outlined),
-      VericodeRunStatus.runningChecks => ('Running checks...', tokens.warning, Icons.sync),
-      VericodeRunStatus.analyzingFailures => ('Analyzing failures...', tokens.warning, Icons.analytics_outlined),
-      VericodeRunStatus.fixing => ('AI fixing...', tokens.accent, Icons.auto_fix_high),
-      VericodeRunStatus.rerunning => ('Re-running checks...', tokens.warning, Icons.refresh),
-      VericodeRunStatus.passed => ('All checks passed', tokens.success, Icons.check_circle),
+      VericodeRunStatus.idle => (
+        'Ready',
+        tokens.textMuted,
+        Icons.circle_outlined,
+      ),
+      VericodeRunStatus.runningChecks => (
+        'Running checks...',
+        tokens.warning,
+        Icons.sync,
+      ),
+      VericodeRunStatus.analyzingFailures => (
+        'Analyzing failures...',
+        tokens.warning,
+        Icons.analytics_outlined,
+      ),
+      VericodeRunStatus.fixing => (
+        'AI fixing...',
+        tokens.accent,
+        Icons.auto_fix_high,
+      ),
+      VericodeRunStatus.rerunning => (
+        'Re-running checks...',
+        tokens.warning,
+        Icons.refresh,
+      ),
+      VericodeRunStatus.passed => (
+        'All checks passed',
+        tokens.success,
+        Icons.check_circle,
+      ),
       VericodeRunStatus.failed => ('Checks failed', tokens.error, Icons.cancel),
     };
 
-    final isActive = status == VericodeRunStatus.runningChecks ||
+    final isActive =
+        status == VericodeRunStatus.runningChecks ||
         status == VericodeRunStatus.fixing ||
         status == VericodeRunStatus.rerunning ||
         status == VericodeRunStatus.analyzingFailures;
@@ -286,10 +316,7 @@ class _StatusCard extends ConsumerWidget {
             SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: color,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
             )
           else
             Icon(icon, size: 14, color: color),
@@ -352,18 +379,20 @@ class _CheckListSection extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: Spacing.sm),
-        ...config.checks.map((check) => _CheckToggleRow(
-              check: check,
-              onToggle: (enabled) {
-                final checks = config.checks.map((c) {
-                  if (c.id == check.id) return c.copyWith(enabled: enabled);
-                  return c;
-                }).toList();
-                ref
-                    .read(vericodingProvider.notifier)
-                    .updateConfig(config.copyWith(checks: checks));
-              },
-            )),
+        ...config.checks.map(
+          (check) => _CheckToggleRow(
+            check: check,
+            onToggle: (enabled) {
+              final checks = config.checks.map((c) {
+                if (c.id == check.id) return c.copyWith(enabled: enabled);
+                return c;
+              }).toList();
+              ref
+                  .read(vericodingProvider.notifier)
+                  .updateConfig(config.copyWith(checks: checks));
+            },
+          ),
+        ),
         if (config.checks.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
@@ -404,10 +433,7 @@ class _CheckToggleRow extends ConsumerWidget {
   final VericodeCheck check;
   final ValueChanged<bool> onToggle;
 
-  const _CheckToggleRow({
-    required this.check,
-    required this.onToggle,
-  });
+  const _CheckToggleRow({required this.check, required this.onToggle});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -417,11 +443,11 @@ class _CheckToggleRow extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: 4),
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: Spacing.sm, vertical: Spacing.xs),
+          horizontal: Spacing.sm,
+          vertical: Spacing.xs,
+        ),
         decoration: BoxDecoration(
-          color: check.enabled
-              ? tokens.bgLighter
-              : Colors.transparent,
+          color: check.enabled ? tokens.bgLighter : Colors.transparent,
           borderRadius: BorderRadius.circular(Radii.sm),
         ),
         child: Row(
@@ -437,9 +463,7 @@ class _CheckToggleRow extends ConsumerWidget {
               child: Text(
                 check.name,
                 style: TextStyle(
-                  color: check.enabled
-                      ? tokens.textPrimary
-                      : tokens.textMuted,
+                  color: check.enabled ? tokens.textPrimary : tokens.textMuted,
                   fontSize: FontSizes.xs,
                 ),
               ),
@@ -483,9 +507,7 @@ class _CurrentRunSection extends ConsumerWidget {
         const SizedBox(height: Spacing.sm),
 
         // Results cards
-        ...run.currentResults.map(
-          (result) => CheckResultCard(result: result),
-        ),
+        ...run.currentResults.map((result) => CheckResultCard(result: result)),
 
         if (run.status == VericodeRunStatus.fixing)
           Container(
@@ -494,8 +516,7 @@ class _CurrentRunSection extends ConsumerWidget {
             decoration: BoxDecoration(
               color: tokens.accent.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(Radii.sm),
-              border: Border.all(
-                  color: tokens.accent.withValues(alpha: 0.2)),
+              border: Border.all(color: tokens.accent.withValues(alpha: 0.2)),
             ),
             child: Row(
               children: [
@@ -566,7 +587,9 @@ class _HistoryRow extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 3),
       padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.sm, vertical: Spacing.xs),
+        horizontal: Spacing.sm,
+        vertical: Spacing.xs,
+      ),
       decoration: BoxDecoration(
         color: tokens.bgLighter,
         borderRadius: BorderRadius.circular(Radii.sm),
@@ -591,20 +614,14 @@ class _HistoryRow extends ConsumerWidget {
             const SizedBox(width: Spacing.sm),
             Text(
               '${run.attempts.length} attempt${run.attempts.length > 1 ? 's' : ''}',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: 9,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: 9),
             ),
           ],
           const Spacer(),
           if (elapsed != null)
             Text(
               _formatDuration(elapsed),
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: 9,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: 9),
             ),
           if (run.triggerSource != null && run.triggerSource!.isNotEmpty) ...[
             const SizedBox(width: Spacing.sm),
@@ -686,22 +703,28 @@ class _DetectedProjectBadge extends ConsumerWidget {
             Wrap(
               spacing: 4,
               runSpacing: 4,
-              children: enabledFeatures.map((f) => Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: tokens.bgLighter,
-                      borderRadius: BorderRadius.circular(Radii.xs),
-                    ),
-                    child: Text(
-                      f,
-                      style: TextStyle(
-                        color: tokens.textMuted,
-                        fontSize: 9,
-                        fontFamily: 'JetBrains Mono',
+              children: enabledFeatures
+                  .map(
+                    (f) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tokens.bgLighter,
+                        borderRadius: BorderRadius.circular(Radii.xs),
+                      ),
+                      child: Text(
+                        f,
+                        style: TextStyle(
+                          color: tokens.textMuted,
+                          fontSize: 9,
+                          fontFamily: 'JetBrains Mono',
+                        ),
                       ),
                     ),
-                  )).toList(),
+                  )
+                  .toList(),
             ),
           ],
         ],

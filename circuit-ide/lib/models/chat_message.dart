@@ -45,23 +45,19 @@ class ChatMessage {
   }
 
   Map<String, dynamic> toApiMessage() {
-    final msg = <String, dynamic>{
-      'role': role.value,
-      'content': content,
-    };
+    final msg = <String, dynamic>{'role': role.value, 'content': content};
     if (toolCallId != null) {
       msg['tool_call_id'] = toolCallId;
     }
     if (toolCalls.isNotEmpty) {
       msg['tool_calls'] = toolCalls
-          .map((tc) => {
-                'id': tc.id,
-                'type': 'function',
-                'function': {
-                  'name': tc.name,
-                  'arguments': tc.argumentsJson,
-                },
-              })
+          .map(
+            (tc) => {
+              'id': tc.id,
+              'type': 'function',
+              'function': {'name': tc.name, 'arguments': tc.argumentsJson},
+            },
+          )
           .toList();
     }
     return msg;

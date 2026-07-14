@@ -20,20 +20,20 @@ class CellOutput {
   });
 
   Map<String, dynamic> toJson() => {
-        'stdout': stdout,
-        'stderr': stderr,
-        'exitCode': exitCode,
-        'executionTimeMs': executionTime.inMilliseconds,
-        if (errorMessage != null) 'errorMessage': errorMessage,
-      };
+    'stdout': stdout,
+    'stderr': stderr,
+    'exitCode': exitCode,
+    'executionTimeMs': executionTime.inMilliseconds,
+    if (errorMessage != null) 'errorMessage': errorMessage,
+  };
 
   factory CellOutput.fromJson(Map<String, dynamic> json) => CellOutput(
-        stdout: json['stdout'] ?? '',
-        stderr: json['stderr'] ?? '',
-        exitCode: json['exitCode'] ?? 0,
-        executionTime: Duration(milliseconds: json['executionTimeMs'] ?? 0),
-        errorMessage: json['errorMessage'],
-      );
+    stdout: json['stdout'] ?? '',
+    stderr: json['stderr'] ?? '',
+    exitCode: json['exitCode'] ?? 0,
+    executionTime: Duration(milliseconds: json['executionTimeMs'] ?? 0),
+    errorMessage: json['errorMessage'],
+  );
 }
 
 class NotebookCell {
@@ -87,29 +87,26 @@ class NotebookCell {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'type': type.name,
-        'source': source,
-        'language': language,
-        if (output != null) 'output': output!.toJson(),
-        if (executionOrder != null) 'executionOrder': executionOrder,
-        if (lastExecuted != null)
-          'lastExecuted': lastExecuted!.toIso8601String(),
-      };
+    'id': id,
+    'type': type.name,
+    'source': source,
+    'language': language,
+    if (output != null) 'output': output!.toJson(),
+    if (executionOrder != null) 'executionOrder': executionOrder,
+    if (lastExecuted != null) 'lastExecuted': lastExecuted!.toIso8601String(),
+  };
 
   factory NotebookCell.fromJson(Map<String, dynamic> json) => NotebookCell(
-        id: json['id'],
-        type: CellType.values.byName(json['type'] ?? 'code'),
-        source: json['source'] ?? '',
-        language: json['language'] ?? 'python',
-        output: json['output'] != null
-            ? CellOutput.fromJson(json['output'])
-            : null,
-        executionOrder: json['executionOrder'],
-        lastExecuted: json['lastExecuted'] != null
-            ? DateTime.parse(json['lastExecuted'])
-            : null,
-      );
+    id: json['id'],
+    type: CellType.values.byName(json['type'] ?? 'code'),
+    source: json['source'] ?? '',
+    language: json['language'] ?? 'python',
+    output: json['output'] != null ? CellOutput.fromJson(json['output']) : null,
+    executionOrder: json['executionOrder'],
+    lastExecuted: json['lastExecuted'] != null
+        ? DateTime.parse(json['lastExecuted'])
+        : null,
+  );
 }
 
 class Notebook {
@@ -129,10 +126,10 @@ class Notebook {
     this.defaultLanguage = 'python',
     DateTime? createdAt,
     DateTime? modifiedAt,
-  })  : id = id ?? const Uuid().v4(),
-        cells = cells ?? [NotebookCell()],
-        createdAt = createdAt ?? DateTime.now(),
-        modifiedAt = modifiedAt ?? DateTime.now();
+  }) : id = id ?? const Uuid().v4(),
+       cells = cells ?? [NotebookCell()],
+       createdAt = createdAt ?? DateTime.now(),
+       modifiedAt = modifiedAt ?? DateTime.now();
 
   Notebook copyWith({
     String? name,
@@ -153,30 +150,30 @@ class Notebook {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'cells': cells.map((c) => c.toJson()).toList(),
-        'defaultLanguage': defaultLanguage,
-        'createdAt': createdAt.toIso8601String(),
-        'modifiedAt': modifiedAt.toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'description': description,
+    'cells': cells.map((c) => c.toJson()).toList(),
+    'defaultLanguage': defaultLanguage,
+    'createdAt': createdAt.toIso8601String(),
+    'modifiedAt': modifiedAt.toIso8601String(),
+  };
 
   factory Notebook.fromJson(Map<String, dynamic> json) => Notebook(
-        id: json['id'],
-        name: json['name'] ?? 'Untitled',
-        description: json['description'] ?? '',
-        cells: (json['cells'] as List?)
-            ?.map((c) => NotebookCell.fromJson(c))
-            .toList(),
-        defaultLanguage: json['defaultLanguage'] ?? 'python',
-        createdAt: json['createdAt'] != null
-            ? DateTime.parse(json['createdAt'])
-            : null,
-        modifiedAt: json['modifiedAt'] != null
-            ? DateTime.parse(json['modifiedAt'])
-            : null,
-      );
+    id: json['id'],
+    name: json['name'] ?? 'Untitled',
+    description: json['description'] ?? '',
+    cells: (json['cells'] as List?)
+        ?.map((c) => NotebookCell.fromJson(c))
+        .toList(),
+    defaultLanguage: json['defaultLanguage'] ?? 'python',
+    createdAt: json['createdAt'] != null
+        ? DateTime.parse(json['createdAt'])
+        : null,
+    modifiedAt: json['modifiedAt'] != null
+        ? DateTime.parse(json['modifiedAt'])
+        : null,
+  );
 }
 
 class NotebookState {

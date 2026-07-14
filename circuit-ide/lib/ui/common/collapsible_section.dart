@@ -37,8 +37,10 @@ class _CollapsibleSectionState extends State<CollapsibleSection>
       value: _expanded ? 1.0 : 0.0,
     );
     _rotation = Tween(begin: -0.25, end: 0.0).animate(_controller);
-    _sizeAnimation =
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+    _sizeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
@@ -92,8 +94,10 @@ class _CollapsibleSectionState extends State<CollapsibleSection>
                 if (widget.count != null) ...[
                   const SizedBox(width: 6),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(8),
@@ -113,10 +117,7 @@ class _CollapsibleSectionState extends State<CollapsibleSection>
             ),
           ),
         ),
-        SizeTransition(
-          sizeFactor: _sizeAnimation,
-          child: widget.child,
-        ),
+        SizeTransition(sizeFactor: _sizeAnimation, child: widget.child),
       ],
     );
   }

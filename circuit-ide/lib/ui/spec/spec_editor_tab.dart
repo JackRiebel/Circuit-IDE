@@ -37,19 +37,16 @@ class _SpecEditorTabState extends ConsumerState<SpecEditorTab> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(specProvider.notifier).createSpec('Specification');
       });
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: tokens.accent));
     }
 
     if (spec == null) {
-      return Center(
-        child: CircularProgressIndicator(color: tokens.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: tokens.accent));
     }
 
     // Sync controller with spec content
-    if (_contentController.text != spec.content && !_contentController.text.isNotEmpty) {
+    if (_contentController.text != spec.content &&
+        !_contentController.text.isNotEmpty) {
       _contentController.text = spec.content;
     }
 
@@ -133,10 +130,7 @@ class _SpecHeader extends ConsumerWidget {
             const SizedBox(width: Spacing.lg),
             Text(
               '${spec.completedCount}/${spec.steps.length} steps',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xs,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
             ),
           ],
           const Spacer(),
@@ -295,15 +289,13 @@ class _SpecContentEditor extends StatelessWidget {
         ),
         decoration: InputDecoration(
           contentPadding: const EdgeInsets.all(Spacing.xl),
-          hintText: 'Write your specification here...\n\n'
+          hintText:
+              'Write your specification here...\n\n'
               'Describe what you want to build, including:\n'
               '- Feature requirements\n'
               '- Technical constraints\n'
               '- Expected behavior',
-          hintStyle: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.sm,
-          ),
+          hintStyle: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
           border: InputBorder.none,
         ),
       ),

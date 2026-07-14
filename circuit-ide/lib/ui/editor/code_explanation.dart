@@ -44,7 +44,11 @@ class CodeExplanationPopup extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.lightbulb_outline, size: 14, color: tokens.warning),
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 14,
+                    color: tokens.warning,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     'Code Explanation',
@@ -77,11 +81,13 @@ class CodeExplanationPopup extends ConsumerWidget {
                       shrinkWrap: true,
                       config: MarkdownConfig(
                         configs: [
-                          PConfig(textStyle: TextStyle(
-                            color: tokens.textPrimary,
-                            fontSize: FontSizes.sm,
-                            height: 1.5,
-                          )),
+                          PConfig(
+                            textStyle: TextStyle(
+                              color: tokens.textPrimary,
+                              fontSize: FontSizes.sm,
+                              height: 1.5,
+                            ),
+                          ),
                         ],
                       ),
                     ),

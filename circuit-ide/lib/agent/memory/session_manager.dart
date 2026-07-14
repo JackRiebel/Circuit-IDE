@@ -56,19 +56,19 @@ class SessionManager {
       'auto_approve': autoApprove,
       'metadata': metadata,
       'history': history
-          .map((m) => {
-                'id': m.id,
-                'role': m.role.value,
-                'content': m.content,
-                'timestamp': m.timestamp.toIso8601String(),
-                if (m.toolCallId != null) 'tool_call_id': m.toolCallId,
-              })
+          .map(
+            (m) => {
+              'id': m.id,
+              'role': m.role.value,
+              'content': m.content,
+              'timestamp': m.timestamp.toIso8601String(),
+              if (m.toolCallId != null) 'tool_call_id': m.toolCallId,
+            },
+          )
           .toList(),
     };
 
-    await file.writeAsString(
-      const JsonEncoder.withIndent('  ').convert(data),
-    );
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(data));
     Logger.info('Session saved: $name', 'SessionManager');
   }
 

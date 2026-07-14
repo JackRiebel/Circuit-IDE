@@ -96,18 +96,15 @@ class _NotebookCellWidgetState extends ConsumerState<NotebookCellWidget> {
               color: cell.status == CellStatus.running
                   ? tokens.accent.withValues(alpha: 0.5)
                   : cell.status == CellStatus.error
-                      ? tokens.error.withValues(alpha: 0.3)
-                      : tokens.border.withValues(alpha: 0.6),
+                  ? tokens.error.withValues(alpha: 0.3)
+                  : tokens.border.withValues(alpha: 0.6),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Cell toolbar
-              CellToolbar(
-                notebookId: widget.notebookId,
-                cell: cell,
-              ),
+              CellToolbar(notebookId: widget.notebookId, cell: cell),
 
               // Left language-color indicator + editor area
               Container(
@@ -167,11 +164,9 @@ class _NotebookCellWidgetState extends ConsumerState<NotebookCellWidget> {
           ),
         ),
         onChanged: (value) {
-          ref.read(notebookProvider.notifier).updateCellSource(
-                widget.notebookId,
-                widget.cell.id,
-                value,
-              );
+          ref
+              .read(notebookProvider.notifier)
+              .updateCellSource(widget.notebookId, widget.cell.id, value);
         },
       ),
     );
@@ -247,11 +242,9 @@ class _NotebookCellWidgetState extends ConsumerState<NotebookCellWidget> {
           ),
         ),
         onChanged: (value) {
-          ref.read(notebookProvider.notifier).updateCellSource(
-                widget.notebookId,
-                widget.cell.id,
-                value,
-              );
+          ref
+              .read(notebookProvider.notifier)
+              .updateCellSource(widget.notebookId, widget.cell.id, value);
         },
         onEditingComplete: () {
           ref

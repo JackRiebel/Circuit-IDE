@@ -115,10 +115,7 @@ class _GraphCanvasState extends ConsumerState<GraphCanvas> {
               const SizedBox(height: Spacing.md),
               Text(
                 graphState.error!,
-                style: TextStyle(
-                  color: tokens.error,
-                  fontSize: FontSizes.sm,
-                ),
+                style: TextStyle(color: tokens.error, fontSize: FontSizes.sm),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -202,9 +199,7 @@ class _GraphCanvasState extends ConsumerState<GraphCanvas> {
           Positioned(
             bottom: Spacing.lg,
             left: Spacing.lg,
-            child: NodeDetailPopup(
-              nodeId: graphState.selectedNodeId!,
-            ),
+            child: NodeDetailPopup(nodeId: graphState.selectedNodeId!),
           ),
       ],
     );
@@ -260,7 +255,8 @@ class _GraphCanvasState extends ConsumerState<GraphCanvas> {
     }
 
     final now = DateTime.now();
-    final isDoubleClick = _lastTapTime != null &&
+    final isDoubleClick =
+        _lastTapTime != null &&
         now.difference(_lastTapTime!).inMilliseconds < 400 &&
         _lastTapPosition != null &&
         (details.localPosition - _lastTapPosition!).distance < 20;

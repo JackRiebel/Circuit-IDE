@@ -12,10 +12,7 @@ import '../../state/theme_provider.dart';
 class SemanticResultItem extends ConsumerStatefulWidget {
   final SemanticSearchResult result;
 
-  const SemanticResultItem({
-    super.key,
-    required this.result,
-  });
+  const SemanticResultItem({super.key, required this.result});
 
   @override
   ConsumerState<SemanticResultItem> createState() => _SemanticResultItemState();
@@ -122,10 +119,7 @@ class _SemanticResultItemState extends ConsumerState<SemanticResultItem> {
               const SizedBox(height: Spacing.sm),
 
               // Code preview (first 3-5 lines)
-              _CodePreview(
-                content: chunk.content,
-                tokens: tokens,
-              ),
+              _CodePreview(content: chunk.content, tokens: tokens),
             ],
           ),
         ),
@@ -157,9 +151,7 @@ class _TypeBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.accent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(Radii.xs),
-        border: Border.all(
-          color: tokens.accent.withValues(alpha: 0.2),
-        ),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -192,8 +184,8 @@ class _ScoreBar extends StatelessWidget {
     final color = score >= 0.7
         ? tokens.success as Color
         : score >= 0.4
-            ? tokens.warning as Color
-            : tokens.error as Color;
+        ? tokens.warning as Color
+        : tokens.error as Color;
 
     return Row(
       children: [
@@ -241,9 +233,7 @@ class _CodePreview extends StatelessWidget {
       decoration: BoxDecoration(
         color: tokens.editorBg,
         borderRadius: BorderRadius.circular(Radii.xs),
-        border: Border.all(
-          color: tokens.border.withValues(alpha: 0.2),
-        ),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.2)),
       ),
       child: Text(
         hasMore ? '$previewLines\n...' : previewLines,

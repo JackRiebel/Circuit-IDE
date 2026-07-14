@@ -66,10 +66,7 @@ class _ToggleSwitchState extends State<ToggleSwitch>
     final colorAnim = ColorTween(
       begin: inactiveColor,
       end: activeColor,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -112,8 +109,9 @@ class _ToggleSwitchState extends State<ToggleSwitch>
                         borderRadius: BorderRadius.circular(4),
                         color: widget.value
                             ? Colors.white
-                            : theme.colorScheme.onSurface
-                                .withValues(alpha: 0.5),
+                            : theme.colorScheme.onSurface.withValues(
+                                alpha: 0.5,
+                              ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.15),
@@ -122,8 +120,9 @@ class _ToggleSwitchState extends State<ToggleSwitch>
                           ),
                           if (widget.value && _isHovered)
                             BoxShadow(
-                              color: theme.colorScheme.primary
-                                  .withValues(alpha: 0.2),
+                              color: theme.colorScheme.primary.withValues(
+                                alpha: 0.2,
+                              ),
                               blurRadius: 6,
                             ),
                         ],

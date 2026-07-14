@@ -38,15 +38,15 @@ class RuntimeFrame {
   });
 
   RuntimeFrame copyWith({bool? isCurrent}) => RuntimeFrame(
-        id: id,
-        frameNumber: frameNumber,
-        functionName: functionName,
-        filePath: filePath,
-        lineNumber: lineNumber,
-        variables: variables,
-        isCurrent: isCurrent ?? this.isCurrent,
-        annotation: annotation,
-      );
+    id: id,
+    frameNumber: frameNumber,
+    functionName: functionName,
+    filePath: filePath,
+    lineNumber: lineNumber,
+    variables: variables,
+    isCurrent: isCurrent ?? this.isCurrent,
+    annotation: annotation,
+  );
 }
 
 class ExecutionTrace {
@@ -79,6 +79,6 @@ class ExecutionTrace {
 
   RuntimeFrame? get currentFrame =>
       currentFrameIndex >= 0 && currentFrameIndex < frames.length
-          ? frames[currentFrameIndex]
-          : null;
+      ? frames[currentFrameIndex]
+      : null;
 }

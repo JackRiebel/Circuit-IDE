@@ -68,7 +68,9 @@ class _PredictionStatusWidgetState
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               onTap: () {
-                ref.read(editPredictionProvider.notifier).navigateToPrediction();
+                ref
+                    .read(editPredictionProvider.notifier)
+                    .navigateToPrediction();
               },
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -84,11 +86,7 @@ class _PredictionStatusWidgetState
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.arrow_forward,
-                      size: 11,
-                      color: tokens.accent,
-                    ),
+                    Icon(Icons.arrow_forward, size: 11, color: tokens.accent),
                     const SizedBox(width: 4),
                     Text(
                       '${p.basename(prediction.filePath)}:${prediction.line}',

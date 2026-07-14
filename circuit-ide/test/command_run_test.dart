@@ -68,46 +68,55 @@ void main() {
     },
   );
 
-  test('a packaged macOS app fails closed when its broker is missing', () async {
-    if (!Platform.isMacOS) return;
-    final contents = await Directory.systemTemp.createTemp(
-      'missing-packaged-broker-',
-    );
-    addTearDown(() => contents.delete(recursive: true));
-    MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride =
-        contents.path;
-    addTearDown(() {
-      MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride = null;
-      MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
-    });
+  test(
+    'a packaged macOS app fails closed when its broker is missing',
+    () async {
+      if (!Platform.isMacOS) return;
+      final contents = await Directory.systemTemp.createTemp(
+        'missing-packaged-broker-',
+      );
+      addTearDown(() => contents.delete(recursive: true));
+      MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride =
+          contents.path;
+      addTearDown(() {
+        MacOsExecutionBoundary.debugPackagedContentsDirectoryOverride = null;
+        MacOsExecutionBoundary.debugBrokerExecutableOverride = null;
+      });
 
-    final launch = MacOsExecutionBoundary.forShellCommand(
-      shell: '/bin/sh',
-      shellArgs: const ['-c'],
-      command: 'touch must-not-run',
-      workingDirectory: contents.path,
-      cpuLimitSeconds: 5,
-      allowNetwork: true,
-    );
+      final launch = MacOsExecutionBoundary.forShellCommand(
+        shell: '/bin/sh',
+        shellArgs: const ['-c'],
+        command: 'touch must-not-run',
+        workingDirectory: contents.path,
+        cpuLimitSeconds: 5,
+        allowNetwork: true,
+      );
 
-    expect(launch.isDenied, isTrue);
-    expect(launch.executable, isEmpty);
-    expect(
-      launch.denialMessage,
-      MacOsExecutionBoundary.packagedBrokerUnavailableMessage,
-    );
+      expect(launch.isDenied, isTrue);
+      expect(launch.executable, isEmpty);
+      expect(
+        launch.denialMessage,
+        MacOsExecutionBoundary.packagedBrokerUnavailableMessage,
+      );
 
-    final events = <CommandRunEvent>[];
-    final output = await CommandTools(workingDir: contents.path).runCommand(
-      const {'command': 'touch must-not-run', 'timeout': 5},
-      onEvent: events.add,
-    );
-    expect(output, 'Error: ${MacOsExecutionBoundary.packagedBrokerUnavailableMessage}');
-    expect(events, hasLength(1));
-    expect(events.single.type, CommandRunEventType.stderr);
-    expect(events.single.text, MacOsExecutionBoundary.packagedBrokerUnavailableMessage);
-    expect(File('${contents.path}/must-not-run').existsSync(), isFalse);
-  });
+      final events = <CommandRunEvent>[];
+      final output = await CommandTools(workingDir: contents.path).runCommand(
+        const {'command': 'touch must-not-run', 'timeout': 5},
+        onEvent: events.add,
+      );
+      expect(
+        output,
+        'Error: ${MacOsExecutionBoundary.packagedBrokerUnavailableMessage}',
+      );
+      expect(events, hasLength(1));
+      expect(events.single.type, CommandRunEventType.stderr);
+      expect(
+        events.single.text,
+        MacOsExecutionBoundary.packagedBrokerUnavailableMessage,
+      );
+      expect(File('${contents.path}/must-not-run').existsSync(), isFalse);
+    },
+  );
 
   test('brokered commands forward only reviewed executable roots', () async {
     if (!Platform.isMacOS) return;

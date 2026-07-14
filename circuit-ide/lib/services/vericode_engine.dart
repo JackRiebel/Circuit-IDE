@@ -16,10 +16,7 @@ class VericodeEngine {
         PlatformUtils.shell,
         [...PlatformUtils.shellArgs, check.command],
         workingDirectory: workingDir,
-        environment: {
-          ...Platform.environment,
-          'TERM': 'dumb',
-        },
+        environment: {...Platform.environment, 'TERM': 'dumb'},
       ).timeout(Duration(seconds: check.timeoutSeconds));
 
       stopwatch.stop();
@@ -87,14 +84,18 @@ class VericodeEngine {
     final buffer = StringBuffer();
     if (attemptNumber > 1) {
       buffer.writeln(
-          '[Vericoding] Fix attempt $attemptNumber of $maxAttempts — '
-          'previous fix did not resolve all issues.\n');
+        '[Vericoding] Fix attempt $attemptNumber of $maxAttempts — '
+        'previous fix did not resolve all issues.\n',
+      );
     }
     buffer.writeln(
-        'The following verification checks failed. Please fix the issues:\n');
+      'The following verification checks failed. Please fix the issues:\n',
+    );
 
     for (final failure in failures) {
-      buffer.writeln('--- ${failure.checkName} (exit code ${failure.exitCode}) ---');
+      buffer.writeln(
+        '--- ${failure.checkName} (exit code ${failure.exitCode}) ---',
+      );
       // Truncate very long output
       final output = failure.output.length > 3000
           ? '${failure.output.substring(0, 3000)}\n... (truncated)'
@@ -104,41 +105,43 @@ class VericodeEngine {
     }
 
     buffer.writeln(
-        'Fix all the issues above. Only modify the files that have errors.');
+      'Fix all the issues above. Only modify the files that have errors.',
+    );
     if (attemptNumber > 1) {
       buffer.writeln(
-          'Be more careful this time — the previous fix attempt did not work.');
+        'Be more careful this time — the previous fix attempt did not work.',
+      );
     }
     return buffer.toString();
   }
 
   static List<VericodeCheck> defaultChecks() => [
-        const VericodeCheck(
-          id: '1',
-          name: 'Dart Analyze',
-          command: 'dart analyze',
-          type: VericodeCheckType.dartAnalyze,
-          enabled: true,
-          order: 0,
-          timeoutSeconds: 60,
-        ),
-        const VericodeCheck(
-          id: '2',
-          name: 'Flutter Test',
-          command: 'flutter test',
-          type: VericodeCheckType.flutterTest,
-          enabled: false,
-          order: 1,
-          timeoutSeconds: 120,
-        ),
-        const VericodeCheck(
-          id: '3',
-          name: 'Format Check',
-          command: 'dart format --set-exit-if-changed .',
-          type: VericodeCheckType.flutterFormat,
-          enabled: false,
-          order: 2,
-          timeoutSeconds: 30,
-        ),
-      ];
+    const VericodeCheck(
+      id: '1',
+      name: 'Dart Analyze',
+      command: 'dart analyze',
+      type: VericodeCheckType.dartAnalyze,
+      enabled: true,
+      order: 0,
+      timeoutSeconds: 60,
+    ),
+    const VericodeCheck(
+      id: '2',
+      name: 'Flutter Test',
+      command: 'flutter test',
+      type: VericodeCheckType.flutterTest,
+      enabled: false,
+      order: 1,
+      timeoutSeconds: 120,
+    ),
+    const VericodeCheck(
+      id: '3',
+      name: 'Format Check',
+      command: 'dart format --set-exit-if-changed .',
+      type: VericodeCheckType.flutterFormat,
+      enabled: false,
+      order: 2,
+      timeoutSeconds: 30,
+    ),
+  ];
 }

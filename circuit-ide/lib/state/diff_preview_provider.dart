@@ -117,13 +117,15 @@ class DiffPreviewNotifier extends Notifier<DiffPreviewState> {
           }
         } catch (_) {}
 
-        changes.add(DiffChange(
-          filePath: snapshot.path,
-          originalContent: snapshot.originalContent ?? '',
-          newContent: newContent,
-          description: snapshot.wasCreated ? 'New file' : 'Modified',
-          wasCreated: snapshot.wasCreated,
-        ));
+        changes.add(
+          DiffChange(
+            filePath: snapshot.path,
+            originalContent: snapshot.originalContent ?? '',
+            newContent: newContent,
+            description: snapshot.wasCreated ? 'New file' : 'Modified',
+            wasCreated: snapshot.wasCreated,
+          ),
+        );
       }
 
       if (changes.isNotEmpty) {
@@ -174,10 +176,7 @@ class DiffPreviewNotifier extends Notifier<DiffPreviewState> {
 
     final updated = List<DiffChange>.from(state.changes);
     updated.removeAt(index);
-    state = state.copyWith(
-      changes: updated,
-      isVisible: updated.isNotEmpty,
-    );
+    state = state.copyWith(changes: updated, isVisible: updated.isNotEmpty);
 
     ref.read(fileTreeProvider.notifier).refresh();
   }
@@ -201,5 +200,5 @@ class DiffPreviewNotifier extends Notifier<DiffPreviewState> {
 
 final diffPreviewProvider =
     NotifierProvider<DiffPreviewNotifier, DiffPreviewState>(
-  DiffPreviewNotifier.new,
-);
+      DiffPreviewNotifier.new,
+    );

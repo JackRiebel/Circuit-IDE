@@ -18,8 +18,9 @@ class NotebookEditor extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final nbState = ref.watch(notebookProvider);
-    final notebook =
-        nbState.notebooks.where((n) => n.id == notebookId).firstOrNull;
+    final notebook = nbState.notebooks
+        .where((n) => n.id == notebookId)
+        .firstOrNull;
 
     if (notebook == null) {
       return Center(
@@ -37,10 +38,7 @@ class NotebookEditor extends ConsumerWidget {
             const SizedBox(height: Spacing.xl),
             Text(
               'Loading notebook...',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),

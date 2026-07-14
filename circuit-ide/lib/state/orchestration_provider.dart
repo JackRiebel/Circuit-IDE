@@ -70,7 +70,10 @@ class OrchestrationNotifier extends Notifier<OrchestrationState> {
     state = state.copyWith(tasks: [...state.tasks, task]);
   }
 
-  void updateTask(String id, OrchestrationTask Function(OrchestrationTask) updater) {
+  void updateTask(
+    String id,
+    OrchestrationTask Function(OrchestrationTask) updater,
+  ) {
     final tasks = state.tasks.map((t) {
       if (t.id == id) return updater(t);
       return t;
@@ -79,19 +82,25 @@ class OrchestrationNotifier extends Notifier<OrchestrationState> {
   }
 
   void completeTask(String id, String result) {
-    updateTask(id, (t) => t.copyWith(
-      status: OrchestrationStatus.completed,
-      result: result,
-      completedAt: DateTime.now(),
-    ));
+    updateTask(
+      id,
+      (t) => t.copyWith(
+        status: OrchestrationStatus.completed,
+        result: result,
+        completedAt: DateTime.now(),
+      ),
+    );
   }
 
   void failTask(String id, String error) {
-    updateTask(id, (t) => t.copyWith(
-      status: OrchestrationStatus.failed,
-      error: error,
-      completedAt: DateTime.now(),
-    ));
+    updateTask(
+      id,
+      (t) => t.copyWith(
+        status: OrchestrationStatus.failed,
+        error: error,
+        completedAt: DateTime.now(),
+      ),
+    );
   }
 
   void clear() {
@@ -101,5 +110,5 @@ class OrchestrationNotifier extends Notifier<OrchestrationState> {
 
 final orchestrationProvider =
     NotifierProvider<OrchestrationNotifier, OrchestrationState>(
-  OrchestrationNotifier.new,
-);
+      OrchestrationNotifier.new,
+    );

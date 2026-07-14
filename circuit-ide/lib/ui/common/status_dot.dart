@@ -7,12 +7,7 @@ class StatusDot extends StatelessWidget {
   final double size;
   final String? label;
 
-  const StatusDot({
-    super.key,
-    required this.status,
-    this.size = 8,
-    this.label,
-  });
+  const StatusDot({super.key, required this.status, this.size = 8, this.label});
 
   Color _color() {
     return switch (status) {
@@ -53,10 +48,9 @@ class StatusDot extends StatelessWidget {
             label!,
             style: TextStyle(
               fontSize: 12,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ],

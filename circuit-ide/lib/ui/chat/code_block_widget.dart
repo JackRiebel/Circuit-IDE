@@ -27,11 +27,7 @@ class CodeBlockWidget extends ConsumerStatefulWidget {
   final String code;
   final String? language;
 
-  const CodeBlockWidget({
-    super.key,
-    required this.code,
-    this.language,
-  });
+  const CodeBlockWidget({super.key, required this.code, this.language});
 
   @override
   ConsumerState<CodeBlockWidget> createState() => _CodeBlockWidgetState();
@@ -71,9 +67,7 @@ class _CodeBlockWidgetState extends ConsumerState<CodeBlockWidget> {
             ),
             decoration: BoxDecoration(
               color: tokens.codeBlockBorder.withValues(alpha: 0.15),
-              border: Border(
-                bottom: BorderSide(color: tokens.codeBlockBorder),
-              ),
+              border: Border(bottom: BorderSide(color: tokens.codeBlockBorder)),
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(Radii.md),
                 topRight: Radius.circular(Radii.md),
@@ -112,7 +106,11 @@ class _CodeBlockWidgetState extends ConsumerState<CodeBlockWidget> {
                               key: const ValueKey('copied'),
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check, size: 12, color: tokens.success),
+                                Icon(
+                                  Icons.check,
+                                  size: 12,
+                                  color: tokens.success,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'Copied!',
@@ -127,7 +125,11 @@ class _CodeBlockWidgetState extends ConsumerState<CodeBlockWidget> {
                               key: const ValueKey('copy'),
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.copy, size: 12, color: tokens.textMuted),
+                                Icon(
+                                  Icons.copy,
+                                  size: 12,
+                                  color: tokens.textMuted,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   'Copy',
@@ -148,7 +150,12 @@ class _CodeBlockWidgetState extends ConsumerState<CodeBlockWidget> {
           Padding(
             padding: const EdgeInsets.all(Spacing.lg),
             child: SelectableText.rich(
-              buildHighlightedCode(widget.code, widget.language, syntaxTheme, tokens),
+              buildHighlightedCode(
+                widget.code,
+                widget.language,
+                syntaxTheme,
+                tokens,
+              ),
               style: TextStyle(
                 color: tokens.textPrimary,
                 fontSize: FontSizes.sm,

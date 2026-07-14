@@ -17,10 +17,7 @@ class FileNode {
     this.isHidden = false,
   });
 
-  FileNode copyWith({
-    bool? isExpanded,
-    List<FileNode>? children,
-  }) {
+  FileNode copyWith({bool? isExpanded, List<FileNode>? children}) {
     return FileNode(
       name: name,
       path: path,

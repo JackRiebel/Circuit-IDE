@@ -71,8 +71,8 @@ class _ThemeCardState extends State<_ThemeCard> {
               color: widget.isSelected
                   ? widget.theme.accent
                   : _isHovered
-                      ? widget.theme.accent.withValues(alpha: 0.4)
-                      : widget.theme.border,
+                  ? widget.theme.accent.withValues(alpha: 0.4)
+                  : widget.theme.border,
               width: widget.isSelected ? 2 : 1,
             ),
             boxShadow: _isHovered || widget.isSelected
@@ -98,10 +98,7 @@ class _ThemeCardState extends State<_ThemeCard> {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 20,
-                        color: widget.theme.activityBarBg,
-                      ),
+                      Container(width: 20, color: widget.theme.activityBarBg),
                       Expanded(
                         child: Container(
                           color: widget.theme.editorBg,
@@ -114,8 +111,7 @@ class _ThemeCardState extends State<_ThemeCard> {
                                 width: 30,
                                 decoration: BoxDecoration(
                                   color: widget.theme.accent,
-                                  borderRadius:
-                                      BorderRadius.circular(1),
+                                  borderRadius: BorderRadius.circular(1),
                                 ),
                               ),
                               const SizedBox(height: 3),
@@ -124,8 +120,7 @@ class _ThemeCardState extends State<_ThemeCard> {
                                 width: 40,
                                 decoration: BoxDecoration(
                                   color: widget.theme.textMuted,
-                                  borderRadius:
-                                      BorderRadius.circular(1),
+                                  borderRadius: BorderRadius.circular(1),
                                 ),
                               ),
                             ],

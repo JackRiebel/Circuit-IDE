@@ -107,9 +107,7 @@ class ChatMessageWidget extends ConsumerWidget {
           // Tool calls
           if (message.toolCalls.isNotEmpty) ...[
             const SizedBox(height: Spacing.md),
-            ...message.toolCalls.map(
-              (tc) => ToolCallWidget(toolCall: tc),
-            ),
+            ...message.toolCalls.map((tc) => ToolCallWidget(toolCall: tc)),
           ],
         ],
       ),
@@ -127,11 +125,13 @@ class ChatMessageWidget extends ConsumerWidget {
 MarkdownConfig buildChatMarkdownConfig(ThemeTokens tokens) {
   return MarkdownConfig(
     configs: [
-      PConfig(textStyle: TextStyle(
-        color: tokens.textPrimary,
-        fontSize: FontSizes.md,
-        height: 1.6,
-      )),
+      PConfig(
+        textStyle: TextStyle(
+          color: tokens.textPrimary,
+          fontSize: FontSizes.md,
+          height: 1.6,
+        ),
+      ),
       // Fenced code blocks — use our custom CodeBlockWidget
       PreConfig(
         builder: (code, language) => CodeBlockWidget(
@@ -140,31 +140,39 @@ MarkdownConfig buildChatMarkdownConfig(ThemeTokens tokens) {
         ),
       ),
       // Inline code
-      CodeConfig(style: TextStyle(
-        color: tokens.accent,
-        fontSize: FontSizes.sm,
-        fontFamily: 'JetBrains Mono',
-        backgroundColor: tokens.accent.withValues(alpha: 0.08),
-      )),
+      CodeConfig(
+        style: TextStyle(
+          color: tokens.accent,
+          fontSize: FontSizes.sm,
+          fontFamily: 'JetBrains Mono',
+          backgroundColor: tokens.accent.withValues(alpha: 0.08),
+        ),
+      ),
       // Headings
-      H1Config(style: TextStyle(
-        color: tokens.textPrimary,
-        fontSize: FontSizes.xxl,
-        fontWeight: FontWeight.bold,
-        height: 1.4,
-      )),
-      H2Config(style: TextStyle(
-        color: tokens.textPrimary,
-        fontSize: FontSizes.xl,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      )),
-      H3Config(style: TextStyle(
-        color: tokens.textPrimary,
-        fontSize: FontSizes.lg,
-        fontWeight: FontWeight.w600,
-        height: 1.4,
-      )),
+      H1Config(
+        style: TextStyle(
+          color: tokens.textPrimary,
+          fontSize: FontSizes.xxl,
+          fontWeight: FontWeight.bold,
+          height: 1.4,
+        ),
+      ),
+      H2Config(
+        style: TextStyle(
+          color: tokens.textPrimary,
+          fontSize: FontSizes.xl,
+          fontWeight: FontWeight.w600,
+          height: 1.4,
+        ),
+      ),
+      H3Config(
+        style: TextStyle(
+          color: tokens.textPrimary,
+          fontSize: FontSizes.lg,
+          fontWeight: FontWeight.w600,
+          height: 1.4,
+        ),
+      ),
       // Links
       LinkConfig(
         style: TextStyle(

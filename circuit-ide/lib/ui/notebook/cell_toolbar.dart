@@ -23,11 +23,7 @@ class CellToolbar extends ConsumerWidget {
   final String notebookId;
   final NotebookCell cell;
 
-  const CellToolbar({
-    super.key,
-    required this.notebookId,
-    required this.cell,
-  });
+  const CellToolbar({super.key, required this.notebookId, required this.cell});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -143,8 +139,7 @@ class _ToolbarIconButton extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_ToolbarIconButton> createState() =>
-      _ToolbarIconButtonState();
+  ConsumerState<_ToolbarIconButton> createState() => _ToolbarIconButtonState();
 }
 
 class _ToolbarIconButtonState extends ConsumerState<_ToolbarIconButton> {
@@ -177,9 +172,7 @@ class _ToolbarIconButtonState extends ConsumerState<_ToolbarIconButton> {
             child: Icon(
               widget.icon,
               size: 13,
-              color: _isHovered
-                  ? iconColor
-                  : iconColor.withValues(alpha: 0.7),
+              color: _isHovered ? iconColor : iconColor.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -257,11 +250,7 @@ class _LanguagePicker extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 2),
-              Icon(
-                Icons.arrow_drop_down,
-                size: 12,
-                color: tokens.textMuted,
-              ),
+              Icon(Icons.arrow_drop_down, size: 12, color: tokens.textMuted),
             ],
           ),
         ),

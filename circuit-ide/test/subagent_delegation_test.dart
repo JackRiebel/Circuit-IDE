@@ -106,7 +106,7 @@ void main() {
         allowReviewedPatchProposal: true,
       );
 
-    expect(implicitProposal.validate().join(' '), contains('require'));
+      expect(implicitProposal.validate().join(' '), contains('require'));
       expect(missingToolGrant.validate().join(' '), contains('tool_grant'));
     },
   );

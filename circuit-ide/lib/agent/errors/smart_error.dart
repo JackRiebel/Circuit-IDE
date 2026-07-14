@@ -29,9 +29,14 @@ class SmartError {
     return msg.toString();
   }
 
-  static String textNotFound(String path, String searchText, String fileContent) {
-    final preview =
-        searchText.length > 60 ? '${searchText.substring(0, 60)}...' : searchText;
+  static String textNotFound(
+    String path,
+    String searchText,
+    String fileContent,
+  ) {
+    final preview = searchText.length > 60
+        ? '${searchText.substring(0, 60)}...'
+        : searchText;
     final msg = StringBuffer('Text not found in $path: "$preview"');
 
     // Try to find similar text
@@ -41,7 +46,11 @@ class SmartError {
 
     for (int i = 0; i < lines.length; i++) {
       if (lines[i].toLowerCase().contains(
-          searchLower.substring(0, (searchLower.length * 0.5).ceil().clamp(1, 30)))) {
+        searchLower.substring(
+          0,
+          (searchLower.length * 0.5).ceil().clamp(1, 30),
+        ),
+      )) {
         similar.add('  Line ${i + 1}: ${lines[i].trimRight()}');
       }
     }

@@ -53,21 +53,25 @@ class ImportParser {
 
       if (target.startsWith('dart:') || target.startsWith('package:')) {
         // External / SDK import
-        results.add(ParsedImport(
-          sourceFile: filePath,
-          targetPath: target,
-          rawStatement: raw,
-          isRelative: false,
-        ));
+        results.add(
+          ParsedImport(
+            sourceFile: filePath,
+            targetPath: target,
+            rawStatement: raw,
+            isRelative: false,
+          ),
+        );
       } else {
         // Relative import — resolve against source directory
         final resolved = _resolveRelative(filePath, target);
-        results.add(ParsedImport(
-          sourceFile: filePath,
-          targetPath: resolved ?? target,
-          rawStatement: raw,
-          isRelative: true,
-        ));
+        results.add(
+          ParsedImport(
+            sourceFile: filePath,
+            targetPath: resolved ?? target,
+            rawStatement: raw,
+            isRelative: true,
+          ),
+        );
       }
     }
     return results;
@@ -79,10 +83,7 @@ class ImportParser {
     r'^from\s+([\w.]+)\s+import',
     multiLine: true,
   );
-  static final _pythonImportRe = RegExp(
-    r'^import\s+([\w.]+)',
-    multiLine: true,
-  );
+  static final _pythonImportRe = RegExp(r'^import\s+([\w.]+)', multiLine: true);
 
   List<ParsedImport> _parsePython(String filePath, String content) {
     final results = <ParsedImport>[];
@@ -94,23 +95,27 @@ class ImportParser {
       final resolved = isRelative
           ? _resolvePythonRelative(filePath, module)
           : module;
-      results.add(ParsedImport(
-        sourceFile: filePath,
-        targetPath: resolved,
-        rawStatement: raw,
-        isRelative: isRelative,
-      ));
+      results.add(
+        ParsedImport(
+          sourceFile: filePath,
+          targetPath: resolved,
+          rawStatement: raw,
+          isRelative: isRelative,
+        ),
+      );
     }
 
     for (final match in _pythonImportRe.allMatches(content)) {
       final raw = match.group(0)!;
       final module = match.group(1)!;
-      results.add(ParsedImport(
-        sourceFile: filePath,
-        targetPath: module,
-        rawStatement: raw,
-        isRelative: false,
-      ));
+      results.add(
+        ParsedImport(
+          sourceFile: filePath,
+          targetPath: module,
+          rawStatement: raw,
+          isRelative: false,
+        ),
+      );
     }
 
     return results;
@@ -172,19 +177,23 @@ class ImportParser {
 
         if (isRelative) {
           final resolved = _resolveJsRelative(filePath, target);
-          results.add(ParsedImport(
-            sourceFile: filePath,
-            targetPath: resolved ?? target,
-            rawStatement: raw,
-            isRelative: true,
-          ));
+          results.add(
+            ParsedImport(
+              sourceFile: filePath,
+              targetPath: resolved ?? target,
+              rawStatement: raw,
+              isRelative: true,
+            ),
+          );
         } else {
-          results.add(ParsedImport(
-            sourceFile: filePath,
-            targetPath: target,
-            rawStatement: raw,
-            isRelative: false,
-          ));
+          results.add(
+            ParsedImport(
+              sourceFile: filePath,
+              targetPath: target,
+              rawStatement: raw,
+              isRelative: false,
+            ),
+          );
         }
       }
     }
@@ -199,7 +208,15 @@ class ImportParser {
     if (File(base).existsSync()) return base;
 
     // Try common JS/TS extensions
-    const extensions = ['.js', '.jsx', '.ts', '.tsx', '.mjs', '/index.js', '/index.ts'];
+    const extensions = [
+      '.js',
+      '.jsx',
+      '.ts',
+      '.tsx',
+      '.mjs',
+      '/index.js',
+      '/index.ts',
+    ];
     for (final ext in extensions) {
       final candidate = '$base$ext';
       if (File(candidate).existsSync()) return candidate;
@@ -218,9 +235,7 @@ class ImportParser {
     r'''import\s*\(([\s\S]*?)\)''',
     multiLine: true,
   );
-  static final _goImportLineRe = RegExp(
-    r'''"(.*?)"''',
-  );
+  static final _goImportLineRe = RegExp(r'''"(.*?)"''');
 
   List<ParsedImport> _parseGo(String filePath, String content) {
     final results = <ParsedImport>[];
@@ -229,12 +244,14 @@ class ImportParser {
     for (final match in _goImportSingleRe.allMatches(content)) {
       final raw = match.group(0)!;
       final target = match.group(1)!;
-      results.add(ParsedImport(
-        sourceFile: filePath,
-        targetPath: target,
-        rawStatement: raw,
-        isRelative: target.startsWith('.'),
-      ));
+      results.add(
+        ParsedImport(
+          sourceFile: filePath,
+          targetPath: target,
+          rawStatement: raw,
+          isRelative: target.startsWith('.'),
+        ),
+      );
     }
 
     // Block imports
@@ -242,12 +259,14 @@ class ImportParser {
       final block = blockMatch.group(1)!;
       for (final lineMatch in _goImportLineRe.allMatches(block)) {
         final target = lineMatch.group(1)!;
-        results.add(ParsedImport(
-          sourceFile: filePath,
-          targetPath: target,
-          rawStatement: 'import "$target"',
-          isRelative: target.startsWith('.'),
-        ));
+        results.add(
+          ParsedImport(
+            sourceFile: filePath,
+            targetPath: target,
+            rawStatement: 'import "$target"',
+            isRelative: target.startsWith('.'),
+          ),
+        );
       }
     }
 
@@ -256,14 +275,8 @@ class ImportParser {
 
   // ── Rust ─────────────────────────────────────────────────────────────
 
-  static final _rustUseRe = RegExp(
-    r'^use\s+([\w:]+)',
-    multiLine: true,
-  );
-  static final _rustModRe = RegExp(
-    r'^mod\s+(\w+)\s*;',
-    multiLine: true,
-  );
+  static final _rustUseRe = RegExp(r'^use\s+([\w:]+)', multiLine: true);
+  static final _rustModRe = RegExp(r'^mod\s+(\w+)\s*;', multiLine: true);
 
   List<ParsedImport> _parseRust(String filePath, String content) {
     final results = <ParsedImport>[];
@@ -271,13 +284,16 @@ class ImportParser {
     for (final match in _rustUseRe.allMatches(content)) {
       final raw = match.group(0)!;
       final target = match.group(1)!;
-      final isLocal = target.startsWith('crate::') || target.startsWith('super::');
-      results.add(ParsedImport(
-        sourceFile: filePath,
-        targetPath: target,
-        rawStatement: raw,
-        isRelative: isLocal,
-      ));
+      final isLocal =
+          target.startsWith('crate::') || target.startsWith('super::');
+      results.add(
+        ParsedImport(
+          sourceFile: filePath,
+          targetPath: target,
+          rawStatement: raw,
+          isRelative: isLocal,
+        ),
+      );
     }
 
     for (final match in _rustModRe.allMatches(content)) {
@@ -287,14 +303,15 @@ class ImportParser {
       // mod foo; → foo.rs or foo/mod.rs
       final candidate1 = p.join(sourceDir, '$modName.rs');
       final candidate2 = p.join(sourceDir, modName, 'mod.rs');
-      final resolved =
-          File(candidate1).existsSync() ? candidate1 : candidate2;
-      results.add(ParsedImport(
-        sourceFile: filePath,
-        targetPath: resolved,
-        rawStatement: raw,
-        isRelative: true,
-      ));
+      final resolved = File(candidate1).existsSync() ? candidate1 : candidate2;
+      results.add(
+        ParsedImport(
+          sourceFile: filePath,
+          targetPath: resolved,
+          rawStatement: raw,
+          isRelative: true,
+        ),
+      );
     }
 
     return results;

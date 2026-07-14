@@ -776,15 +776,15 @@ Auth rule guidance. <!-- rule comment -->
         tasks.firstWhere((task) => task.id == second.id).status,
         AgentTaskStatus.running,
       );
-    expect(
-      tasks.firstWhere((task) => task.id == third.id).status,
-      AgentTaskStatus.queued,
-    );
-    expect(
-      container.read(agentWorkspaceProvider).message,
-      contains('started from the queue'),
-    );
-    expect(controller.claimBackgroundExecution(second.id), isNotNull);
+      expect(
+        tasks.firstWhere((task) => task.id == third.id).status,
+        AgentTaskStatus.queued,
+      );
+      expect(
+        container.read(agentWorkspaceProvider).message,
+        contains('started from the queue'),
+      );
+      expect(controller.claimBackgroundExecution(second.id), isNotNull);
     },
   );
 

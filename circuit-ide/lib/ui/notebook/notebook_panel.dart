@@ -82,8 +82,7 @@ class NotebookPanel extends ConsumerWidget {
                     itemCount: nbState.notebooks.length,
                     itemBuilder: (context, index) {
                       final notebook = nbState.notebooks[index];
-                      final isActive =
-                          notebook.id == nbState.activeNotebookId;
+                      final isActive = notebook.id == nbState.activeNotebookId;
 
                       return _NotebookItem(
                         notebook: notebook,
@@ -128,17 +127,11 @@ class NotebookPanel extends ConsumerWidget {
         ),
         title: Text(
           'Delete Notebook',
-          style: TextStyle(
-            color: tokens.textPrimary,
-            fontSize: FontSizes.lg,
-          ),
+          style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
         ),
         content: Text(
           'Are you sure you want to delete "$name"? This cannot be undone.',
-          style: TextStyle(
-            color: tokens.textSecondary,
-            fontSize: FontSizes.sm,
-          ),
+          style: TextStyle(color: tokens.textSecondary, fontSize: FontSizes.sm),
         ),
         actions: [
           TextButton(
@@ -153,10 +146,7 @@ class NotebookPanel extends ConsumerWidget {
               ref.read(notebookProvider.notifier).deleteNotebook(id);
               Navigator.of(ctx).pop();
             },
-            child: Text(
-              'Delete',
-              style: TextStyle(color: tokens.error),
-            ),
+            child: Text('Delete', style: TextStyle(color: tokens.error)),
           ),
         ],
       ),
@@ -206,13 +196,11 @@ class _NotebookItemState extends ConsumerState<_NotebookItem> {
             color: widget.isActive
                 ? tokens.accent.withValues(alpha: 0.08)
                 : _isHovered
-                    ? tokens.textMuted.withValues(alpha: 0.06)
-                    : Colors.transparent,
+                ? tokens.textMuted.withValues(alpha: 0.06)
+                : Colors.transparent,
             border: Border(
               left: BorderSide(
-                color: widget.isActive
-                    ? tokens.accent
-                    : Colors.transparent,
+                color: widget.isActive ? tokens.accent : Colors.transparent,
                 width: 2,
               ),
             ),
@@ -222,9 +210,7 @@ class _NotebookItemState extends ConsumerState<_NotebookItem> {
               Icon(
                 Icons.book_outlined,
                 size: 14,
-                color: widget.isActive
-                    ? tokens.accent
-                    : tokens.textMuted,
+                color: widget.isActive ? tokens.accent : tokens.textMuted,
               ),
               const SizedBox(width: Spacing.md),
               Expanded(

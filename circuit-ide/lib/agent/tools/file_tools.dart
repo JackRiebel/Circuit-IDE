@@ -76,8 +76,9 @@ class FileTools {
     }
 
     final content = await file.readAsString();
-    final occurrences =
-        RegExp(RegExp.escape(oldText)).allMatches(content).length;
+    final occurrences = RegExp(
+      RegExp.escape(oldText),
+    ).allMatches(content).length;
 
     if (occurrences == 0) {
       // Find similar text for better error messages
@@ -111,8 +112,7 @@ class FileTools {
     await for (final entity in baseDir.list(recursive: true)) {
       if (files.length >= AppConstants.maxListFiles) break;
 
-      final relativePath =
-          p.relative(entity.path, from: workingDir);
+      final relativePath = p.relative(entity.path, from: workingDir);
 
       // Skip hidden files and common ignore patterns
       if (_shouldIgnore(relativePath)) continue;
@@ -140,9 +140,9 @@ class FileTools {
     final searchPath = args['path'] as String?;
     final caseSensitive = args['case_sensitive'] as bool? ?? true;
 
-    final baseDir = Directory(searchPath != null
-        ? _safePath(searchPath)
-        : workingDir);
+    final baseDir = Directory(
+      searchPath != null ? _safePath(searchPath) : workingDir,
+    );
 
     if (!await baseDir.exists()) {
       return 'Error: Directory not found';
@@ -155,8 +155,7 @@ class FileTools {
       if (entity is! File) continue;
       if (results.length >= AppConstants.maxSearchResults) break;
 
-      final relativePath =
-          p.relative(entity.path, from: workingDir);
+      final relativePath = p.relative(entity.path, from: workingDir);
       if (_shouldIgnore(relativePath)) continue;
       if (FileUtils.isBinaryFile(entity.path)) continue;
 

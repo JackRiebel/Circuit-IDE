@@ -2,19 +2,18 @@ enum AgentTriggerType { onFileSave, onGitCommit, onProjectOpen, periodic }
 
 extension AgentTriggerTypeExt on AgentTriggerType {
   String get displayName => switch (this) {
-        AgentTriggerType.onFileSave => 'On File Save',
-        AgentTriggerType.onGitCommit => 'On Git Commit',
-        AgentTriggerType.onProjectOpen => 'On Project Open',
-        AgentTriggerType.periodic => 'Periodic',
-      };
+    AgentTriggerType.onFileSave => 'On File Save',
+    AgentTriggerType.onGitCommit => 'On Git Commit',
+    AgentTriggerType.onProjectOpen => 'On Project Open',
+    AgentTriggerType.periodic => 'Periodic',
+  };
 
   String get description => switch (this) {
-        AgentTriggerType.onFileSave =>
-          'Triggers when a matching file is saved',
-        AgentTriggerType.onGitCommit => 'Triggers after a git commit',
-        AgentTriggerType.onProjectOpen => 'Triggers when the project opens',
-        AgentTriggerType.periodic => 'Triggers at a set interval',
-      };
+    AgentTriggerType.onFileSave => 'Triggers when a matching file is saved',
+    AgentTriggerType.onGitCommit => 'Triggers after a git commit',
+    AgentTriggerType.onProjectOpen => 'Triggers when the project opens',
+    AgentTriggerType.periodic => 'Triggers at a set interval',
+  };
 }
 
 class AgentTrigger {
@@ -45,11 +44,11 @@ class AgentTrigger {
   }
 
   Map<String, dynamic> toJson() => {
-        'type': type.name,
-        'file_patterns': filePatterns,
-        'enabled': enabled,
-        if (interval != null) 'interval_seconds': interval!.inSeconds,
-      };
+    'type': type.name,
+    'file_patterns': filePatterns,
+    'enabled': enabled,
+    if (interval != null) 'interval_seconds': interval!.inSeconds,
+  };
 
   factory AgentTrigger.fromJson(Map<String, dynamic> json) {
     return AgentTrigger(

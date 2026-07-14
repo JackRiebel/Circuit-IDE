@@ -36,9 +36,7 @@ class OrchestrationWidget extends ConsumerWidget {
       decoration: BoxDecoration(
         color: tokens.bgLighter,
         borderRadius: BorderRadius.circular(Radii.md),
-        border: Border.all(
-          color: tokens.accent.withValues(alpha: 0.2),
-        ),
+        border: Border.all(color: tokens.accent.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,13 +116,9 @@ class _OrchestrationTaskRowState extends ConsumerState<_OrchestrationTaskRow> {
                           ),
                         )
                       : Icon(
-                          isCompleted
-                              ? Icons.check_circle
-                              : Icons.error,
+                          isCompleted ? Icons.check_circle : Icons.error,
                           size: 14,
-                          color: isCompleted
-                              ? tokens.success
-                              : tokens.error,
+                          color: isCompleted ? tokens.success : tokens.error,
                         ),
                 ),
                 const SizedBox(width: Spacing.md),
@@ -176,11 +170,11 @@ class _OrchestrationTaskRowState extends ConsumerState<_OrchestrationTaskRow> {
               child: Text(
                 isRunning
                     ? (task.streamingContent.isEmpty
-                        ? 'Working...'
-                        : task.streamingContent)
+                          ? 'Working...'
+                          : task.streamingContent)
                     : isFailed
-                        ? 'Error: ${task.error ?? "Unknown error"}'
-                        : task.result ?? 'Completed',
+                    ? 'Error: ${task.error ?? "Unknown error"}'
+                    : task.result ?? 'Completed',
                 style: TextStyle(
                   color: isFailed ? tokens.error : tokens.textSecondary,
                   fontSize: FontSizes.xxs,

@@ -24,11 +24,7 @@ class ErrorLensWidget extends ConsumerWidget {
   final ErrorInfo error;
   final VoidCallback? onFixWithAI;
 
-  const ErrorLensWidget({
-    super.key,
-    required this.error,
-    this.onFixWithAI,
-  });
+  const ErrorLensWidget({super.key, required this.error, this.onFixWithAI});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -61,9 +61,7 @@ class _SessionListState extends ConsumerState<SessionList> {
     return Container(
       decoration: BoxDecoration(
         color: tokens.bgLight,
-        border: Border(
-          bottom: BorderSide(color: tokens.border),
-        ),
+        border: Border(bottom: BorderSide(color: tokens.border)),
       ),
       constraints: const BoxConstraints(maxHeight: 300),
       child: Column(
@@ -99,11 +97,7 @@ class _SessionListState extends ConsumerState<SessionList> {
                   cursor: SystemMouseCursors.click,
                   child: GestureDetector(
                     onTap: widget.onClose,
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: tokens.textMuted,
-                    ),
+                    child: Icon(Icons.close, size: 14, color: tokens.textMuted),
                   ),
                 ),
               ],
@@ -184,7 +178,9 @@ class _SessionRowState extends ConsumerState<_SessionRow> {
     if (parts.length >= 4) {
       // Try to extract date portion
       try {
-        final dateStr = parts.sublist(parts.length - 3).join('-')
+        final dateStr = parts
+            .sublist(parts.length - 3)
+            .join('-')
             .replaceFirst('T', ' ');
         final projectName = parts.sublist(0, parts.length - 3).join('-');
         return '$projectName  $dateStr';
@@ -213,11 +209,7 @@ class _SessionRowState extends ConsumerState<_SessionRow> {
             : Colors.transparent,
         child: Row(
           children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 12,
-              color: tokens.textMuted,
-            ),
+            Icon(Icons.chat_bubble_outline, size: 12, color: tokens.textMuted),
             const SizedBox(width: Spacing.md),
             Expanded(
               child: Text(

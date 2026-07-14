@@ -2,7 +2,12 @@ import 'package:uuid/uuid.dart';
 
 const _uuid = Uuid();
 
-enum VericodeCheckType { dartAnalyze, flutterTest, customCommand, flutterFormat }
+enum VericodeCheckType {
+  dartAnalyze,
+  flutterTest,
+  customCommand,
+  flutterFormat,
+}
 
 class VericodeCheck {
   final String id;
@@ -43,27 +48,27 @@ class VericodeCheck {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'command': command,
-        'type': type.name,
-        'enabled': enabled,
-        'order': order,
-        'timeoutSeconds': timeoutSeconds,
-      };
+    'id': id,
+    'name': name,
+    'command': command,
+    'type': type.name,
+    'enabled': enabled,
+    'order': order,
+    'timeoutSeconds': timeoutSeconds,
+  };
 
   factory VericodeCheck.fromJson(Map<String, dynamic> json) => VericodeCheck(
-        id: json['id'] as String,
-        name: json['name'] as String,
-        command: json['command'] as String,
-        type: VericodeCheckType.values.firstWhere(
-          (t) => t.name == json['type'],
-          orElse: () => VericodeCheckType.customCommand,
-        ),
-        enabled: json['enabled'] as bool? ?? true,
-        order: json['order'] as int? ?? 0,
-        timeoutSeconds: json['timeoutSeconds'] as int? ?? 60,
-      );
+    id: json['id'] as String,
+    name: json['name'] as String,
+    command: json['command'] as String,
+    type: VericodeCheckType.values.firstWhere(
+      (t) => t.name == json['type'],
+      orElse: () => VericodeCheckType.customCommand,
+    ),
+    enabled: json['enabled'] as bool? ?? true,
+    order: json['order'] as int? ?? 0,
+    timeoutSeconds: json['timeoutSeconds'] as int? ?? 60,
+  );
 }
 
 enum VericodeRunStatus {
@@ -127,8 +132,8 @@ class VericodeRun {
     DateTime? startedAt,
     this.completedAt,
     this.triggerSource,
-  })  : id = id ?? _uuid.v4().substring(0, 8),
-        startedAt = startedAt ?? DateTime.now();
+  }) : id = id ?? _uuid.v4().substring(0, 8),
+       startedAt = startedAt ?? DateTime.now();
 
   VericodeRun copyWith({
     VericodeRunStatus? status,
@@ -177,20 +182,20 @@ class VericodeConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'checks': checks.map((c) => c.toJson()).toList(),
-        'autoRunAfterEdit': autoRunAfterEdit,
-        'maxRetries': maxRetries,
-        'enabled': enabled,
-      };
+    'checks': checks.map((c) => c.toJson()).toList(),
+    'autoRunAfterEdit': autoRunAfterEdit,
+    'maxRetries': maxRetries,
+    'enabled': enabled,
+  };
 
   factory VericodeConfig.fromJson(Map<String, dynamic> json) => VericodeConfig(
-        checks: (json['checks'] as List<dynamic>?)
-                ?.map((c) =>
-                    VericodeCheck.fromJson(c as Map<String, dynamic>))
-                .toList() ??
-            [],
-        autoRunAfterEdit: json['autoRunAfterEdit'] as bool? ?? true,
-        maxRetries: json['maxRetries'] as int? ?? 3,
-        enabled: json['enabled'] as bool? ?? true,
-      );
+    checks:
+        (json['checks'] as List<dynamic>?)
+            ?.map((c) => VericodeCheck.fromJson(c as Map<String, dynamic>))
+            .toList() ??
+        [],
+    autoRunAfterEdit: json['autoRunAfterEdit'] as bool? ?? true,
+    maxRetries: json['maxRetries'] as int? ?? 3,
+    enabled: json['enabled'] as bool? ?? true,
+  );
 }
