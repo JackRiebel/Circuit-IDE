@@ -19,6 +19,7 @@ class AppDelegate: FlutterAppDelegate, SPUUpdaterDelegate {
   private var deferredInstallHandler: (() -> Void)?
   private var fileOpenChannel: FlutterMethodChannel?
   private var workspaceAccessChannel: FlutterMethodChannel?
+  private var secureCredentialsChannel: FlutterMethodChannel?
   private var packagedSmokeChannel: FlutterMethodChannel?
   private weak var packagedSmokeController: FlutterViewController?
   private var pendingFileOpenRequests: [[String: Any]] = []
@@ -107,6 +108,7 @@ class AppDelegate: FlutterAppDelegate, SPUUpdaterDelegate {
     configureFileRevealChannel()
     configureFileOpenChannel()
     configureWorkspaceAccessChannel()
+    configureSecureCredentialsChannel()
     configurePackagedSmokeChannel()
     configureUpdateChannel()
     super.applicationDidFinishLaunching(notification)
@@ -116,10 +118,141 @@ class AppDelegate: FlutterAppDelegate, SPUUpdaterDelegate {
     // missing from a valid packaged host.
     configureFileOpenChannel()
     configureWorkspaceAccessChannel()
+    configureSecureCredentialsChannel()
     // The same host initialization edge applies to the two private packaged
     // smoke signals. Retrying registration here guarantees that Dart can
     // distinguish the lifecycle and crash audits from a normal app launch.
     configurePackagedSmokeChannel()
+  }
+
+  // MARK: - Secure Circuit credentials
+
+  /// Stores Circuit credential values in the user's login Keychain. This
+  /// deliberately uses the standard macOS Keychain instead of the Data
+  /// Protection Keychain so ad-hoc development builds work before a signing
+  /// team and its entitlements are configured. No credential is written to
+  /// the filesystem, logged, or returned except to this local Flutter process.
+  private static let credentialKeychainService = "com.circuitide.app.credentials"
+  private static let maximumCredentialKeyLength = 128
+  private static let maximumCredentialValueLength = 32 * 1024
+
+  private func configureSecureCredentialsChannel() {
+    if secureCredentialsChannel != nil {
+      return
+    }
+    guard let controller = mainFlutterWindow?.contentViewController as? FlutterViewController else {
+      return
+    }
+    let channel = FlutterMethodChannel(
+      name: "circuitcode/secure_credentials",
+      binaryMessenger: controller.engine.binaryMessenger
+    )
+    secureCredentialsChannel = channel
+    channel.setMethodCallHandler { [weak self] call, result in
+      guard let self = self else {
+        result(FlutterError(code: "unavailable", message: "Secure credential storage is unavailable.", details: nil))
+        return
+      }
+      guard let arguments = call.arguments as? [String: Any],
+            let key = self.validCredentialKey(arguments["key"]) else {
+        result(FlutterError(code: "invalid_credential", message: "Invalid credential request.", details: nil))
+        return
+      }
+      switch call.method {
+      case "read":
+        self.readCredential(key: key, result: result)
+      case "write":
+        guard let value = arguments["value"] as? String,
+              value.utf8.count <= Self.maximumCredentialValueLength else {
+          result(FlutterError(code: "invalid_credential", message: "Invalid credential request.", details: nil))
+          return
+        }
+        self.writeCredential(key: key, value: value, result: result)
+      case "delete":
+        self.deleteCredential(key: key, result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func validCredentialKey(_ rawKey: Any?) -> String? {
+    guard let key = rawKey as? String,
+          !key.isEmpty,
+          key.utf8.count <= Self.maximumCredentialKeyLength,
+          key.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil else {
+      return nil
+    }
+    return key
+  }
+
+  private func credentialQuery(key: String) -> [CFString: Any] {
+    return [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrService: Self.credentialKeychainService,
+      kSecAttrAccount: key,
+    ]
+  }
+
+  private func readCredential(key: String, result: @escaping FlutterResult) {
+    var query = credentialQuery(key: key)
+    query[kSecReturnData] = true
+    query[kSecMatchLimit] = kSecMatchLimitOne
+    var item: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &item)
+    switch status {
+    case errSecSuccess:
+      guard let data = item as? Data,
+            let value = String(data: data, encoding: .utf8) else {
+        keychainFailure(result)
+        return
+      }
+      result(value)
+    case errSecItemNotFound:
+      result(nil)
+    default:
+      keychainFailure(result)
+    }
+  }
+
+  private func writeCredential(key: String, value: String, result: @escaping FlutterResult) {
+    let query = credentialQuery(key: key)
+    let valueData = Data(value.utf8)
+    let updateStatus = SecItemUpdate(
+      query as CFDictionary,
+      [kSecValueData: valueData] as CFDictionary
+    )
+    if updateStatus == errSecSuccess {
+      result(nil)
+      return
+    }
+    guard updateStatus == errSecItemNotFound else {
+      keychainFailure(result)
+      return
+    }
+    var addQuery = query
+    addQuery[kSecValueData] = valueData
+    addQuery[kSecAttrLabel] = "CircuitCode credential"
+    if SecItemAdd(addQuery as CFDictionary, nil) == errSecSuccess {
+      result(nil)
+    } else {
+      keychainFailure(result)
+    }
+  }
+
+  private func deleteCredential(key: String, result: @escaping FlutterResult) {
+    let status = SecItemDelete(credentialQuery(key: key) as CFDictionary)
+    if status == errSecSuccess || status == errSecItemNotFound {
+      result(nil)
+    } else {
+      keychainFailure(result)
+    }
+  }
+
+  private func keychainFailure(_ result: @escaping FlutterResult) {
+    // Never expose OSStatus values: they can reveal local Keychain state to
+    // the Dart layer and are not actionable for an end user.
+    result(FlutterError(code: "keychain_unavailable", message: "Secure credential storage is unavailable.", details: nil))
   }
 
   // MARK: - Packaged lifecycle smoke

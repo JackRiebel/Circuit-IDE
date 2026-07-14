@@ -24,6 +24,7 @@ void main() async {
   if (await shouldRunPackagedStudioSmoke()) {
     final result = await PackagedStudioSmoke.run(
       onContainerReady: _mountStudioShellForPackagedSmoke,
+      verifySecureCredentialPersistence: true,
     );
     stdout.writeln(
       'PACKAGED_STUDIO_SMOKE=${result.passed ? 'PASS' : 'FAIL'}:${result.stage}',

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../agent/config/config.dart';
 import '../core/utils/platform_utils.dart';
 import '../models/accepted_plan_context.dart';
 import '../models/reviewed_edit.dart';
@@ -29,6 +30,8 @@ typedef PackagedStudioSmokeShellMount =
 class PackagedStudioSmoke {
   static Future<PackagedStudioSmokeResult> run({
     PackagedStudioSmokeShellMount? onContainerReady,
+    SecureCredentialStore? secureCredentialStore,
+    bool verifySecureCredentialPersistence = false,
   }) async {
     final originalConfigDir = PlatformUtils.configDirOverride;
     final originalDebounce =
@@ -42,6 +45,11 @@ class PackagedStudioSmoke {
       PlatformUtils.configDirOverride = config.path;
       StudioThreadController.debugPersistDebounceOverride = Duration.zero;
       await _verifyRedactedCrashBoundary(root);
+      if (verifySecureCredentialPersistence) {
+        await _verifySecureCredentialPersistence(
+          secureCredentialStore ?? const FlutterSecureCredentialStore(),
+        );
+      }
 
       final patchStore = PatchProposalStore(
         baseDir: p.join(root.path, 'patches'),
@@ -247,6 +255,35 @@ class PackagedStudioSmoke {
       'privacy_secret_redaction',
     );
     _require((await reporter.load()).length == 2, 'privacy_record_count');
+  }
+
+  /// Proves the packaged executable can use the same credential-store route
+  /// as Settings. The bounded probe never touches a user credential key and
+  /// always removes its inert fixture before continuing the smoke lifecycle.
+  static Future<void> _verifySecureCredentialPersistence(
+    SecureCredentialStore store,
+  ) async {
+    const key = 'circuitcode_packaged_credential_probe';
+    const value = 'packaged-credential-probe';
+    try {
+      await store.delete(key: key);
+      await store.write(key: key, value: value);
+      _require(
+        await store.read(key: key) == value,
+        'secure_credentials_readback',
+      );
+      await store.delete(key: key);
+      _require(
+        await store.read(key: key) == null,
+        'secure_credentials_cleanup',
+      );
+    } catch (_) {
+      // A retry cleanup is safe even when the first write/read failed.
+      try {
+        await store.delete(key: key);
+      } catch (_) {}
+      throw const _PackagedStudioSmokeFailure('secure_credentials');
+    }
   }
 
   static void _require(bool condition, String stage) {

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/constants/app_constants.dart';
@@ -26,20 +27,63 @@ abstract interface class SecureCredentialStore {
 
 class FlutterSecureCredentialStore implements SecureCredentialStore {
   final FlutterSecureStorage _storage;
+  final SecureCredentialStore? _macosStore;
 
-  const FlutterSecureCredentialStore([
-    this._storage = const FlutterSecureStorage(),
-  ]);
+  /// On macOS, use the app-owned Keychain bridge instead of the plugin's
+  /// Data Protection Keychain default. The release bundle is intentionally
+  /// usable before distribution signing is configured; that default requires
+  /// a signing-team entitlement which an ad-hoc build does not have.
+  const FlutterSecureCredentialStore({
+    FlutterSecureStorage storage = const FlutterSecureStorage(),
+    SecureCredentialStore? macosStore,
+  }) : _storage = storage,
+       _macosStore = macosStore;
+
+  SecureCredentialStore get _activeMacosStore =>
+      _macosStore ?? const MacosKeychainCredentialStore();
 
   @override
-  Future<void> delete({required String key}) => _storage.delete(key: key);
+  Future<void> delete({required String key}) {
+    if (Platform.isMacOS) return _activeMacosStore.delete(key: key);
+    return _storage.delete(key: key);
+  }
 
   @override
-  Future<String?> read({required String key}) => _storage.read(key: key);
+  Future<String?> read({required String key}) {
+    if (Platform.isMacOS) return _activeMacosStore.read(key: key);
+    return _storage.read(key: key);
+  }
 
   @override
-  Future<void> write({required String key, required String value}) =>
-      _storage.write(key: key, value: value);
+  Future<void> write({required String key, required String value}) {
+    if (Platform.isMacOS) {
+      return _activeMacosStore.write(key: key, value: value);
+    }
+    return _storage.write(key: key, value: value);
+  }
+}
+
+/// The narrow native bridge keeps macOS credentials in the user's login
+/// Keychain without depending on a distribution-signing entitlement. It is
+/// available only inside the application process and has no file fallback.
+class MacosKeychainCredentialStore implements SecureCredentialStore {
+  static const _channel = MethodChannel('circuitcode/secure_credentials');
+
+  const MacosKeychainCredentialStore();
+
+  @override
+  Future<void> delete({required String key}) async {
+    await _channel.invokeMethod<void>('delete', {'key': key});
+  }
+
+  @override
+  Future<String?> read({required String key}) =>
+      _channel.invokeMethod<String>('read', {'key': key});
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    await _channel.invokeMethod<void>('write', {'key': key, 'value': value});
+  }
 }
 
 /// Thrown when the operating-system credential store rejects a save.
@@ -198,11 +242,18 @@ class AgentConfig {
       );
       await _writeOrDeleteSecure(_CredentialKey.ciscoAppKey, ciscoAppKey);
       await _writeOrDeleteSecure(_CredentialKey.githubPat, githubPat);
-      await _saveToFile();
     } catch (_) {
       Logger.error('Could not save credentials to secure storage.', null);
       throw const SecureCredentialStorageException(
         'Credentials could not be saved securely. Check Keychain access and try again.',
+      );
+    }
+    try {
+      await _saveToFile();
+    } catch (_) {
+      Logger.error('Could not save non-sensitive settings.', null);
+      throw const SecureCredentialStorageException(
+        'Credentials were saved securely, but app preferences could not be saved.',
       );
     }
   }
