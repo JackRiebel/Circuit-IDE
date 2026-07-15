@@ -195,8 +195,29 @@ jobs:
       - name: Block committed secrets
         # `git` scans patches from the complete checkout history. Redaction
         # avoids exposing a finding in CI logs if this gate ever rejects one.
+        # On rejection, print only the rule, path, line, and commit so a
+        # maintainer can distinguish a historical false positive from a real
+        # credential without putting the matched value in the workflow log.
         run: |
-          "$(go env GOPATH)/bin/gitleaks" git --redact=100 --no-banner --log-opts="--all" .
+          report="$(mktemp)"
+          trap 'rm -f "$report"' EXIT
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" git \
+            --redact=100 \
+            --no-banner \
+            --log-opts="--all" \
+            --report-format=json \
+            --report-path="$report" \
+            .
+          scanner_exit="$?"
+          set -e
+
+          if [[ "$scanner_exit" -ne 0 ]]; then
+            if [[ -s "$report" ]]; then
+              jq -r '.[] | "Gitleaks finding: rule=\(.RuleID) file=\(.File) line=\(.StartLine) commit=\(.Commit) description=\(.Description)"' "$report"
+            fi
+            exit "$scanner_exit"
+          fi
 
   dependency-vulnerability-scan:
     name: Dependency vulnerability gate
