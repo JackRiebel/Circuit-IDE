@@ -221,6 +221,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
+          # These jobs install pinned standalone binaries; no repository Go
+          # module exists to cache, so avoid a misleading missing-go.sum warn.
+          cache: false
 
       - name: Install pinned scanner binaries
         run: |
