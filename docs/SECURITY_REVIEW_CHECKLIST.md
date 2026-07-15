@@ -48,10 +48,13 @@ Record a link, command output, test run, or exception for every row.
       console output or CI URL.
 - [ ] `bash scripts/verify_security_ci.sh` passed and required branch checks
       are configured by repository administrators.
-- [ ] The manual `Security scanner fixture exercise` workflow was dispatched
-      from the reviewed revision and completed green only after both Gitleaks
-      and OSV rejected their runner-local controlled fixtures. Link the run;
-      do not retain scanner logs or fixture contents in this record.
+- [ ] The required aggregate CI run's `Security scanner fixture exercise` job
+      completed green only after both Gitleaks and OSV rejected their
+      runner-local controlled fixtures. Link the aggregate run; do not retain
+      scanner logs or fixture contents in this record.
+- [ ] Any Gitleaks exception names only a reviewed historic commit and keeps
+      the default detector set active; the checked-in exception-policy guard
+      passed. Record the exception owner, expiry, and remediation here.
 - [ ] If browser preview changed, review the loopback WebKit host-test result
       and confirm that the preview still has no Circuit JavaScript channel or
       model tool route; only explicit selected text may enter task context.

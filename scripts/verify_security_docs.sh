@@ -37,5 +37,7 @@ grep -Fq "Reduce motion" docs/ACCESSIBILITY.md
 grep -Fq "target format's screen reader" docs/ACCESSIBILITY.md
 grep -Fq "Browser preview privacy and origin controls" docs/MACOS_ACCEPTANCE.md
 grep -Fq "loopback WebKit host-test" "$review"
+grep -Fq "required aggregate CI run's \`Security scanner fixture exercise\` job" "$review"
+grep -Fq "full-history Gitleaks scan" "$security"
 
 echo "CircuitCode threat-model and release-readiness documentation verified."

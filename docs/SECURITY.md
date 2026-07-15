@@ -44,6 +44,12 @@ than provider-prompt suggestions.
   destructive-command, Git, MCP, network/exfiltration, child-environment, and
   secret-storage tests. Public network actions remain review-gated; private
   network targets and untrusted MCP browser/network calls fail closed.
+- The required aggregate CI run performs a full-history Gitleaks scan with
+  the scanner's default rules, pinned OSV dependency scanning, SBOM creation,
+  and a runner-local vulnerable-fixture exercise. The Gitleaks exception
+  policy may name only reviewed historic commit IDs; a checked-in guard
+  rejects path, pattern, stopword, or rule-wide bypasses and default-rule
+  disablement.
 - Computer use is feature-disabled: no desktop-control executor or model tool
   is registered. Computer-shaped tool calls fail closed in the shared policy;
   ADR-0009 requires a separate visible, review-only session before enablement.
