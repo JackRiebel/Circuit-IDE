@@ -6,11 +6,7 @@ import '../models/semantic_search_models.dart';
 /// an AST parser dependency.
 class CodeChunker {
   /// Main entry point: chunk a file into logical code segments.
-  List<CodeChunk> chunkFile(
-    String filePath,
-    String content,
-    String language,
-  ) {
+  List<CodeChunk> chunkFile(String filePath, String content, String language) {
     if (content.trim().isEmpty) return [];
 
     final lang = language.isEmpty
@@ -36,10 +32,12 @@ class CodeChunker {
   // Dart chunking
   // ---------------------------------------------------------------------------
 
-  static final _dartClassPattern =
-      RegExp(r'^(abstract\s+)?(class|mixin|enum|extension)\s+(\w+)');
-  static final _dartTopLevelFuncPattern =
-      RegExp(r'^(\w[\w<>, ?]*)\s+(\w+)\s*[\(<]');
+  static final _dartClassPattern = RegExp(
+    r'^(abstract\s+)?(class|mixin|enum|extension)\s+(\w+)',
+  );
+  static final _dartTopLevelFuncPattern = RegExp(
+    r'^(\w[\w<>, ?]*)\s+(\w+)\s*[\(<]',
+  );
   static final _dartImportPattern = RegExp(r"^import\s+'");
 
   List<CodeChunk> _chunkDart(
@@ -62,10 +60,17 @@ class CodeChunker {
       i++;
     }
     if (i > importStart && _hasImports(lines, importStart, i)) {
-      chunks.add(_makeChunk(
-        filePath, lines, importStart, i - 1,
-        ChunkType.imports, 'imports', language,
-      ));
+      chunks.add(
+        _makeChunk(
+          filePath,
+          lines,
+          importStart,
+          i - 1,
+          ChunkType.imports,
+          'imports',
+          language,
+        ),
+      );
     }
 
     // Parse declarations
@@ -84,10 +89,17 @@ class CodeChunker {
       if (classMatch != null) {
         final name = classMatch.group(3) ?? 'unknown';
         final end = _findBraceBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.classDecl, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.classDecl,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -100,10 +112,17 @@ class CodeChunker {
         final funcMatch = _dartTopLevelFuncPattern.firstMatch(trimmed);
         final name = funcMatch?.group(2) ?? 'function';
         final end = _findBraceBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.function, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.function,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -157,10 +176,17 @@ class CodeChunker {
       i++;
     }
     if (i > importStart && i > 1) {
-      chunks.add(_makeChunk(
-        filePath, lines, importStart, i - 1,
-        ChunkType.imports, 'imports', language,
-      ));
+      chunks.add(
+        _makeChunk(
+          filePath,
+          lines,
+          importStart,
+          i - 1,
+          ChunkType.imports,
+          'imports',
+          language,
+        ),
+      );
     }
 
     // Parse declarations
@@ -176,26 +202,38 @@ class CodeChunker {
 
       // Top-level class
       if (indent == 0 && _pyClassPattern.hasMatch(trimmed)) {
-        final name =
-            _pyClassPattern.firstMatch(trimmed)?.group(1) ?? 'class';
+        final name = _pyClassPattern.firstMatch(trimmed)?.group(1) ?? 'class';
         final end = _findIndentBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.classDecl, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.classDecl,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
 
       // Top-level function / async def
       if (indent == 0 && _pyFuncPattern.hasMatch(trimmed)) {
-        final name =
-            _pyFuncPattern.firstMatch(trimmed)?.group(2) ?? 'function';
+        final name = _pyFuncPattern.firstMatch(trimmed)?.group(2) ?? 'function';
         final end = _findIndentBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.function, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.function,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -214,11 +252,15 @@ class CodeChunker {
   // JavaScript / TypeScript chunking
   // ---------------------------------------------------------------------------
 
-  static final _jsClassPattern = RegExp(r'^\s*(export\s+)?(default\s+)?class\s+(\w+)');
-  static final _jsFuncPattern =
-      RegExp(r'^\s*(export\s+)?(default\s+)?(async\s+)?function\s+(\w+)');
-  static final _jsArrowPattern =
-      RegExp(r'^\s*(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s+)?\(');
+  static final _jsClassPattern = RegExp(
+    r'^\s*(export\s+)?(default\s+)?class\s+(\w+)',
+  );
+  static final _jsFuncPattern = RegExp(
+    r'^\s*(export\s+)?(default\s+)?(async\s+)?function\s+(\w+)',
+  );
+  static final _jsArrowPattern = RegExp(
+    r'^\s*(export\s+)?(const|let|var)\s+(\w+)\s*=\s*(async\s+)?\(',
+  );
   static final _jsImportPattern = RegExp(r'^\s*(import |export |require\()');
 
   List<CodeChunk> _chunkJsTs(
@@ -238,10 +280,17 @@ class CodeChunker {
       i++;
     }
     if (i > importStart && i > 1) {
-      chunks.add(_makeChunk(
-        filePath, lines, importStart, i - 1,
-        ChunkType.imports, 'imports', language,
-      ));
+      chunks.add(
+        _makeChunk(
+          filePath,
+          lines,
+          importStart,
+          i - 1,
+          ChunkType.imports,
+          'imports',
+          language,
+        ),
+      );
     }
 
     // Parse declarations
@@ -259,10 +308,17 @@ class CodeChunker {
       if (classMatch != null) {
         final name = classMatch.group(3) ?? 'class';
         final end = _findBraceBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.classDecl, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.classDecl,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -272,10 +328,17 @@ class CodeChunker {
       if (funcMatch != null) {
         final name = funcMatch.group(4) ?? 'function';
         final end = _findBraceBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.function, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.function,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -285,10 +348,17 @@ class CodeChunker {
       if (arrowMatch != null) {
         final name = arrowMatch.group(3) ?? 'arrow';
         final end = _findBraceBlockEnd(lines, i);
-        chunks.add(_makeChunk(
-          filePath, lines, i, end,
-          ChunkType.function, name, language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            i,
+            end,
+            ChunkType.function,
+            name,
+            language,
+          ),
+        );
         i = end + 1;
         continue;
       }
@@ -335,10 +405,17 @@ class CodeChunker {
             end--;
           }
           if (end >= blockStart) {
-            chunks.add(_makeChunk(
-              filePath, lines, blockStart, end,
-              ChunkType.block, 'block_${blockStart + 1}', language,
-            ));
+            chunks.add(
+              _makeChunk(
+                filePath,
+                lines,
+                blockStart,
+                end,
+                ChunkType.block,
+                'block_${blockStart + 1}',
+                language,
+              ),
+            );
           }
         }
         blockStart = i + 1;
@@ -353,10 +430,17 @@ class CodeChunker {
         end--;
       }
       if (end >= blockStart) {
-        chunks.add(_makeChunk(
-          filePath, lines, blockStart, end,
-          ChunkType.block, 'block_${blockStart + 1}', language,
-        ));
+        chunks.add(
+          _makeChunk(
+            filePath,
+            lines,
+            blockStart,
+            end,
+            ChunkType.block,
+            'block_${blockStart + 1}',
+            language,
+          ),
+        );
       }
     }
 
@@ -374,10 +458,10 @@ class CodeChunker {
 
     for (int i = startLine; i < lines.length; i++) {
       for (final ch in lines[i].runes) {
-        if (ch == 0x7B /* { */) {
+        if (ch == 0x7B /* { */ ) {
           braceCount++;
           foundOpen = true;
-        } else if (ch == 0x7D /* } */) {
+        } else if (ch == 0x7D /* } */ ) {
           braceCount--;
         }
       }
@@ -434,9 +518,7 @@ class CodeChunker {
     String language,
   ) {
     final clampedEnd = endLine.clamp(startLine, lines.length - 1);
-    final content = lines
-        .sublist(startLine, clampedEnd + 1)
-        .join('\n');
+    final content = lines.sublist(startLine, clampedEnd + 1).join('\n');
 
     return CodeChunk(
       id: '$filePath:${startLine + 1}',

@@ -8,6 +8,7 @@ enum EventType {
   // Chat events
   messageStarted,
   messageChunk,
+  planDraftUpdated,
   messageCompleted,
   messageError,
 
@@ -15,6 +16,7 @@ enum EventType {
   toolCallStarted,
   toolCallCompleted,
   toolCallError,
+  toolResultRecorded,
 
   // Confirmation events
   confirmationNeeded,
@@ -35,6 +37,8 @@ enum EventType {
   // Agent state
   thinkingStarted,
   thinkingCompleted,
+  agentRunEvent,
+  providerLifecycle,
 
   // Checkpoint events
   checkpointCreated,

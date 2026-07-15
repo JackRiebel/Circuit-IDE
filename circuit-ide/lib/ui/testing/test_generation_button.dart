@@ -9,18 +9,14 @@ import 'test_preview_dialog.dart';
 class TestGenerationButton extends ConsumerStatefulWidget {
   final String filePath;
 
-  const TestGenerationButton({
-    super.key,
-    required this.filePath,
-  });
+  const TestGenerationButton({super.key, required this.filePath});
 
   @override
   ConsumerState<TestGenerationButton> createState() =>
       _TestGenerationButtonState();
 }
 
-class _TestGenerationButtonState
-    extends ConsumerState<TestGenerationButton> {
+class _TestGenerationButtonState extends ConsumerState<TestGenerationButton> {
   bool _isHovered = false;
 
   @override
@@ -42,8 +38,7 @@ class _TestGenerationButtonState
                       .read(testGenerationProvider.notifier)
                       .generate(widget.filePath);
 
-                  final result =
-                      ref.read(testGenerationProvider).result;
+                  final result = ref.read(testGenerationProvider).result;
                   if (result != null && context.mounted) {
                     showDialog(
                       context: context,
@@ -74,9 +69,7 @@ class _TestGenerationButtonState
                 : Icon(
                     Icons.bug_report_outlined,
                     size: 15,
-                    color: _isHovered
-                        ? tokens.accent
-                        : tokens.textMuted,
+                    color: _isHovered ? tokens.accent : tokens.textMuted,
                   ),
           ),
         ),

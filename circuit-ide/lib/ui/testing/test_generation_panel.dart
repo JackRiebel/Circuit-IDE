@@ -18,8 +18,8 @@ class TestGenerationPanel extends ConsumerWidget {
     final testState = ref.watch(testGenerationProvider);
     final editorState = ref.watch(editorProvider);
     final activeTab = editorState.activeTab;
-    final hasSourceFile = activeTab != null &&
-        !activeTab.filePath.startsWith('circuit://');
+    final hasSourceFile =
+        activeTab != null && !activeTab.filePath.startsWith('circuit://');
 
     return Column(
       children: [
@@ -64,9 +64,7 @@ class TestGenerationPanel extends ConsumerWidget {
                     Icon(
                       Icons.description_outlined,
                       size: 14,
-                      color: hasSourceFile
-                          ? tokens.accent
-                          : tokens.textMuted,
+                      color: hasSourceFile ? tokens.accent : tokens.textMuted,
                     ),
                     const SizedBox(width: Spacing.md),
                     Expanded(
@@ -96,8 +94,7 @@ class TestGenerationPanel extends ConsumerWidget {
                 spacing: Spacing.sm,
                 runSpacing: Spacing.sm,
                 children: TestFramework.values.map((fw) {
-                  final isSelected =
-                      testState.selectedFramework == fw;
+                  final isSelected = testState.selectedFramework == fw;
                   return GestureDetector(
                     onTap: () => ref
                         .read(testGenerationProvider.notifier)
@@ -171,8 +168,7 @@ class TestGenerationPanel extends ConsumerWidget {
                             .read(testGenerationProvider.notifier)
                             .generate(activeTab.filePath);
 
-                        final result =
-                            ref.read(testGenerationProvider).result;
+                        final result = ref.read(testGenerationProvider).result;
                         if (result != null && context.mounted) {
                           showDialog(
                             context: context,
@@ -222,10 +218,7 @@ class TestGenerationPanel extends ConsumerWidget {
                 const SizedBox(height: Spacing.lg),
                 Text(
                   testState.error!,
-                  style: TextStyle(
-                    color: tokens.error,
-                    fontSize: FontSizes.xs,
-                  ),
+                  style: TextStyle(color: tokens.error, fontSize: FontSizes.xs),
                 ),
               ],
 
@@ -234,12 +227,14 @@ class TestGenerationPanel extends ConsumerWidget {
                 const SizedBox(height: Spacing.xxl),
                 _SectionLabel(label: 'Recent', tokens: tokens),
                 const SizedBox(height: Spacing.md),
-                ...testState.history.map((path) => _HistoryItem(
-                      path: path,
-                      tokens: tokens,
-                      onTap: () =>
-                          ref.read(editorProvider.notifier).openFile(path),
-                    )),
+                ...testState.history.map(
+                  (path) => _HistoryItem(
+                    path: path,
+                    tokens: tokens,
+                    onTap: () =>
+                        ref.read(editorProvider.notifier).openFile(path),
+                  ),
+                ),
               ],
             ],
           ),
@@ -298,9 +293,7 @@ class _OptionCheckbox extends StatelessWidget {
                     ? tokens.accent.withValues(alpha: 0.15)
                     : tokens.bgDark,
                 border: Border.all(
-                  color: value
-                      ? tokens.accent
-                      : tokens.border,
+                  color: value ? tokens.accent : tokens.border,
                 ),
               ),
               child: value

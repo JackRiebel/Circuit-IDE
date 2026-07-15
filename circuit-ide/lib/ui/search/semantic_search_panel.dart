@@ -54,8 +54,8 @@ class SemanticSearchPanel extends ConsumerWidget {
                         searchState.query.isEmpty
                             ? Icons.psychology_outlined
                             : searchState.isSearching
-                                ? Icons.hourglass_top
-                                : Icons.search_off_outlined,
+                            ? Icons.hourglass_top
+                            : Icons.search_off_outlined,
                         size: 32,
                         color: tokens.textMuted.withValues(alpha: 0.3),
                       ),
@@ -64,8 +64,8 @@ class SemanticSearchPanel extends ConsumerWidget {
                         searchState.query.isEmpty
                             ? 'Type a natural language query\nto search semantically'
                             : searchState.isSearching
-                                ? 'Searching...'
-                                : 'No results found',
+                            ? 'Searching...'
+                            : 'No results found',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: tokens.textMuted,

@@ -59,8 +59,7 @@ class PlanModeWidget extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               InkWell(
-                onTap: () =>
-                    ref.read(planModeProvider.notifier).deactivate(),
+                onTap: () => ref.read(planModeProvider.notifier).deactivate(),
                 child: Icon(Icons.close, size: 14, color: tokens.textMuted),
               ),
             ],
@@ -78,19 +77,25 @@ class PlanModeWidget extends ConsumerWidget {
                     width: 20,
                     height: 20,
                     child: step.isCompleted
-                        ? Icon(Icons.check_circle,
-                            size: 16, color: tokens.success)
+                        ? Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: tokens.success,
+                          )
                         : step.isRunning
-                            ? SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: tokens.accent,
-                                ),
-                              )
-                            : Icon(Icons.circle_outlined,
-                                size: 16, color: tokens.textMuted),
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: tokens.accent,
+                            ),
+                          )
+                        : Icon(
+                            Icons.circle_outlined,
+                            size: 16,
+                            color: tokens.textMuted,
+                          ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -112,8 +117,11 @@ class PlanModeWidget extends ConsumerWidget {
                       onTap: () => ref
                           .read(planModeProvider.notifier)
                           .removeStep(step.id),
-                      child: Icon(Icons.remove_circle_outline,
-                          size: 14, color: tokens.textMuted),
+                      child: Icon(
+                        Icons.remove_circle_outline,
+                        size: 14,
+                        color: tokens.textMuted,
+                      ),
                     ),
                 ],
               ),

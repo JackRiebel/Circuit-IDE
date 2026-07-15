@@ -37,8 +37,8 @@ class IDEIconButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           borderRadius: BorderRadius.circular(4),
-          hoverColor: hoverColor ??
-              theme.colorScheme.onSurface.withValues(alpha: 0.08),
+          hoverColor:
+              hoverColor ?? theme.colorScheme.onSurface.withValues(alpha: 0.08),
           child: Center(
             child: Icon(
               icon,

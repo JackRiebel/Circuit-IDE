@@ -55,9 +55,7 @@ class _ToolCallWidgetState extends ConsumerState<ToolCallWidget> {
             vertical: Spacing.sm,
           ),
           decoration: BoxDecoration(
-            color: _isHovered
-                ? tokens.bgLighter
-                : tokens.bgDark,
+            color: _isHovered ? tokens.bgLighter : tokens.bgDark,
             borderRadius: BorderRadius.circular(Radii.md),
             border: Border.all(
               color: _isExpanded

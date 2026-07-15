@@ -31,8 +31,7 @@ class DiffHunk {
 }
 
 class CodeReviewService {
-  static final _hunkHeaderRegex =
-      RegExp(r'@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@');
+  static final _hunkHeaderRegex = RegExp(r'@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@');
 
   /// Parse raw `git diff` output into a list of per-file diffs.
   static List<FileDiff> parseDiff(String rawDiff) {
@@ -59,11 +58,13 @@ class CodeReviewService {
       for (int i = 0; i < hunkStarts.length; i++) {
         final match = hunkStarts[i];
         final oldStart = int.parse(match.group(1)!);
-        final oldCount =
-            match.group(2)!.isEmpty ? 1 : int.parse(match.group(2)!);
+        final oldCount = match.group(2)!.isEmpty
+            ? 1
+            : int.parse(match.group(2)!);
         final newStart = int.parse(match.group(3)!);
-        final newCount =
-            match.group(4)!.isEmpty ? 1 : int.parse(match.group(4)!);
+        final newCount = match.group(4)!.isEmpty
+            ? 1
+            : int.parse(match.group(4)!);
 
         // Extract hunk content (from this header to next header or end)
         final start = match.end;
@@ -72,20 +73,24 @@ class CodeReviewService {
             : section.length;
         final content = section.substring(start, end).trimRight();
 
-        hunks.add(DiffHunk(
-          oldStart: oldStart,
-          oldCount: oldCount,
-          newStart: newStart,
-          newCount: newCount,
-          content: content,
-        ));
+        hunks.add(
+          DiffHunk(
+            oldStart: oldStart,
+            oldCount: oldCount,
+            newStart: newStart,
+            newCount: newCount,
+            content: content,
+          ),
+        );
       }
 
-      fileDiffs.add(FileDiff(
-        filePath: filePath,
-        diffContent: 'diff --git $section',
-        hunks: hunks,
-      ));
+      fileDiffs.add(
+        FileDiff(
+          filePath: filePath,
+          diffContent: 'diff --git $section',
+          hunks: hunks,
+        ),
+      );
     }
 
     return fileDiffs;
@@ -119,7 +124,9 @@ ${fileDiff.diffContent}''';
 
   /// Parse the AI response into a list of ReviewAnnotation objects.
   static List<ReviewAnnotation> parseReviewResponse(
-      String aiResponse, String filePath) {
+    String aiResponse,
+    String filePath,
+  ) {
     try {
       // Try direct JSON parse
       final decoded = jsonDecode(aiResponse.trim());
@@ -157,11 +164,13 @@ ${fileDiff.diffContent}''';
     for (final result in results) {
       summary.writeln('File: ${result.filePath}');
       summary.writeln(
-          '  Critical: ${result.criticalCount}, Warnings: ${result.warningCount}, '
-          'Suggestions: ${result.suggestionCount}, Nits: ${result.nitCount}');
+        '  Critical: ${result.criticalCount}, Warnings: ${result.warningCount}, '
+        'Suggestions: ${result.suggestionCount}, Nits: ${result.nitCount}',
+      );
       for (final annotation in result.annotations) {
         summary.writeln(
-            '  - [${annotation.severity.name}] L${annotation.startLine}: ${annotation.message}');
+          '  - [${annotation.severity.name}] L${annotation.startLine}: ${annotation.message}',
+        );
       }
       summary.writeln();
     }
@@ -177,12 +186,12 @@ Respond with ONLY a JSON object:
 
   /// Parse the overall assessment response from the AI.
   static (String assessment, ReviewVerdict verdict) parseOverallResponse(
-      String aiResponse) {
+    String aiResponse,
+  ) {
     try {
       final match = RegExp(r'\{[\s\S]*\}').firstMatch(aiResponse);
       if (match != null) {
-        final decoded =
-            jsonDecode(match.group(0)!) as Map<String, dynamic>;
+        final decoded = jsonDecode(match.group(0)!) as Map<String, dynamic>;
         final assessment =
             decoded['assessment'] as String? ?? 'Review complete.';
         final verdictStr = decoded['verdict'] as String? ?? 'pass';

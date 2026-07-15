@@ -22,15 +22,11 @@ class RuntimeTab extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.play_circle_outline,
-                size: 48, color: tokens.textMuted),
+            Icon(Icons.play_circle_outline, size: 48, color: tokens.textMuted),
             const SizedBox(height: Spacing.lg),
             Text(
               'No execution trace available',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),
@@ -46,12 +42,13 @@ class RuntimeTab extends ConsumerWidget {
         // Timeline header
         Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: Spacing.xl, vertical: Spacing.md),
+            horizontal: Spacing.xl,
+            vertical: Spacing.md,
+          ),
           decoration: BoxDecoration(
             color: tokens.bgLighter,
             border: Border(
-              bottom: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.3)),
+              bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
             ),
           ),
           child: Row(
@@ -93,7 +90,8 @@ class RuntimeTab extends ConsumerWidget {
                   decoration: BoxDecoration(
                     border: Border(
                       right: BorderSide(
-                          color: tokens.border.withValues(alpha: 0.3)),
+                        color: tokens.border.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                   child: CallStackPanel(trace: trace),
@@ -113,12 +111,13 @@ class RuntimeTab extends ConsumerWidget {
         // Scrubber / controls
         Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: Spacing.xl, vertical: Spacing.md),
+            horizontal: Spacing.xl,
+            vertical: Spacing.md,
+          ),
           decoration: BoxDecoration(
             color: tokens.bgLighter,
             border: Border(
-              top: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.3)),
+              top: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
             ),
           ),
           child: Row(
@@ -127,8 +126,7 @@ class RuntimeTab extends ConsumerWidget {
               _ControlButton(
                 icon: Icons.skip_previous,
                 onTap: frameIndex > 0
-                    ? () =>
-                        ref.read(runtimeProvider.notifier).jumpToFrame(0)
+                    ? () => ref.read(runtimeProvider.notifier).jumpToFrame(0)
                     : null,
                 tokens: tokens,
                 tooltip: 'First frame',
@@ -136,8 +134,7 @@ class RuntimeTab extends ConsumerWidget {
               _ControlButton(
                 icon: Icons.chevron_left,
                 onTap: frameIndex > 0
-                    ? () =>
-                        ref.read(runtimeProvider.notifier).stepBackward()
+                    ? () => ref.read(runtimeProvider.notifier).stepBackward()
                     : null,
                 tokens: tokens,
                 tooltip: 'Previous frame',
@@ -145,8 +142,7 @@ class RuntimeTab extends ConsumerWidget {
               _ControlButton(
                 icon: Icons.chevron_right,
                 onTap: frameIndex < totalFrames - 1
-                    ? () =>
-                        ref.read(runtimeProvider.notifier).stepForward()
+                    ? () => ref.read(runtimeProvider.notifier).stepForward()
                     : null,
                 tokens: tokens,
                 tooltip: 'Next frame',
@@ -155,8 +151,8 @@ class RuntimeTab extends ConsumerWidget {
                 icon: Icons.skip_next,
                 onTap: frameIndex < totalFrames - 1
                     ? () => ref
-                        .read(runtimeProvider.notifier)
-                        .jumpToFrame(totalFrames - 1)
+                          .read(runtimeProvider.notifier)
+                          .jumpToFrame(totalFrames - 1)
                     : null,
                 tokens: tokens,
                 tooltip: 'Last frame',
@@ -180,14 +176,15 @@ class RuntimeTab extends ConsumerWidget {
                 child: SliderTheme(
                   data: SliderThemeData(
                     activeTrackColor: tokens.accent,
-                    inactiveTrackColor:
-                        tokens.textMuted.withValues(alpha: 0.2),
+                    inactiveTrackColor: tokens.textMuted.withValues(alpha: 0.2),
                     thumbColor: tokens.accent,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 6,
+                    ),
                     trackHeight: 3,
-                    overlayShape:
-                        const RoundSliderOverlayShape(overlayRadius: 12),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 12,
+                    ),
                   ),
                   child: Slider(
                     value: frameIndex.toDouble(),
@@ -209,8 +206,11 @@ class RuntimeTab extends ConsumerWidget {
                   padding: const EdgeInsets.only(left: Spacing.lg),
                   child: Tooltip(
                     message: trace.summary!,
-                    child: Icon(Icons.info_outline,
-                        size: 14, color: tokens.textMuted),
+                    child: Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: tokens.textMuted,
+                    ),
                   ),
                 ),
             ],

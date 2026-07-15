@@ -36,9 +36,9 @@ class _GhostCompletionToastOverlayState
       // Check for newly completed or failed tasks
       for (final task in next.tasks) {
         final prevTask = prev.tasks.cast<GhostTask?>().firstWhere(
-              (t) => t!.id == task.id,
-              orElse: () => null,
-            );
+          (t) => t!.id == task.id,
+          orElse: () => null,
+        );
         if (prevTask != null &&
             prevTask.status == GhostStatus.running &&
             (task.status == GhostStatus.completed ||
@@ -57,18 +57,20 @@ class _GhostCompletionToastOverlayState
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: _visibleTasks
-            .map((task) => _GhostToast(
-                  task: task,
-                  onDismiss: () => _dismissToast(task),
-                  onViewChanges: () {
-                    ref.read(ghostModeProvider.notifier).viewChanges(task.id);
-                    _dismissToast(task);
-                  },
-                  onUndo: () {
-                    ref.read(ghostModeProvider.notifier).undoGhost(task.id);
-                    _dismissToast(task);
-                  },
-                ))
+            .map(
+              (task) => _GhostToast(
+                task: task,
+                onDismiss: () => _dismissToast(task),
+                onViewChanges: () {
+                  ref.read(ghostModeProvider.notifier).viewChanges(task.id);
+                  _dismissToast(task);
+                },
+                onUndo: () {
+                  ref.read(ghostModeProvider.notifier).undoGhost(task.id);
+                  _dismissToast(task);
+                },
+              ),
+            )
             .toList(),
       ),
     );
@@ -126,10 +128,7 @@ class _GhostToastState extends ConsumerState<_GhostToast>
     _slideAnimation = Tween<Offset>(
       begin: const Offset(1, 0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(_controller);
     _controller.forward();
   }
@@ -196,8 +195,11 @@ class _GhostToastState extends ConsumerState<_GhostToast>
                     onTap: widget.onDismiss,
                     child: MouseRegion(
                       cursor: SystemMouseCursors.click,
-                      child: Icon(Icons.close,
-                          size: 14, color: tokens.textMuted),
+                      child: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: tokens.textMuted,
+                      ),
                     ),
                   ),
                 ],

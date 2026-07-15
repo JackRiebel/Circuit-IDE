@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../agent/context/memories_loader.dart';
 import '../models/suggested_learning.dart';
 import 'memories_provider.dart';
 import 'rules_provider.dart';
@@ -88,6 +89,7 @@ class SuggestedLearningController extends Notifier<SuggestedLearningState> {
             suggestion.name,
             suggestion.content,
             global: suggestion.global,
+            provenance: MemoryProvenance.learned,
           );
     } else {
       await ref

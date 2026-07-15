@@ -7,6 +7,7 @@ enum ContextAttachmentType {
   diagnostics,
   symbols,
   url,
+  image,
   note,
 }
 
@@ -27,6 +28,7 @@ class ContextAttachment {
   final ContextAttachmentResolutionStatus resolutionStatus;
   final int estimatedTokens;
   final String? truncationMessage;
+  final Map<String, dynamic> metadata;
   final DateTime createdAt;
 
   const ContextAttachment({
@@ -38,6 +40,7 @@ class ContextAttachment {
     this.resolutionStatus = ContextAttachmentResolutionStatus.pending,
     this.estimatedTokens = 0,
     this.truncationMessage,
+    this.metadata = const {},
     required this.createdAt,
   });
 
@@ -50,6 +53,7 @@ class ContextAttachment {
     ContextAttachmentResolutionStatus? resolutionStatus,
     int? estimatedTokens,
     Object? truncationMessage = _sentinel,
+    Map<String, dynamic>? metadata,
     DateTime? createdAt,
   }) {
     return ContextAttachment(
@@ -65,6 +69,7 @@ class ContextAttachment {
       truncationMessage: identical(truncationMessage, _sentinel)
           ? this.truncationMessage
           : truncationMessage as String?,
+      metadata: metadata ?? this.metadata,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -80,6 +85,7 @@ class ContextAttachment {
       ContextAttachmentType.diagnostics => '[Context diagnostics: $label]',
       ContextAttachmentType.symbols => '[Context symbols: $label$source]',
       ContextAttachmentType.url => '[Context URL: $label$source]',
+      ContextAttachmentType.image => '[Context image: $label$source]',
       ContextAttachmentType.note => '[Context note: $label]',
     };
   }
@@ -101,6 +107,7 @@ class ContextAttachment {
       'resolutionStatus': resolutionStatus.name,
       'estimatedTokens': estimatedTokens,
       'truncationMessage': truncationMessage,
+      'metadata': metadata,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -121,6 +128,7 @@ class ContextAttachment {
         ),
         estimatedTokens: json['estimatedTokens'] as int? ?? 0,
         truncationMessage: json['truncationMessage'] as String?,
+        metadata: (json['metadata'] as Map?)?.cast<String, dynamic>() ?? {},
         createdAt:
             DateTime.tryParse(json['createdAt'] as String? ?? '') ??
             DateTime.now(),

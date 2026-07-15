@@ -22,29 +22,29 @@ class CodeChunk {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'filePath': filePath,
-        'startLine': startLine,
-        'endLine': endLine,
-        'type': type.name,
-        'name': name,
-        'content': content,
-        'language': language,
-      };
+    'id': id,
+    'filePath': filePath,
+    'startLine': startLine,
+    'endLine': endLine,
+    'type': type.name,
+    'name': name,
+    'content': content,
+    'language': language,
+  };
 
   factory CodeChunk.fromJson(Map<String, dynamic> json) => CodeChunk(
-        id: json['id'] ?? '',
-        filePath: json['filePath'] ?? '',
-        startLine: json['startLine'] ?? 0,
-        endLine: json['endLine'] ?? 0,
-        type: ChunkType.values.firstWhere(
-          (t) => t.name == json['type'],
-          orElse: () => ChunkType.block,
-        ),
-        name: json['name'] ?? '',
-        content: json['content'] ?? '',
-        language: json['language'] ?? '',
-      );
+    id: json['id'] ?? '',
+    filePath: json['filePath'] ?? '',
+    startLine: json['startLine'] ?? 0,
+    endLine: json['endLine'] ?? 0,
+    type: ChunkType.values.firstWhere(
+      (t) => t.name == json['type'],
+      orElse: () => ChunkType.block,
+    ),
+    name: json['name'] ?? '',
+    content: json['content'] ?? '',
+    language: json['language'] ?? '',
+  );
 }
 
 class SemanticSearchResult {

@@ -25,8 +25,8 @@ class GhostTask {
     this.diffs = const [],
     this.summary,
     this.error,
-  })  : id = id ?? _uuid.v4().substring(0, 8),
-        startedAt = startedAt ?? DateTime.now();
+  }) : id = id ?? _uuid.v4().substring(0, 8),
+       startedAt = startedAt ?? DateTime.now();
 
   GhostTask copyWith({
     GhostStatus? status,

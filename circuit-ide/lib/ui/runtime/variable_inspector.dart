@@ -21,8 +21,7 @@ class VariableInspector extends ConsumerWidget {
           padding: const EdgeInsets.all(Spacing.md),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.3)),
+              bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
             ),
           ),
           child: Text(
@@ -72,7 +71,9 @@ class _VariableRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md, vertical: Spacing.sm),
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
       margin: const EdgeInsets.only(bottom: 1),
       decoration: BoxDecoration(
         color: variable.isModified

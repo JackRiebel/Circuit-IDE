@@ -10,8 +10,8 @@ import '../models/project_profile.dart';
 import '../models/reviewed_edit.dart';
 import '../models/work_item.dart';
 import '../models/work_item_handoff_summary.dart';
+import '../services/versioned_json_document.dart';
 import 'agent_run_provider.dart';
-import 'chat_provider.dart';
 import 'context_pack_provider.dart';
 import 'file_tree_provider.dart';
 import 'git_provider.dart';
@@ -44,6 +44,9 @@ class WorkItemHistory {
 }
 
 class WorkItemStore {
+  static const _schemaKind = 'circuit.work-item-history';
+  static const _schemaVersion = 2;
+
   final String baseDir;
 
   WorkItemStore({String? baseDir})
@@ -60,23 +63,42 @@ class WorkItemStore {
   Future<List<WorkItem>> load(String? rootPath) async {
     final file = File(historyPath(rootPath));
     if (!await file.exists()) return const [];
-    final json = jsonDecode(await file.readAsString()) as List<dynamic>;
-    return json
+    final contents = await file.readAsString();
+    final document = VersionedJsonDocument.decode(
+      jsonDecode(contents),
+      expectedKind: _schemaKind,
+      currentSchemaVersion: _schemaVersion,
+    );
+    final payload = document.payload;
+    if (payload is! List<dynamic>) {
+      throw const FormatException('Work item history payload is not a list.');
+    }
+    final items = payload
         .whereType<Map<String, dynamic>>()
         .map(WorkItem.fromJson)
         .nonNulls
         .toList();
+    if (document.schemaVersion < _schemaVersion) {
+      await migrateVersionedJsonFile(
+        file: file,
+        originalContents: contents,
+        migratedContents: _encode(items),
+        previousSchemaVersion: document.schemaVersion,
+      );
+    }
+    return items;
   }
 
   Future<void> save(String? rootPath, List<WorkItem> items) async {
     final file = File(historyPath(rootPath));
-    if (!await file.parent.exists()) await file.parent.create(recursive: true);
-    await file.writeAsString(
-      const JsonEncoder.withIndent(
-        '  ',
-      ).convert(items.take(30).map((item) => item.toJson()).toList()),
-    );
+    await writeVersionedJsonAtomically(file, _encode(items));
   }
+
+  String _encode(List<WorkItem> items) => VersionedJsonDocument(
+    kind: _schemaKind,
+    schemaVersion: _schemaVersion,
+    payload: items.map((item) => item.toJson()).toList(),
+  ).encode(pretty: true);
 }
 
 class WorkItemHistoryController extends Notifier<WorkItemHistory> {
@@ -109,7 +131,7 @@ class WorkItemHistoryController extends Notifier<WorkItemHistory> {
     final items = [
       item,
       ...state.items.where((candidate) => candidate.id != item.id),
-    ].take(30).toList();
+    ];
     state = state.copyWith(items: items, isLoading: false, error: null);
     await _store.save(ref.read(fileTreeProvider).rootPath, items);
   }
@@ -169,30 +191,21 @@ class WorkItemController extends Notifier<WorkItem?> {
   Future<void> sendToChat() async {
     final item = state;
     if (item == null) return;
+    const message =
+        'Guided Work Item execution is paused while Studio uses the request-local turn runtime. Start this work from the Studio composer so intent, context, approvals, patches, and verification stay scoped to one Studio turn.';
     state = item.copyWith(
-      status: WorkItemStatus.running,
+      status: WorkItemStatus.failed,
       steps: _markStep(
         item.steps,
-        0,
-        completed: true,
-      ).let((steps) => _markStep(steps, 1, running: true)),
-    );
-    await ref.read(chatProvider.notifier).sendMessage(_executionPrompt(item));
-    state = state?.copyWith(
-      status: WorkItemStatus.verifying,
-      steps: state == null
-          ? item.steps
-          : _markStep(
-              state!.steps,
-              1,
-              completed: true,
-              running: false,
-            ).let((steps) => _markStep(steps, 2, running: true)),
-      changedFiles: _changedFiles(),
+        1,
+        running: false,
+        error: 'Legacy global chat execution is disabled for Work Items.',
+      ),
+      result: message,
       suggestedNextSteps: const [
-        'Review the changed files.',
-        'Run recommended checks.',
-        'Create a handoff summary.',
+        'Use the Studio composer for this task.',
+        'Turn on Plan mode if you want a reviewable plan first.',
+        'Use Verify mode after applying reviewed changes.',
       ],
     );
     _persist();
@@ -208,7 +221,9 @@ class WorkItemController extends Notifier<WorkItem?> {
     final profileNotifier = ref.read(projectProfileProvider.notifier);
     final results = <VerificationResultSummary>[];
     for (final command in item.verificationCommands.where((c) => c.enabled)) {
-      results.add(await profileNotifier.runCommand(command));
+      results.add(
+        await profileNotifier.runCommand(command, userApproved: true),
+      );
     }
     final passed =
         results.isNotEmpty && results.every((result) => result.passed);
@@ -363,20 +378,6 @@ class WorkItemController extends Notifier<WorkItem?> {
     ];
   }
 
-  String _executionPrompt(WorkItem item) {
-    final contextPack = ref.read(contextPackProvider);
-    final contextPrompt = contextPack?.serializePrompt();
-    return [
-      'Guided work item:',
-      item.prompt,
-      '',
-      if (contextPrompt != null && contextPrompt.isNotEmpty) contextPrompt,
-      '',
-      'Use review-first autonomy. Prefer proposing patches before writing files.',
-      'After making changes, explain files changed and verification commands to run.',
-    ].join('\n');
-  }
-
   List<String> _changedFiles() {
     final git = ref.read(gitProvider).status;
     return {
@@ -401,10 +402,6 @@ final workItemHistoryProvider =
     NotifierProvider<WorkItemHistoryController, WorkItemHistory>(
       WorkItemHistoryController.new,
     );
-
-extension _Pipe<T> on T {
-  R let<R>(R Function(T value) transform) => transform(this);
-}
 
 List<WorkItemArtifact> _upsertArtifact(
   List<WorkItemArtifact> artifacts,

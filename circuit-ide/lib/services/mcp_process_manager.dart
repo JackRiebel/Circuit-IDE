@@ -3,6 +3,7 @@ import 'dart:io';
 
 import '../agent/mcp/mcp_config.dart';
 import '../agent/mcp/mcp_token_storage.dart';
+import '../agent/security/child_process_environment.dart';
 import '../core/utils/logger.dart';
 
 enum McpProcessState { stopped, starting, running, error }
@@ -14,9 +15,13 @@ class McpProcessManager {
   final _errors = <String, String>{};
   final _pids = <String, int>{};
   final _tokenStorage = McpTokenStorage();
+  final Map<String, String> _baseEnvironment;
 
   final _stateController =
       StreamController<(String, McpProcessState)>.broadcast();
+
+  McpProcessManager({Map<String, String>? baseEnvironment})
+    : _baseEnvironment = baseEnvironment ?? Platform.environment;
 
   /// Stream of (serverName, newState) events for UI reactivity.
   Stream<(String, McpProcessState)> get stateChanges => _stateController.stream;
@@ -47,13 +52,11 @@ class McpProcessManager {
         config.requiredEnvVars,
       );
 
-      // Build environment: inherit platform env + inject tokens
-      final env = <String, String>{...Platform.environment, ...tokens};
-
-      // Add port if specified
-      if (config.port != null) {
-        env['PORT'] = config.port.toString();
-      }
+      final env = ChildProcessEnvironment.build(
+        baseEnvironment: _baseEnvironment,
+        injected: tokens,
+        fixed: {if (config.port != null) 'PORT': config.port.toString()},
+      );
 
       final process = await Process.start('python3', [
         config.scriptPath!,
@@ -70,12 +73,18 @@ class McpProcessManager {
 
       // Capture stdout
       process.stdout.transform(const SystemEncoding().decoder).listen((data) {
-        Logger.info('[$name stdout] $data', 'McpProcessManager');
+        Logger.info(
+          '[$name stdout] ${ChildProcessEnvironment.redactOutput(data, tokens.values)}',
+          'McpProcessManager',
+        );
       });
 
       // Capture stderr
       process.stderr.transform(const SystemEncoding().decoder).listen((data) {
-        Logger.warning('[$name stderr] $data', 'McpProcessManager');
+        Logger.warning(
+          '[$name stderr] ${ChildProcessEnvironment.redactOutput(data, tokens.values)}',
+          'McpProcessManager',
+        );
       });
 
       // Listen for exit

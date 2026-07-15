@@ -181,8 +181,11 @@ class FindingDetailDialog extends ConsumerWidget {
                             .read(securityScanProvider.notifier)
                             .aiAnalyzeFinding(finding);
                       },
-                      icon: Icon(Icons.auto_fix_high,
-                          size: 16, color: tokens.accent),
+                      icon: Icon(
+                        Icons.auto_fix_high,
+                        size: 16,
+                        color: tokens.accent,
+                      ),
                       label: Text(
                         'AI Fix',
                         style: TextStyle(color: tokens.accent),
@@ -238,12 +241,12 @@ class _SeverityBadge extends ConsumerWidget {
 }
 
 Color _severityColor(dynamic tokens, String severity) => switch (severity) {
-      'critical' => tokens.error as Color,
-      'high' => const Color(0xFFFF6B35),
-      'medium' => tokens.warning as Color,
-      'low' => tokens.textMuted as Color,
-      _ => tokens.textMuted as Color,
-    };
+  'critical' => tokens.error as Color,
+  'high' => const Color(0xFFFF6B35),
+  'medium' => tokens.warning as Color,
+  'low' => tokens.textMuted as Color,
+  _ => tokens.textMuted as Color,
+};
 
 class _DetailRow extends StatelessWidget {
   final dynamic tokens;

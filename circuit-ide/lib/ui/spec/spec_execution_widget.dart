@@ -80,10 +80,7 @@ class _StepRowState extends ConsumerState<_StepRow> {
     final step = widget.step;
 
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: Spacing.xl,
-        vertical: 2,
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: Spacing.xl, vertical: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -99,22 +96,27 @@ class _StepRowState extends ConsumerState<_StepRow> {
                     width: 20,
                     height: 20,
                     child: step.isCompleted
-                        ? Icon(Icons.check_circle,
-                            size: 16, color: tokens.success)
+                        ? Icon(
+                            Icons.check_circle,
+                            size: 16,
+                            color: tokens.success,
+                          )
                         : step.isRunning
-                            ? SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: tokens.accent,
-                                ),
-                              )
-                            : step.error != null
-                                ? Icon(Icons.error,
-                                    size: 16, color: tokens.error)
-                                : Icon(Icons.circle_outlined,
-                                    size: 16, color: tokens.textMuted),
+                        ? SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: tokens.accent,
+                            ),
+                          )
+                        : step.error != null
+                        ? Icon(Icons.error, size: 16, color: tokens.error)
+                        : Icon(
+                            Icons.circle_outlined,
+                            size: 16,
+                            color: tokens.textMuted,
+                          ),
                   ),
                   const SizedBox(width: Spacing.md),
                   Expanded(
@@ -147,12 +149,17 @@ class _StepRowState extends ConsumerState<_StepRow> {
                           ref.read(specProvider.notifier).skipStep(step.id),
                     ),
                   ],
-                  if (!step.isCompleted && !step.isRunning && step.error == null)
+                  if (!step.isCompleted &&
+                      !step.isRunning &&
+                      step.error == null)
                     InkWell(
                       onTap: () =>
                           ref.read(specProvider.notifier).removeStep(step.id),
-                      child: Icon(Icons.remove_circle_outline,
-                          size: 14, color: tokens.textMuted),
+                      child: Icon(
+                        Icons.remove_circle_outline,
+                        size: 14,
+                        color: tokens.textMuted,
+                      ),
                     ),
                 ],
               ),
@@ -217,10 +224,7 @@ class _SmallButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            color: color,
-            fontSize: FontSizes.xxs,
-          ),
+          style: TextStyle(color: color, fontSize: FontSizes.xxs),
         ),
       ),
     );

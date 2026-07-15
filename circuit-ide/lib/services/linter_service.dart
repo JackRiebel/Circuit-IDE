@@ -23,10 +23,11 @@ class LinterService {
 
   Future<List<ErrorInfo>> _runPythonLint(String filePath) async {
     try {
-      final result = await Process.run(
-        'ruff',
-        ['check', '--output-format=json', filePath],
-      );
+      final result = await Process.run('ruff', [
+        'check',
+        '--output-format=json',
+        filePath,
+      ]);
       // Parse ruff JSON output
       return _parseRuffOutput(result.stdout as String);
     } catch (_) {
@@ -42,10 +43,11 @@ class LinterService {
 
   Future<List<ErrorInfo>> _runESLint(String filePath) async {
     try {
-      final result = await Process.run(
-        'npx',
-        ['eslint', '--format=json', filePath],
-      );
+      final result = await Process.run('npx', [
+        'eslint',
+        '--format=json',
+        filePath,
+      ]);
       return _parseESLintOutput(result.stdout as String);
     } catch (_) {
       return [];
@@ -54,10 +56,11 @@ class LinterService {
 
   Future<List<ErrorInfo>> _runDartAnalyze(String filePath) async {
     try {
-      final result = await Process.run(
-        'dart',
-        ['analyze', '--format=machine', filePath],
-      );
+      final result = await Process.run('dart', [
+        'analyze',
+        '--format=machine',
+        filePath,
+      ]);
       return _parseDartAnalyzeOutput(result.stdout as String);
     } catch (_) {
       return [];
@@ -72,19 +75,20 @@ class LinterService {
   List<ErrorInfo> _parseFlake8Output(String output) {
     final errors = <ErrorInfo>[];
     for (final line in output.split('\n')) {
-      final match =
-          RegExp(r':(\d+):\d+:\s+(\w+)\s+(.+)').firstMatch(line);
+      final match = RegExp(r':(\d+):\d+:\s+(\w+)\s+(.+)').firstMatch(line);
       if (match != null) {
         final lineNum = int.tryParse(match.group(1)!) ?? 0;
         final code = match.group(2) ?? '';
         final message = match.group(3) ?? '';
-        errors.add(ErrorInfo(
-          line: lineNum,
-          message: '$code: $message',
-          severity: code.startsWith('E')
-              ? ErrorSeverity.error
-              : ErrorSeverity.warning,
-        ));
+        errors.add(
+          ErrorInfo(
+            line: lineNum,
+            message: '$code: $message',
+            severity: code.startsWith('E')
+                ? ErrorSeverity.error
+                : ErrorSeverity.warning,
+          ),
+        );
       }
     }
     return errors;
@@ -102,15 +106,17 @@ class LinterService {
         final severity = parts[0].trim().toLowerCase();
         final lineNum = int.tryParse(parts[2].trim()) ?? 0;
         final message = parts[3].trim();
-        errors.add(ErrorInfo(
-          line: lineNum,
-          message: message,
-          severity: severity == 'error'
-              ? ErrorSeverity.error
-              : severity == 'warning'
-                  ? ErrorSeverity.warning
-                  : ErrorSeverity.info,
-        ));
+        errors.add(
+          ErrorInfo(
+            line: lineNum,
+            message: message,
+            severity: severity == 'error'
+                ? ErrorSeverity.error
+                : severity == 'warning'
+                ? ErrorSeverity.warning
+                : ErrorSeverity.info,
+          ),
+        );
       }
     }
     return errors;

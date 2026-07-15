@@ -26,8 +26,9 @@ class CodeReviewButton extends ConsumerWidget {
         width: double.infinity,
         height: 30,
         child: MouseRegion(
-          cursor:
-              isEnabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+          cursor: isEnabled
+              ? SystemMouseCursors.click
+              : SystemMouseCursors.basic,
           child: GestureDetector(
             onTap: isEnabled
                 ? () {

@@ -6,30 +6,52 @@ import 'package:dio/dio.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/logger.dart';
 import '../../models/chat_message.dart';
+import '../../models/provider_lifecycle_event.dart';
 import '../config/models_config.dart';
+import 'cisco_chat_request_composer.dart';
+import 'cisco_connector_health.dart';
+import 'cisco_model_catalog.dart';
+import 'cisco_network_client.dart';
+import 'cisco_provider_descriptor.dart';
+import 'cisco_response_parser.dart';
+import 'cisco_stream_support.dart';
+import 'cisco_token_authenticator.dart';
+import 'cisco_transport_failure.dart';
 import 'provider_interface.dart';
 
-class CiscoProvider implements AIProvider {
+export 'cisco_response_parser.dart' show CiscoResponseParser;
+export 'cisco_connector_health.dart'
+    show classifyConnectorHealthError, connectorHealthRetryAdvice;
+
+class CiscoProvider
+    implements
+        AIProvider,
+        ImageCapableProvider,
+        ProviderConnectorNetworkPolicyAware {
   late final Dio _dio;
-  String? _clientId;
-  String? _clientSecret;
-  String? _appKey;
-  String? _accessToken;
-  DateTime? _tokenExpiry;
+  late final CiscoTokenAuthenticator _authenticator;
   bool _connected = false;
   CancelToken? _activeCancelToken;
+  late final String _chatBaseUrl;
 
-  /// Retry config
-  static const int _maxRetries = 3;
-  static const Duration _baseRetryDelay = Duration(seconds: 1);
-
-  CiscoProvider() {
-    _dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 30),
-        receiveTimeout: const Duration(minutes: 4),
-      ),
+  CiscoProvider({
+    Dio? dio,
+    CiscoProviderHostAddressResolver? hostAddressResolver,
+    String? accessToken,
+    DateTime? tokenExpiry,
+    String? appKey,
+    String? chatBaseUrl,
+  }) {
+    _dio =
+        dio ?? createCiscoProviderDio(hostAddressResolver: hostAddressResolver);
+    _authenticator = CiscoTokenAuthenticator(
+      _dio,
+      accessToken: accessToken,
+      tokenExpiry: tokenExpiry,
+      appKey: appKey,
     );
+    _chatBaseUrl = chatBaseUrl ?? AppConstants.ciscoChatBaseUrl;
+    _connected = accessToken != null;
   }
 
   @override
@@ -39,35 +61,20 @@ class CiscoProvider implements AIProvider {
   List<ModelInfo> get availableModels => ModelsConfig.ciscoModels;
 
   @override
-  ProviderDescriptor get descriptor => const ProviderDescriptor(
-    id: 'circuit',
-    displayName: 'Circuit Company AI',
-    shortName: 'Circuit',
-    capabilities: ProviderCapabilities(
-      supportsStreaming: true,
-      supportsNativeToolCalls: true,
-      supportsModelRefresh: true,
-      supportsCancellation: true,
-    ),
-  );
+  ProviderDescriptor get descriptor => CiscoProviderDescriptor.circuit;
 
   @override
   ProviderCapabilities get capabilities => descriptor.capabilities;
+
+  ProviderProtocol get protocol => descriptor.protocol;
 
   @override
   bool get isConnected => _connected;
 
   @override
   Future<void> connect(Map<String, String> credentials) async {
-    _clientId = credentials['client_id'];
-    _clientSecret = credentials['client_secret'];
-    _appKey = credentials['app_key'];
-
-    if (_clientId == null || _clientSecret == null || _appKey == null) {
-      throw ArgumentError('Missing Circuit credentials');
-    }
-
-    await _refreshToken();
+    _authenticator.configure(credentials);
+    await _authenticator.refreshToken();
     _connected = true;
     Logger.info('Connected to Circuit Company AI', 'CiscoProvider');
   }
@@ -75,35 +82,28 @@ class CiscoProvider implements AIProvider {
   @override
   void disconnect() {
     _connected = false;
-    _accessToken = null;
-    _tokenExpiry = null;
+    _authenticator.clearAccessToken();
     cancelActiveRequest();
     Logger.info('Disconnected from Circuit Company AI', 'CiscoProvider');
   }
 
   @override
   Future<ConnectorHealth> checkHealth() async {
-    if (_clientId == null || _clientSecret == null || _appKey == null) {
-      return ConnectorHealth(
-        status: ConnectorHealthStatus.credentialsMissing,
-        message: 'Circuit credentials are missing.',
-        checkedAt: DateTime.now(),
-      );
-    }
-    try {
-      await _getToken();
-      return ConnectorHealth(
-        status: ConnectorHealthStatus.connected,
-        message: 'Circuit connector is ready.',
-        checkedAt: DateTime.now(),
-      );
-    } catch (e) {
-      return ConnectorHealth(
-        status: ConnectorHealthStatus.tokenFailed,
-        message: e.toString().replaceFirst('Exception: ', ''),
-        checkedAt: DateTime.now(),
-      );
-    }
+    return CiscoConnectorHealthReporter.check(
+      hasCredentialsOrToken:
+          _authenticator.hasCredentials || _authenticator.hasAccessToken,
+      endpoint: _healthEndpoint,
+      protocol: protocol,
+      ensureToken: _authenticator.getToken,
+    );
+  }
+
+  String get _healthEndpoint {
+    final uri = Uri.tryParse(AppConstants.ciscoTokenUrl);
+    if (uri == null || uri.host.isEmpty) return 'Configured Circuit endpoint';
+    final scheme = uri.scheme.isEmpty ? 'https' : uri.scheme;
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    return '$scheme://${uri.host}$port';
   }
 
   @override
@@ -114,145 +114,66 @@ class CiscoProvider implements AIProvider {
 
   @override
   Future<List<ConnectorModelInfo>> refreshModels() async {
-    if (_clientId == null || _clientSecret == null || _appKey == null) {
-      return _bundledConnectorModels();
+    if (!_authenticator.hasCredentials) {
+      return CiscoModelCatalog.bundled();
     }
 
     try {
-      final token = await _getToken();
+      final token = await _authenticator.getToken();
       final response = await _dio.get(
         AppConstants.ciscoChatBaseUrl,
         queryParameters: {'api-version': AppConstants.ciscoApiVersion},
-        options: Options(headers: {'api-key': token}),
+        options: Options(
+          headers: {'api-key': token},
+          // Provider redirects could cross a connector trust boundary. A
+          // configured connector endpoint is the only allowed destination;
+          // surface an unexpected redirect as an actionable request failure.
+          followRedirects: false,
+          maxRedirects: 0,
+        ),
       );
-      final parsed = _parseModelCatalog(response.data);
+      final parsed = CiscoModelCatalog.parse(response.data);
       if (parsed.isNotEmpty) return parsed;
-    } catch (e) {
+    } catch (_) {
       Logger.warning(
-        'Circuit model refresh fell back to bundled catalog: $e',
+        'Circuit model refresh fell back to the bundled catalog.',
         'CiscoProvider',
       );
     }
-    return _bundledConnectorModels();
+    return CiscoModelCatalog.bundled();
   }
 
-  List<ConnectorModelInfo> _bundledConnectorModels() {
-    return availableModels
-        .map(
-          (model) => ConnectorModelInfo(
-            id: model.id,
-            displayName: model.displayName,
-            contextWindow: model.contextWindow,
-            supportsTools: model.supportsTools,
-            inputCostPer1k: model.inputCostPer1k,
-            outputCostPer1k: model.outputCostPer1k,
-          ),
-        )
-        .toList();
-  }
+  @override
+  List<ProviderConnectorNetworkRequirement> get connectorNetworkRequirements =>
+      [
+        ProviderConnectorNetworkRequirement(
+          url: _chatBaseUrl,
+          label: 'Circuit model connector',
+          usesWorkspaceUpload: true,
+          usesCredentials: true,
+        ),
+        const ProviderConnectorNetworkRequirement(
+          url: AppConstants.ciscoTokenUrl,
+          label: 'Circuit OAuth connector',
+          usesCredentials: true,
+        ),
+      ];
 
-  List<ConnectorModelInfo> _parseModelCatalog(dynamic data) {
-    final items = switch (data) {
-      {'data': final List<dynamic> models} => models,
-      {'models': final List<dynamic> models} => models,
-      final List<dynamic> models => models,
-      _ => const <dynamic>[],
-    };
-
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map((json) {
-          final id = json['id'] as String? ?? json['model'] as String?;
-          if (id == null || id.trim().isEmpty) return null;
-          final capabilities = json['capabilities'] as Map<String, dynamic>?;
-          final supportsTools =
-              capabilities?['tools'] as bool? ??
-              capabilities?['tool_calls'] as bool? ??
-              _isKnownToolCapableModel(id);
-          final contextWindow =
-              json['contextWindow'] as int? ??
-              json['context_window'] as int? ??
-              120000;
-          return ConnectorModelInfo(
-            id: id,
-            displayName:
-                json['displayName'] as String? ??
-                json['display_name'] as String? ??
-                id,
-            contextWindow: contextWindow,
-            supportsTools: supportsTools,
-            inputCostPer1k:
-                (json['inputCostPer1k'] as num?)?.toDouble() ??
-                (json['input_cost_per_1k'] as num?)?.toDouble() ??
-                0,
-            outputCostPer1k:
-                (json['outputCostPer1k'] as num?)?.toDouble() ??
-                (json['output_cost_per_1k'] as num?)?.toDouble() ??
-                0,
-          );
-        })
-        .whereType<ConnectorModelInfo>()
-        .toList();
-  }
-
-  bool _isKnownToolCapableModel(String id) {
-    return ModelsConfig.ciscoModels.any(
-      (model) => model.id == id && model.supportsTools,
-    );
-  }
-
-  Future<void> _refreshToken() async {
-    final credentials = base64Encode(utf8.encode('$_clientId:$_clientSecret'));
-
-    Exception? lastError;
-    for (int attempt = 0; attempt < _maxRetries; attempt++) {
-      try {
-        final response = await _dio.post(
-          AppConstants.ciscoTokenUrl,
-          data: 'grant_type=client_credentials',
-          options: Options(
-            headers: {
-              'Authorization': 'Basic $credentials',
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-          ),
-        );
-
-        final data = response.data as Map<String, dynamic>;
-        _accessToken = data['access_token'] as String;
-        final expiresIn = data['expires_in'] as int;
-        // Refresh 5 minutes before expiry
-        _tokenExpiry = DateTime.now().add(Duration(seconds: expiresIn - 300));
-
-        Logger.info(
-          'OAuth token refreshed, expires in ${expiresIn}s',
-          'CiscoProvider',
-        );
-        return;
-      } catch (e) {
-        lastError = e is Exception ? e : Exception(e.toString());
-        if (attempt < _maxRetries - 1) {
-          final delay = _baseRetryDelay * (1 << attempt);
-          Logger.warning(
-            'Token refresh failed, retrying in ${delay.inSeconds}s...',
-            'CiscoProvider',
-          );
-          await Future.delayed(delay);
-        }
+  /// Applies the project policy to both configured connector origins before a
+  /// token refresh or streamed chat request can leave the workspace boundary.
+  /// The policy snapshot belongs to one request, never to this shared provider
+  /// instance, so concurrent turns cannot inherit each other's network grant.
+  void _enforceConnectorNetworkPolicy(ProviderConnectorNetworkPolicy policy) {
+    for (final requirement in connectorNetworkRequirements) {
+      final access = policy.evaluate(requirement);
+      if (access.decision == ProviderConnectorNetworkDecision.allow) {
+        continue;
       }
+      final message = access.decision == ProviderConnectorNetworkDecision.ask
+          ? '${access.message} Approve this connector request in Studio before sending.'
+          : access.message;
+      throw ProviderConnectorNetworkPolicyException(message);
     }
-    throw Exception(
-      'Failed to obtain OAuth token after $_maxRetries attempts: $lastError',
-    );
-  }
-
-  Future<String> _getToken() async {
-    if (_accessToken == null ||
-        _tokenExpiry == null ||
-        DateTime.now().isAfter(_tokenExpiry!)) {
-      await _refreshToken();
-    }
-    return _accessToken!;
   }
 
   @override
@@ -264,99 +185,428 @@ class CiscoProvider implements AIProvider {
     double temperature = 0.7,
     int maxTokens = 4096,
   }) async* {
-    final token = await _getToken();
-    final url =
-        '${AppConstants.ciscoChatBaseUrl}/$model/chat/completions?api-version=${AppConstants.ciscoApiVersion}';
+    yield* _chat(
+      messages,
+      model: model,
+      tools: tools,
+      systemPrompt: systemPrompt,
+      temperature: temperature,
+      maxTokens: maxTokens,
+    );
+  }
 
-    final apiMessages = <Map<String, dynamic>>[];
-    if (systemPrompt != null) {
-      apiMessages.add({'role': 'system', 'content': systemPrompt});
+  @override
+  Stream<ChatChunk> chatWithRequest(ProviderChatRequest request) async* {
+    if (request.images.isNotEmpty &&
+        !CiscoModelCatalog.supportsImageInputFor(request.model)) {
+      throw ProviderCapabilityException(
+        'Circuit Company AI does not support image input for ${request.model}.',
+      );
     }
-    for (final msg in messages) {
-      apiMessages.add(msg.toApiMessage());
+    if (request.reasoningEnabled &&
+        !CiscoModelCatalog.supportsReasoningFor(request.model)) {
+      throw ProviderCapabilityException(
+        'Circuit Company AI does not support reasoning controls for ${request.model}.',
+      );
     }
+    yield* _chat(
+      request.messages,
+      model: request.model,
+      tools: request.tools,
+      systemPrompt: request.systemPrompt,
+      temperature: request.temperature,
+      maxTokens: request.maxTokens,
+      images: request.images,
+      reasoningEnabled: request.reasoningEnabled,
+      connectorNetworkPolicy: request.connectorNetworkPolicy,
+    );
+  }
 
-    final body = <String, dynamic>{
-      'messages': apiMessages,
-      'user': jsonEncode({'appkey': _appKey}),
-      'temperature': temperature,
-      'max_tokens': maxTokens,
-      'stream': true,
-    };
-
-    if (tools.isNotEmpty) {
-      body['tools'] = tools.map((t) => t.toOpenAIFormat()).toList();
-      body['tool_choice'] = 'auto';
+  Stream<ChatChunk> _chat(
+    List<ChatMessage> messages, {
+    required String model,
+    required List<ToolDefinition> tools,
+    String? systemPrompt,
+    double temperature = 0.7,
+    int maxTokens = 4096,
+    List<ProviderImageInput> images = const [],
+    bool reasoningEnabled = false,
+    ProviderConnectorNetworkPolicy connectorNetworkPolicy =
+        ProviderConnectorNetworkPolicy.unrestricted,
+    int authenticationReconnectAttempt = 0,
+  }) async* {
+    try {
+      _enforceConnectorNetworkPolicy(connectorNetworkPolicy);
+    } on ProviderConnectorNetworkPolicyException catch (error) {
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: error.message,
+      );
+      rethrow;
     }
+    final String token;
+    try {
+      token = await _authenticator.getToken();
+    } catch (_) {
+      const errorMsg =
+          'Circuit authentication failed. Reconnect Circuit Company AI before retrying.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.authFailed,
+        lifecycleDetail: errorMsg,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: errorMsg,
+      );
+      throw Exception(errorMsg);
+    }
+    final composedRequest = CiscoChatRequestComposer.compose(
+      chatBaseUrl: _chatBaseUrl,
+      model: model,
+      appKey: _authenticator.appKey,
+      protocol: protocol,
+      messages: messages,
+      tools: tools,
+      systemPrompt: systemPrompt,
+      temperature: temperature,
+      maxTokens: maxTokens,
+      images: images,
+      reasoningEnabled: reasoningEnabled,
+    );
 
     Logger.info(
-      'Sending chat request to $url (model: $model, messages: ${apiMessages.length})',
+      'Sending Circuit chat request (model: $model, messages: ${composedRequest.messageCount})',
       'CiscoProvider',
     );
 
     Response<ResponseBody> response;
     final cancelToken = CancelToken();
     _activeCancelToken = cancelToken;
+    yield ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.requestSent,
+      lifecycleDetail:
+          'Circuit API request sent for $model with ${tools.length} exposed tools.',
+    );
     try {
       response = await _dio.post<ResponseBody>(
-        url,
-        data: jsonEncode(body),
+        composedRequest.url,
+        data: jsonEncode(composedRequest.body),
         cancelToken: cancelToken,
         options: Options(
-          headers: {'api-key': token, 'Content-Type': 'application/json'},
+          headers: {
+            'api-key': token,
+            'Content-Type': 'application/json',
+            'X-Circuit-Protocol-Version': '${protocol.version}',
+          },
           responseType: ResponseType.stream,
+          followRedirects: false,
+          maxRedirects: 0,
         ),
       );
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.cancelled,
+          lifecycleDetail: 'Circuit API request was cancelled.',
+        );
         throw Exception('Request cancelled');
+      }
+      if (CiscoStreamSupport.isTimeout(e)) {
+        const errorMsg = 'Circuit API request timed out.';
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.timeout,
+          lifecycleDetail: errorMsg,
+        );
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: errorMsg,
+        );
+        throw Exception(errorMsg);
       }
       final status = e.response?.statusCode;
       if (status == 401) {
-        await _refreshToken();
-        yield* chat(
+        if (authenticationReconnectAttempt >= 1) {
+          const errorMsg =
+              'Circuit authentication was rejected after one reconnect attempt. Reconnect Circuit Company AI before retrying.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.authFailed,
+            lifecycleDetail: errorMsg,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: errorMsg,
+          );
+          throw Exception(errorMsg);
+        }
+        try {
+          await _authenticator.refreshToken();
+        } catch (_) {
+          const errorMsg =
+              'Circuit authentication refresh failed. Reconnect Circuit Company AI before retrying.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.authFailed,
+            lifecycleDetail: errorMsg,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: errorMsg,
+          );
+          throw Exception(errorMsg);
+        }
+        // An HTTP 401 does not expose a response stream, so one fresh-token
+        // retry cannot duplicate streamed text or tool calls. Bound it to a
+        // single attempt so a misconfigured connector never loops forever.
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.reconnecting,
+          lifecycleDetail:
+              'Circuit refreshed authentication and is reconnecting the request once.',
+        );
+        yield* _chat(
           messages,
           model: model,
           tools: tools,
           systemPrompt: systemPrompt,
           temperature: temperature,
           maxTokens: maxTokens,
+          images: images,
+          reasoningEnabled: reasoningEnabled,
+          connectorNetworkPolicy: connectorNetworkPolicy,
+          authenticationReconnectAttempt: authenticationReconnectAttempt + 1,
         );
         return;
       }
-      String errorMsg = 'Circuit API error $status';
-      if (e.response?.data != null) {
-        try {
-          final errBody = await _readStreamBody(e.response!.data);
-          if (errBody.isNotEmpty) {
-            final errData = jsonDecode(errBody) as Map<String, dynamic>;
-            final inner = errData['error'] as Map<String, dynamic>?;
-            errorMsg =
-                inner?['message'] as String? ??
-                errData['message'] as String? ??
-                errorMsg;
-          }
-        } catch (_) {}
+      final failure = await CiscoTransportFailure.fromDio(e);
+      if (failure.statusCode != null) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.connected,
+          lifecycleDetail:
+              'Circuit API responded with HTTP ${failure.statusCode}.',
+        );
       }
+      if (failure.isRateLimited) {
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.rateLimited,
+          lifecycleDetail: failure.retryAfterDetail == null
+              ? 'Circuit API rate limit reached.'
+              : 'Circuit API rate limit reached. ${failure.retryAfterDetail}',
+        );
+      }
+      if (failure.statusCode == null) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail:
+              'Circuit API request failed before an HTTP response was received.',
+        );
+      }
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: failure.errorMessage,
+      );
+      throw Exception(failure.errorMessage);
+    } catch (_) {
+      const errorMsg = 'Circuit API request failed.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+        lifecycleDetail:
+            'Circuit API request failed before a response stream was opened.',
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: errorMsg,
+      );
       throw Exception(errorMsg);
-    } catch (e) {
-      throw Exception('Circuit API request failed: $e');
     }
 
-    // Read the full stream, then decide if it's SSE or plain JSON.
+    final protocolAcknowledgement = response.headers.value(
+      'x-circuit-protocol-version',
+    );
+    final int negotiatedProtocolVersion;
+    try {
+      negotiatedProtocolVersion = protocol.negotiateResponseVersion(
+        protocolAcknowledgement,
+      );
+    } on ProviderProtocolCompatibilityException catch (error) {
+      if (identical(_activeCancelToken, cancelToken)) {
+        _activeCancelToken = null;
+      }
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: error.message,
+      );
+      throw Exception(error.message);
+    }
+
+    yield ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.connected,
+      lifecycleDetail:
+          'Circuit API accepted the request (${response.statusCode ?? 'stream'}; '
+          'protocol $negotiatedProtocolVersion, '
+          '${protocolAcknowledgement == null ? 'legacy v1 compatibility' : 'explicit acknowledgement'}).',
+    );
+
+    final contentType = response.headers
+        .value(Headers.contentTypeHeader)
+        ?.toLowerCase();
+    if (CiscoStreamSupport.isJsonContentType(contentType)) {
+      yield ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.nonSseJson,
+        lifecycleDetail:
+            'Circuit returned ${contentType ?? 'JSON'} instead of SSE.',
+      );
+      final body = StringBuffer();
+      var sawFirstByte = false;
+      var sawRawFirstByte = false;
+      try {
+        await for (final text in CiscoStreamSupport.decodeUtf8Stream(
+          response.data!.stream,
+          idleTimeout: _dio.options.receiveTimeout,
+          onFirstByte: () {
+            sawRawFirstByte = true;
+          },
+        )) {
+          if (cancelToken.isCancelled) {
+            throw Exception('Request cancelled');
+          }
+          if (!sawFirstByte) {
+            sawFirstByte = true;
+            yield const ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.firstByte,
+              lifecycleDetail: 'Circuit API returned the first response bytes.',
+            );
+          }
+          body.write(text);
+        }
+      } catch (error) {
+        if (sawRawFirstByte && !sawFirstByte) {
+          sawFirstByte = true;
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.firstByte,
+            lifecycleDetail:
+                'Circuit API returned response bytes before the stream failed.',
+          );
+        }
+        if (CiscoStreamSupport.isCancellation(error, cancelToken)) {
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.cancelled,
+            lifecycleDetail: 'Circuit API request was cancelled.',
+          );
+          throw Exception('Request cancelled');
+        }
+        if (CiscoStreamSupport.isMalformedBytes(error)) {
+          const detail = 'Circuit API returned malformed UTF-8 response bytes.';
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.malformedBytes,
+            lifecycleDetail: detail,
+          );
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        if (CiscoStreamSupport.isTimeoutError(error)) {
+          final detail =
+              'Circuit API response stream timed out: ${CiscoStreamSupport.timeoutDetail(error)}';
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.timeout,
+            lifecycleDetail: detail,
+          );
+          yield ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.failed,
+            lifecycleDetail: detail,
+          );
+          throw Exception(detail);
+        }
+        const detail = 'Circuit API response stream failed.';
+        if (!sawFirstByte) {
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+            lifecycleDetail:
+                'Circuit API response stream failed before returning response bytes.',
+          );
+        }
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      } finally {
+        if (identical(_activeCancelToken, cancelToken)) {
+          _activeCancelToken = null;
+        }
+      }
+      if (sawRawFirstByte && !sawFirstByte) {
+        sawFirstByte = true;
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.firstByte,
+          lifecycleDetail:
+              'Circuit API returned response bytes before decoded text was available.',
+        );
+      }
+      if (!sawFirstByte) {
+        const detail = 'Circuit returned a JSON response with no bytes.';
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail: detail,
+        );
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.jsonFallback,
+        lifecycleDetail: 'Circuit returned a non-streaming JSON response.',
+      );
+      yield* CiscoStreamSupport.parseJsonFallbackWithDiagnostics(
+        body.toString().trim(),
+      );
+      return;
+    }
+
+    // Read the stream as SSE; if no SSE payload appears, fall back to JSON.
     final stream = response.data!.stream;
     String buffer = '';
     int promptTokens = 0;
+    int cachedInputTokens = 0;
     int completionTokens = 0;
+    int reasoningTokens = 0;
+    int toolTokens = 0;
     String? finishReason;
     bool yieldedAny = false;
+    bool sawFirstByte = false;
+    bool sawRawFirstByte = false;
+    bool sawTextDelta = false;
+    bool sawToolDelta = false;
+    bool sawMalformedSseChunk = false;
+    ChatChunk malformedSseChunk(String detail) {
+      sawMalformedSseChunk = true;
+      return ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: detail,
+      );
+    }
 
     try {
-      await for (final bytes in stream) {
+      await for (final text in CiscoStreamSupport.decodeUtf8Stream(
+        stream,
+        idleTimeout: _dio.options.receiveTimeout,
+        onFirstByte: () {
+          sawRawFirstByte = true;
+        },
+      )) {
         if (cancelToken.isCancelled) {
           throw Exception('Request cancelled');
         }
-        buffer += utf8.decode(bytes, allowMalformed: true);
+        if (!sawFirstByte) {
+          sawFirstByte = true;
+          yield const ChatChunk(
+            lifecycleKind: ProviderLifecycleEventKind.firstByte,
+            lifecycleDetail: 'Circuit API returned the first response bytes.',
+          );
+        }
+        buffer += text;
         // Normalize \r\n to \n for SSE parsing
         buffer = buffer.replaceAll('\r\n', '\n');
 
@@ -366,69 +616,347 @@ class CiscoProvider implements AIProvider {
           final eventBlock = buffer.substring(0, eventEnd);
           buffer = buffer.substring(eventEnd + 2);
 
+          String? eventName;
+          final payloadParts = <String>[];
           for (final line in eventBlock.split('\n')) {
-            if (!line.startsWith('data: ')) continue;
-            final payload = line.substring(6).trim();
-
-            if (payload == '[DONE]') {
-              yield ChatChunk(
-                finishReason: finishReason ?? 'stop',
-                promptTokens: promptTokens,
-                completionTokens: completionTokens,
-                isDone: true,
-              );
-              return;
-            }
-
-            Map<String, dynamic> json;
-            try {
-              json = jsonDecode(payload) as Map<String, dynamic>;
-            } catch (_) {
+            if (line.startsWith('event:')) {
+              eventName = line.substring(6).trim().toLowerCase();
               continue;
             }
-
-            final usage = json['usage'] as Map<String, dynamic>?;
-            if (usage != null) {
-              promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
-              completionTokens =
-                  usage['completion_tokens'] as int? ?? completionTokens;
+            if (line.startsWith('data:')) {
+              payloadParts.add(line.substring(5).trim());
             }
+          }
+          if (payloadParts.isEmpty) continue;
 
-            final choices = json['choices'] as List<dynamic>?;
-            if (choices == null || choices.isEmpty) continue;
+          final payload = payloadParts.join('\n').trim();
 
-            final choice = choices[0] as Map<String, dynamic>;
-            final delta = choice['delta'] as Map<String, dynamic>? ?? {};
-            finishReason = choice['finish_reason'] as String? ?? finishReason;
+          if (eventName == 'error') {
+            final detail =
+                'Circuit SSE error event: ${CiscoStreamSupport.sseErrorEventMessage(payload)}';
+            yield ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.failed,
+              lifecycleDetail: detail,
+            );
+            throw ProviderLifecycleException(detail);
+          }
 
-            final content = delta['content'] as String?;
-            if (content != null && content.isNotEmpty) {
-              yieldedAny = true;
-              yield ChatChunk(content: content);
+          if (payload == '[DONE]') {
+            if (!sawTextDelta && !sawToolDelta && sawMalformedSseChunk) {
+              const detail =
+                  'Circuit SSE stream completed after malformed chunks without any valid assistant text or tool calls.';
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+                lifecycleDetail:
+                    'Circuit SSE completed without valid assistant text or tool calls.',
+              );
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.failed,
+                lifecycleDetail: detail,
+              );
+              throw const ProviderLifecycleException(
+                'Circuit SSE stream completed after malformed chunks without any valid assistant text or tool calls.',
+              );
             }
+            if (!sawTextDelta && !sawToolDelta) {
+              const detail =
+                  'Circuit SSE stream completed without assistant text or tool calls.';
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.noTextOrTool,
+                lifecycleDetail: detail,
+              );
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.failed,
+                lifecycleDetail: detail,
+              );
+              throw const ProviderLifecycleException(
+                'Circuit SSE stream completed without assistant text or tool calls.',
+              );
+            }
+            if (!sawTextDelta && sawToolDelta) {
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.toolOnly,
+                lifecycleDetail:
+                    'Circuit returned tool calls without assistant text in SSE.',
+              );
+            }
+            yield const ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.completed,
+              lifecycleDetail: 'Circuit provider stream completed.',
+            );
+            yield ChatChunk(
+              finishReason: finishReason ?? 'stop',
+              promptTokens: promptTokens,
+              cachedInputTokens: cachedInputTokens,
+              completionTokens: completionTokens,
+              reasoningTokens: reasoningTokens,
+              toolTokens: toolTokens,
+              isDone: true,
+            );
+            return;
+          }
 
-            final toolCalls = delta['tool_calls'] as List<dynamic>?;
-            if (toolCalls != null) {
-              yieldedAny = true;
-              for (final tc in toolCalls) {
-                final tcMap = tc as Map<String, dynamic>;
-                final function =
-                    tcMap['function'] as Map<String, dynamic>? ?? {};
-                yield ChatChunk(
-                  toolCallIndex: tcMap['index'] as int?,
-                  toolCallId: tcMap['id'] as String?,
-                  toolCallName: function['name'] as String?,
-                  toolCallArguments: function['arguments'] as String?,
+          Map<String, dynamic> json;
+          try {
+            json = jsonDecode(payload) as Map<String, dynamic>;
+          } catch (_) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE JSON chunk.',
+            );
+            continue;
+          }
+
+          final errorMessage = ciscoJsonErrorPayloadMessage(json);
+          if (errorMessage != null) {
+            final detail =
+                'Circuit API returned an error payload: $errorMessage';
+            yield ChatChunk(
+              lifecycleKind: ProviderLifecycleEventKind.failed,
+              lifecycleDetail: detail,
+            );
+            throw ProviderLifecycleException(detail);
+          }
+
+          final usage = json['usage'] as Map<String, dynamic>?;
+          if (usage != null) {
+            promptTokens = usage['prompt_tokens'] as int? ?? promptTokens;
+            completionTokens =
+                usage['completion_tokens'] as int? ?? completionTokens;
+            final promptDetails = usage['prompt_tokens_details'];
+            if (promptDetails is Map) {
+              cachedInputTokens =
+                  promptDetails['cached_tokens'] as int? ?? cachedInputTokens;
+            }
+            final completionDetails = usage['completion_tokens_details'];
+            if (completionDetails is Map) {
+              reasoningTokens =
+                  completionDetails['reasoning_tokens'] as int? ??
+                  reasoningTokens;
+            }
+            toolTokens = usage['tool_tokens'] as int? ?? toolTokens;
+          }
+
+          final choices = json['choices'] as List<dynamic>?;
+          if (choices == null || choices.isEmpty) continue;
+
+          final rawChoice = choices[0];
+          if (rawChoice is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE choice entry.',
+            );
+            continue;
+          }
+          final choice = rawChoice;
+          final rawDelta = choice['delta'];
+          if (rawDelta != null && rawDelta is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE delta field.',
+            );
+            continue;
+          }
+          final rawMessage = choice['message'];
+          if (rawDelta == null &&
+              rawMessage != null &&
+              rawMessage is! Map<String, dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE message field.',
+            );
+            continue;
+          }
+          final delta = rawDelta as Map<String, dynamic>? ?? {};
+          final message = rawMessage as Map<String, dynamic>? ?? {};
+          finishReason = choice['finish_reason'] as String? ?? finishReason;
+
+          final content =
+              delta['content'] as String? ?? message['content'] as String?;
+          if (content != null && content.isNotEmpty) {
+            if (!sawTextDelta) {
+              yield const ChatChunk(
+                lifecycleKind: ProviderLifecycleEventKind.firstTextDelta,
+                lifecycleDetail:
+                    'Circuit returned the first assistant text delta.',
+              );
+            }
+            yieldedAny = true;
+            sawTextDelta = true;
+            yield ChatChunk(content: content);
+          }
+
+          final rawDeltaToolCalls = delta['tool_calls'];
+          final rawMessageToolCalls = message['tool_calls'];
+          final rawToolCalls = rawDeltaToolCalls ?? rawMessageToolCalls;
+          if (rawToolCalls != null && rawToolCalls is! List<dynamic>) {
+            yield malformedSseChunk(
+              'Circuit returned a malformed SSE tool_calls field.',
+            );
+            continue;
+          }
+          final toolCallsCameFromMessage =
+              rawDeltaToolCalls == null && rawMessageToolCalls != null;
+          final toolCalls = rawToolCalls as List<dynamic>?;
+          if (toolCalls != null) {
+            for (var toolIndex = 0; toolIndex < toolCalls.length; toolIndex++) {
+              final tc = toolCalls[toolIndex];
+              if (tc is! Map<String, dynamic>) {
+                yield malformedSseChunk(
+                  'Circuit returned a malformed SSE tool-call entry.',
+                );
+                continue;
+              }
+              final rawFunction = tc['function'];
+              if (rawFunction != null && rawFunction is! Map<String, dynamic>) {
+                yield malformedSseChunk(
+                  'Circuit returned a malformed SSE tool-call function.',
+                );
+                continue;
+              }
+              final rawIndex = tc['index'];
+              final resolvedIndex = rawIndex is int
+                  ? rawIndex
+                  : toolCallsCameFromMessage
+                  ? toolIndex
+                  : null;
+              if (resolvedIndex == null) {
+                yield malformedSseChunk(
+                  'Circuit returned an SSE tool-call delta without a numeric index.',
+                );
+                continue;
+              }
+              final function = rawFunction as Map<String, dynamic>? ?? {};
+              final rawName = function['name'];
+              final rawArguments = function['arguments'];
+              if (rawName != null && rawName is! String) {
+                yield malformedSseChunk(
+                  'Circuit returned an SSE tool-call name that was not text.',
+                );
+                continue;
+              }
+              if (rawArguments != null && rawArguments is! String) {
+                yield malformedSseChunk(
+                  'Circuit returned SSE tool-call arguments that were not text.',
+                );
+                continue;
+              }
+              final name = rawName is String && rawName.trim().isNotEmpty
+                  ? rawName
+                  : null;
+              final arguments = rawArguments is String ? rawArguments : null;
+              if (name == null && arguments == null) {
+                yield malformedSseChunk(
+                  'Circuit returned an empty SSE tool-call delta.',
+                );
+                continue;
+              }
+              if (!sawToolDelta) {
+                yield const ChatChunk(
+                  lifecycleKind: ProviderLifecycleEventKind.firstToolDelta,
+                  lifecycleDetail:
+                      'Circuit returned the first tool-call delta.',
                 );
               }
+              yieldedAny = true;
+              sawToolDelta = true;
+              yield ChatChunk(
+                toolCallIndex: resolvedIndex,
+                toolCallId: tc['id'] as String?,
+                toolCallName: name,
+                toolCallArguments: arguments,
+              );
             }
           }
         }
       }
+    } catch (error) {
+      if (error is ProviderLifecycleException) rethrow;
+      if (sawRawFirstByte && !sawFirstByte) {
+        sawFirstByte = true;
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.firstByte,
+          lifecycleDetail:
+              'Circuit API returned response bytes before the stream failed.',
+        );
+      }
+      if (CiscoStreamSupport.isCancellation(error, cancelToken)) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.cancelled,
+          lifecycleDetail: 'Circuit API request was cancelled.',
+        );
+        throw Exception('Request cancelled');
+      }
+      if (CiscoStreamSupport.isMalformedBytes(error)) {
+        const detail = 'Circuit API returned malformed UTF-8 response bytes.';
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.malformedBytes,
+          lifecycleDetail: detail,
+        );
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      if (CiscoStreamSupport.isTimeoutError(error)) {
+        final detail =
+            'Circuit API response stream timed out: ${CiscoStreamSupport.timeoutDetail(error)}';
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.timeout,
+          lifecycleDetail: detail,
+        );
+        yield ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.failed,
+          lifecycleDetail: detail,
+        );
+        throw Exception(detail);
+      }
+      const detail = 'Circuit API response stream failed.';
+      if (!sawFirstByte) {
+        yield const ChatChunk(
+          lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+          lifecycleDetail:
+              'Circuit API response stream failed before returning response bytes.',
+        );
+      }
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
     } finally {
       if (identical(_activeCancelToken, cancelToken)) {
         _activeCancelToken = null;
       }
+    }
+
+    if (sawRawFirstByte && !sawFirstByte) {
+      sawFirstByte = true;
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.firstByte,
+        lifecycleDetail:
+            'Circuit API returned response bytes before decoded text was available.',
+      );
+    }
+
+    final trailingBuffer = buffer.trim();
+    if (trailingBuffer.isNotEmpty &&
+        CiscoStreamSupport.looksLikeSsePayload(trailingBuffer)) {
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.malformedChunk,
+        lifecycleDetail: 'Circuit SSE stream ended with an incomplete event.',
+      );
+      buffer = '';
+    }
+
+    if (!sawFirstByte) {
+      const detail = 'Circuit stream closed with no response bytes.';
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.noFirstByte,
+        lifecycleDetail: detail,
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.failed,
+        lifecycleDetail: detail,
+      );
+      throw Exception(detail);
     }
 
     // Fallback: if no SSE events were parsed, the API likely returned
@@ -438,80 +966,33 @@ class CiscoProvider implements AIProvider {
         'No SSE events found, attempting JSON fallback parse',
         'CiscoProvider',
       );
-      yield* _parseJsonResponse(buffer.trim());
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.nonSseJson,
+        lifecycleDetail: 'Circuit returned JSON instead of SSE.',
+      );
+      yield const ChatChunk(
+        lifecycleKind: ProviderLifecycleEventKind.jsonFallback,
+        lifecycleDetail: 'Circuit returned a non-streaming JSON response.',
+      );
+      yield* CiscoStreamSupport.parseJsonFallbackWithDiagnostics(buffer.trim());
       return;
     }
 
-    yield ChatChunk(
-      finishReason: finishReason ?? 'stop',
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-      isDone: true,
+    const earlyCloseDetail =
+        'Circuit SSE stream ended without the [DONE] terminator.';
+    yield const ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.streamEndedWithoutDone,
+      lifecycleDetail: earlyCloseDetail,
     );
-  }
 
-  /// Parse a plain JSON chat completion response (non-streaming fallback).
-  Stream<ChatChunk> _parseJsonResponse(String body) async* {
-    Map<String, dynamic> data;
-    try {
-      data = jsonDecode(body) as Map<String, dynamic>;
-    } catch (e) {
-      Logger.error('Failed to parse Circuit API response as JSON', e);
-      throw Exception('Invalid response from Circuit API');
-    }
-
-    final choices = data['choices'] as List<dynamic>?;
-    if (choices == null || choices.isEmpty) {
-      yield const ChatChunk(finishReason: 'stop', isDone: true);
-      return;
-    }
-
-    final choice = choices[0] as Map<String, dynamic>;
-    final message = choice['message'] as Map<String, dynamic>? ?? {};
-    final content = message['content'] as String? ?? '';
-    final finishReason = choice['finish_reason'] as String? ?? 'stop';
-
-    final usage = data['usage'] as Map<String, dynamic>?;
-    final promptTokens = usage?['prompt_tokens'] as int? ?? 0;
-    final completionTokens = usage?['completion_tokens'] as int? ?? 0;
-
-    // Emit content
-    if (content.isNotEmpty) {
-      yield ChatChunk(content: content);
-    }
-
-    // Emit tool calls
-    final toolCalls = message['tool_calls'] as List<dynamic>?;
-    if (toolCalls != null) {
-      for (int i = 0; i < toolCalls.length; i++) {
-        final tc = toolCalls[i] as Map<String, dynamic>;
-        final function = tc['function'] as Map<String, dynamic>?;
-        yield ChatChunk(
-          toolCallIndex: i,
-          toolCallId: tc['id'] as String?,
-          toolCallName: function?['name'] as String?,
-          toolCallArguments: function?['arguments'] as String?,
-        );
-      }
-    }
-
-    yield ChatChunk(
-      finishReason: finishReason,
-      promptTokens: promptTokens,
-      completionTokens: completionTokens,
-      isDone: true,
+    yield* CiscoStreamSupport.diagnoseSseOutput(
+      sawTextDelta: sawTextDelta,
+      sawToolDelta: sawToolDelta,
     );
-  }
-
-  /// Read a stream response body into a string (for error responses).
-  Future<String> _readStreamBody(dynamic data) async {
-    if (data is ResponseBody) {
-      final chunks = <int>[];
-      await for (final bytes in data.stream) {
-        chunks.addAll(bytes);
-      }
-      return utf8.decode(chunks, allowMalformed: true);
-    }
-    return data.toString();
+    yield const ChatChunk(
+      lifecycleKind: ProviderLifecycleEventKind.failed,
+      lifecycleDetail: earlyCloseDetail,
+    );
+    throw Exception(earlyCloseDetail);
   }
 }

@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "scope": "Hardware-scoped packaged Release p95 regression guard; only applies to the exact recorded reference environment.",
+  "reference": {
+    "hardwareModel": "Mac16,7",
+    "architecture": "arm64",
+    "macosMajorVersion": 26,
+    "fixtureRevision": "04d2cb28bb3eb7edab65ab6f39993463012fa2b8d3b16ac6784edbff6afeeb4b",
+    "minimumSampleCount": 5
+  },
+  "baselineP95": {
+    "dartMainToFirstFrameMilliseconds": 24,
+    "projectBindMilliseconds": 5,
+    "firstStreamFrameMilliseconds": 11,
+    "streamTenThousandDeltaBurstMilliseconds": 168,
+    "streamTenThousandDeltaStateUpdates": 2,
+    "taskSwitchMilliseconds": 14,
+    "durableReloadMilliseconds": 191,
+    "taskSummaryPage5000Milliseconds": 27,
+    "threadSummaryPage1000Milliseconds": 6,
+    "threadHydration1000Milliseconds": 45,
+    "projectRecoveryAndMetadata500Milliseconds": 191,
+    "semanticIndexRebuild1200Milliseconds": 67,
+    "durableCheckpointPersistenceMilliseconds": 6,
+    "residentSetBytes": 250265600,
+    "streamFrameBuildP95Milliseconds": 4,
+    "streamFrameRasterP95Milliseconds": 3,
+    "streamFrameTotalP95Milliseconds": 10,
+    "transcriptScrollFrameBuildP95Milliseconds": 4,
+    "transcriptScrollFrameRasterP95Milliseconds": 2,
+    "transcriptScrollFrameTotalP95Milliseconds": 5
+  },
+  "maximumP95": {
+    "dartMainToFirstFrameMilliseconds": 2500,
+    "projectBindMilliseconds": 300,
+    "firstStreamFrameMilliseconds": 150,
+    "streamTenThousandDeltaBurstMilliseconds": 1200,
+    "streamTenThousandDeltaStateUpdates": 4,
+    "taskSwitchMilliseconds": 200,
+    "durableReloadMilliseconds": 500,
+    "taskSummaryPage5000Milliseconds": 1000,
+    "threadSummaryPage1000Milliseconds": 1000,
+    "threadHydration1000Milliseconds": 2000,
+    "projectRecoveryAndMetadata500Milliseconds": 5000,
+    "semanticIndexRebuild1200Milliseconds": 10000,
+    "durableCheckpointPersistenceMilliseconds": 500,
+    "residentSetBytes": 471859200,
+    "streamFrameBuildP95Milliseconds": 17,
+    "streamFrameRasterP95Milliseconds": 17,
+    "streamFrameTotalP95Milliseconds": 17,
+    "transcriptScrollFrameBuildP95Milliseconds": 17,
+    "transcriptScrollFrameRasterP95Milliseconds": 17,
+    "transcriptScrollFrameTotalP95Milliseconds": 17
+  },
+  "minimumP95": {
+    "streamFrameTimingSampleCount": 5,
+    "transcriptScrollFrameTimingSampleCount": 5
+  },
+  "evidence": {
+    "capturedAt": "2026-07-13",
+    "releaseBuild": "1",
+    "sampleCount": 5,
+    "notes": "Baseline observations are retained for comparison; maximums are the documented release-profile acceptance targets or explicit bounded packaged-probe limits."
+  }
+}

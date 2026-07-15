@@ -369,9 +369,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           // Input row
           CompositedTransformTarget(
             link: _layerLink,
-            child: KeyboardListener(
-              focusNode: FocusNode(),
-              onKeyEvent: (event) => _handleKeyEvent(event),
+            child: Focus(
+              onKeyEvent: (_, event) => _handleKeyEvent(event)
+                  ? KeyEventResult.handled
+                  : KeyEventResult.ignored,
               child: Container(
                 decoration: BoxDecoration(
                   color: tokens.inputBg,
@@ -477,6 +478,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       ContextAttachmentType.diagnostics => Icons.error_outline,
       ContextAttachmentType.symbols => Icons.data_object,
       ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.image => Icons.image_outlined,
       ContextAttachmentType.note => Icons.notes,
     };
   }
@@ -969,6 +971,7 @@ class _SlashPopup extends ConsumerWidget {
       ContextAttachmentType.diagnostics => Icons.error_outline,
       ContextAttachmentType.symbols => Icons.data_object,
       ContextAttachmentType.url => Icons.link,
+      ContextAttachmentType.image => Icons.image_outlined,
       ContextAttachmentType.note => Icons.notes,
     };
   }

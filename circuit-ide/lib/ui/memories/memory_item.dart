@@ -79,7 +79,14 @@ class _MemoryItemState extends ConsumerState<MemoryItem> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            widget.memory.isGlobal ? 'Global' : 'Project',
+                            [
+                              widget.memory.isGlobal ? 'Global' : 'Project',
+                              widget.memory.provenanceLabel,
+                              if (widget.memory.lastUsedAt == null)
+                                'Not used yet'
+                              else
+                                'Last used ${_dateLabel(widget.memory.lastUsedAt!)}',
+                            ].join(' · '),
                             style: TextStyle(
                               color: tokens.textMuted,
                               fontSize: FontSizes.xxs,
@@ -136,6 +143,11 @@ class _MemoryItemState extends ConsumerState<MemoryItem> {
         ),
       ),
     );
+  }
+
+  String _dateLabel(DateTime value) {
+    final local = value.toLocal();
+    return '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
   }
 }
 

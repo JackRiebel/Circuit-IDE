@@ -1,0 +1,117 @@
+name: Security scanner fixture exercise
+
+# This is a manual rehearsal, not a release gate. It intentionally creates
+# temporary test data on the GitHub runner and succeeds only when both scanners
+# reject that data. No live credential or installed vulnerable dependency is
+# committed to the repository.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks-rejects-temporary-fixture:
+    name: Gitleaks rejects a temporary synthetic credential pattern
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v6
+        with:
+          # Keep this aligned with the pinned OSV Scanner's declared minimum.
+          go-version: "1.26.2"
+          # The workflow installs a pinned scanner, not a repository module.
+          cache: false
+
+      - name: Install the pinned Gitleaks scanner
+        run: go install github.com/zricethezav/gitleaks/v8@v8.29.0
+
+      - name: Require Gitleaks to reject the fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/circuitcode-gitleaks-fixture"
+          log="$RUNNER_TEMP/circuitcode-gitleaks-fixture.log"
+          umask 077
+          mkdir -p "$fixture"
+
+          # This is a deliberately non-usable documentation-shaped pattern.
+          # Assemble it only on the runner so no matcher-shaped value is stored
+          # in the repository or printed to the workflow log.
+          # The AWS detector requires a base32-shaped suffix. Assemble this
+          # non-usable pattern only on the hosted runner; it is never printed
+          # or stored in the repository.
+          access_key="$(printf '%s%s' 'AKIA' 'Q7T2M5Z4H6N3R7XK')"
+          printf 'aws_access_key_id = "%s"\n' "$access_key" \
+            > "$fixture/fixture.env"
+
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" dir "$fixture" > "$log" 2>&1
+          scanner_exit="$?"
+          set -e
+          if [[ "$scanner_exit" -eq 0 ]]; then
+            echo "Gitleaks did not reject its controlled fixture" >&2
+            exit 1
+          fi
+          echo "Gitleaks correctly rejected its controlled temporary fixture."
+
+      - name: Destroy temporary secret-scanning data
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/circuitcode-gitleaks-fixture" "$RUNNER_TEMP/circuitcode-gitleaks-fixture.log"
+
+  osv-rejects-temporary-fixture:
+    name: OSV rejects a temporary vulnerable dependency record
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v6
+        with:
+          # Keep this aligned with the pinned OSV Scanner's declared minimum.
+          go-version: "1.26.2"
+          # The workflow installs a pinned scanner, not a repository module.
+          cache: false
+
+      - name: Install the pinned OSV scanner
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8
+
+      - name: Create the controlled OSV intermediate file
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/circuitcode-osv-fixture"
+          mkdir -p "$fixture"
+          printf '%s\n' \
+            '{' \
+            '  "results": [' \
+            '    {' \
+            '      "packages": [' \
+            '        {' \
+            '          "package": {' \
+            '            "name": "lodash",' \
+            '            "version": "4.17.20",' \
+            '            "ecosystem": "npm"' \
+            '          }' \
+            '        }' \
+            '      ]' \
+            '    }' \
+            '  ]' \
+            '}' > "$fixture/osv-scanner-deps.json"
+
+      - name: Require OSV to reject the fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/circuitcode-osv-fixture"
+          log="$RUNNER_TEMP/circuitcode-osv-fixture.log"
+          set +e
+          "$(go env GOPATH)/bin/osv-scanner" \
+            --lockfile "osv-scanner:$fixture/osv-scanner-deps.json" > "$log" 2>&1
+          scanner_exit="$?"
+          set -e
+          if [[ "$scanner_exit" -ne 1 ]]; then
+            echo "OSV did not report the controlled vulnerable fixture as a finding" >&2
+            exit 1
+          fi
+          echo "OSV correctly rejected its controlled temporary fixture."
+
+      - name: Destroy temporary OSV-scanning data
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/circuitcode-osv-fixture" "$RUNNER_TEMP/circuitcode-osv-fixture.log"

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:circuit_ide/core/utils/platform_utils.dart';
 import 'package:circuit_ide/models/workspace_open_result.dart';
 import 'package:circuit_ide/state/file_tree_provider.dart';
 import 'package:circuit_ide/state/settings_provider.dart';
@@ -8,6 +9,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
 void main() {
+  late Directory configRoot;
+
+  setUp(() async {
+    configRoot = await Directory.systemTemp.createTemp('circuit_config_');
+    PlatformUtils.configDirOverride = configRoot.path;
+  });
+
+  tearDown(() async {
+    PlatformUtils.configDirOverride = null;
+    await _delete(configRoot);
+  });
+
   test(
     'openDirectory does not mutate rootPath for a missing project',
     () async {
@@ -78,10 +91,57 @@ void main() {
 
     expect(container.read(settingsProvider).recentProjects, [existing.path]);
   });
+
+  test(
+    'SettingsNotifier replaces an aliased recent project with its bound root',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings = container.read(settingsProvider.notifier);
+
+      settings.addRecentProject('/tmp/workspace-link');
+      settings.addRecentProject('/private/tmp/workspace');
+      settings.replaceRecentProjectPath(
+        requestedPath: '/tmp/workspace-link',
+        resolvedPath: '/private/tmp/workspace',
+      );
+
+      final state = container.read(settingsProvider);
+      expect(state.recentProjects, ['/private/tmp/workspace']);
+      expect(state.lastProjectPath, '/private/tmp/workspace');
+    },
+  );
+
+  test(
+    'SettingsNotifier keeps all recent projects instead of capping at ten',
+    () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final settings = container.read(settingsProvider.notifier);
+
+      final paths = [
+        for (var index = 0; index < 12; index++) '/tmp/circuit-project-$index',
+      ];
+      for (final path in paths) {
+        settings.addRecentProject(path);
+      }
+
+      final recent = container.read(settingsProvider).recentProjects;
+
+      expect(recent, hasLength(12));
+      expect(recent.first, paths.last);
+      expect(recent.last, paths.first);
+    },
+  );
 }
 
 Future<void> _delete(Directory directory) async {
   if (await directory.exists()) {
-    await directory.delete(recursive: true);
+    try {
+      await directory.delete(recursive: true);
+    } on PathNotFoundException {
+      // A background persistence task can finish after the existence check
+      // and remove the temporary configuration root first.
+    }
   }
 }

@@ -1,0 +1,460 @@
+import 'dart:convert';
+
+import 'package:circuit_ide/models/artifact_document.dart';
+import 'package:circuit_ide/services/pdf_artifact_inspector.dart';
+import 'package:circuit_ide/services/pdf_artifact_renderer.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('PDF inspector verifies report chrome metadata and table layout', () async {
+    const document = ArtifactDocument(
+      title: 'Campus Refresh Handoff (Draft)',
+      summary: 'Executive handoff for the campus refresh.',
+      sections: [
+        ArtifactSection(
+          title: 'Findings',
+          body: 'Access switching needs multigig and PoE validation.',
+          bullets: [
+            'Validate uplink capacity.',
+            'Confirm AP power requirements.',
+          ],
+        ),
+        ArtifactSection(
+          title: 'Recommendations',
+          bullets: [
+            'Use current portfolio candidates.',
+            'Treat EoX replacement PIDs as migration clues only.',
+          ],
+        ),
+      ],
+      tables: [
+        ArtifactTable(
+          title: 'Sizing Inputs',
+          rows: [
+            ['Site', 'Users', 'WAN'],
+            ['HQ', '500', '2 Gbps'],
+            ['Branch', '120', '500 Mbps'],
+          ],
+        ),
+      ],
+      assumptions: ['Customer will validate final inventory.'],
+      citations: ['Customer workshop notes.'],
+    );
+
+    final bytes = const PdfArtifactRenderer().render(document);
+    final workerBytes = await const PdfArtifactRenderer().renderInWorker(
+      document,
+    );
+    final inspection = const PdfArtifactInspector().inspect(bytes);
+    final workerInspection = await const PdfArtifactInspector()
+        .inspectForArtifactInWorker(bytes);
+    final text = latin1.decode(bytes, allowInvalid: true);
+
+    expect(
+      PdfArtifactInspector.metadataFor(
+        const PdfArtifactInspector().inspect(workerBytes),
+      ),
+      PdfArtifactInspector.metadataFor(inspection),
+    );
+    expect(workerInspection['pageCount'], inspection.pageCount);
+    expect(
+      workerInspection['metadata'],
+      PdfArtifactInspector.metadataFor(inspection),
+    );
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(inspection.hasExpectedReportChrome, isTrue);
+    expect(inspection.hasTableGrid, isTrue);
+    expect(inspection.hasOutlineCatalog, isTrue);
+    expect(inspection.hasOutlineTree, isTrue);
+    expect(inspection.hasMarkedContent, isTrue);
+    expect(inspection.hasStructTreeRoot, isTrue);
+    expect(inspection.hasParentTree, isTrue);
+    expect(inspection.hasTaggedPageContent, isTrue);
+    expect(inspection.hasTaggedPdfStructure, isTrue);
+    expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasLeadDecisionBookmark, isTrue);
+    expect(inspection.hasExecutiveDecisionBookmark, isTrue);
+    expect(inspection.hasValidationBookmark, isTrue);
+    expect(inspection.hasLeadDecisionCallout, isTrue);
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasRecommendationSummary, isTrue);
+    expect(inspection.hasRiskRegister, isTrue);
+    expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(inspection.hasStakeholderReadout, isTrue);
+    expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
+    expect(inspection.hasApprovalGates, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasCustomerHandoffReadinessMatrix, isTrue);
+    expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
+    expect(inspection.hasVisibleExternalHandoffManifest, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
+    expect(inspection.hasInfoKeywords, isTrue);
+    expect(inspection.hasCustomQualityInfo, isTrue);
+    expect(inspection.hasVisualVerificationManifest, isTrue);
+    expect(inspection.hasExternalHandoffManifest, isTrue);
+    expect(inspection.hasRenderSafeTextFrame, isTrue);
+    expect(inspection.hasPageCountConsistency, isTrue);
+    expect(inspection.hasResolvableBookmarkDestinations, isTrue);
+    expect(inspection.pageCount, greaterThanOrEqualTo(1));
+    expect(inspection.objectCount, greaterThanOrEqualTo(8));
+    expect(inspection.title, 'Campus Refresh Handoff (Draft)');
+    expect(text, contains('Report Overview'));
+    expect(text, contains('/PageMode /UseOutlines'));
+    expect(text, contains('/Type /Outlines'));
+    expect(text, contains('/MarkInfo << /Marked true >>'));
+    expect(text, contains('/Type /StructTreeRoot'));
+    expect(text, contains('/ParentTree'));
+    expect(text, contains('/StructParents 0'));
+    expect(text, contains('/P << /MCID 0 >> BDC'));
+    expect(text, contains('/Title (Report Overview)'));
+    expect(text, contains('/Title (Lead Decision Callout)'));
+    expect(text, contains('/Title (Executive Decision Brief)'));
+    expect(text, contains('/Title (Validation Checklist)'));
+    expect(text, contains('/Title (Decision Sign-Off)'));
+    expect(text, contains('Lead Decision Callout'));
+    expect(text, contains('Decision ask'));
+    expect(text, contains('Handoff status'));
+    expect(text, contains('Review path'));
+    expect(text, contains('Executive Decision Brief'));
+    expect(text, contains('Recommendation Summary'));
+    expect(text, contains('Risk & Assumption Register'));
+    expect(text, contains('Next-Step Action Plan'));
+    expect(text, contains('Stakeholder Readout'));
+    expect(text, contains('Evidence Confidence Matrix'));
+    expect(text, contains('Approval Gates'));
+    expect(text, contains('Document Map'));
+    expect(text, contains('Validation Checklist'));
+    expect(text, contains('Customer Handoff Scorecard'));
+    expect(text, contains('Customer Handoff Readiness Matrix'));
+    expect(text, contains('/Title (Customer Handoff Readiness Matrix)'));
+    expect(text, contains('/CircuitCustomerHandoffReadiness'));
+    expect(text, contains('Evidence package'));
+    expect(text, contains('Decision Log'));
+    expect(text, contains('Decision Sign-Off'));
+    expect(text, contains('External Handoff Manifest'));
+    expect(text, contains('Handoff Control'));
+    expect(text, contains('Readiness Detail'));
+    expect(text, contains('Signature / Date'));
+    expect(text, contains('Handoff approval'));
+    expect(text, contains('Sizing Inputs'));
+    expect(text, contains('/CircuitReportQualityManifest'));
+    expect(text, contains('/CircuitVisualVerification'));
+    expect(text, contains('/CircuitAccessibilityPolicy'));
+    expect(text, contains('/CircuitPublishingStatus'));
+    expect(text, contains('/CircuitReviewPath'));
+    expect(text, contains('/CircuitExternalHandoffManifest'));
+    expect(
+      text,
+      contains('Review owner: Architecture owner / customer sponsor'),
+    );
+    expect(text, contains('Publishing gate: ready for stakeholder approval'));
+    expect(
+      text,
+      contains('Evidence status: High - sources and assumptions captured'),
+    );
+    expect(text, contains('Page 1 of ${inspection.pageCount}'));
+
+    final metadata = const PdfArtifactRenderer().metadataFor(document);
+    expect(metadata['artifact'], 'pdf_report');
+    expect(metadata['qualityManifestVersion'], '1.0');
+    expect(metadata['reportType'], 'Architecture report');
+    expect(metadata['audience'], 'Architecture reviewers');
+    expect(
+      metadata['reportPurpose'],
+      'Review findings, risks, and recommendations',
+    );
+    expect(metadata['handoffStatus'], 'Ready for stakeholder review');
+    expect(metadata['decisionOwner'], 'Architecture owner / customer sponsor');
+    expect(
+      metadata['decisionAsk'],
+      'Review findings, confirm assumptions, and approve the recommended architecture path.',
+    );
+    expect(
+      metadata['reviewPath'],
+      'Architecture review -> risk validation -> implementation decision',
+    );
+    expect(metadata['documentQuality'], 'Enterprise PDF handoff report');
+    expect(metadata['designPreset'], 'customer_handoff_report');
+    expect(
+      metadata['layoutSystem'],
+      'US Letter, 0.75 inch content frame, Helvetica type scale',
+    );
+    expect(metadata['hasTaggedPdfStructure'], isTrue);
+    expect(metadata['pdfTaggingProfile'], 'Page-level marked reading order');
+    expect(metadata['pdfTaggedPageCount'], inspection.pageCount);
+    expect(
+      metadata['formFactors'],
+      containsAll([
+        'Lead decision callout',
+        'PDF bookmark outline',
+        'Executive decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
+        'Decision log',
+        'Decision sign-off page',
+        'External handoff manifest',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
+    expect(
+      metadata['documentParts'],
+      containsAll([
+        'Executive decision brief',
+        'Lead decision callout',
+        'Recommendation summary',
+        'Risk register',
+        'Next-step action plan',
+        'Document map',
+        'Evidence confidence matrix',
+        'Approval gates',
+        'Validation checklist',
+        'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
+        'Decision log',
+        'Decision sign-off',
+        'External handoff manifest',
+        'Data tables',
+        'Assumptions appendix',
+        'Sources appendix',
+      ]),
+    );
+    expect(metadata['documentPartCount'], greaterThanOrEqualTo(11));
+    expect(metadata['handoffScore'], 100);
+    expect(metadata['handoffReadinessLevel'], 'Customer handoff ready');
+    expect(metadata['handoffScorecardItemCount'], 5);
+    expect(
+      metadata['customerHandoffGateStatus'],
+      'Ready for stakeholder approval',
+    );
+    expect(metadata['customerHandoffGateCount'], 5);
+    expect(
+      metadata['customerHandoffGateRows'].toString(),
+      contains('Evidence package, 1 source item attached, Ready'),
+    );
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
+    expect(metadata['decisionLogCount'], 4);
+    expect(metadata['decisionSignOffGateCount'], 4);
+    expect(metadata['externalHandoffManifestRowCount'], 9);
+    expect(metadata['tableCoverage'], '1 table packaged');
+    expect(metadata['evidenceCoverage'], '1 source item captured');
+    expect(
+      metadata['evidenceConfidence'],
+      'High - sources and assumptions captured',
+    );
+    expect(
+      metadata['reportReviewChecklist'],
+      containsAll([
+        'Confirm report title, audience, decision owner, and decision ask.',
+        'Review executive decision brief and recommendation summary for customer-specific language.',
+        'Validate risk register, next-step action plan, and approval gates.',
+        'Review data tables for stale values, sensitive data, and source alignment.',
+        'Confirm assumptions with the accountable owner.',
+        'Check source authority, freshness, and cited facts.',
+      ]),
+    );
+    expect(metadata['reportReviewChecklistCount'], 6);
+    expect(
+      metadata['visualVerificationChecklist'],
+      containsAll([
+        'Render-safe text frame',
+        'US Letter media box',
+        'Header and footer present',
+        'Page numbers present',
+        'Bookmark destinations resolve',
+        'Table grid draws inside content frame',
+        'Source appendix included',
+        'Assumption appendix included',
+      ]),
+    );
+    expect(metadata['visualVerificationChecklistCount'], 8);
+    expect(
+      metadata['reportEvidencePolicy'],
+      containsAll([
+        'Report narrative is guidance; source appendices and source artifacts are the evidence record.',
+        'Customer handoff requires checked sources, assumptions, decision owner, and approval gate.',
+        'Use cited sources as the evidence register for external review.',
+        'Review assumptions with the accountable owner before stakeholder handoff.',
+      ]),
+    );
+    expect(metadata['reportEvidencePolicyCount'], 4);
+    expect(metadata['hasReportEvidencePolicy'], isTrue);
+    expect(
+      metadata['publishingMetadata'],
+      containsAll([
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence confidence: High - sources and assumptions captured',
+        'Publishing status: Ready for stakeholder review',
+      ]),
+    );
+    expect(metadata['publishingMetadataCount'], 6);
+    expect(metadata['hasExternalHandoffManifest'], isTrue);
+    expect(metadata['externalHandoffManifestCount'], 9);
+    expect(
+      metadata['externalHandoffManifest'],
+      containsAll([
+        'Review owner: Architecture owner / customer sponsor',
+        'Report type: Architecture report',
+        'Review path: Architecture review -> risk validation -> implementation decision',
+        'Handoff readiness: Customer handoff ready',
+        'Evidence status: High - sources and assumptions captured',
+        'Publishing gate: ready for stakeholder approval',
+        'Source package: 1 source item attached',
+        'Assumption package: 1 assumption captured',
+      ]),
+    );
+    expect(
+      metadata['reportHandoffActions'],
+      containsAll([
+        'Send report to internal reviewer with source artifacts attached.',
+        'Capture owner, due date, approval gates, and follow-up actions.',
+        'Keep cited sources with the handoff package.',
+      ]),
+    );
+    expect(metadata['reportHandoffActionCount'], 4);
+    expect(metadata['reportRiskFlags'], isEmpty);
+    expect(
+      metadata['appendixCoverage'],
+      '1 assumption, 1 source item in appendices',
+    );
+    expect(metadata['validationGaps'], isEmpty);
+    expect(metadata['validationGapCount'], 0);
+    expect(metadata['pageCount'], inspection.pageCount);
+    expect(metadata['bookmarkCount'], greaterThanOrEqualTo(3));
+    expect(metadata['sectionCount'], 2);
+    expect(metadata['reportSectionCount'], greaterThanOrEqualTo(12));
+    expect(metadata['tableCount'], 1);
+    expect(metadata['assumptionCount'], 1);
+    expect(metadata['citationCount'], 1);
+    expect(metadata['riskItemCount'], greaterThanOrEqualTo(2));
+    expect(metadata['nextStepCount'], greaterThanOrEqualTo(2));
+    expect(metadata['evidenceItemCount'], greaterThanOrEqualTo(5));
+    expect(metadata['evidenceGapCount'], 0);
+    expect(
+      metadata['readinessSignals'],
+      containsAll([
+        'Decision brief',
+        'Recommendation summary',
+        'Risk register',
+        'Next steps',
+        'Validation checklist',
+        'Customer handoff scorecard',
+        'Customer handoff readiness matrix',
+        'Decision log',
+        'Decision sign-off',
+        'Data tables',
+        'Assumptions',
+        'Sources',
+      ]),
+    );
+    expect(metadata['hasOutline'], isTrue);
+    expect(metadata['hasLeadDecisionCallout'], isTrue);
+    expect(metadata['hasExecutiveDecisionBrief'], isTrue);
+    expect(metadata['hasRiskRegister'], isTrue);
+    expect(metadata['hasDocumentMap'], isTrue);
+    expect(metadata['hasEvidenceConfidenceMatrix'], isTrue);
+    expect(metadata['hasApprovalGates'], isTrue);
+    expect(metadata['hasValidationChecklist'], isTrue);
+    expect(metadata['hasCustomerHandoffScorecard'], isTrue);
+    expect(metadata['hasCustomerHandoffReadinessMatrix'], isTrue);
+    expect(metadata['hasDecisionLog'], isTrue);
+    expect(metadata['hasDecisionSignOffPage'], isTrue);
+    expect(metadata['hasVisibleExternalHandoffManifest'], isTrue);
+    expect(metadata['hasFooterPageNumbers'], isTrue);
+    expect(metadata['hasExplicitTableGeometry'], isTrue);
+    expect(metadata['hasReportQualityManifest'], isTrue);
+    expect(metadata['hasVisualVerificationManifest'], isTrue);
+    expect(metadata['hasRenderSafeContentFrame'], isTrue);
+    expect(metadata['hasPublishingMetadata'], isTrue);
+    expect(metadata['hasAssumptionsAppendix'], isTrue);
+    expect(metadata['hasSourcesAppendix'], isTrue);
+    expect(metadata['hasCustomerReadyPackage'], isTrue);
+    expect(metadata['hasCustomerReadyPdf'], isTrue);
+  });
+
+  test('PDF inspector catches multi-page customer handoff reports', () {
+    final sections = [
+      for (var i = 1; i <= 32; i++)
+        ArtifactSection(
+          title: 'Workstream $i',
+          body:
+              'This workstream captures implementation detail, risk, validation criteria, and customer-facing notes for the generated handoff report.',
+          bullets: [
+            'Confirm owner and date for workstream $i.',
+            'Record validation result for workstream $i.',
+          ],
+        ),
+    ];
+    final document = ArtifactDocument(
+      title: 'Large Customer Handoff Report',
+      summary: 'A long report that should paginate into multiple PDF pages.',
+      sections: sections,
+      tables: const [
+        ArtifactTable(
+          title: 'Validation Matrix',
+          rows: [
+            ['Check', 'Owner', 'Status'],
+            ['Connectivity', 'Network', 'Ready'],
+            ['Power', 'Facilities', 'Review'],
+            ['Lifecycle', 'Architecture', 'Review'],
+          ],
+        ),
+      ],
+      assumptions: const ['Long reports should preserve footer page numbers.'],
+      citations: const ['CircuitCode generated validation evidence.'],
+    );
+
+    final bytes = const PdfArtifactRenderer().render(document);
+    final inspection = const PdfArtifactInspector().inspect(bytes);
+    final text = latin1.decode(bytes, allowInvalid: true);
+
+    expect(inspection.isStructurallyValid, isTrue);
+    expect(inspection.hasExpectedReportChrome, isTrue);
+    expect(inspection.hasOutlineCatalog, isTrue);
+    expect(inspection.hasOutlineTree, isTrue);
+    expect(inspection.hasReportOverviewBookmark, isTrue);
+    expect(inspection.hasLeadDecisionBookmark, isTrue);
+    expect(inspection.hasExecutiveDecisionBookmark, isTrue);
+    expect(inspection.hasValidationBookmark, isTrue);
+    expect(inspection.hasLeadDecisionCallout, isTrue);
+    expect(inspection.hasExecutiveDecisionBrief, isTrue);
+    expect(inspection.hasRecommendationSummary, isTrue);
+    expect(inspection.hasRiskRegister, isTrue);
+    expect(inspection.hasNextStepActionPlan, isTrue);
+    expect(inspection.hasStakeholderReadout, isTrue);
+    expect(inspection.hasEvidenceConfidenceMatrix, isTrue);
+    expect(inspection.hasApprovalGates, isTrue);
+    expect(inspection.hasValidationChecklist, isTrue);
+    expect(inspection.hasCustomerHandoffScorecard, isTrue);
+    expect(inspection.hasDecisionLog, isTrue);
+    expect(inspection.hasDecisionSignOff, isTrue);
+    expect(inspection.hasVisibleExternalHandoffManifest, isTrue);
+    expect(inspection.hasExplicitTableGeometry, isTrue);
+    expect(inspection.hasCustomQualityInfo, isTrue);
+    expect(inspection.hasVisualVerificationManifest, isTrue);
+    expect(inspection.hasRenderSafeTextFrame, isTrue);
+    expect(inspection.hasPageCountConsistency, isTrue);
+    expect(inspection.hasResolvableBookmarkDestinations, isTrue);
+    expect(inspection.pageCount, greaterThan(1));
+    expect(text, contains('Page 1 of ${inspection.pageCount}'));
+    expect(
+      text,
+      contains('Page ${inspection.pageCount} of ${inspection.pageCount}'),
+    );
+    expect(text, contains('Large Customer Handoff Report'));
+    expect(text, contains('Decision Sign-Off'));
+    expect(text, contains('External Handoff Manifest'));
+  });
+}

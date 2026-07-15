@@ -27,6 +27,14 @@ class _AddMcpServerDialogState extends ConsumerState<AddMcpServerDialog> {
   var _transport = McpTransportType.http;
   var _preset = _ServerPreset.custom;
   bool _obscureTokens = true;
+  bool _consentAcknowledged = false;
+
+  McpConnectorKind get _connectorKind => switch (_preset) {
+    _ServerPreset.webex => McpConnectorKind.webex,
+    _ServerPreset.jira => McpConnectorKind.jira,
+    _ServerPreset.github => McpConnectorKind.github,
+    _ServerPreset.custom => McpConnectorKind.custom,
+  };
 
   List<String> get _requiredEnvVars {
     switch (_preset) {
@@ -145,6 +153,66 @@ class _AddMcpServerDialogState extends ConsumerState<AddMcpServerDialog> {
                         _applyPreset(v);
                       });
                     },
+                  ),
+                  const SizedBox(height: Spacing.xl),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(Spacing.lg),
+                    decoration: BoxDecoration(
+                      color: tokens.bgLighter,
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                      border: Border.all(
+                        color: tokens.border.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Data access and consent',
+                          style: TextStyle(
+                            color: tokens.textSecondary,
+                            fontSize: FontSizes.xs,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          _connectorKind.defaultDataAccessSummary,
+                          style: TextStyle(
+                            color: tokens.textMuted,
+                            fontSize: FontSizes.xxs,
+                            height: 1.35,
+                          ),
+                        ),
+                        if (_connectorKind.defaultScopes.isNotEmpty) ...[
+                          const SizedBox(height: Spacing.sm),
+                          Text(
+                            'Requested scopes: ${_connectorKind.defaultScopes.join(', ')}',
+                            style: TextStyle(
+                              color: tokens.textMuted,
+                              fontSize: FontSizes.xxs,
+                            ),
+                          ),
+                        ],
+                        CheckboxListTile(
+                          value: _consentAcknowledged,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            'I understand this access and can revoke it later.',
+                            style: TextStyle(
+                              color: tokens.textSecondary,
+                              fontSize: FontSizes.xxs,
+                            ),
+                          ),
+                          onChanged: (value) => setState(
+                            () => _consentAcknowledged = value ?? false,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: Spacing.xl),
 
@@ -271,7 +339,7 @@ class _AddMcpServerDialogState extends ConsumerState<AddMcpServerDialog> {
                       ),
                       const SizedBox(width: Spacing.md),
                       FilledButton(
-                        onPressed: _submit,
+                        onPressed: _consentAcknowledged ? _submit : null,
                         style: FilledButton.styleFrom(
                           backgroundColor: tokens.accent,
                         ),
@@ -382,6 +450,7 @@ class _AddMcpServerDialogState extends ConsumerState<AddMcpServerDialog> {
       case _ServerPreset.custom:
         break;
     }
+    _consentAcknowledged = false;
   }
 
   Future<void> _submit() async {
@@ -428,6 +497,10 @@ class _AddMcpServerDialogState extends ConsumerState<AddMcpServerDialog> {
       url: url,
       transport: _transport,
       headers: headers,
+      connectorKind: _connectorKind,
+      requestedScopes: _connectorKind.defaultScopes,
+      dataAccessSummary: _connectorKind.defaultDataAccessSummary,
+      consentedAt: DateTime.now(),
       scriptPath: scriptPath.isEmpty ? null : scriptPath,
       requiredEnvVars: envVars,
     );

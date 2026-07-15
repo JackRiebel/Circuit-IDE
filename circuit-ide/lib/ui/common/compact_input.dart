@@ -45,10 +45,7 @@ class CompactInput extends StatelessWidget {
       child: Row(
         children: [
           if (prefix != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: prefix!,
-            ),
+            Padding(padding: const EdgeInsets.only(left: 8), child: prefix!),
           Expanded(
             child: TextField(
               controller: controller,
@@ -81,10 +78,7 @@ class CompactInput extends StatelessWidget {
             ),
           ),
           if (suffix != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: suffix!,
-            ),
+            Padding(padding: const EdgeInsets.only(right: 4), child: suffix!),
         ],
       ),
     );

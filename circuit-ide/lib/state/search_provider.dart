@@ -34,10 +34,7 @@ class SearchNotifier extends Notifier<SearchState> {
     int filesSearched = 0;
     final pattern = state.isRegex
         ? RegExp(query, caseSensitive: state.caseSensitive)
-        : RegExp(
-            RegExp.escape(query),
-            caseSensitive: state.caseSensitive,
-          );
+        : RegExp(RegExp.escape(query), caseSensitive: state.caseSensitive);
 
     try {
       await for (final entity in Directory(rootPath).list(recursive: true)) {
@@ -45,9 +42,9 @@ class SearchNotifier extends Notifier<SearchState> {
 
         final relativePath = p.relative(entity.path, from: rootPath);
         final parts = relativePath.split(p.separator);
-        if (parts.any((part) =>
-            part.startsWith('.') ||
-            _ignoredDirs.contains(part))) {
+        if (parts.any(
+          (part) => part.startsWith('.') || _ignoredDirs.contains(part),
+        )) {
           continue;
         }
 
@@ -59,14 +56,16 @@ class SearchNotifier extends Notifier<SearchState> {
           for (int i = 0; i < lines.length; i++) {
             final matches = pattern.allMatches(lines[i]);
             for (final match in matches) {
-              results.add(SearchResult(
-                filePath: entity.path,
-                fileName: p.basename(entity.path),
-                lineNumber: i + 1,
-                lineContent: lines[i],
-                matchStart: match.start,
-                matchEnd: match.end,
-              ));
+              results.add(
+                SearchResult(
+                  filePath: entity.path,
+                  fileName: p.basename(entity.path),
+                  lineNumber: i + 1,
+                  lineContent: lines[i],
+                  matchStart: match.start,
+                  matchEnd: match.end,
+                ),
+              );
               if (results.length >= 500) break;
             }
             if (results.length >= 500) break;
@@ -101,20 +100,46 @@ class SearchNotifier extends Notifier<SearchState> {
   }
 
   static const _ignoredDirs = {
-    'node_modules', '__pycache__', '.git', '.dart_tool',
-    'build', 'dist', '.venv', 'venv', '.idea', '.vscode',
+    'node_modules',
+    '__pycache__',
+    '.git',
+    '.dart_tool',
+    'build',
+    'dist',
+    '.venv',
+    'venv',
+    '.idea',
+    '.vscode',
   };
 
   bool _isBinary(String path) {
     final ext = p.extension(path).toLowerCase();
     return {
-      '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico',
-      '.zip', '.tar', '.gz', '.exe', '.dll', '.so',
-      '.pdf', '.doc', '.docx', '.class', '.pyc',
-      '.woff', '.woff2', '.ttf', '.otf',
+      '.png',
+      '.jpg',
+      '.jpeg',
+      '.gif',
+      '.bmp',
+      '.ico',
+      '.zip',
+      '.tar',
+      '.gz',
+      '.exe',
+      '.dll',
+      '.so',
+      '.pdf',
+      '.doc',
+      '.docx',
+      '.class',
+      '.pyc',
+      '.woff',
+      '.woff2',
+      '.ttf',
+      '.otf',
     }.contains(ext);
   }
 }
 
-final searchProvider =
-    NotifierProvider<SearchNotifier, SearchState>(SearchNotifier.new);
+final searchProvider = NotifierProvider<SearchNotifier, SearchState>(
+  SearchNotifier.new,
+);

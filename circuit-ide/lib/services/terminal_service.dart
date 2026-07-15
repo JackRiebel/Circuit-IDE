@@ -13,10 +13,7 @@ class TerminalService {
       PlatformUtils.shell,
       [],
       workingDirectory: workingDir,
-      environment: {
-        ...Platform.environment,
-        'TERM': 'xterm-256color',
-      },
+      environment: {...Platform.environment, 'TERM': 'xterm-256color'},
     );
     return _process!;
   }

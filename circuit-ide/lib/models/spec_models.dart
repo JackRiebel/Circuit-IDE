@@ -81,6 +81,5 @@ class Spec {
   }
 
   int get completedCount => steps.where((s) => s.isCompleted).length;
-  double get progress =>
-      steps.isEmpty ? 0 : completedCount / steps.length;
+  double get progress => steps.isEmpty ? 0 : completedCount / steps.length;
 }

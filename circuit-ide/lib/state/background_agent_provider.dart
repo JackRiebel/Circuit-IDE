@@ -10,6 +10,10 @@ import '../models/agent_trigger.dart';
 import 'agent_manager_provider.dart';
 import 'connection_provider.dart';
 
+const _backgroundAgentsPausedMessage =
+    'Background agents are paused while Studio uses the request-local turn runtime. '
+    'Run this task from Studio so it inherits intent routing, scoped approvals, and deterministic patch review.';
+
 class BackgroundAgentState {
   final int runningCount;
   final List<BackgroundAgentResult> recentResults;
@@ -49,6 +53,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   static const _cooldownDuration = Duration(seconds: 30);
   StreamSubscription? _eventSub;
   Timer? _periodicTimer;
+  bool get _backgroundAgentsEnabled => false;
 
   @override
   BackgroundAgentState build() {
@@ -64,6 +69,13 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _setupListeners() {
+    if (!_backgroundAgentsEnabled) {
+      Logger.info(
+        'Background agent listeners paused while Studio uses the request-local turn runtime.',
+        'BackgroundAgent',
+      );
+      return;
+    }
     final service = ref.read(agentServiceProvider);
 
     // Monitor agent manager for completion
@@ -125,6 +137,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _handleFileSaveTrigger(String filePath) {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -136,9 +149,11 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
         }
 
         // Check file pattern match
-        bool matches = trigger.filePatterns.isEmpty ||
-            trigger.filePatterns
-                .any((p) => SmartRulesMatcher.matchesPattern(filePath, p));
+        bool matches =
+            trigger.filePatterns.isEmpty ||
+            trigger.filePatterns.any(
+              (p) => SmartRulesMatcher.matchesPattern(filePath, p),
+            );
 
         if (matches && _checkCooldown(config.id, trigger.type)) {
           _spawnBackground(config, 'File saved: $filePath');
@@ -148,6 +163,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void handleGitCommitTrigger() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -161,6 +177,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void handleProjectOpenTrigger() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -174,6 +191,7 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _handlePeriodicTriggers() {
+    if (!_backgroundAgentsEnabled) return;
     final configs = ref.read(agentManagerProvider).configs;
     final service = ref.read(agentServiceProvider);
     if (!service.isConnected) return;
@@ -183,16 +201,22 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
         if (trigger.type != AgentTriggerType.periodic || !trigger.enabled) {
           continue;
         }
-        if (_checkCooldown(config.id, AgentTriggerType.periodic,
-            cooldown: trigger.interval ?? const Duration(minutes: 5))) {
+        if (_checkCooldown(
+          config.id,
+          AgentTriggerType.periodic,
+          cooldown: trigger.interval ?? const Duration(minutes: 5),
+        )) {
           _spawnBackground(config, 'Periodic trigger');
         }
       }
     }
   }
 
-  bool _checkCooldown(String configId, AgentTriggerType type,
-      {Duration cooldown = _cooldownDuration}) {
+  bool _checkCooldown(
+    String configId,
+    AgentTriggerType type, {
+    Duration cooldown = _cooldownDuration,
+  }) {
     final key = '$configId:${type.name}';
     final lastRun = _cooldowns[key];
     if (lastRun != null && DateTime.now().difference(lastRun) < cooldown) {
@@ -203,9 +227,30 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
   }
 
   void _spawnBackground(AgentConfigModel config, String context) {
+    if (!_backgroundAgentsEnabled) {
+      Logger.info(
+        'Background agent launch paused: ${config.name} ($context)',
+        'BackgroundAgent',
+      );
+      final results = [
+        BackgroundAgentResult(
+          agentName: config.name,
+          summary: _backgroundAgentsPausedMessage,
+          timestamp: DateTime.now(),
+          success: false,
+        ),
+        ...state.recentResults,
+      ].take(10).toList();
+      state = state.copyWith(recentResults: results);
+      return;
+    }
     Logger.info(
-        'Background agent triggered: ${config.name} ($context)', 'BackgroundAgent');
-    ref.read(agentManagerProvider.notifier).spawnAgent(
+      'Background agent triggered: ${config.name} ($context)',
+      'BackgroundAgent',
+    );
+    ref
+        .read(agentManagerProvider.notifier)
+        .spawnAgent(
           config.id,
           '${config.description.isNotEmpty ? config.description : config.systemPrompt}\n\nContext: $context',
         );
@@ -223,5 +268,5 @@ class BackgroundAgentNotifier extends Notifier<BackgroundAgentState> {
 
 final backgroundAgentProvider =
     NotifierProvider<BackgroundAgentNotifier, BackgroundAgentState>(
-  BackgroundAgentNotifier.new,
-);
+      BackgroundAgentNotifier.new,
+    );

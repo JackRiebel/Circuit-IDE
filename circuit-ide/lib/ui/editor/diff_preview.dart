@@ -101,14 +101,14 @@ class DiffPreviewPanel extends ConsumerWidget {
                           change.isAccepted
                               ? Icons.check_circle
                               : change.wasCreated
-                                  ? Icons.add_circle_outline
-                                  : Icons.edit_outlined,
+                              ? Icons.add_circle_outline
+                              : Icons.edit_outlined,
                           size: 14,
                           color: change.isAccepted
                               ? tokens.success
                               : change.wasCreated
-                                  ? tokens.success
-                                  : tokens.warning,
+                              ? tokens.success
+                              : tokens.warning,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -233,11 +233,7 @@ class _SmallButtonState extends State<_SmallButton> {
                   ? widget.color.withValues(alpha: 0.15)
                   : Colors.transparent,
             ),
-            child: Icon(
-              widget.icon,
-              size: 14,
-              color: widget.color,
-            ),
+            child: Icon(widget.icon, size: 14, color: widget.color),
           ),
         ),
       ),

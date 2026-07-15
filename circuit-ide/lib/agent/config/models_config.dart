@@ -4,6 +4,8 @@ import '../providers/provider_interface.dart';
 
 class ModelsConfig {
   static const defaultCiscoModel = 'gpt-5-nano';
+  static const freeTierInputTokenLimit = 50000000;
+  static const freeTierOutputTokenLimit = 5000000;
 
   static const ciscoModels = [
     ModelInfo(
@@ -13,6 +15,10 @@ class ModelsConfig {
       inputCostPer1k: 0,
       outputCostPer1k: 0,
       supportsTools: true,
+      supportsImageInput: true,
+      supportsJsonSchema: true,
+      supportsReasoning: true,
+      tokenSemantics: ProviderTokenSemantics.inputAndOutput,
     ),
     ModelInfo(
       id: 'gemini-3.1-flash-lite',
@@ -21,6 +27,10 @@ class ModelsConfig {
       inputCostPer1k: 0,
       outputCostPer1k: 0,
       supportsTools: true,
+      supportsImageInput: true,
+      supportsJsonSchema: true,
+      supportsReasoning: true,
+      tokenSemantics: ProviderTokenSemantics.inputAndOutput,
     ),
   ];
 
@@ -35,6 +45,14 @@ class ModelsConfig {
       if (m.id == id) return m;
     }
     return null;
+  }
+
+  static int periodInputTokenLimitForModel(String modelId) {
+    return freeTierInputTokenLimit;
+  }
+
+  static int periodOutputTokenLimitForModel(String modelId) {
+    return freeTierOutputTokenLimit;
   }
 
   static List<ModelInfo> modelsForProvider(AIProviderType provider) {

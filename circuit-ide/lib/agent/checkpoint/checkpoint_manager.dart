@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../../core/utils/logger.dart';
@@ -47,6 +48,7 @@ class CheckpointManager {
           path: relativePath,
           originalContent: null,
           wasCreated: true,
+          createdParentDirs: _missingParentDirectories(relativePath),
         );
       }
     } catch (e) {
@@ -91,7 +93,7 @@ class CheckpointManager {
     final reverted = <String>[];
     final errors = <String>[];
 
-    for (final snapshot in checkpoint.snapshots) {
+    for (final snapshot in checkpoint.snapshots.reversed) {
       try {
         final fullPath = _resolvePath(snapshot.path);
         final file = File(fullPath);
@@ -107,6 +109,13 @@ class CheckpointManager {
           if (snapshot.originalContent != null) {
             await file.writeAsString(snapshot.originalContent!);
             reverted.add('Restored ${snapshot.path}');
+          }
+        }
+        for (final directoryPath in snapshot.createdParentDirs.reversed) {
+          final directory = Directory(_resolvePath(directoryPath));
+          if (await directory.exists() && await directory.list().isEmpty) {
+            await directory.delete();
+            reverted.add('Removed empty directory $directoryPath');
           }
         }
       } catch (e) {
@@ -133,6 +142,27 @@ class CheckpointManager {
   String _resolvePath(String relativePath) {
     if (relativePath.startsWith('/')) return relativePath;
     return '$workingDir/$relativePath';
+  }
+
+  List<String> _missingParentDirectories(String relativePath) {
+    final target = _resolvePath(relativePath);
+    final root = p.normalize(workingDir);
+    final relativeParent = p.relative(p.dirname(target), from: root);
+    if (relativeParent == '.' || relativeParent.startsWith('..')) {
+      return const [];
+    }
+
+    final missing = <String>[];
+    var current = root;
+    for (final segment in p.split(relativeParent)) {
+      if (segment.isEmpty || segment == '.') continue;
+      current = p.join(current, segment);
+      if (FileSystemEntity.typeSync(current, followLinks: false) ==
+          FileSystemEntityType.notFound) {
+        missing.add(p.relative(current, from: root));
+      }
+    }
+    return missing;
   }
 }
 

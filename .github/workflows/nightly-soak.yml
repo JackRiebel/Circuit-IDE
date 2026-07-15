@@ -1,0 +1,60 @@
+name: CircuitCode Nightly Studio Soak
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: 'Run duration, from 1 to 480 minutes.'
+        required: false
+        default: '180'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: '3.41.2'
+
+jobs:
+  studio-soak:
+    name: Studio lifecycle soak
+    runs-on: macos-14
+    timeout-minutes: 495
+    defaults:
+      run:
+        working-directory: circuit-ide
+    env:
+      CIRCUIT_SOAK_DURATION_MINUTES: ${{ github.event.inputs.duration_minutes || '180' }}
+      CIRCUIT_SOAK_PAUSE_MS: '250'
+      CIRCUIT_SOAK_WARMUP_CYCLES: '3'
+      CIRCUIT_SOAK_MAX_POST_WARMUP_RSS_GROWTH_MB: '64'
+      STUDIO_SOAK_REPORT_PATH: ${{ runner.temp }}/circuitcode-studio-soak-report.json
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Restore Flutter packages
+        run: flutter pub get
+      - name: Build packaged execution broker
+        run: flutter build macos --release
+      - name: Verify packaged execution boundary
+        run: >
+          bash scripts/verify_execution_broker.sh
+          build/macos/Build/Products/Release/CircuitCode.app/Contents/Helpers/CircuitExecutionBroker
+      - name: Run Studio lifecycle soak
+        env:
+          CIRCUIT_SOAK_BROKER_PATH: ${{ github.workspace }}/circuit-ide/build/macos/Build/Products/Release/CircuitCode.app/Contents/Helpers/CircuitExecutionBroker
+        run: bash scripts/studio_soak_suite.sh
+      - name: Upload redacted soak report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: circuitcode-studio-soak-report
+          path: ${{ runner.temp }}/circuitcode-studio-soak-report.json
+          if-no-files-found: warn

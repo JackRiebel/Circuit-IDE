@@ -20,15 +20,11 @@ class NodeDetailPopup extends ConsumerWidget {
     final tokens = ref.watch(themeProvider);
     final graphState = ref.watch(codebaseMapProvider);
 
-    final node = graphState.nodes
-        .where((n) => n.id == nodeId)
-        .firstOrNull;
+    final node = graphState.nodes.where((n) => n.id == nodeId).firstOrNull;
     if (node == null) return const SizedBox.shrink();
 
-    final inCount =
-        graphState.edges.where((e) => e.targetId == nodeId).length;
-    final outCount =
-        graphState.edges.where((e) => e.sourceId == nodeId).length;
+    final inCount = graphState.edges.where((e) => e.targetId == nodeId).length;
+    final outCount = graphState.edges.where((e) => e.sourceId == nodeId).length;
 
     return Container(
       width: 320,
@@ -116,12 +112,14 @@ class NodeDetailPopup extends ConsumerWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: colorForExtension(node.extension)
-                            .withValues(alpha: 0.15),
+                        color: colorForExtension(
+                          node.extension,
+                        ).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(Radii.xs),
                         border: Border.all(
-                          color: colorForExtension(node.extension)
-                              .withValues(alpha: 0.3),
+                          color: colorForExtension(
+                            node.extension,
+                          ).withValues(alpha: 0.3),
                         ),
                       ),
                       child: Text(
@@ -135,11 +133,7 @@ class NodeDetailPopup extends ConsumerWidget {
                       ),
                     ),
                   const SizedBox(width: Spacing.md),
-                  Icon(
-                    Icons.arrow_downward,
-                    size: 11,
-                    color: tokens.textMuted,
-                  ),
+                  Icon(Icons.arrow_downward, size: 11, color: tokens.textMuted),
                   const SizedBox(width: 2),
                   Text(
                     '$inCount in',
@@ -149,11 +143,7 @@ class NodeDetailPopup extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: Spacing.md),
-                  Icon(
-                    Icons.arrow_upward,
-                    size: 11,
-                    color: tokens.textMuted,
-                  ),
+                  Icon(Icons.arrow_upward, size: 11, color: tokens.textMuted),
                   const SizedBox(width: 2),
                   Text(
                     '$outCount out',
@@ -297,9 +287,7 @@ class _ActionButtonState extends ConsumerState<_ActionButton> {
                 ? color.withValues(alpha: 0.1)
                 : color.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(Radii.sm),
-            border: Border.all(
-              color: color.withValues(alpha: 0.2),
-            ),
+            border: Border.all(color: color.withValues(alpha: 0.2)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

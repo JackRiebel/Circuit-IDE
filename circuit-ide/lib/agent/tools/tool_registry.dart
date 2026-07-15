@@ -8,9 +8,6 @@ class ToolRegistry {
     'git_status',
     'git_diff',
     'git_log',
-    'git_branch',
-    'web_fetch',
-    'web_search',
     'github_whoami',
     'github_list_repos',
     'github_get_repo',
@@ -25,9 +22,9 @@ class ToolRegistry {
   /// Check if a tool name is an MCP-proxied tool
   static bool isMcpTool(String name) => name.startsWith('mcp_');
 
-  /// MCP tools are treated as read-only (they don't modify local files)
+  /// MCP tools are not assumed safe; callers should use the permission policy.
   static bool isReadOnlyIncludingMcp(String name) =>
-      readOnlyTools.contains(name) || isMcpTool(name);
+      readOnlyTools.contains(name);
 
   static const confirmationRequired = {
     'write_file',
@@ -43,12 +40,162 @@ class ToolRegistry {
   static bool needsConfirmation(String toolName) =>
       confirmationRequired.contains(toolName);
 
+  static List<ToolDefinition> toolsForMode(AgentToolMode mode) {
+    final allowedNames = switch (mode) {
+      AgentToolMode.chat => const <String>{},
+      AgentToolMode.ask => _askToolNames,
+      AgentToolMode.research => _researchToolNames,
+      AgentToolMode.plan => _planToolNames,
+      AgentToolMode.code => _codeToolNames,
+      AgentToolMode.fix => _codeToolNames,
+      AgentToolMode.review => _reviewToolNames,
+      AgentToolMode.verify => _verifyToolNames,
+      AgentToolMode.handoff => _handoffToolNames,
+    };
+    return allTools.where((tool) => allowedNames.contains(tool.name)).toList();
+  }
+
+  static List<ToolDefinition> toolsForModeAndPhase(
+    AgentToolMode mode,
+    AgentToolPhase phase,
+  ) {
+    final allowedNames = switch ((mode, phase)) {
+      (AgentToolMode.chat, _) => const <String>{},
+      (AgentToolMode.ask, _) => _askToolNames,
+      (AgentToolMode.research, _) => _researchToolNames,
+      (AgentToolMode.review, _) => _reviewToolNames,
+      (AgentToolMode.handoff, _) => _handoffToolNames,
+      (AgentToolMode.plan, _) => _planToolNames,
+      (AgentToolMode.verify, _) => _verifyToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.inspect) =>
+        _askToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.propose) =>
+        _codeProposalToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.apply) =>
+        _codeApplyToolNames,
+      (AgentToolMode.code || AgentToolMode.fix, AgentToolPhase.verify) =>
+        _verifyToolNames,
+    };
+    return allTools.where((tool) => allowedNames.contains(tool.name)).toList();
+  }
+
   static List<ToolDefinition> get allTools => [
     ..._fileTools,
+    ..._patchTools,
+    ..._delegationTools,
     ..._gitTools,
     ..._webTools,
     ..._githubTools,
-    ..._orchestrationTools,
+  ];
+
+  static final _patchTools = [
+    const ToolDefinition(
+      name: 'propose_patch',
+      description:
+          'Create a reviewable implementation plan or patch proposal. Use this for coding changes instead of asking the user to type approve. CircuitCode renders approval, revision, and rejection controls.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'title': {'type': 'string'},
+          'summary': {'type': 'string'},
+          'plan_markdown': {
+            'type': 'string',
+            'description':
+                'Markdown plan shown in the Studio review panel. Include implementation steps, files, and verification.',
+          },
+          'assumptions': {
+            'type': 'array',
+            'description':
+                'Explicit assumptions the user should review before implementation.',
+            'items': {'type': 'string'},
+          },
+          'verification_steps': {
+            'type': 'array',
+            'description':
+                'Specific checks CircuitCode should suggest after the patch is applied.',
+            'items': {'type': 'string'},
+          },
+          'files': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'properties': {
+                'path': {'type': 'string'},
+                'intent': {'type': 'string'},
+                'operation': {
+                  'type': 'string',
+                  'enum': ['create', 'modify', 'delete'],
+                  'description':
+                      'Required for plan-only and applyable proposals. Use create for new files, modify for existing-file changes, and delete only when the user/accepted plan explicitly asks to remove a file.',
+                },
+                'content': {
+                  'type': 'string',
+                  'description':
+                      'Full target file content when the proposal is ready for app-side apply. Required for applyable create/modify proposals. Omit only for plan-only proposals.',
+                },
+                'before': {
+                  'type': 'string',
+                  'description':
+                      'Expected current file content. Required for applyable modify/delete proposals so CircuitCode can detect stale-file conflicts.',
+                },
+                'unified_diff': {
+                  'type': 'string',
+                  'description':
+                      'Optional preview/explanation diff. CircuitCode cannot apply diff-only create/modify proposals; include content for app-side apply.',
+                },
+              },
+              'required': ['path', 'intent', 'operation'],
+            },
+          },
+        },
+        'required': ['title', 'summary', 'files'],
+      },
+    ),
+  ];
+
+  static final _delegationTools = [
+    const ToolDefinition(
+      name: 'delegate_subagent',
+      description:
+          'Ask an isolated subagent to complete one bounded task. Supply only the context it needs and an explicit read-only tool grant. This always requires user review. A child never receives the parent conversation and cannot modify files; allow_reviewed_patch_proposal only permits a reviewable proposal.',
+      parameters: {
+        'type': 'object',
+        'properties': {
+          'task': {
+            'type': 'string',
+            'description': 'One bounded task for the child agent.',
+          },
+          'context': {
+            'type': 'string',
+            'description':
+                'The exact, minimal context excerpt to share. Do not include a whole conversation.',
+          },
+          'tool_grant': {
+            'type': 'array',
+            'description':
+                'Explicit child tools. Only read_file, list_files, search_files, git_status, git_diff, git_log, and conditionally propose_patch are allowed.',
+            'items': {
+              'type': 'string',
+              'enum': [
+                'read_file',
+                'list_files',
+                'search_files',
+                'git_status',
+                'git_diff',
+                'git_log',
+                'propose_patch',
+              ],
+            },
+          },
+          'allow_reviewed_patch_proposal': {
+            'type': 'boolean',
+            'description':
+                'Permit only a reviewable patch proposal. It never applies changes.',
+          },
+        },
+        'required': ['task'],
+      },
+    ),
   ];
 
   static final _fileTools = [
@@ -93,7 +240,7 @@ class ToolRegistry {
     const ToolDefinition(
       name: 'edit_file',
       description:
-          'Edit a file by replacing exact text. The old_text must match exactly including whitespace.',
+          'Fallback exact-text edit. Prefer proposing a patch summary first when possible. The old_text must match exactly including whitespace.',
       parameters: {
         'type': 'object',
         'properties': {
@@ -396,29 +543,63 @@ class ToolRegistry {
       },
     ),
   ];
-
-  static final _orchestrationTools = [
-    const ToolDefinition(
-      name: 'orchestrate',
-      description:
-          'Spawn a subagent to handle a specific task autonomously. '
-          'The subagent has full tool access and will return its result. '
-          'Use this for tasks that can run independently.',
-      parameters: {
-        'type': 'object',
-        'properties': {
-          'task': {
-            'type': 'string',
-            'description': 'Detailed task description for the subagent',
-          },
-          'name': {
-            'type': 'string',
-            'description':
-                'Short name for this subagent (e.g., "test-writer", "refactorer")',
-          },
-        },
-        'required': ['task', 'name'],
-      },
-    ),
-  ];
 }
+
+enum AgentToolMode {
+  chat,
+  ask,
+  research,
+  plan,
+  code,
+  fix,
+  review,
+  verify,
+  handoff,
+}
+
+enum AgentToolPhase { inspect, propose, apply, verify }
+
+const _askToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+  'delegate_subagent',
+};
+
+/// Research is intentionally separate from Ask. It exposes only the network
+/// tools, which remain subject to the project network policy and a per-call
+/// approval. Workspace, patch, command, MCP, and Git tools are absent.
+const _researchToolNames = {'web_search', 'web_fetch'};
+
+const _codeToolNames = _codeProposalToolNames;
+
+const _codeProposalToolNames = {..._askToolNames, 'propose_patch'};
+
+// Patch application is app-owned. The model can propose patch data, but
+// Studio review UI invokes apply_patch_set internally after user approval.
+const _codeApplyToolNames = _codeProposalToolNames;
+
+const _verifyToolNames = {..._askToolNames, 'run_command'};
+
+const _planToolNames = {..._askToolNames, 'propose_patch'};
+
+const _reviewToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+};
+
+const _handoffToolNames = {
+  'read_file',
+  'list_files',
+  'search_files',
+  'git_status',
+  'git_diff',
+  'git_log',
+};

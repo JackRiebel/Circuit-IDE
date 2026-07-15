@@ -1,9 +1,10 @@
 class AppConstants {
   // Agent
-  static const int maxToolCallIterations = 25;
+  static const int maxToolCallIterations = 6;
   static const int commandTimeoutDefault = 60;
   static const int commandTimeoutMin = 5;
   static const int commandTimeoutMax = 300;
+  static const int commandOutputMaxBytes = 1024 * 1024;
   static const int maxFileReadLines = 500;
   static const int maxSearchResults = 50;
   static const int maxListFiles = 100;
@@ -33,5 +34,4 @@ class AppConstants {
   static const String ciscoChatBaseUrl =
       'https://chat-ai.cisco.com/openai/deployments';
   static const String ciscoApiVersion = '2025-04-01-preview';
-
 }

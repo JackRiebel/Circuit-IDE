@@ -9,11 +9,13 @@ import '../../enums/connection_status.dart';
 import '../../enums/tool_status.dart';
 import '../../models/editor_state.dart';
 import '../../models/agent_run.dart';
+import '../../models/agent_workspace.dart';
 import '../../models/command_run.dart';
 import '../../models/run_diagnostics_summary.dart';
 import '../../models/tool_call_info.dart';
 import '../../models/workspace_context.dart';
 import '../../state/agent_run_provider.dart';
+import '../../state/agent_workspace_provider.dart';
 import '../../state/chat_provider.dart';
 import '../../state/command_run_provider.dart';
 import '../../state/connection_provider.dart';
@@ -523,6 +525,17 @@ class _RunTimeline extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final filter = ref.watch(runConsoleFilterProvider);
+    final agentWorkspace = ref.watch(agentWorkspaceProvider);
+    final taskRuns = agentWorkspace.tasks.where((task) {
+      return switch (filter) {
+        RunConsoleFilter.active =>
+          task.status == AgentTaskStatus.queued ||
+              task.status == AgentTaskStatus.running ||
+              task.status == AgentTaskStatus.waitingForApproval,
+        RunConsoleFilter.recent => true,
+        RunConsoleFilter.failed => task.status == AgentTaskStatus.failed,
+      };
+    }).toList();
     final commandRuns = ref.watch(commandRunProvider).values.where((run) {
       return switch (filter) {
         RunConsoleFilter.active =>
@@ -576,7 +589,27 @@ class _RunTimeline extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: Spacing.sm),
-        if (visibleRuns.isEmpty && commandRuns.isEmpty)
+        if (taskRuns.isNotEmpty) ...[
+          Text(
+            'Agent tasks',
+            style: TextStyle(
+              color: tokens.textMuted,
+              fontSize: FontSizes.xxs,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          ...taskRuns
+              .take(6)
+              .map(
+                (task) => Padding(
+                  padding: const EdgeInsets.only(bottom: Spacing.sm),
+                  child: _AgentTaskTimelineRow(task: task),
+                ),
+              ),
+          const SizedBox(height: Spacing.sm),
+        ],
+        if (visibleRuns.isEmpty && commandRuns.isEmpty && taskRuns.isEmpty)
           Container(
             padding: const EdgeInsets.all(Spacing.md),
             decoration: BoxDecoration(
@@ -657,6 +690,149 @@ class _RunFilterChip extends ConsumerWidget {
             fontWeight: FontWeight.w700,
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AgentTaskTimelineRow extends ConsumerWidget {
+  final AgentTask task;
+
+  const _AgentTaskTimelineRow({required this.task});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    final color = switch (task.status) {
+      AgentTaskStatus.completed => tokens.success,
+      AgentTaskStatus.failed => tokens.error,
+      AgentTaskStatus.cancelled => tokens.textMuted,
+      AgentTaskStatus.paused => tokens.textMuted,
+      AgentTaskStatus.waitingForApproval => tokens.warning,
+      AgentTaskStatus.queued || AgentTaskStatus.running => tokens.accent,
+    };
+    final spec = AgentTaskProfileSpec.forProfile(task.profile);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: tokens.surfaceRaised,
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: tokens.outlineSubtle),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+          childrenPadding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            0,
+            Spacing.md,
+            Spacing.md,
+          ),
+          leading: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          title: Text(
+            '${task.mascotAlias} · ${spec.label}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: tokens.textPrimary,
+              fontSize: FontSizes.xs,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          subtitle: Text(
+            [
+              task.status.name,
+              '${task.artifacts.length} artifacts',
+              if (task.patchSetIds.isNotEmpty)
+                '${task.patchSetIds.length} proposals',
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
+          ),
+          iconColor: tokens.textMuted,
+          collapsedIconColor: tokens.textMuted,
+          children: [
+            _RunDetailLine(label: 'Goal', value: task.goal),
+            if (task.result?.isNotEmpty == true)
+              _RunDetailLine(label: 'Result', value: task.result!),
+            if (task.error?.isNotEmpty == true)
+              _RunDetailLine(
+                label: 'Error',
+                value: task.error!,
+                color: tokens.error,
+              ),
+            if (task.artifacts.isNotEmpty) ...[
+              const SizedBox(height: Spacing.sm),
+              ...task.artifacts
+                  .take(6)
+                  .map((artifact) => _TaskArtifactRow(artifact: artifact)),
+            ],
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                _RunAction(
+                  icon: Icons.assignment_outlined,
+                  label: 'Copy diagnostics',
+                  onTap: () => Clipboard.setData(
+                    ClipboardData(
+                      text: ref
+                          .read(agentWorkspaceProvider.notifier)
+                          .diagnosticsFor(task.id),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                if (task.status == AgentTaskStatus.running ||
+                    task.status == AgentTaskStatus.queued ||
+                    task.status == AgentTaskStatus.waitingForApproval)
+                  _RunAction(
+                    icon: Icons.stop_circle_outlined,
+                    label: 'Cancel',
+                    onTap: () => ref
+                        .read(agentWorkspaceProvider.notifier)
+                        .cancelTask(task.id),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskArtifactRow extends ConsumerWidget {
+  final AgentTaskArtifact artifact;
+
+  const _TaskArtifactRow({required this.artifact});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tokens = ref.watch(themeProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: Spacing.xs),
+      child: Row(
+        children: [
+          Icon(_artifactIcon(artifact.type), color: tokens.textMuted, size: 12),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              '${artifact.title}: ${artifact.detail}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: tokens.textMuted,
+                fontSize: FontSizes.xxs,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -784,9 +960,12 @@ class _RunTimelineRow extends ConsumerWidget {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           title: Text(
-            run.title?.isNotEmpty == true
-                ? run.title!
-                : '${_kindLabel(run.kind)} · ${run.model}',
+            [
+              if (run.mascotAlias?.isNotEmpty == true) run.mascotAlias!,
+              run.title?.isNotEmpty == true
+                  ? run.title!
+                  : '${_kindLabel(run.kind)} · ${run.model}',
+            ].join(' · '),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -799,6 +978,7 @@ class _RunTimelineRow extends ConsumerWidget {
             [
               _kindLabel(run.kind),
               run.model,
+              if (run.agentTaskId != null) 'task ${run.agentTaskId}',
               if (run.contextAttachmentCount > 0)
                 '${run.contextAttachmentCount} context',
               if (run.tokenUsage.isNotEmpty)
@@ -887,6 +1067,17 @@ class _RunTimelineRow extends ConsumerWidget {
       AgentRunKind.backgroundTask => 'Task',
     };
   }
+}
+
+IconData _artifactIcon(AgentTaskArtifactType type) {
+  return switch (type) {
+    AgentTaskArtifactType.contextPack => Icons.dataset_linked_outlined,
+    AgentTaskArtifactType.patchProposal => Icons.rate_review_outlined,
+    AgentTaskArtifactType.commandRun => Icons.terminal_outlined,
+    AgentTaskArtifactType.checkpoint => Icons.restore_outlined,
+    AgentTaskArtifactType.verification => Icons.playlist_add_check_outlined,
+    AgentTaskArtifactType.diagnostic => Icons.fact_check_outlined,
+  };
 }
 
 class _RunDetailLine extends ConsumerWidget {

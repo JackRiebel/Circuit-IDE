@@ -22,11 +22,7 @@ class AgentActivityWidget extends ConsumerWidget {
   final List<FileActivity> files;
   final VoidCallback? onCancel;
 
-  const AgentActivityWidget({
-    super.key,
-    required this.files,
-    this.onCancel,
-  });
+  const AgentActivityWidget({super.key, required this.files, this.onCancel});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -120,10 +116,7 @@ class AgentActivityWidget extends ConsumerWidget {
                   if (file.description != null)
                     Text(
                       file.description!,
-                      style: TextStyle(
-                        color: tokens.textMuted,
-                        fontSize: 9,
-                      ),
+                      style: TextStyle(color: tokens.textMuted, fontSize: 9),
                     ),
                 ],
               ),

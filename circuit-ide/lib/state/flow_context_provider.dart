@@ -52,5 +52,5 @@ class FlowContextNotifier extends Notifier<FlowContextState> {
 
 final flowContextProvider =
     NotifierProvider<FlowContextNotifier, FlowContextState>(
-  FlowContextNotifier.new,
-);
+      FlowContextNotifier.new,
+    );

@@ -109,7 +109,9 @@ class VericodeNotifier extends Notifier<VericodeState> {
 
     if (rootPath == null || rootPath.isEmpty) {
       Logger.info(
-          'No project path available for auto-detect', 'VericodeNotifier');
+        'No project path available for auto-detect',
+        'VericodeNotifier',
+      );
       // Fall back to default checks
       state = state.copyWith(
         config: VericodeConfig(checks: VericodeEngine.defaultChecks()),
@@ -134,9 +136,10 @@ class VericodeNotifier extends Notifier<VericodeState> {
       await _storage.save(config);
 
       Logger.info(
-          'Auto-detected ${result.primaryType.label} project with '
-          '${checks.length} checks',
-          'VericodeNotifier');
+        'Auto-detected ${result.primaryType.label} project with '
+            '${checks.length} checks',
+        'VericodeNotifier',
+      );
     } catch (e) {
       Logger.error('Auto-detect failed', e);
       state = state.copyWith(
@@ -158,8 +161,7 @@ class VericodeNotifier extends Notifier<VericodeState> {
     _engine = VericodeEngine(workingDir: workingDir);
     _cancelled = false;
 
-    final enabledChecks =
-        state.config.checks.where((c) => c.enabled).toList();
+    final enabledChecks = state.config.checks.where((c) => c.enabled).toList();
     if (enabledChecks.isEmpty) return;
 
     var run = VericodeRun(
@@ -171,110 +173,51 @@ class VericodeNotifier extends Notifier<VericodeState> {
       currentRun: run.copyWith(status: VericodeRunStatus.runningChecks),
     );
 
-    for (int attempt = 0; attempt <= state.config.maxRetries; attempt++) {
-      if (_cancelled) break;
+    final results = await _engine!.runAllChecks(enabledChecks);
+    if (_cancelled) return;
 
-      // Run checks
-      final isRerun = attempt > 0;
-      state = state.copyWith(
-        currentRun: state.currentRun!.copyWith(
-          status: isRerun
-              ? VericodeRunStatus.rerunning
-              : VericodeRunStatus.runningChecks,
-        ),
-      );
+    final failures = results.where((r) => !r.passed).toList();
+    state = state.copyWith(
+      currentRun: state.currentRun!.copyWith(currentResults: results),
+    );
 
-      final results = await _engine!.runAllChecks(enabledChecks);
-      if (_cancelled) break;
-
-      final failures = results.where((r) => !r.passed).toList();
-
-      state = state.copyWith(
-        currentRun: state.currentRun!.copyWith(currentResults: results),
-      );
-
-      // All passed
-      if (failures.isEmpty) {
-        final completedRun = state.currentRun!.copyWith(
-          status: VericodeRunStatus.passed,
-          currentResults: results,
-          completedAt: DateTime.now(),
-        );
-        _addToHistory(completedRun);
-        state = state.copyWith(currentRun: completedRun);
-        _emitEvent(EventType.vericodePassed, {
-          'attempt': attempt + 1,
-          'triggerSource': triggerSource,
-        });
-        Logger.info('Vericoding passed on attempt ${attempt + 1}',
-            'VericodeNotifier');
-        return;
-      }
-
-      // Record this attempt
-      final fixAttempt = VericodeFixAttempt(
-        attemptNumber: attempt + 1,
-        results: results,
-        timestamp: DateTime.now(),
-      );
-      final attempts = [
-        ...state.currentRun!.attempts,
-        fixAttempt,
-      ];
-      state = state.copyWith(
-        currentRun: state.currentRun!.copyWith(attempts: attempts),
-      );
-
-      // Last attempt — no more retries
-      if (attempt >= state.config.maxRetries) break;
-
-      // Ask AI to fix
-      if (!service.isConnected) break;
-
-      state = state.copyWith(
-        currentRun: state.currentRun!.copyWith(
-          status: VericodeRunStatus.analyzingFailures,
-        ),
-      );
-
-      final fixPrompt = _engine!.generateFixPrompt(
-        failures,
-        attemptNumber: attempt + 1,
-        maxAttempts: state.config.maxRetries,
-      );
-
-      state = state.copyWith(
-        currentRun: state.currentRun!.copyWith(
-          status: VericodeRunStatus.fixing,
-        ),
-      );
-
-      try {
-        await service.sendMessage(fixPrompt);
-      } catch (e) {
-        Logger.error('Vericoding AI fix failed', e);
-        break;
-      }
-
-      if (_cancelled) break;
-
-      // Loop to re-run checks
-    }
-
-    // If we get here, we've exhausted retries
-    if (!_cancelled) {
-      final failedRun = state.currentRun!.copyWith(
-        status: VericodeRunStatus.failed,
+    if (failures.isEmpty) {
+      final completedRun = state.currentRun!.copyWith(
+        status: VericodeRunStatus.passed,
+        currentResults: results,
         completedAt: DateTime.now(),
       );
-      _addToHistory(failedRun);
-      state = state.copyWith(currentRun: failedRun);
-      _emitEvent(EventType.vericodeFailed, {
-        'attempts': state.config.maxRetries,
+      _addToHistory(completedRun);
+      state = state.copyWith(currentRun: completedRun);
+      _emitEvent(EventType.vericodePassed, {
+        'attempt': 1,
         'triggerSource': triggerSource,
       });
-      Logger.info('Vericoding failed after max retries', 'VericodeNotifier');
+      Logger.info('Vericoding passed on attempt 1', 'VericodeNotifier');
+      return;
     }
+
+    const legacyFixMessage =
+        'Vericoding auto-fix is paused while Studio uses the request-local turn runtime. Start the fix from the Studio composer, then run Verify mode so intent, approvals, patches, command output, and summaries stay scoped to one Studio turn.';
+    final pausedAttempt = VericodeFixAttempt(
+      attemptNumber: 1,
+      results: results,
+      aiFixResponse: legacyFixMessage,
+      timestamp: DateTime.now(),
+    );
+    final failedRun = state.currentRun!.copyWith(
+      status: VericodeRunStatus.failed,
+      attempts: [pausedAttempt],
+      completedAt: DateTime.now(),
+    );
+    _addToHistory(failedRun);
+    state = state.copyWith(currentRun: failedRun);
+    _emitEvent(EventType.vericodeFailed, {
+      'attempts': 1,
+      'triggerSource': triggerSource,
+      'reason': 'legacy-auto-fix-disabled',
+    });
+    Logger.info(legacyFixMessage, 'VericodeNotifier');
   }
 
   void _emitEvent(EventType type, Map<String, dynamic> data) {
@@ -310,5 +253,6 @@ class VericodeNotifier extends Notifier<VericodeState> {
   }
 }
 
-final vericodingProvider =
-    NotifierProvider<VericodeNotifier, VericodeState>(VericodeNotifier.new);
+final vericodingProvider = NotifierProvider<VericodeNotifier, VericodeState>(
+  VericodeNotifier.new,
+);

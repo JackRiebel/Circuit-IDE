@@ -48,8 +48,9 @@ class _NotebookToolbarState extends ConsumerState<NotebookToolbar> {
   Widget build(BuildContext context) {
     final tokens = ref.watch(themeProvider);
     final nbState = ref.watch(notebookProvider);
-    final notebook =
-        nbState.notebooks.where((n) => n.id == widget.notebookId).firstOrNull;
+    final notebook = nbState.notebooks
+        .where((n) => n.id == widget.notebookId)
+        .firstOrNull;
 
     if (notebook == null) return const SizedBox.shrink();
 
@@ -177,9 +178,7 @@ class _NotebookToolbarState extends ConsumerState<NotebookToolbar> {
             icon: Icons.add,
             label: 'Cell',
             onTap: () {
-              ref
-                  .read(notebookProvider.notifier)
-                  .addCell(widget.notebookId);
+              ref.read(notebookProvider.notifier).addCell(widget.notebookId);
             },
           ),
 
@@ -227,10 +226,7 @@ class _NotebookToolbarState extends ConsumerState<NotebookToolbar> {
             controller: promptController,
             autofocus: true,
             maxLines: 3,
-            style: TextStyle(
-              color: tokens.textPrimary,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
             decoration: InputDecoration(
               filled: true,
               fillColor: tokens.bgDark,
@@ -277,10 +273,7 @@ class _NotebookToolbarState extends ConsumerState<NotebookToolbar> {
                 Navigator.of(ctx).pop();
               }
             },
-            child: Text(
-              'Generate',
-              style: TextStyle(color: tokens.accent),
-            ),
+            child: Text('Generate', style: TextStyle(color: tokens.accent)),
           ),
         ],
       ),
@@ -339,18 +332,14 @@ class _ToolbarActionState extends ConsumerState<_ToolbarAction> {
                 Icon(
                   widget.icon,
                   size: 13,
-                  color: _isHovered
-                      ? color
-                      : color.withValues(alpha: 0.7),
+                  color: _isHovered ? color : color.withValues(alpha: 0.7),
                 ),
                 const SizedBox(width: Spacing.sm),
                 Text(
                   widget.label,
                   style: TextStyle(
                     fontSize: FontSizes.xs,
-                    color: _isHovered
-                        ? color
-                        : color.withValues(alpha: 0.7),
+                    color: _isHovered ? color : color.withValues(alpha: 0.7),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -428,11 +417,7 @@ class _DefaultLanguagePicker extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: Spacing.sm),
-            Icon(
-              Icons.arrow_drop_down,
-              size: 14,
-              color: tokens.textMuted,
-            ),
+            Icon(Icons.arrow_drop_down, size: 14, color: tokens.textMuted),
           ],
         ),
       ),

@@ -66,8 +66,7 @@ class MinimapWidget extends StatelessWidget {
                         totalLines: totalLines,
                         lineHeight: lineHeight,
                         syntaxTheme: syntaxTheme,
-                        defaultColor:
-                            vpColor.withValues(alpha: 0.35),
+                        defaultColor: vpColor.withValues(alpha: 0.35),
                       ),
                     ),
                     // Viewport indicator
@@ -75,8 +74,10 @@ class MinimapWidget extends StatelessWidget {
                       top: viewportTop.clamp(0.0, maxHeight - 20),
                       left: 0,
                       right: 0,
-                      height: max(viewportHeight, 20.0)
-                          .clamp(20.0, maxHeight).toDouble(),
+                      height: max(
+                        viewportHeight,
+                        20.0,
+                      ).clamp(20.0, maxHeight).toDouble(),
                       child: Container(
                         decoration: BoxDecoration(
                           color: vpColor.withValues(alpha: 0.08),
@@ -177,7 +178,9 @@ Color _getLineColor(String line, SyntaxTheme? syntax, Color defaultColor) {
   }
 
   // Function definitions (heuristic: contains parentheses)
-  if (trimmed.contains('(') && trimmed.contains(')') && !trimmed.startsWith('//')) {
+  if (trimmed.contains('(') &&
+      trimmed.contains(')') &&
+      !trimmed.startsWith('//')) {
     return syntax.function.withValues(alpha: 0.4);
   }
 

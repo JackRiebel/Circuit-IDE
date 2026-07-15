@@ -56,13 +56,13 @@ class RoutingConfig {
   }
 
   Map<String, dynamic> toJson() => {
-        'enabled': enabled,
-        'min_tier': minTier.name,
-        'prefer_speed': preferSpeed,
-        'prefer_quality': preferQuality,
-        'cost_savings': costSavings,
-        'routed_requests': routedRequests,
-      };
+    'enabled': enabled,
+    'min_tier': minTier.name,
+    'prefer_speed': preferSpeed,
+    'prefer_quality': preferQuality,
+    'cost_savings': costSavings,
+    'routed_requests': routedRequests,
+  };
 
   factory RoutingConfig.fromJson(Map<String, dynamic> json) {
     return RoutingConfig(

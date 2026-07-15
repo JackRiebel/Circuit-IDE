@@ -39,11 +39,7 @@ class CheckpointPanel extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(Radii.xl),
                 color: tokens.textMuted.withValues(alpha: 0.06),
               ),
-              child: Icon(
-                Icons.history,
-                size: 22,
-                color: tokens.textMuted,
-              ),
+              child: Icon(Icons.history, size: 22, color: tokens.textMuted),
             ),
             const SizedBox(height: Spacing.xl),
             Text(
@@ -57,10 +53,7 @@ class CheckpointPanel extends ConsumerWidget {
             Text(
               'Checkpoints are created automatically\nwhen the AI edits files.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xs,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
             ),
           ],
         ),
@@ -84,10 +77,7 @@ class _CheckpointCard extends ConsumerStatefulWidget {
   final Checkpoint checkpoint;
   final bool isReverting;
 
-  const _CheckpointCard({
-    required this.checkpoint,
-    required this.isReverting,
-  });
+  const _CheckpointCard({required this.checkpoint, required this.isReverting});
 
   @override
   ConsumerState<_CheckpointCard> createState() => _CheckpointCardState();
@@ -132,11 +122,7 @@ class _CheckpointCardState extends ConsumerState<_CheckpointCard> {
                 padding: const EdgeInsets.all(Spacing.lg),
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.restore,
-                      size: 14,
-                      color: tokens.accent,
-                    ),
+                    Icon(Icons.restore, size: 14, color: tokens.accent),
                     const SizedBox(width: Spacing.md),
                     Expanded(
                       child: Column(
@@ -180,9 +166,7 @@ class _CheckpointCardState extends ConsumerState<_CheckpointCard> {
                       ),
                     const SizedBox(width: Spacing.sm),
                     Icon(
-                      _isExpanded
-                          ? Icons.expand_less
-                          : Icons.expand_more,
+                      _isExpanded ? Icons.expand_less : Icons.expand_more,
                       size: 14,
                       color: tokens.textMuted,
                     ),
@@ -279,9 +263,7 @@ class _RewindButtonState extends ConsumerState<_RewindButton> {
             color: _isHovered
                 ? tokens.warning.withValues(alpha: 0.15)
                 : tokens.warning.withValues(alpha: 0.08),
-            border: Border.all(
-              color: tokens.warning.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: tokens.warning.withValues(alpha: 0.3)),
           ),
           child: Text(
             'Rewind',

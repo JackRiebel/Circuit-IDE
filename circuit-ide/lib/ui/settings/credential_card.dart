@@ -13,7 +13,11 @@ import '../../enums/ai_provider.dart';
 import '../../enums/connection_status.dart';
 
 class CredentialCard extends ConsumerStatefulWidget {
-  const CredentialCard({super.key});
+  /// Studio settings use the focused Circuit API form, while the legacy
+  /// settings surface can continue to expose its GitHub token control.
+  final bool includeGithub;
+
+  const CredentialCard({super.key, this.includeGithub = true});
 
   @override
   ConsumerState<CredentialCard> createState() => _CredentialCardState();
@@ -123,35 +127,37 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
           ),
           const SizedBox(height: Spacing.xl),
 
-          // Divider
-          Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
-          const SizedBox(height: Spacing.xl),
+          if (widget.includeGithub) ...[
+            // Divider
+            Container(height: 1, color: tokens.border.withValues(alpha: 0.3)),
+            const SizedBox(height: Spacing.xl),
 
-          // GitHub section
-          const _SectionLabel(
-            label: 'GitHub',
-            color: Color(0xFF8B949E),
-            icon: Icons.code_outlined,
-          ),
-          const SizedBox(height: Spacing.lg),
-          _CredentialField(
-            controller: _githubPatController,
-            label: 'Personal Access Token',
-            obscure: _obscure,
-          ),
-          Padding(
-            padding: const EdgeInsets.only(top: Spacing.xs),
-            child: Text(
-              'Used for GitHub tools (issues, PRs, repos). '
-              'Generate at github.com/settings/tokens',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.xxs,
-                height: 1.4,
+            // GitHub section
+            const _SectionLabel(
+              label: 'GitHub',
+              color: Color(0xFF8B949E),
+              icon: Icons.code_outlined,
+            ),
+            const SizedBox(height: Spacing.lg),
+            _CredentialField(
+              controller: _githubPatController,
+              label: 'Personal Access Token',
+              obscure: _obscure,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: Spacing.xs),
+              child: Text(
+                'Used for GitHub tools (issues, PRs, repos). '
+                'Generate at github.com/settings/tokens',
+                style: TextStyle(
+                  color: tokens.textMuted,
+                  fontSize: FontSizes.xxs,
+                  height: 1.4,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: Spacing.xl),
+            const SizedBox(height: Spacing.xl),
+          ],
 
           // Error / success messages
           if (_errorMessage != null)
@@ -266,7 +272,8 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
 
     final values = _credentialValues();
     final hasCisco = values.hasCisco;
-    final hasAnySavedValue = values.hasAny;
+    final hasAnySavedValue =
+        values.hasCisco || (widget.includeGithub && values.githubPat != null);
 
     if (!hasAnySavedValue) {
       setState(() {
@@ -309,8 +316,18 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
         },
         workingDir: workingDir,
       );
+      final studioSuccess = await ref
+          .read(studioAgentConnectionProvider.notifier)
+          .connect(
+            providerType: AIProviderType.cisco,
+            credentials: {
+              'client_id': values.ciscoClientId!,
+              'client_secret': values.ciscoClientSecret!,
+              'app_key': values.ciscoAppKey!,
+            },
+          );
 
-      if (success) {
+      if (success && studioSuccess) {
         ref
             .read(connectionStatusProvider.notifier)
             .set(ConnectionStatus.connected);
@@ -324,7 +341,9 @@ class _CredentialCardState extends ConsumerState<CredentialCard> {
         setState(() {
           _errorMessage = serviceError != null
               ? serviceError.replaceFirst('Exception: ', '')
-              : 'Connection failed. Check credentials and try again.';
+              : studioSuccess
+              ? 'Connection failed. Check credentials and try again.'
+              : 'Studio AI connection failed. Check credentials and try again.';
         });
       }
     } catch (e) {

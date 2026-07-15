@@ -54,7 +54,10 @@ class GraphPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.0;
 
-      final rrect = RRect.fromRectAndRadius(cluster.bounds, const Radius.circular(6));
+      final rrect = RRect.fromRectAndRadius(
+        cluster.bounds,
+        const Radius.circular(6),
+      );
       canvas.drawRRect(rrect, paint);
       canvas.drawRRect(rrect, borderPaint);
 
@@ -92,7 +95,8 @@ class GraphPainter extends CustomPainter {
       final targetPos = nodePositions[edge.targetId];
       if (sourcePos == null || targetPos == null) continue;
 
-      final isHighlighted = highlightedNodeIds.contains(edge.sourceId) &&
+      final isHighlighted =
+          highlightedNodeIds.contains(edge.sourceId) &&
           highlightedNodeIds.contains(edge.targetId);
 
       final paint = Paint()
@@ -131,9 +135,7 @@ class GraphPainter extends CustomPainter {
 
       // Node circle
       final fillPaint = Paint()
-        ..color = isHighlighted
-            ? nodeColor
-            : nodeColor.withValues(alpha: 0.7)
+        ..color = isHighlighted ? nodeColor : nodeColor.withValues(alpha: 0.7)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(node.position, node.size, fillPaint);
 
@@ -165,8 +167,8 @@ class GraphPainter extends CustomPainter {
             color: isSelected
                 ? tokens.textPrimary
                 : isHighlighted
-                    ? tokens.textSecondary
-                    : tokens.textMuted.withValues(alpha: 0.6),
+                ? tokens.textSecondary
+                : tokens.textMuted.withValues(alpha: 0.6),
             fontSize: isSelected ? 10 : 8,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
           ),

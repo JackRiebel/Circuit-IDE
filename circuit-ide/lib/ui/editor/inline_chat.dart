@@ -44,7 +44,10 @@ class _InlineChatOverlayState extends ConsumerState<InlineChatOverlay> {
     final tokens = ref.watch(themeProvider);
 
     return Positioned(
-      left: widget.position.dx.clamp(50, MediaQuery.of(context).size.width - 400),
+      left: widget.position.dx.clamp(
+        50,
+        MediaQuery.of(context).size.width - 400,
+      ),
       top: widget.position.dy,
       child: Material(
         elevation: 8,
@@ -134,10 +137,7 @@ class _InlineChatOverlayState extends ConsumerState<InlineChatOverlay> {
               const SizedBox(height: Spacing.sm),
               Text(
                 'Enter to submit, Escape to dismiss',
-                style: TextStyle(
-                  color: tokens.textMuted,
-                  fontSize: 9,
-                ),
+                style: TextStyle(color: tokens.textMuted, fontSize: 9),
               ),
             ],
           ),

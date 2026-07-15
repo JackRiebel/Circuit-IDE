@@ -1,4 +1,4 @@
-name: CI
+name: CircuitCode CI
 
 on:
   push:
@@ -6,171 +6,337 @@ on:
   pull_request:
     branches: [main]
 
+# A newer revision of the same PR supersedes every earlier full macOS run.
+# Keep distinct PRs and protected-branch pushes independent.
+concurrency:
+  group: circuitcode-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 env:
-  PYTHON_VERSION_DEFAULT: "3.11"
+  FLUTTER_VERSION: "3.41.2"
 
 jobs:
-  # ============================================================================
-  # Linting and Type Checking
-  # ============================================================================
-  lint:
-    name: Lint & Type Check
+  product-boundary:
+    name: Canonical product boundary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
-
-      - name: Install dependencies
+      - uses: actions/checkout@v6
+      - name: Verify Flutter is the only root product entry point
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy
+          bash scripts/verify_canonical_product.sh
+          bash scripts/verify_onboarding_docs.sh
+          bash scripts/verify_user_docs.sh
+          bash scripts/verify_security_ci.sh
+          bash scripts/verify_artifact_visual_ci.sh
 
-      - name: Run ruff (linting)
-        run: ruff check circuit_agent circuit_ide circuit_ide_gui
-
-      - name: Run ruff (formatting check)
-        run: ruff format --check circuit_agent circuit_ide circuit_ide_gui
-
-      - name: Run mypy (type checking)
-        run: mypy circuit_agent --ignore-missing-imports
-        continue-on-error: true  # Don't fail on type errors initially
-
-  # ============================================================================
-  # Unit Tests
-  # ============================================================================
-  test:
-    name: Test (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
-
+  flutter-macos:
+    name: Flutter macOS product gate
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: circuit-ide
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
         with:
-          python-version: ${{ matrix.python-version }}
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
 
-      - name: Install dependencies
+      - name: Restore Flutter packages
+        run: flutter pub get
+
+      - name: Install Office-compatible artifact renderers
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev,tui]"
+          brew install --cask libreoffice
+          brew install poppler
 
-      - name: Run tests with coverage
+      - name: Check Dart formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
+
+      - name: Analyze Flutter product
+        run: flutter analyze
+
+      - name: Publish deterministic task-engine evaluation
+        run: bash scripts/task_engine_eval_suite.sh
+
+      - name: Publish intent-routing evaluation
+        run: bash scripts/intent_routing_eval_suite.sh
+
+      - name: Enforce deterministic performance fixture budgets
+        run: bash scripts/performance_budget_suite.sh
+
+      - name: Run local-first sync architecture simulations
+        run: bash scripts/verify_sync_architecture.sh
+
+      - name: Run visual regression and artifact rendering gate
+        run: bash scripts/visual_regression_suite.sh
+
+      - name: Render full Office artifact matrix
         run: |
-          pytest tests/ \
-            --cov=circuit_agent \
-            --cov-report=xml \
-            --cov-report=term-missing \
-            -v
+          export CIRCUIT_SOFFICE_PATH="/Applications/LibreOffice.app/Contents/MacOS/soffice"
+          export CIRCUIT_PDFTOPPM_PATH="$(brew --prefix poppler)/bin/pdftoppm"
+          bash scripts/verify_office_visual_render.sh
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.11'
+      - name: Publish artifact quality matrix
+        run: bash scripts/artifact_quality_matrix_suite.sh
+
+      - name: Run desktop Studio integration journey
+        env:
+          # Hosted GitHub runners have no foregroundable WindowServer. The
+          # script stays strict by default; only this non-interactive CI step
+          # permits the tested Flutter fallback, while native RunnerTests and
+          # clean-Mac acceptance cover the host/UI boundary separately.
+          CIRCUIT_ALLOW_HEADLESS_DESKTOP_FALLBACK: "1"
+        run: bash scripts/desktop_integration_suite.sh
+
+      - name: Run Flutter test suite
+        run: flutter test
+
+      - name: Restore the app target for native XCTest
+        # `flutter test` temporarily points Flutter-Generated.xcconfig at its
+        # per-test listener, then removes that listener. Regenerate the Debug
+        # app target before Xcode builds the real host for RunnerTests.
+        run: flutter build macos --debug
+
+      - name: Run native macOS app-host integration smoke
+        run: >-
+          xcodebuild test
+          -workspace macos/Runner.xcworkspace
+          -scheme Runner
+          -configuration Debug
+          -destination 'platform=macOS,arch=arm64'
+          -only-testing:RunnerTests
+
+      - name: Build release macOS app
+        run: flutter build macos --release
+
+      - name: Launch packaged release macOS app
+        run: |
+          APP="build/macos/Build/Products/Release/CircuitCode.app"
+          bash scripts/verify_packaged_app_launch.sh "$APP"
+
+      - name: Capture packaged release performance evidence series
+        run: |
+          APP="build/macos/Build/Products/Release/CircuitCode.app"
+          bash scripts/verify_release_performance_series.sh "$APP" 5
+
+      - name: Exercise packaged command-execution boundary
+        run: |
+          APP="build/macos/Build/Products/Release/CircuitCode.app"
+          bash scripts/verify_execution_broker.sh "$APP/Contents/Helpers/CircuitExecutionBroker"
+
+      - name: Inspect release entitlements
+        run: |
+          APP="build/macos/Build/Products/Release/CircuitCode.app"
+          bash scripts/verify_release_entitlements.sh "$APP"
+
+      - name: Generate release SBOM
+        uses: anchore/sbom-action@v0
         with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
-          verbose: true
+          path: ./circuit-ide
+          format: spdx-json
+          artifact-name: CircuitCode-macos-sbom
+          output-file: CircuitCode-macos.spdx.json
+          upload-release-assets: false
 
-  # ============================================================================
-  # Security Scanning
-  # ============================================================================
-  security:
-    name: Security Scan
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v6
+        with:
+          name: CircuitCode-macos-unsigned
+          path: circuit-ide/build/macos/Build/Products/Release/CircuitCode.app
+          if-no-files-found: error
+
+  security-red-team:
+    name: Security red-team policy gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: circuit-ide
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Restore Flutter packages
+        run: flutter pub get
+
+      - name: Run required security red-team suite
+        run: bash scripts/security_red_team_suite.sh
+
+  secret-scan:
+    name: Secret scanning gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
         with:
-          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+          fetch-depth: 0
 
-      - name: Install security tools
+      - uses: actions/setup-go@v6
+        with:
+          # Keep the scanner compiler exact and aligned with the isolated
+          # scanner-fixture exercise; neither job restores a Go module cache.
+          go-version: "1.26.2"
+          cache: false
+
+      - name: Install pinned Gitleaks scanner
+        run: go install github.com/zricethezav/gitleaks/v8@v8.29.0
+
+      - name: Block committed secrets
+        # `git` scans patches from the complete checkout history. Redaction
+        # avoids exposing a finding in CI logs if this gate ever rejects one.
+        # On rejection, print only the rule, path, line, and commit so a
+        # maintainer can distinguish a historical false positive from a real
+        # credential without putting the matched value in the workflow log.
         run: |
-          python -m pip install --upgrade pip
-          pip install bandit safety
+          report="$(mktemp)"
+          trap 'rm -f "$report"' EXIT
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" git \
+            --config=.gitleaks.toml \
+            --redact=100 \
+            --no-banner \
+            --log-opts="--all" \
+            --report-format=json \
+            --report-path="$report" \
+            .
+          scanner_exit="$?"
+          set -e
 
-      - name: Run bandit (code security)
-        run: bandit -r circuit_agent -ll -ii
-        continue-on-error: true
+          if [[ "$scanner_exit" -ne 0 ]]; then
+            if [[ -s "$report" ]]; then
+              jq -r '.[] | "Gitleaks finding: rule=\(.RuleID) file=\(.File) line=\(.StartLine) commit=\(.Commit) description=\(.Description)"' "$report"
+            fi
+            exit "$scanner_exit"
+          fi
 
-      - name: Check dependencies for vulnerabilities
-        run: |
-          pip install -e .
-          safety check
-        continue-on-error: true
+  dependency-vulnerability-scan:
+    name: Dependency vulnerability gate
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8
+    with:
+      scan-args: |-
+        --lockfile=./circuit-ide/pubspec.lock
 
-  # ============================================================================
-  # Build Test
-  # ============================================================================
-  build:
-    name: Build Package
+  sbom:
+    name: Source SBOM gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@v0
         with:
-          python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
+          path: ./circuit-ide
+          format: spdx-json
+          artifact-name: CircuitCode-source-sbom
+          output-file: CircuitCode-source.spdx.json
+          upload-release-assets: false
 
-      - name: Install build tools
+  security-scanner-fixture-exercise:
+    name: Security scanner fixture exercise
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-go@v6
+        with:
+          # OSV Scanner v2.3.8 declares Go 1.26.2 as its minimum toolchain.
+          # Keep this exact so the pinned scanner cannot silently rely on a
+          # runner-provided or automatically substituted compiler.
+          go-version: "1.26.2"
+          # These jobs install pinned standalone binaries; no repository Go
+          # module exists to cache, so avoid a misleading missing-go.sum warn.
+          cache: false
+
+      - name: Install pinned scanner binaries
         run: |
-          python -m pip install --upgrade pip
-          pip install build twine
+          go install github.com/zricethezav/gitleaks/v8@v8.29.0
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8
 
-      - name: Build package
-        run: python -m build
+      - name: Require scanners to reject isolated temporary fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/circuitcode-scanner-fixtures"
+          gitleaks_fixture="$root/gitleaks"
+          osv_fixture="$root/osv"
+          trap 'rm -rf "$root"' EXIT
+          umask 077
+          mkdir -p "$gitleaks_fixture" "$osv_fixture"
 
-      - name: Check package
-        run: twine check dist/*
+          # The AWS detector requires a base32-shaped suffix. Assemble this
+          # non-usable pattern only on the hosted runner; it is never printed
+          # or stored in the repository.
+          access_key="$(printf '%s%s' 'AKIA' 'Q7T2M5Z4H6N3R7XK')"
+          printf 'aws_access_key_id = "%s"\n' "$access_key" \
+            > "$gitleaks_fixture/fixture.env"
+          printf '%s\n' \
+            '{' \
+            '  "results": [' \
+            '    {' \
+            '      "packages": [' \
+            '        {' \
+            '          "package": {' \
+            '            "name": "lodash",' \
+            '            "version": "4.17.20",' \
+            '            "ecosystem": "npm"' \
+            '          }' \
+            '        }' \
+            '      ]' \
+            '    }' \
+            '  ]' \
+            '}' > "$osv_fixture/osv-scanner-deps.json"
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" dir "$gitleaks_fixture" >/dev/null 2>&1
+          gitleaks_exit="$?"
+          "$(go env GOPATH)/bin/osv-scanner" \
+            --lockfile "osv-scanner:$osv_fixture/osv-scanner-deps.json" >/dev/null 2>&1
+          osv_exit="$?"
+          set -e
 
-  # ============================================================================
-  # Documentation Build (when docs exist)
-  # ============================================================================
-  # docs:
-  #   name: Build Documentation
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION_DEFAULT }}
-  #     - name: Install dependencies
-  #       run: pip install mkdocs mkdocs-material
-  #     - name: Build docs
-  #       run: mkdocs build
+          # The exit codes are safe aggregate evidence: neither fixture data
+          # nor scanner output is retained or printed.
+          echo "Controlled Gitleaks exit: $gitleaks_exit"
+          echo "Controlled OSV exit: $osv_exit"
 
-  # ============================================================================
-  # All Checks Passed
-  # ============================================================================
+          if [[ "$gitleaks_exit" -eq 0 ]]; then
+            echo "Gitleaks accepted its controlled temporary fixture" >&2
+            exit 1
+          fi
+          if [[ "$osv_exit" -ne 1 ]]; then
+            echo "OSV did not report the controlled temporary vulnerable fixture" >&2
+            exit 1
+          fi
+
   all-checks:
-    name: All Checks Passed
-    needs: [lint, test, security, build]
+    name: All CircuitCode checks passed
+    needs: [product-boundary, flutter-macos, security-red-team, secret-scan, dependency-vulnerability-scan, sbom, security-scanner-fixture-exercise]
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check all jobs passed
+      - name: Fail unless every required product gate passed
         run: |
-          if [[ "${{ needs.lint.result }}" == "failure" ]] || \
-             [[ "${{ needs.test.result }}" == "failure" ]] || \
-             [[ "${{ needs.build.result }}" == "failure" ]]; then
-            echo "One or more required checks failed"
+          if [[ "${{ needs.product-boundary.result }}" != "success" ]] || \
+             [[ "${{ needs.flutter-macos.result }}" != "success" ]] || \
+             [[ "${{ needs.security-red-team.result }}" != "success" ]] || \
+             [[ "${{ needs.secret-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.dependency-vulnerability-scan.result }}" != "success" ]] || \
+             [[ "${{ needs.sbom.result }}" != "success" ]] || \
+             [[ "${{ needs.security-scanner-fixture-exercise.result }}" != "success" ]]; then
+            echo "One or more required CircuitCode checks failed"
             exit 1
           fi
-          echo "All required checks passed!"
+          echo "All required CircuitCode checks passed"

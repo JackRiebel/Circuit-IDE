@@ -22,8 +22,7 @@ class CallStackPanel extends ConsumerWidget {
           padding: const EdgeInsets.all(Spacing.md),
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(
-                  color: tokens.border.withValues(alpha: 0.3)),
+              bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
             ),
           ),
           child: Text(
@@ -63,8 +62,7 @@ class CallStackPanel extends ConsumerWidget {
             decoration: BoxDecoration(
               color: tokens.accent.withValues(alpha: 0.08),
               border: Border(
-                top: BorderSide(
-                    color: tokens.border.withValues(alpha: 0.3)),
+                top: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
               ),
             ),
             child: Text(
@@ -103,7 +101,9 @@ class _FrameRow extends StatelessWidget {
         cursor: SystemMouseCursors.click,
         child: Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: Spacing.md, vertical: Spacing.sm),
+            horizontal: Spacing.md,
+            vertical: Spacing.sm,
+          ),
           margin: const EdgeInsets.only(bottom: 1),
           decoration: BoxDecoration(
             color: isCurrent
@@ -135,8 +135,7 @@ class _FrameRow extends StatelessWidget {
                         ? tokens.textPrimary
                         : tokens.textSecondary,
                     fontSize: FontSizes.xs,
-                    fontWeight:
-                        isCurrent ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
                     fontFamily: 'monospace',
                   ),
                   overflow: TextOverflow.ellipsis,

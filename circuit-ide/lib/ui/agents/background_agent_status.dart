@@ -35,9 +35,12 @@ class BackgroundAgentStatus extends ConsumerWidget {
                     fontSize: FontSizes.xs,
                   ),
                 ),
-                ...bgState.recentResults.take(3).map(
+                ...bgState.recentResults
+                    .take(3)
+                    .map(
                       (r) => TextSpan(
-                        text: '${r.success ? "+" : "x"} ${r.agentName}: ${r.summary}\n',
+                        text:
+                            '${r.success ? "+" : "x"} ${r.agentName}: ${r.summary}\n',
                         style: TextStyle(
                           color: tokens.textSecondary,
                           fontSize: FontSizes.xxs,

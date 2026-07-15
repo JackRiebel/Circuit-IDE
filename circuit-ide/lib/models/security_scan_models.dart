@@ -13,30 +13,30 @@ enum VulnerabilityType {
 
 extension VulnerabilityTypeExt on VulnerabilityType {
   String get displayName => switch (this) {
-        VulnerabilityType.sqlInjection => 'SQL Injection',
-        VulnerabilityType.xss => 'Cross-Site Scripting (XSS)',
-        VulnerabilityType.commandInjection => 'Command Injection',
-        VulnerabilityType.pathTraversal => 'Path Traversal',
-        VulnerabilityType.insecureCrypto => 'Insecure Cryptography',
-        VulnerabilityType.hardcodedSecret => 'Hardcoded Secret',
-        VulnerabilityType.insecureDeserialization => 'Insecure Deserialization',
-        VulnerabilityType.openRedirect => 'Open Redirect',
-        VulnerabilityType.missingAuth => 'Missing Authentication',
-        VulnerabilityType.insecureRandom => 'Insecure Randomness',
-      };
+    VulnerabilityType.sqlInjection => 'SQL Injection',
+    VulnerabilityType.xss => 'Cross-Site Scripting (XSS)',
+    VulnerabilityType.commandInjection => 'Command Injection',
+    VulnerabilityType.pathTraversal => 'Path Traversal',
+    VulnerabilityType.insecureCrypto => 'Insecure Cryptography',
+    VulnerabilityType.hardcodedSecret => 'Hardcoded Secret',
+    VulnerabilityType.insecureDeserialization => 'Insecure Deserialization',
+    VulnerabilityType.openRedirect => 'Open Redirect',
+    VulnerabilityType.missingAuth => 'Missing Authentication',
+    VulnerabilityType.insecureRandom => 'Insecure Randomness',
+  };
 
   String get icon => switch (this) {
-        VulnerabilityType.sqlInjection => 'database',
-        VulnerabilityType.xss => 'web',
-        VulnerabilityType.commandInjection => 'terminal',
-        VulnerabilityType.pathTraversal => 'folder',
-        VulnerabilityType.insecureCrypto => 'lock',
-        VulnerabilityType.hardcodedSecret => 'key',
-        VulnerabilityType.insecureDeserialization => 'data',
-        VulnerabilityType.openRedirect => 'redirect',
-        VulnerabilityType.missingAuth => 'shield',
-        VulnerabilityType.insecureRandom => 'shuffle',
-      };
+    VulnerabilityType.sqlInjection => 'database',
+    VulnerabilityType.xss => 'web',
+    VulnerabilityType.commandInjection => 'terminal',
+    VulnerabilityType.pathTraversal => 'folder',
+    VulnerabilityType.insecureCrypto => 'lock',
+    VulnerabilityType.hardcodedSecret => 'key',
+    VulnerabilityType.insecureDeserialization => 'data',
+    VulnerabilityType.openRedirect => 'redirect',
+    VulnerabilityType.missingAuth => 'shield',
+    VulnerabilityType.insecureRandom => 'shuffle',
+  };
 }
 
 class SecurityFinding {
@@ -59,12 +59,12 @@ class SecurityFinding {
   });
 
   int get severityOrder => switch (severity) {
-        'critical' => 0,
-        'high' => 1,
-        'medium' => 2,
-        'low' => 3,
-        _ => 4,
-      };
+    'critical' => 0,
+    'high' => 1,
+    'medium' => 2,
+    'low' => 3,
+    _ => 4,
+  };
 }
 
 class ScanResult {

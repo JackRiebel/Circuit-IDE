@@ -34,11 +34,13 @@ class SSEParser {
     if (line.isEmpty) {
       // Empty line = dispatch event
       if (_currentData.isNotEmpty) {
-        _controller.add(SSEEvent(
-          event: _currentEvent,
-          data: _currentData.trimRight(),
-          id: _currentId,
-        ));
+        _controller.add(
+          SSEEvent(
+            event: _currentEvent,
+            data: _currentData.trimRight(),
+            id: _currentId,
+          ),
+        );
       }
       _currentEvent = null;
       _currentData = '';
@@ -64,11 +66,13 @@ class SSEParser {
   void close() {
     // Flush any remaining data
     if (_currentData.isNotEmpty) {
-      _controller.add(SSEEvent(
-        event: _currentEvent,
-        data: _currentData.trimRight(),
-        id: _currentId,
-      ));
+      _controller.add(
+        SSEEvent(
+          event: _currentEvent,
+          data: _currentData.trimRight(),
+          id: _currentId,
+        ),
+      );
     }
     _controller.close();
   }

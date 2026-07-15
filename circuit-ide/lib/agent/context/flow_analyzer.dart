@@ -88,9 +88,11 @@ class FlowAnalyzer {
         try {
           final sibContent = await entity.readAsString();
           final sibImports = _parser.parseFile(entity.path, sibContent);
-          final importsThisFile = sibImports.any((imp) =>
-              imp.isRelative &&
-              p.normalize(imp.targetPath) == p.normalize(filePath));
+          final importsThisFile = sibImports.any(
+            (imp) =>
+                imp.isRelative &&
+                p.normalize(imp.targetPath) == p.normalize(filePath),
+          );
 
           if (importsThisFile) {
             final sig = extractSignatures(entity.path, sibContent);
@@ -104,7 +106,8 @@ class FlowAnalyzer {
 
     final allSigs = [...dependencies, ...dependents];
     final tokenEstimate = allSigs.fold<int>(0, (sum, sig) {
-      final chars = sig.classNames.join(', ').length +
+      final chars =
+          sig.classNames.join(', ').length +
           sig.functionSignatures.join('\n').length +
           sig.exportedConstants.join('\n').length;
       return sum + (chars / 4).ceil();
@@ -174,7 +177,9 @@ class FlowAnalyzer {
     }
     for (final m in _dartFuncRe.allMatches(content)) {
       final line = m.group(0)!.trim();
-      if (!line.startsWith('//') && !line.startsWith('if') && !line.startsWith('return')) {
+      if (!line.startsWith('//') &&
+          !line.startsWith('if') &&
+          !line.startsWith('return')) {
         functions.add(line);
       }
     }
@@ -183,8 +188,14 @@ class FlowAnalyzer {
     }
   }
 
-  static final _pyClassRe = RegExp(r'^class\s+(\w+)(?:\(([^)]*)\))?:', multiLine: true);
-  static final _pyFuncRe = RegExp(r'^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)', multiLine: true);
+  static final _pyClassRe = RegExp(
+    r'^class\s+(\w+)(?:\(([^)]*)\))?:',
+    multiLine: true,
+  );
+  static final _pyFuncRe = RegExp(
+    r'^(?:async\s+)?def\s+(\w+)\s*\(([^)]*)\)',
+    multiLine: true,
+  );
 
   void _extractPythonSignatures(
     String content,
@@ -202,13 +213,13 @@ class FlowAnalyzer {
     }
   }
 
-  static final _jsClassRe = RegExp(r'(?:export\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?');
+  static final _jsClassRe = RegExp(
+    r'(?:export\s+)?class\s+(\w+)(?:\s+extends\s+(\w+))?',
+  );
   static final _jsFuncRe = RegExp(
     r'(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\(([^)]*)\)',
   );
-  static final _jsExportConstRe = RegExp(
-    r'export\s+(?:const|let|var)\s+(\w+)',
-  );
+  static final _jsExportConstRe = RegExp(r'export\s+(?:const|let|var)\s+(\w+)');
 
   void _extractJsSignatures(
     String content,
@@ -256,6 +267,14 @@ class FlowAnalyzer {
   }
 
   static const _supportedExtensions = {
-    '.dart', '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.mts', '.go',
+    '.dart',
+    '.py',
+    '.js',
+    '.jsx',
+    '.ts',
+    '.tsx',
+    '.mjs',
+    '.mts',
+    '.go',
   };
 }

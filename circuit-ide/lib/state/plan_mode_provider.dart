@@ -63,8 +63,7 @@ class PlanModeState {
   }
 
   int get completedCount => steps.where((s) => s.isCompleted).length;
-  double get progress =>
-      steps.isEmpty ? 0 : completedCount / steps.length;
+  double get progress => steps.isEmpty ? 0 : completedCount / steps.length;
 }
 
 class PlanModeNotifier extends Notifier<PlanModeState> {
@@ -115,7 +114,6 @@ class PlanModeNotifier extends Notifier<PlanModeState> {
   }
 }
 
-final planModeProvider =
-    NotifierProvider<PlanModeNotifier, PlanModeState>(
+final planModeProvider = NotifierProvider<PlanModeNotifier, PlanModeState>(
   PlanModeNotifier.new,
 );

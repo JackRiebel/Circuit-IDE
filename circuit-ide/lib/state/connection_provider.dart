@@ -4,6 +4,8 @@ import '../enums/ai_provider.dart';
 import '../enums/connection_status.dart';
 import '../services/agent_service.dart';
 
+export 'studio_provider_connection.dart';
+
 final agentServiceProvider = Provider<AgentService>((ref) {
   final service = AgentService();
   ref.onDispose(() => service.dispose());
@@ -21,8 +23,8 @@ class ConnectionStatusNotifier extends Notifier<ConnectionStatus> {
 
 final connectionStatusProvider =
     NotifierProvider<ConnectionStatusNotifier, ConnectionStatus>(
-  ConnectionStatusNotifier.new,
-);
+      ConnectionStatusNotifier.new,
+    );
 
 class ActiveProviderTypeNotifier extends Notifier<AIProviderType> {
   @override
@@ -35,5 +37,5 @@ class ActiveProviderTypeNotifier extends Notifier<AIProviderType> {
 
 final activeProviderTypeProvider =
     NotifierProvider<ActiveProviderTypeNotifier, AIProviderType>(
-  ActiveProviderTypeNotifier.new,
-);
+      ActiveProviderTypeNotifier.new,
+    );

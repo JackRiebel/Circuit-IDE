@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:uuid/uuid.dart';
 
 import '../core/constants/app_constants.dart';
+import '../core/config/studio_feature_flags.dart';
 import '../core/utils/logger.dart';
 import '../enums/event_type.dart';
 import '../enums/message_role.dart';
@@ -21,7 +22,6 @@ import 'checkpoint/checkpoint_manager.dart';
 import 'mcp/mcp_client.dart';
 import 'tools/tool_executor.dart';
 import 'tools/tool_registry.dart';
-import 'tools/orchestrate_tool.dart';
 
 class CircuitAgent {
   final AIProvider provider;
@@ -75,11 +75,6 @@ class CircuitAgent {
     _toolExecutor.setMcpClient(client);
   }
 
-  /// Set orchestration tool executor.
-  void setOrchestrateTool(OrchestrateToolExecutor? tool) {
-    _toolExecutor.setOrchestrateTool(tool);
-  }
-
   set systemPromptOverride(String? prompt) {
     _systemPromptOverride = prompt;
   }
@@ -87,6 +82,7 @@ class CircuitAgent {
   /// Cancel the current operation
   void cancel() {
     _isCancelled = true;
+    _toolExecutor.cancelActiveCommands();
   }
 
   Future<void> init() async {
@@ -106,6 +102,8 @@ class CircuitAgent {
     String userMessage, {
     void Function(String chunk)? onContent,
     String? requestId,
+    List<ChatMessage>? historyOverride,
+    AgentToolMode toolMode = AgentToolMode.code,
   }) async {
     if (_isProcessing) {
       throw StateError('Agent is already processing a message');
@@ -124,6 +122,9 @@ class CircuitAgent {
 
       // Begin a new checkpoint turn
       _toolExecutor.beginTurn();
+      final requestHistory = historyOverride == null
+          ? history
+          : List<ChatMessage>.of(historyOverride);
 
       // Add user message to history
       final userMsg = ChatMessage(
@@ -132,26 +133,51 @@ class CircuitAgent {
         content: userMessage,
         timestamp: DateTime.now(),
       );
-      history.add(userMsg);
+      requestHistory.add(userMsg);
 
       String fullResponse = '';
       List<ToolCallInfo> allToolCalls = [];
+      final seenToolRounds = <String>{};
+      var noProgressRounds = 0;
 
-      // Tool call loop (up to 25 iterations)
+      // Tool call loop. Keep this bounded so weak or slow models cannot
+      // inspect forever without returning useful status to the user.
       for (
         int iteration = 0;
         iteration < AppConstants.maxToolCallIterations;
         iteration++
       ) {
-        final optimized = _contextManager.optimizeContext(history);
+        final optimized = _contextManager.optimizeContext(requestHistory);
         final response = StreamingResponse();
 
         // Stream the response
         events.emit(EventType.thinkingStarted);
 
-        // Merge MCP tools into the tools list for AI provider
-        final allTools = [...ToolRegistry.allTools, ..._mcpTools];
+        final phase = _phaseForToolMode(toolMode, iteration);
+        final baseTools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
+        final allTools = [
+          ...baseTools,
+          if (StudioFeatureFlags.advancedStudioSurfaces &&
+              phase == AgentToolPhase.verify)
+            ..._mcpTools,
+        ];
+        events.emit(EventType.agentRunEvent, {
+          'requestId': ?requestId,
+          'event': 'tool_exposure',
+          'mode': toolMode.name,
+          'phase': phase.name,
+          'tools': allTools.map((tool) => tool.name).toList(),
+        });
+        events.emit(EventType.agentRunEvent, {
+          'requestId': ?requestId,
+          'event': 'provider_lifecycle',
+          'kind': 'request_sent',
+          'model': model,
+        });
 
+        var sawFirstDelta = false;
+        var sawFirstText = false;
+        var sawFirstTool = false;
         await for (final chunk in provider.chat(
           optimized,
           model: model,
@@ -161,7 +187,26 @@ class CircuitAgent {
         )) {
           if (_isCancelled) break;
 
+          if (!sawFirstDelta) {
+            sawFirstDelta = true;
+            events.emit(EventType.agentRunEvent, {
+              'requestId': ?requestId,
+              'event': 'provider_lifecycle',
+              'kind': 'first_delta',
+              'model': model,
+            });
+          }
+
           if (chunk.content != null) {
+            if (!sawFirstText && chunk.content!.isNotEmpty) {
+              sawFirstText = true;
+              events.emit(EventType.agentRunEvent, {
+                'requestId': ?requestId,
+                'event': 'provider_lifecycle',
+                'kind': 'first_text_delta',
+                'model': model,
+              });
+            }
             response.addContent(chunk.content!);
             onContent?.call(chunk.content!);
             events.emit(EventType.messageChunk, {
@@ -171,6 +216,15 @@ class CircuitAgent {
           }
 
           if (chunk.toolCallIndex != null) {
+            if (!sawFirstTool) {
+              sawFirstTool = true;
+              events.emit(EventType.agentRunEvent, {
+                'requestId': ?requestId,
+                'event': 'provider_lifecycle',
+                'kind': 'first_tool_delta',
+                'model': model,
+              });
+            }
             response.addToolCallChunk(
               index: chunk.toolCallIndex!,
               id: chunk.toolCallId,
@@ -220,6 +274,25 @@ class CircuitAgent {
               ),
             )
             .toList();
+        final unavailableToolCalls = _unavailableToolCalls(
+          toolCallInfos,
+          allTools,
+        );
+        if (unavailableToolCalls.isNotEmpty) {
+          final names = unavailableToolCalls
+              .map((call) => call.name)
+              .join(', ');
+          final message =
+              'Circuit AI requested unavailable tool(s) for this ${toolMode.name}/${phase.name} phase: $names. I stopped before running any unavailable action.';
+          events.emit(EventType.agentRunEvent, {
+            'requestId': ?requestId,
+            'event': 'provider_lifecycle',
+            'kind': 'unavailable_tool',
+            'model': model,
+            'detail': message,
+          });
+          throw StateError(message);
+        }
 
         final assistantMsg = ChatMessage(
           id: _uuid.v4(),
@@ -228,13 +301,39 @@ class CircuitAgent {
           timestamp: DateTime.now(),
           toolCalls: toolCallInfos,
         );
-        history.add(assistantMsg);
+        requestHistory.add(assistantMsg);
 
         fullResponse += response.content;
         allToolCalls.addAll(toolCallInfos);
 
         // If no tool calls, we're done
         if (!response.hasToolCalls) break;
+
+        final roundKey = toolCallInfos
+            .map((call) => '${call.name}:${call.arguments}')
+            .join('|');
+        final repeatedRound = !seenToolRounds.add(roundKey);
+        if (response.content.trim().isEmpty && repeatedRound) {
+          noProgressRounds++;
+        } else {
+          noProgressRounds = 0;
+        }
+        if (noProgressRounds >= 2) {
+          const stopMessage =
+              'I’m stopping here because the same tool step repeated without new progress. Tell me what to inspect next, or switch to Plan mode for a smaller reviewable plan.';
+          fullResponse = fullResponse.trim().isEmpty
+              ? stopMessage
+              : '$fullResponse\n\n$stopMessage';
+          requestHistory.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.assistant,
+              content: stopMessage,
+              timestamp: DateTime.now(),
+            ),
+          );
+          break;
+        }
 
         // Execute tool calls
         _toolExecutor.autoApprove = autoApprove;
@@ -249,7 +348,7 @@ class CircuitAgent {
             timestamp: DateTime.now(),
             toolCallId: result.toolCallId,
           );
-          history.add(toolMsg);
+          requestHistory.add(toolMsg);
 
           await _auditLogger.logToolCall(
             toolCallInfos.firstWhere((tc) => tc.id == result.toolCallId).name,
@@ -312,13 +411,17 @@ class CircuitAgent {
   }
 
   Future<bool> _handleConfirmation(ConfirmationRequest request) async {
-    events.emit(EventType.confirmationNeeded, {'request': request});
+    events.emit(EventType.confirmationNeeded, {
+      'request': request,
+      if (_activeRequestId != null) 'requestId': _activeRequestId,
+    });
 
     final result = await request.response;
 
     events.emit(EventType.confirmationReceived, {
       'id': request.id,
       'approved': result,
+      if (_activeRequestId != null) 'requestId': _activeRequestId,
     });
 
     return result;
@@ -335,6 +438,30 @@ class CircuitAgent {
       'toolCall': toolCall,
       if (_activeRequestId != null) 'requestId': _activeRequestId,
     });
+  }
+
+  AgentToolPhase _phaseForToolMode(AgentToolMode mode, int iteration) {
+    return switch (mode) {
+      AgentToolMode.chat ||
+      AgentToolMode.ask ||
+      AgentToolMode.research ||
+      AgentToolMode.review ||
+      AgentToolMode.handoff => AgentToolPhase.inspect,
+      AgentToolMode.plan => AgentToolPhase.propose,
+      AgentToolMode.verify => AgentToolPhase.verify,
+      AgentToolMode.code || AgentToolMode.fix =>
+        iteration == 0 ? AgentToolPhase.inspect : AgentToolPhase.propose,
+    };
+  }
+
+  List<ToolCallInfo> _unavailableToolCalls(
+    List<ToolCallInfo> toolCalls,
+    List<ToolDefinition> exposedTools,
+  ) {
+    final exposedNames = exposedTools.map((tool) => tool.name).toSet();
+    return toolCalls
+        .where((call) => !exposedNames.contains(call.name))
+        .toList(growable: false);
   }
 
   void clearHistory() {

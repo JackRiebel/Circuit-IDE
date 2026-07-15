@@ -29,8 +29,8 @@ class BotAgentCard extends ConsumerWidget {
           color: isRunning
               ? tokens.success.withValues(alpha: 0.3)
               : hasError
-                  ? tokens.error.withValues(alpha: 0.3)
-                  : tokens.border,
+              ? tokens.error.withValues(alpha: 0.3)
+              : tokens.border,
         ),
       ),
       child: Column(
@@ -58,10 +58,7 @@ class BotAgentCard extends ConsumerWidget {
           // Config summary
           Text(
             'Port: ${status.config.port}  ·  Model: ${status.config.model}',
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
 
           // Ngrok URL when running
@@ -69,10 +66,7 @@ class BotAgentCard extends ConsumerWidget {
             const SizedBox(height: Spacing.sm),
             Text(
               'Webhook: ${status.publicUrl}',
-              style: TextStyle(
-                color: tokens.accent,
-                fontSize: FontSizes.xs,
-              ),
+              style: TextStyle(color: tokens.accent, fontSize: FontSizes.xs),
               overflow: TextOverflow.ellipsis,
             ),
           ],
@@ -94,10 +88,7 @@ class BotAgentCard extends ConsumerWidget {
             const SizedBox(height: Spacing.sm),
             Text(
               status.error!,
-              style: TextStyle(
-                color: tokens.error,
-                fontSize: FontSizes.xxs,
-              ),
+              style: TextStyle(color: tokens.error, fontSize: FontSizes.xxs),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -187,10 +178,7 @@ class _StateChip extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Spacing.md,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: Spacing.md, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(Radii.pill),

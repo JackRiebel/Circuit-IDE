@@ -9,6 +9,7 @@ import '../agent/mcp/mcp_config.dart';
 import '../agent/mcp/mcp_config_storage.dart';
 import '../agent/mcp/mcp_token_storage.dart';
 import '../agent/providers/provider_interface.dart';
+import '../agent/security/child_process_environment.dart';
 import '../core/utils/logger.dart';
 import '../services/mcp_process_manager.dart';
 
@@ -80,15 +81,26 @@ class McpHubState {
 }
 
 class McpHubNotifier extends Notifier<McpHubState> {
-  final McpClient _client = McpClient();
-  final _storage = McpConfigStorage();
-  final _processManager = McpProcessManager();
-  final _tokenStorage = McpTokenStorage();
+  final McpClient _client;
+  final McpConfigStorage _storage;
+  final McpProcessManager _processManager;
+  final McpTokenStore _tokenStorage;
   StreamSubscription<(String, McpProcessState)>? _processStateSub;
   Process? _botProcess;
 
+  McpHubNotifier({
+    McpClient? client,
+    McpConfigStorage? storage,
+    McpProcessManager? processManager,
+    McpTokenStore? tokenStorage,
+  }) : _client = client ?? McpClient(),
+       _storage = storage ?? McpConfigStorage(),
+       _processManager = processManager ?? McpProcessManager(),
+       _tokenStorage = tokenStorage ?? McpTokenStorage();
+
   @override
   McpHubState build() {
+    _client.onServerUsed = _markServerUsed;
     ref.onDispose(() {
       _client.disconnectAll();
       unawaited(_processManager.dispose());
@@ -126,7 +138,7 @@ class McpHubNotifier extends Notifier<McpHubState> {
 
       // Auto-connect enabled servers
       for (final config in configs) {
-        if (config.enabled) {
+        if (config.enabled && config.approvedAt != null) {
           await _connectServer(config.name);
         }
       }
@@ -137,13 +149,19 @@ class McpHubNotifier extends Notifier<McpHubState> {
   }
 
   Future<void> addServer(McpServerConfig config) async {
+    final protectedConfig = (await _storage.protectSensitiveHeaders(config))
+        .copyWith(
+          enabled: true,
+          approvedAt: DateTime.now(),
+          consentedAt: config.consentedAt ?? DateTime.now(),
+        );
     final servers = List<McpServerStatus>.from(state.servers);
-    servers.add(McpServerStatus(config: config));
+    servers.add(McpServerStatus(config: protectedConfig));
     state = state.copyWith(servers: servers);
     await _saveConfigs();
 
-    if (config.enabled) {
-      await _connectServer(config.name);
+    if (protectedConfig.enabled) {
+      await _connectServer(protectedConfig.name);
     }
   }
 
@@ -164,7 +182,13 @@ class McpHubNotifier extends Notifier<McpHubState> {
   Future<void> toggleServer(String name, bool enabled) async {
     final servers = state.servers.map((s) {
       if (s.config.name == name) {
-        return s.copyWith(config: s.config.copyWith(enabled: enabled));
+        return s.copyWith(
+          config: s.config.copyWith(
+            enabled: enabled,
+            approvedAt: enabled ? DateTime.now() : s.config.approvedAt,
+            consentedAt: enabled ? DateTime.now() : s.config.consentedAt,
+          ),
+        );
       }
       return s;
     }).toList();
@@ -187,6 +211,15 @@ class McpHubNotifier extends Notifier<McpHubState> {
       (s) => s.config.name == name,
       orElse: () => throw StateError('Server not found: $name'),
     );
+    if (serverStatus.config.approvedAt == null ||
+        serverStatus.config.consentedAt == null) {
+      _updateServerStatus(
+        name,
+        McpConnectionState.error,
+        error: 'Server requires explicit approval before launch.',
+      );
+      return;
+    }
 
     await _processManager.startServer(serverStatus.config);
 
@@ -218,6 +251,39 @@ class McpHubNotifier extends Notifier<McpHubState> {
     Map<String, String> tokens,
   ) async {
     await _tokenStorage.replaceTokens(name, envVars, tokens);
+  }
+
+  /// Runs only the bounded MCP initialize + tools/list health check. It does
+  /// not invoke an MCP tool or change the server's enablement.
+  Future<void> testServerConnection(String name) async {
+    await _connectServer(name, recordTest: true);
+  }
+
+  /// Revocation stops the server, disconnects it, deletes all Keychain-backed
+  /// tokens, and removes local approval/consent before persisting the audit
+  /// record. A revoked connector must be configured and reviewed again.
+  Future<void> revokeServerConsent(String name) async {
+    final server = state.servers.firstWhere(
+      (status) => status.config.name == name,
+      orElse: () => throw StateError('Server not found: $name'),
+    );
+    await shutdownServer(name);
+    await _tokenStorage.deleteTokens(name, server.config.requiredEnvVars);
+    final servers = state.servers
+        .map(
+          (status) => status.config.name == name
+              ? status.copyWith(
+                  config: status.config.copyWith(
+                    enabled: false,
+                    approvedAt: null,
+                    consentedAt: null,
+                  ),
+                )
+              : status,
+        )
+        .toList(growable: false);
+    state = state.copyWith(servers: servers);
+    await _saveConfigs();
   }
 
   Future<Map<String, String>> loadServerTokens(
@@ -261,22 +327,20 @@ class McpHubNotifier extends Notifier<McpHubState> {
         BotAgentConfig.requiredEnvVars,
       );
 
-      final env = <String, String>{
-        ...Platform.environment,
-        ...tokens,
-        'PORT': botStatus.config.port.toString(),
-        'MODEL': botStatus.config.model,
-      };
-
-      if (botStatus.config.systemPrompt != null) {
-        env['SYSTEM_PROMPT'] = botStatus.config.systemPrompt!;
-      }
-      if (botStatus.config.roomIds.isNotEmpty) {
-        env['ROOM_IDS'] = botStatus.config.roomIds.join(',');
-      }
-      if (botStatus.config.mcpServerUrls.isNotEmpty) {
-        env['MCP_SERVER_URLS'] = botStatus.config.mcpServerUrls.join(',');
-      }
+      final env = ChildProcessEnvironment.build(
+        baseEnvironment: Platform.environment,
+        injected: tokens,
+        fixed: {
+          'PORT': botStatus.config.port.toString(),
+          'MODEL': botStatus.config.model,
+          if (botStatus.config.systemPrompt != null)
+            'SYSTEM_PROMPT': botStatus.config.systemPrompt!,
+          if (botStatus.config.roomIds.isNotEmpty)
+            'ROOM_IDS': botStatus.config.roomIds.join(','),
+          if (botStatus.config.mcpServerUrls.isNotEmpty)
+            'MCP_SERVER_URLS': botStatus.config.mcpServerUrls.join(','),
+        },
+      );
 
       _botProcess = await Process.start('python3', [
         botStatus.config.scriptPath!,
@@ -288,7 +352,11 @@ class McpHubNotifier extends Notifier<McpHubState> {
       _botProcess!.stdout.transform(const SystemEncoding().decoder).listen((
         data,
       ) {
-        Logger.info('[bot stdout] $data', 'McpHubNotifier');
+        final safeData = ChildProcessEnvironment.redactOutput(
+          data,
+          tokens.values,
+        );
+        Logger.info('[bot stdout] $safeData', 'McpHubNotifier');
         // Look for ngrok URL pattern
         final match = RegExp(r'https://[a-z0-9]+\.ngrok\.io').firstMatch(data);
         if (match != null && ngrokUrl == null) {
@@ -302,7 +370,10 @@ class McpHubNotifier extends Notifier<McpHubState> {
       _botProcess!.stderr.transform(const SystemEncoding().decoder).listen((
         data,
       ) {
-        Logger.warning('[bot stderr] $data', 'McpHubNotifier');
+        Logger.warning(
+          '[bot stderr] ${ChildProcessEnvironment.redactOutput(data, tokens.values)}',
+          'McpHubNotifier',
+        );
       });
 
       state = state.copyWith(
@@ -351,11 +422,23 @@ class McpHubNotifier extends Notifier<McpHubState> {
 
   // --- Internal ---
 
-  Future<void> _connectServer(String name) async {
+  Future<void> _connectServer(String name, {bool recordTest = false}) async {
     final serverStatus = state.servers.firstWhere(
       (s) => s.config.name == name,
       orElse: () => throw StateError('Server not found: $name'),
     );
+
+    if (!serverStatus.config.enabled ||
+        serverStatus.config.approvedAt == null ||
+        serverStatus.config.consentedAt == null) {
+      _updateServerStatus(
+        name,
+        McpConnectionState.disconnected,
+        toolCount: 0,
+        error: 'Server is disabled or has not been explicitly approved.',
+      );
+      return;
+    }
 
     _updateServerStatus(name, McpConnectionState.connecting);
 
@@ -367,6 +450,13 @@ class McpHubNotifier extends Notifier<McpHubState> {
         McpConnectionState.connected,
         toolCount: toolCount,
       );
+      if (recordTest) {
+        _replaceConfig(
+          name,
+          serverStatus.config.copyWith(lastTestedAt: DateTime.now()),
+        );
+        await _saveConfigs();
+      }
     } catch (e) {
       _updateServerStatus(name, McpConnectionState.error, error: e.toString());
     }
@@ -391,6 +481,27 @@ class McpHubNotifier extends Notifier<McpHubState> {
     state = state.copyWith(servers: servers);
   }
 
+  void _markServerUsed(String name) {
+    final server = state.servers
+        .where((status) => status.config.name == name)
+        .firstOrNull;
+    if (server == null) return;
+    _replaceConfig(name, server.config.copyWith(lastUsedAt: DateTime.now()));
+    unawaited(_saveConfigs());
+  }
+
+  void _replaceConfig(String name, McpServerConfig config) {
+    state = state.copyWith(
+      servers: state.servers
+          .map(
+            (status) => status.config.name == name
+                ? status.copyWith(config: config)
+                : status,
+          )
+          .toList(growable: false),
+    );
+  }
+
   void _updateProcessState(String name, McpProcessState procState) {
     final servers = state.servers.map((s) {
       if (s.config.name == name) {
@@ -406,7 +517,14 @@ class McpHubNotifier extends Notifier<McpHubState> {
 
   Future<void> _saveConfigs() async {
     final configs = state.servers.map((s) => s.config).toList();
-    await _storage.save(configs);
+    final protected = await _storage.save(configs);
+    if (protected.length != configs.length) return;
+    final byName = {for (final config in protected) config.name: config};
+    state = state.copyWith(
+      servers: state.servers
+          .map((server) => server.copyWith(config: byName[server.config.name]))
+          .toList(),
+    );
   }
 }
 

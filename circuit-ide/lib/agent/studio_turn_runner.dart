@@ -1,0 +1,1349 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:uuid/uuid.dart';
+
+import '../core/utils/logger.dart';
+import '../enums/event_type.dart';
+import '../enums/message_role.dart';
+import '../models/chat_message.dart';
+import '../models/provider_lifecycle_event.dart';
+import '../models/studio_turn.dart';
+import '../models/token_usage.dart';
+import '../models/tool_call_info.dart';
+import '../models/tool_result_envelope.dart';
+import '../models/agent_tool_permission.dart';
+import '../models/accepted_plan_context.dart';
+import '../models/agent_config_model.dart';
+import '../models/turn_intent.dart';
+import '../services/event_bus.dart';
+import 'context/context_manager.dart';
+import 'providers/provider_interface.dart';
+import 'streaming/streaming_response.dart';
+import 'studio_turn_prompt_factory.dart';
+import 'tools/tool_executor.dart';
+import 'tools/tool_registry.dart';
+import 'turn_outcome_validator.dart';
+
+class StudioTurnRunnerResult {
+  final String content;
+  final TokenUsage usage;
+  final List<ToolCallInfo> toolCalls;
+  final List<ToolResultEnvelope> toolResults;
+  final AcceptedPlanState acceptedPlanState;
+
+  const StudioTurnRunnerResult({
+    required this.content,
+    required this.usage,
+    required this.toolCalls,
+    this.toolResults = const [],
+    this.acceptedPlanState = AcceptedPlanState.none,
+  });
+}
+
+/// Request-local Studio runner. It intentionally does not mutate
+/// `CircuitAgent.history`; Studio threads provide the request history.
+class StudioTurnRunner {
+  final AIProvider provider;
+  final String workingDir;
+  final EventBus events;
+  final String model;
+  final ToolExecutor toolExecutor;
+  final ProviderConnectorNetworkPolicy connectorNetworkPolicy;
+  final ApprovalGrant Function()? approvalGrantProvider;
+  final String? Function()? approvalGrantKeyProvider;
+  final ContextManager _contextManager = ContextManager();
+  final TurnOutcomeValidator _outcomeValidator = const TurnOutcomeValidator();
+
+  static const _uuid = Uuid();
+  bool _isCancelled = false;
+
+  StudioTurnRunner({
+    required this.provider,
+    required this.workingDir,
+    required this.events,
+    required this.model,
+    required this.toolExecutor,
+    this.connectorNetworkPolicy = ProviderConnectorNetworkPolicy.unrestricted,
+    this.approvalGrantProvider,
+    this.approvalGrantKeyProvider,
+  });
+
+  void cancel() {
+    _isCancelled = true;
+    provider.cancelActiveRequest();
+    toolExecutor.cancelActiveCommands();
+  }
+
+  Future<StudioTurnRunnerResult> run({
+    required String requestId,
+    String? turnId,
+    required String userMessage,
+    required List<ChatMessage> history,
+    required AgentToolMode toolMode,
+    required TurnIntent intent,
+    AcceptedPlanContext? acceptedPlan,
+    List<ProviderImageInput> images = const [],
+    bool reasoningEnabled = false,
+    AgentConfigModel? customAgent,
+  }) async {
+    _isCancelled = false;
+    final agentManifest = customAgent?.manifest;
+    final systemPrompt = StudioTurnPromptFactory.systemPromptForTurn(
+      intent: intent,
+      toolMode: toolMode,
+      hasAcceptedPlan: acceptedPlan != null,
+      customAgent: customAgent,
+    );
+    final effectiveUserMessage = acceptedPlan == null
+        ? userMessage
+        : StudioTurnPromptFactory.messageWithAcceptedPlan(
+            userMessage,
+            acceptedPlan,
+          );
+    final requestHistory = List<ChatMessage>.of(history)
+      ..add(
+        ChatMessage(
+          id: _uuid.v4(),
+          role: MessageRole.user,
+          content: effectiveUserMessage,
+          timestamp: DateTime.now(),
+        ),
+      );
+
+    events.emit(EventType.messageStarted, {'requestId': requestId});
+    toolExecutor.beginTurn();
+
+    var fullResponse = '';
+    var usage = const TokenUsage();
+    var totalUsage = const TokenUsage();
+    final allToolCalls = <ToolCallInfo>[];
+    final allToolResults = <ToolResultEnvelope>[];
+    final seenToolRounds = <String>{};
+    var noProgressRounds = 0;
+    var sawAnyText = false;
+    var sawAnyTool = false;
+    var sawAnyFirstByte = false;
+    var sawCancelledDiagnostic = false;
+    var sawTimeoutDiagnostic = false;
+    var emittedNoFirstByteDiagnostic = false;
+    var toolOnlyNonTerminalRounds = 0;
+    var lastPlanDraft = '';
+    String? pendingRepairValidationMessage;
+
+    try {
+      final maxOutcomeAttempts =
+          _allowsOutcomeRepair(intent: intent, toolMode: toolMode) ? 2 : 1;
+      for (
+        var outcomeAttempt = 0;
+        outcomeAttempt < maxOutcomeAttempts;
+        outcomeAttempt++
+      ) {
+        if (outcomeAttempt > 0) {
+          final retainedResearchCalls = toolMode == AgentToolMode.research
+              ? List<ToolCallInfo>.from(allToolCalls)
+              : const <ToolCallInfo>[];
+          final retainedResearchResults = toolMode == AgentToolMode.research
+              ? List<ToolResultEnvelope>.from(allToolResults)
+              : const <ToolResultEnvelope>[];
+          fullResponse = '';
+          usage = const TokenUsage();
+          allToolCalls
+            ..clear()
+            ..addAll(retainedResearchCalls);
+          allToolResults
+            ..clear()
+            ..addAll(retainedResearchResults);
+          seenToolRounds.clear();
+          noProgressRounds = 0;
+          sawAnyText = false;
+          sawAnyTool = false;
+          lastPlanDraft = '';
+          requestHistory.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.user,
+              content: StudioTurnPromptFactory.outcomeRepairPrompt(
+                intent: intent,
+                toolMode: toolMode,
+                acceptedPlan: acceptedPlan,
+                violation: pendingRepairValidationMessage,
+              ),
+              timestamp: DateTime.now(),
+            ),
+          );
+          toolOnlyNonTerminalRounds = 0;
+        }
+
+        final maxIterations = StudioTurnPromptFactory.iterationLimit(
+          toolMode,
+          agentManifest?.limits.maxTurns,
+        );
+        for (var iteration = 0; iteration < maxIterations; iteration++) {
+          final response = StreamingResponse();
+          final phase = StudioTurnPromptFactory.phaseFor(
+            toolMode,
+            iteration + (outcomeAttempt > 0 ? 1 : 0),
+            hasAcceptedPlan: acceptedPlan != null,
+          );
+          final modeTools = ToolRegistry.toolsForModeAndPhase(toolMode, phase);
+          final tools = StudioTurnPromptFactory.toolsForTurn(
+            modeTools,
+            agentManifest,
+          );
+          toolExecutor.setPermissionRequest(
+            ToolPermissionRequest(
+              intent: intent,
+              phase: StudioTurnPromptFactory.permissionPhaseFor(phase),
+              approvalGrant:
+                  approvalGrantProvider?.call() ?? ApprovalGrant.none,
+              approvalGrantKey: approvalGrantKeyProvider?.call(),
+              hasAcceptedPlan: acceptedPlan != null,
+            ),
+          );
+          _emitLifecycle(
+            requestId,
+            turnId,
+            ProviderLifecycleEventKind.toolExposure,
+            detail:
+                'Exposed ${tools.length} ${toolMode.name}/${phase.name} tools for this turn.',
+          );
+
+          var sawFirstByte = false;
+          var sawFirstText = false;
+          var sawFirstTool = false;
+          final request = ProviderChatRequest(
+            messages: _contextManager.optimizeContext(requestHistory),
+            model: model,
+            tools: tools,
+            systemPrompt: systemPrompt,
+            maxTokens: 4096,
+            images: images,
+            reasoningEnabled: reasoningEnabled,
+            connectorNetworkPolicy: connectorNetworkPolicy,
+          );
+          final chunks = provider is ImageCapableProvider
+              ? (provider as ImageCapableProvider).chatWithRequest(request)
+              : images.isNotEmpty || reasoningEnabled
+              ? Stream<ChatChunk>.error(
+                  ProviderCapabilityException(
+                    '${provider.name} does not support the requested selected-model capability.',
+                  ),
+                )
+              : provider.chat(
+                  request.messages,
+                  model: request.model,
+                  tools: request.tools,
+                  systemPrompt: request.systemPrompt,
+                  temperature: request.temperature,
+                  maxTokens: request.maxTokens,
+                );
+          await for (final chunk in chunks) {
+            if (_isCancelled) break;
+            final lifecycleOnly =
+                chunk.lifecycleKind != null &&
+                chunk.content == null &&
+                chunk.toolCallIndex == null &&
+                chunk.finishReason == null &&
+                !chunk.isDone &&
+                chunk.promptTokens == 0 &&
+                chunk.cachedInputTokens == 0 &&
+                chunk.completionTokens == 0 &&
+                chunk.reasoningTokens == 0 &&
+                chunk.toolTokens == 0;
+            if (!sawFirstByte &&
+                !lifecycleOnly &&
+                !chunk.isDone &&
+                chunk.lifecycleKind != ProviderLifecycleEventKind.firstByte) {
+              sawFirstByte = true;
+              sawAnyFirstByte = true;
+              _emitLifecycle(
+                requestId,
+                turnId,
+                ProviderLifecycleEventKind.firstByte,
+              );
+            }
+            if (chunk.lifecycleKind != null) {
+              if (chunk.lifecycleKind == ProviderLifecycleEventKind.firstByte) {
+                sawFirstByte = true;
+                sawAnyFirstByte = true;
+              } else if (chunk.lifecycleKind ==
+                  ProviderLifecycleEventKind.noFirstByte) {
+                emittedNoFirstByteDiagnostic = true;
+              } else if (chunk.lifecycleKind ==
+                  ProviderLifecycleEventKind.cancelled) {
+                sawCancelledDiagnostic = true;
+              } else if (chunk.lifecycleKind ==
+                  ProviderLifecycleEventKind.timeout) {
+                sawTimeoutDiagnostic = true;
+              } else if (chunk.lifecycleKind ==
+                  ProviderLifecycleEventKind.firstTextDelta) {
+                sawFirstText = true;
+                sawAnyText = true;
+              } else if (chunk.lifecycleKind ==
+                  ProviderLifecycleEventKind.firstToolDelta) {
+                sawFirstTool = true;
+                sawAnyTool = true;
+              }
+              _emitLifecycle(
+                requestId,
+                turnId,
+                chunk.lifecycleKind!,
+                detail: chunk.lifecycleDetail,
+              );
+            }
+            final content = chunk.content;
+            if (content != null && content.isNotEmpty) {
+              if (!sawFirstText) {
+                sawFirstText = true;
+                sawAnyText = true;
+                _emitLifecycle(
+                  requestId,
+                  turnId,
+                  ProviderLifecycleEventKind.firstTextDelta,
+                );
+              }
+              response.addContent(content);
+              events.emit(EventType.messageChunk, {
+                'content': content,
+                'requestId': requestId,
+              });
+            }
+            if (chunk.toolCallIndex != null) {
+              if (!sawFirstTool) {
+                sawFirstTool = true;
+                sawAnyTool = true;
+                _emitLifecycle(
+                  requestId,
+                  turnId,
+                  ProviderLifecycleEventKind.firstToolDelta,
+                );
+              }
+              response.addToolCallChunk(
+                index: chunk.toolCallIndex!,
+                id: chunk.toolCallId,
+                name: chunk.toolCallName,
+                arguments: chunk.toolCallArguments,
+              );
+              if (intent == TurnIntent.plan) {
+                final toolCall = response.toolCalls[chunk.toolCallIndex!];
+                final draft = _draftMarkdownFromPlanToolCall(toolCall);
+                if (draft.isNotEmpty && draft != lastPlanDraft) {
+                  lastPlanDraft = draft;
+                  events.emit(EventType.planDraftUpdated, {
+                    'content': draft,
+                    'requestId': requestId,
+                  });
+                }
+              }
+            }
+            if (chunk.promptTokens > 0 ||
+                chunk.cachedInputTokens > 0 ||
+                chunk.completionTokens > 0 ||
+                chunk.reasoningTokens > 0 ||
+                chunk.toolTokens > 0) {
+              response.updateUsage(
+                chunk.promptTokens,
+                chunk.completionTokens,
+                cachedInput: chunk.cachedInputTokens,
+                reasoning: chunk.reasoningTokens,
+                tool: chunk.toolTokens,
+              );
+            }
+            if (chunk.finishReason != null) {
+              response.finishReason = chunk.finishReason;
+            }
+          }
+
+          if (_isCancelled) {
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.cancelled,
+            );
+            events.emit(EventType.messageError, {
+              'error': 'Request cancelled.',
+              'requestId': requestId,
+            });
+            throw const StudioTurnCancelledException();
+          }
+          if (!sawFirstByte &&
+              outcomeAttempt > 0 &&
+              pendingRepairValidationMessage != null) {
+            throw StudioTurnOutcomeValidationException(
+              pendingRepairValidationMessage,
+            );
+          }
+          if (!sawFirstByte) {
+            if (!emittedNoFirstByteDiagnostic) {
+              _emitLifecycle(
+                requestId,
+                turnId,
+                ProviderLifecycleEventKind.noFirstByte,
+                detail:
+                    'Circuit AI returned no bytes before the request completed.',
+              );
+              emittedNoFirstByteDiagnostic = true;
+            }
+            throw StateError(
+              'Circuit AI returned no bytes for this request. Check the connector connection or retry.',
+            );
+          }
+
+          usage = TokenUsage(
+            promptTokens: response.promptTokens,
+            cachedInputTokens: response.cachedInputTokens,
+            completionTokens: response.completionTokens,
+            reasoningTokens: response.reasoningTokens,
+            toolTokens: response.toolTokens,
+            totalTokens: response.totalTokens,
+          );
+          if (usage.isNotEmpty) {
+            totalUsage = totalUsage.add(
+              prompt: usage.promptTokens,
+              cachedInput: usage.cachedInputTokens,
+              completion: usage.completionTokens,
+              reasoning: usage.reasoningTokens,
+              tool: usage.toolTokens,
+            );
+            events.emit(EventType.tokensUpdated, {
+              'lastUsage': totalUsage,
+              'requestId': requestId,
+            });
+          }
+
+          final malformedToolCalls = response.toolCalls
+              .where(
+                (toolCall) =>
+                    toolCall.name.trim().isNotEmpty &&
+                    toolCall.argumentsBuffer.trim().isNotEmpty &&
+                    !toolCall.isComplete,
+              )
+              .toList(growable: false);
+          if (malformedToolCalls.isNotEmpty) {
+            final names = malformedToolCalls
+                .map((call) => call.name.trim())
+                .join(', ');
+            final message =
+                'Circuit AI returned malformed tool arguments for: $names. I stopped before running any tool.';
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.malformedChunk,
+              detail: message,
+            );
+            throw StateError(message);
+          }
+
+          final toolCallInfos = response.toolCalls
+              .where((toolCall) => toolCall.name.trim().isNotEmpty)
+              .map(
+                (toolCall) => ToolCallInfo(
+                  id: toolCall.id.isEmpty ? _uuid.v4() : toolCall.id,
+                  name: toolCall.name,
+                  arguments: toolCall.arguments,
+                ),
+              )
+              .toList();
+          final unavailableToolCalls = _unavailableToolCalls(
+            toolCallInfos,
+            tools,
+          );
+          if (unavailableToolCalls.isNotEmpty) {
+            final names = unavailableToolCalls
+                .map((call) => call.name)
+                .join(', ');
+            final message =
+                'Circuit AI requested unavailable tool(s) for this ${toolMode.name}/${phase.name} phase: $names. I stopped the turn before any unavailable action could run.';
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.unavailableTool,
+              detail: message,
+            );
+            throw StateError(message);
+          }
+          final toolLimit = agentManifest?.limits.maxToolCalls;
+          if (toolLimit != null &&
+              allToolCalls.length + toolCallInfos.length > toolLimit) {
+            final message =
+                'Custom agent "${customAgent!.name}" reached its declared tool-call limit ($toolLimit). I stopped before running another tool.';
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.unavailableTool,
+              detail: message,
+            );
+            throw StateError(message);
+          }
+          if (response.content.trim().isEmpty && toolCallInfos.isEmpty) {
+            if (fullResponse.trim().isEmpty) {
+              _emitLifecycle(
+                requestId,
+                turnId,
+                ProviderLifecycleEventKind.noTextOrTool,
+                detail:
+                    'Circuit AI completed without text deltas or tool calls.',
+              );
+              throw StateError(
+                'Circuit AI completed without text or tool calls. The connector may have returned an unsupported response.',
+              );
+            }
+            break;
+          }
+
+          requestHistory.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.assistant,
+              content: response.content,
+              timestamp: DateTime.now(),
+              toolCalls: toolCallInfos,
+            ),
+          );
+          fullResponse += response.content;
+          allToolCalls.addAll(toolCallInfos);
+
+          if (toolCallInfos.isEmpty) break;
+
+          final roundKey = toolCallInfos
+              .map((call) => '${call.name}:${call.arguments}')
+              .join('|');
+          final repeatedRound = !seenToolRounds.add(roundKey);
+          if (response.content.trim().isEmpty && repeatedRound) {
+            noProgressRounds++;
+          } else {
+            noProgressRounds = 0;
+          }
+          if (noProgressRounds >= 2) {
+            final stopMessage = StudioTurnPromptFactory.repeatedToolQuestion(
+              acceptedPlan,
+            );
+            fullResponse = fullResponse.trim().isEmpty
+                ? stopMessage
+                : '$fullResponse\n\n$stopMessage';
+            requestHistory.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                role: MessageRole.assistant,
+                content: stopMessage,
+                timestamp: DateTime.now(),
+              ),
+            );
+            break;
+          }
+
+          final results = await toolExecutor.executeToolCalls(toolCallInfos);
+          for (final result in results) {
+            final envelope = result.structured;
+            if (result.wasCancelled ||
+                envelope.status == ToolResultStatus.cancelled) {
+              throw StateError(envelope.summary);
+            }
+            if (envelope.status == ToolResultStatus.denied) {
+              throw StateError(envelope.summary);
+            }
+            events.emit(EventType.toolResultRecorded, {
+              'requestId': requestId,
+              'result': envelope,
+            });
+            allToolResults.add(envelope);
+            requestHistory.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                role: MessageRole.tool,
+                content: envelope.toPromptBlock(),
+                timestamp: DateTime.now(),
+                toolCallId: result.toolCallId,
+              ),
+            );
+          }
+          Logger.info(
+            'Studio turn tool calls completed, iteration ${iteration + 1}',
+            'StudioTurnRunner',
+          );
+          final terminalProposal = _hasTerminalProposalResult(
+            intent: intent,
+            toolMode: toolMode,
+            results: results,
+          );
+          if (terminalProposal) {
+            break;
+          }
+          if (response.content.trim().isEmpty) {
+            toolOnlyNonTerminalRounds++;
+          } else {
+            toolOnlyNonTerminalRounds = 0;
+          }
+          if (toolOnlyNonTerminalRounds >= 3) {
+            final question = StudioTurnPromptFactory.boundedInspectionQuestion(
+              acceptedPlan,
+            );
+            fullResponse = question;
+            requestHistory.add(
+              ChatMessage(
+                id: _uuid.v4(),
+                role: MessageRole.assistant,
+                content: question,
+                timestamp: DateTime.now(),
+              ),
+            );
+            break;
+          }
+        }
+
+        final successfulPatchProposal = _hasSuccessfulPatchProposal(
+          allToolResults,
+        );
+        if (!sawAnyText && sawAnyTool && !successfulPatchProposal) {
+          _emitLifecycle(
+            requestId,
+            turnId,
+            ProviderLifecycleEventKind.toolOnly,
+            detail: 'Circuit AI returned tool calls without assistant text.',
+          );
+        } else if (!sawAnyText && !sawAnyTool) {
+          _emitLifecycle(
+            requestId,
+            turnId,
+            ProviderLifecycleEventKind.noTextOrTool,
+            detail: 'Circuit AI returned no assistant text or tool calls.',
+          );
+        }
+        if (fullResponse.trim().isEmpty &&
+            (allToolResults.isNotEmpty || allToolCalls.isNotEmpty) &&
+            !_hasSuccessfulPatchProposal(allToolResults) &&
+            intent == TurnIntent.code &&
+            (toolMode == AgentToolMode.code || toolMode == AgentToolMode.fix)) {
+          final question = StudioTurnPromptFactory.boundedInspectionQuestion(
+            acceptedPlan,
+          );
+          fullResponse = question;
+          requestHistory.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.assistant,
+              content: question,
+              timestamp: DateTime.now(),
+            ),
+          );
+        }
+        var validation = _outcomeValidator.validate(
+          intent: intent,
+          toolMode: toolMode,
+          content: fullResponse,
+          toolCalls: allToolCalls,
+          toolResults: allToolResults,
+          acceptedPlan: acceptedPlan,
+          taskPrompt: userMessage,
+        );
+        if (!validation.canComplete &&
+            fullResponse.trim().isEmpty &&
+            sawAnyTool &&
+            intent == TurnIntent.code &&
+            (toolMode == AgentToolMode.code || toolMode == AgentToolMode.fix)) {
+          final question = StudioTurnPromptFactory.boundedInspectionQuestion(
+            acceptedPlan,
+          );
+          fullResponse = question;
+          requestHistory.add(
+            ChatMessage(
+              id: _uuid.v4(),
+              role: MessageRole.assistant,
+              content: question,
+              timestamp: DateTime.now(),
+            ),
+          );
+          validation = _outcomeValidator.validate(
+            intent: intent,
+            toolMode: toolMode,
+            content: fullResponse,
+            toolCalls: allToolCalls,
+            toolResults: allToolResults,
+            acceptedPlan: acceptedPlan,
+            taskPrompt: userMessage,
+          );
+        }
+        final planNormalization = _normalizePlanModeArtifact(
+          requestId: requestId,
+          intent: intent,
+          content: fullResponse,
+          toolCalls: allToolCalls,
+          toolResults: allToolResults,
+        );
+        if (planNormalization != null) {
+          allToolCalls
+            ..clear()
+            ..addAll(planNormalization.toolCalls);
+          allToolResults
+            ..clear()
+            ..addAll(planNormalization.toolResults);
+          if (planNormalization.synthesizedToolCall != null) {
+            final syntheticCall = planNormalization.synthesizedToolCall!;
+            events.emit(EventType.toolCallCompleted, {
+              'requestId': requestId,
+              'toolCall': syntheticCall.copyWith(result: 'captured'),
+            });
+            events.emit(EventType.toolResultRecorded, {
+              'requestId': requestId,
+              'result': planNormalization.synthesizedToolResult!,
+            });
+          }
+          validation = _outcomeValidator.validate(
+            intent: intent,
+            toolMode: toolMode,
+            content: fullResponse,
+            toolCalls: allToolCalls,
+            toolResults: allToolResults,
+            acceptedPlan: acceptedPlan,
+            taskPrompt: userMessage,
+          );
+        }
+        if (!validation.canComplete) {
+          if (outcomeAttempt + 1 < maxOutcomeAttempts &&
+              _canRepairOutcome(
+                validation,
+                content: fullResponse,
+                toolCalls: allToolCalls,
+                toolResults: allToolResults,
+                allowApprovalLanguageRepair:
+                    acceptedPlan != null &&
+                    !_hasSuccessfulPatchProposal(allToolResults),
+              )) {
+            _emitLifecycle(
+              requestId,
+              turnId,
+              ProviderLifecycleEventKind.outcomeRepair,
+              detail:
+                  'Runtime rejected the model outcome and requested one structured repair attempt: ${validation.userMessage ?? 'invalid outcome'}',
+            );
+            pendingRepairValidationMessage = validation.userMessage;
+            continue;
+          }
+          throw StudioTurnOutcomeValidationException(
+            _failedOutcomeMessage(
+              validation,
+              pendingRepairValidationMessage: pendingRepairValidationMessage,
+            ),
+          );
+        }
+        if (validation.status == TurnOutcomeValidationStatus.blockingQuestion &&
+            (validation.userMessage?.trim().isNotEmpty ?? false)) {
+          fullResponse = validation.userMessage!.trim();
+        }
+        _emitLifecycle(
+          requestId,
+          turnId,
+          ProviderLifecycleEventKind.completed,
+          detail: [
+            if (!sawAnyText && successfulPatchProposal)
+              'Patch proposal produced through structured tool output'
+            else if (!sawAnyText)
+              'No text delta received',
+            if (!sawAnyTool) 'No tool delta received',
+          ].join(' · '),
+        );
+        events.emit(EventType.messageCompleted, {
+          'content': fullResponse,
+          'toolCalls': allToolCalls,
+          'lastUsage': usage,
+          'requestId': requestId,
+        });
+        return StudioTurnRunnerResult(
+          content: fullResponse,
+          usage: totalUsage,
+          toolCalls: allToolCalls,
+          toolResults: allToolResults,
+          acceptedPlanState: validation.acceptedPlanState,
+        );
+      }
+      throw const StudioTurnOutcomeValidationException(
+        'Turn outcome was invalid after a repair attempt.',
+      );
+    } catch (error) {
+      if (sawCancelledDiagnostic || _isCancellationError(error)) {
+        throw const StudioTurnCancelledException();
+      }
+      if (error is! StudioTurnCancelledException) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        final isOutcomeValidationError =
+            error is StudioTurnOutcomeValidationException;
+        if (!isOutcomeValidationError &&
+            !sawAnyFirstByte &&
+            !emittedNoFirstByteDiagnostic &&
+            !sawTimeoutDiagnostic) {
+          _emitLifecycle(
+            requestId,
+            turnId,
+            ProviderLifecycleEventKind.noFirstByte,
+            detail:
+                'Circuit AI failed before returning response bytes: $message',
+          );
+        }
+        _emitLifecycle(
+          requestId,
+          turnId,
+          isOutcomeValidationError
+              ? ProviderLifecycleEventKind.outcomeRejected
+              : ProviderLifecycleEventKind.failed,
+          detail: isOutcomeValidationError
+              ? 'Runtime rejected the model outcome: $message'
+              : message,
+        );
+        if (!isOutcomeValidationError) {
+          events.emit(EventType.messageError, {
+            'error': message,
+            'requestId': requestId,
+          });
+        }
+      }
+      rethrow;
+    }
+  }
+
+  bool _allowsOutcomeRepair({
+    required TurnIntent intent,
+    required AgentToolMode toolMode,
+  }) {
+    if (toolMode == AgentToolMode.research) return true;
+    if (intent == TurnIntent.plan) return true;
+    if (intent == TurnIntent.code &&
+        (toolMode == AgentToolMode.code || toolMode == AgentToolMode.fix)) {
+      return true;
+    }
+    return false;
+  }
+
+  bool _canRepairOutcome(
+    TurnOutcomeValidationResult validation, {
+    required String content,
+    required List<ToolCallInfo> toolCalls,
+    required List<ToolResultEnvelope> toolResults,
+    bool allowApprovalLanguageRepair = false,
+  }) {
+    if (validation.status != TurnOutcomeValidationStatus.invalid ||
+        !(validation.userMessage?.trim().isNotEmpty ?? false)) {
+      return false;
+    }
+    if (validation.userMessage!.toLowerCase().contains('approval') &&
+        !allowApprovalLanguageRepair) {
+      return false;
+    }
+    if (validation.userMessage!.toLowerCase().contains('plan-only')) {
+      return false;
+    }
+    final toolNames = {
+      ...toolCalls.map((call) => call.name),
+      ...toolResults.map((result) => result.toolName),
+    };
+    if (toolNames.isNotEmpty &&
+        !toolNames.every(_isRepairableAfterInvalidOutcome)) {
+      return false;
+    }
+    if (content.trim().isEmpty && toolNames.isEmpty) return false;
+    return !_containsApprovalLanguage(content);
+  }
+
+  _PlanArtifactNormalization? _normalizePlanModeArtifact({
+    required String requestId,
+    required TurnIntent intent,
+    required String content,
+    required List<ToolCallInfo> toolCalls,
+    required List<ToolResultEnvelope> toolResults,
+  }) {
+    if (intent != TurnIntent.plan) return null;
+
+    var changed = false;
+    final normalizedCalls = <ToolCallInfo>[];
+    for (final call in toolCalls) {
+      if (call.name != 'propose_patch') {
+        normalizedCalls.add(call);
+        continue;
+      }
+      final normalizedArgs = _planOnlyPatchArguments(call.arguments);
+      changed = changed || !_shallowMapEquals(normalizedArgs, call.arguments);
+      normalizedCalls.add(
+        ToolCallInfo(
+          id: call.id,
+          name: call.name,
+          arguments: normalizedArgs,
+          status: call.status,
+          result: call.result,
+          error: call.error,
+          startedAt: call.startedAt,
+          completedAt: call.completedAt,
+          requiresConfirmation: call.requiresConfirmation,
+        ),
+      );
+    }
+
+    final normalizedResults = <ToolResultEnvelope>[];
+    for (final result in toolResults) {
+      if (result.toolName != 'propose_patch' ||
+          result.status != ToolResultStatus.success ||
+          result.data.isEmpty) {
+        normalizedResults.add(result);
+        continue;
+      }
+      final normalizedData = _planOnlyPatchArguments(result.data);
+      changed = changed || !_shallowMapEquals(normalizedData, result.data);
+      normalizedResults.add(
+        ToolResultEnvelope(
+          toolCallId: result.toolCallId,
+          toolName: result.toolName,
+          status: result.status,
+          summary: result.summary,
+          data: normalizedData,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          artifacts: result.artifacts,
+          changedFiles: result.changedFiles,
+          diagnostic: result.diagnostic,
+          retryable: result.retryable,
+        ),
+      );
+    }
+
+    if (_hasReviewablePlanPayload(normalizedCalls, normalizedResults)) {
+      return changed
+          ? _PlanArtifactNormalization(
+              toolCalls: normalizedCalls,
+              toolResults: normalizedResults,
+            )
+          : null;
+    }
+
+    if (!_isSubstantivePlanProse(content)) {
+      return changed
+          ? _PlanArtifactNormalization(
+              toolCalls: normalizedCalls,
+              toolResults: normalizedResults,
+            )
+          : null;
+    }
+
+    final syntheticArgs = _syntheticPlanArguments(content);
+    final syntheticCall = ToolCallInfo(
+      id: 'synthetic-plan-$requestId',
+      name: 'propose_patch',
+      arguments: syntheticArgs,
+    );
+    final syntheticResult = ToolResultEnvelope(
+      toolCallId: syntheticCall.id,
+      toolName: syntheticCall.name,
+      status: ToolResultStatus.success,
+      summary: 'Synthesized a reviewable plan card from assistant prose.',
+      data: syntheticArgs,
+    );
+    return _PlanArtifactNormalization(
+      toolCalls: [...normalizedCalls, syntheticCall],
+      toolResults: [...normalizedResults, syntheticResult],
+      synthesizedToolCall: syntheticCall,
+      synthesizedToolResult: syntheticResult,
+    );
+  }
+
+  String _draftMarkdownFromPlanToolCall(StreamingToolCall toolCall) {
+    if (toolCall.name.isNotEmpty && toolCall.name != 'propose_patch') {
+      return '';
+    }
+    final buffer = toolCall.argumentsBuffer;
+    if (buffer.trim().isEmpty) return '';
+
+    final decoded = _tryDecodeToolArguments(buffer);
+    if (decoded != null) return _draftMarkdownFromPlanArguments(decoded);
+
+    final title = _partialJsonStringValue(buffer, 'title');
+    final summary = _partialJsonStringValue(buffer, 'summary');
+    final planMarkdown = _partialJsonStringValue(buffer, 'plan_markdown');
+    final partialArgs = <String, dynamic>{};
+    if (title != null) partialArgs['title'] = title;
+    if (summary != null) partialArgs['summary'] = summary;
+    if (planMarkdown != null) partialArgs['plan_markdown'] = planMarkdown;
+    return _draftMarkdownFromPlanArguments(partialArgs);
+  }
+
+  Map<String, dynamic>? _tryDecodeToolArguments(String buffer) {
+    try {
+      final decoded = jsonDecode(buffer);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  String _draftMarkdownFromPlanArguments(Map<String, dynamic> args) {
+    final title = (args['title'] as String? ?? '').trim();
+    final summary = (args['summary'] as String? ?? '').trim();
+    final planMarkdown = (args['plan_markdown'] as String? ?? '').trim();
+    final assumptions = _stringList(args['assumptions']);
+    final verificationSteps = _stringList(args['verification_steps']);
+    final files = args['files'];
+    final plannedFiles = <String>[];
+    if (files is List) {
+      for (final file in files) {
+        if (file is! Map) continue;
+        final path = (file['path'] as String? ?? '').trim();
+        if (path.isEmpty) continue;
+        final operation = (file['operation'] as String? ?? '').trim();
+        final intent = (file['intent'] as String? ?? '').trim();
+        plannedFiles.add(
+          [
+            path,
+            if (operation.isNotEmpty) operation,
+            if (intent.isNotEmpty) intent,
+          ].join(' - '),
+        );
+      }
+    }
+
+    final parts = <String>[];
+    if (title.isNotEmpty) parts.add('# $title');
+    if (summary.isNotEmpty) parts.add('## Summary\n$summary');
+    if (planMarkdown.isNotEmpty) parts.add(planMarkdown);
+    if (plannedFiles.isNotEmpty) {
+      parts.add(
+        '## Planned files\n${plannedFiles.map((file) => '- $file').join('\n')}',
+      );
+    }
+    if (assumptions.isNotEmpty) {
+      parts.add(
+        '## Assumptions\n${assumptions.map((item) => '- $item').join('\n')}',
+      );
+    }
+    if (verificationSteps.isNotEmpty) {
+      parts.add(
+        '## Verification\n${verificationSteps.map((item) => '- $item').join('\n')}',
+      );
+    }
+    return parts.join('\n\n').trim();
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is! List) return const [];
+    return [
+      for (final item in value)
+        if (item is String && item.trim().isNotEmpty) item.trim(),
+    ];
+  }
+
+  String? _partialJsonStringValue(String source, String key) {
+    final keyIndex = source.indexOf('"$key"');
+    if (keyIndex < 0) return null;
+    final colonIndex = source.indexOf(':', keyIndex + key.length + 2);
+    if (colonIndex < 0) return null;
+    var index = colonIndex + 1;
+    while (index < source.length && source.codeUnitAt(index) <= 32) {
+      index++;
+    }
+    if (index >= source.length || source[index] != '"') return null;
+    index++;
+    final buffer = StringBuffer();
+    while (index < source.length) {
+      final char = source[index];
+      if (char == '"') break;
+      if (char != '\\') {
+        buffer.write(char);
+        index++;
+        continue;
+      }
+      if (index + 1 >= source.length) break;
+      final escaped = source[index + 1];
+      switch (escaped) {
+        case 'n':
+          buffer.write('\n');
+        case 'r':
+          buffer.write('\r');
+        case 't':
+          buffer.write('\t');
+        case '"':
+          buffer.write('"');
+        case '\\':
+          buffer.write('\\');
+        default:
+          buffer.write(escaped);
+      }
+      index += 2;
+    }
+    final value = buffer.toString().trim();
+    return value.isEmpty ? null : value;
+  }
+
+  Map<String, dynamic> _planOnlyPatchArguments(Map<String, dynamic> args) {
+    final normalized = Map<String, dynamic>.from(args);
+    final files = normalized['files'];
+    if (files is List) {
+      normalized['files'] = [
+        for (final item in files)
+          if (item is Map<String, dynamic>)
+            _planOnlyFilePayload(item)
+          else
+            item,
+      ];
+    }
+    normalized.remove('changed_files');
+    normalized.remove('changedFiles');
+    return normalized;
+  }
+
+  Map<String, dynamic> _planOnlyFilePayload(Map<String, dynamic> file) {
+    final normalized = Map<String, dynamic>.from(file);
+    normalized.remove('content');
+    normalized.remove('after');
+    normalized.remove('before');
+    normalized.remove('unified_diff');
+    normalized.remove('unifiedDiff');
+    return normalized;
+  }
+
+  bool _hasReviewablePlanPayload(
+    List<ToolCallInfo> toolCalls,
+    List<ToolResultEnvelope> toolResults,
+  ) {
+    bool isReviewable(Map<String, dynamic> args) {
+      final title = args['title'];
+      final summary = args['summary'];
+      final planMarkdown = args['plan_markdown'] ?? args['planMarkdown'];
+      if (title is! String || title.trim().isEmpty) return false;
+      if (summary is! String || summary.trim().isEmpty) return false;
+      if (planMarkdown is! String || planMarkdown.trim().length < 40) {
+        return false;
+      }
+      if (args['synthetic_plan'] == true) return true;
+      final files = args['files'];
+      if (files is! List || files.isEmpty) return false;
+      return files.whereType<Map<String, dynamic>>().isNotEmpty;
+    }
+
+    return [
+      ...toolCalls
+          .where((call) => call.name == 'propose_patch')
+          .map((call) => call.arguments),
+      ...toolResults
+          .where(
+            (result) =>
+                result.toolName == 'propose_patch' &&
+                result.status == ToolResultStatus.success,
+          )
+          .map((result) => result.data),
+    ].any(isReviewable);
+  }
+
+  Map<String, dynamic> _syntheticPlanArguments(String content) {
+    final title = _planTitleFromProse(content);
+    return {
+      'title': title,
+      'summary': _planSummaryFromProse(content),
+      'plan_markdown': content.trim(),
+      'assumptions': const [
+        'CircuitCode synthesized this review card from the assistant plan text.',
+      ],
+      'verification_steps': const [
+        'Review the plan and revise it if target files or acceptance criteria are missing.',
+      ],
+      'files': const [],
+      'synthetic_plan': true,
+    };
+  }
+
+  String _planTitleFromProse(String content) {
+    for (final line in content.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      final heading = RegExp(r'^#{1,6}\s+(.+)$').firstMatch(trimmed);
+      final candidate = (heading?.group(1) ?? trimmed)
+          .replaceAll(RegExp(r'^[*\-]+\s*'), '')
+          .trim();
+      if (candidate.isNotEmpty && candidate.length <= 90) return candidate;
+    }
+    return 'Review implementation plan';
+  }
+
+  String _planSummaryFromProse(String content) {
+    final normalized = content
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .join(' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (normalized.isEmpty) {
+      return 'Review this implementation plan before making changes.';
+    }
+    return normalized.length <= 220
+        ? normalized
+        : '${normalized.substring(0, 217).trimRight()}...';
+  }
+
+  bool _isSubstantivePlanProse(String content) {
+    final trimmed = content.trim();
+    if (trimmed.length < 240) return false;
+    final lower = trimmed.toLowerCase();
+    final bulletCount = RegExp(
+      r'(^|\n)\s{0,4}([-*]|\d+[.)])\s+',
+    ).allMatches(trimmed).length;
+    final sectionSignals = [
+      'summary',
+      'plan',
+      'scope',
+      'assumption',
+      'requirements',
+      'inputs',
+      'outputs',
+      'milestone',
+      'verification',
+      'validation',
+      'risks',
+      'next step',
+    ].where(lower.contains).length;
+    return bulletCount >= 3 && sectionSignals >= 2;
+  }
+
+  bool _shallowMapEquals(
+    Map<String, dynamic> left,
+    Map<String, dynamic> right,
+  ) {
+    if (left.length != right.length) return false;
+    for (final entry in left.entries) {
+      if (!right.containsKey(entry.key)) return false;
+      final other = right[entry.key];
+      if (entry.value is List || other is List) {
+        if (entry.value.toString() != other.toString()) return false;
+      } else if (entry.value != other) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  String _failedOutcomeMessage(
+    TurnOutcomeValidationResult validation, {
+    String? pendingRepairValidationMessage,
+  }) {
+    final message = validation.userMessage ?? 'Turn outcome was invalid.';
+    if (pendingRepairValidationMessage == null ||
+        pendingRepairValidationMessage.trim().isEmpty) {
+      return message;
+    }
+    final normalized = message.toLowerCase();
+    final repairMaskedOriginalReason =
+        normalized.contains('approval') ||
+        normalized.contains('type approval') ||
+        normalized.contains('type approve') ||
+        normalized.contains('approval text');
+    return repairMaskedOriginalReason
+        ? pendingRepairValidationMessage
+        : message;
+  }
+
+  bool _containsApprovalLanguage(String content) {
+    final normalized = content.toLowerCase();
+    return normalized.contains('reply with "approve"') ||
+        normalized.contains("reply with 'approve'") ||
+        normalized.contains('type "approve"') ||
+        normalized.contains("type 'approve'") ||
+        normalized.contains('say "approve"') ||
+        normalized.contains("say 'approve'");
+  }
+
+  bool _isRepairableAfterInvalidOutcome(String toolName) {
+    return ToolRegistry.isReadOnlyIncludingMcp(toolName) ||
+        toolName == 'propose_patch';
+  }
+
+  bool _hasTerminalProposalResult({
+    required TurnIntent intent,
+    required AgentToolMode toolMode,
+    required List<ToolExecutionResult> results,
+  }) {
+    if (intent != TurnIntent.plan &&
+        intent != TurnIntent.code &&
+        toolMode != AgentToolMode.plan &&
+        toolMode != AgentToolMode.code &&
+        toolMode != AgentToolMode.fix) {
+      return false;
+    }
+    return results.any(
+      (result) =>
+          result.toolName == 'propose_patch' &&
+          result.structured.status == ToolResultStatus.success,
+    );
+  }
+
+  bool _hasSuccessfulPatchProposal(List<ToolResultEnvelope> results) {
+    return results.any(
+      (result) =>
+          result.toolName == 'propose_patch' &&
+          result.status == ToolResultStatus.success,
+    );
+  }
+
+  bool _isCancellationError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('request cancelled') ||
+        message.contains('request canceled') ||
+        message.contains('cancelled by user') ||
+        message.contains('canceled by user');
+  }
+
+  List<ToolCallInfo> _unavailableToolCalls(
+    List<ToolCallInfo> toolCalls,
+    List<ToolDefinition> exposedTools,
+  ) {
+    final exposedNames = exposedTools.map((tool) => tool.name).toSet();
+    return toolCalls
+        .where((call) => !exposedNames.contains(call.name))
+        .toList(growable: false);
+  }
+
+  void _emitLifecycle(
+    String requestId,
+    String? turnId,
+    ProviderLifecycleEventKind kind, {
+    String? detail,
+  }) {
+    events.emit(EventType.providerLifecycle, {
+      'event': ProviderLifecycleEvent(
+        requestId: requestId,
+        turnId: turnId,
+        kind: kind,
+        timestamp: DateTime.now(),
+        model: model,
+        detail: detail,
+      ),
+      'requestId': requestId,
+    });
+  }
+}
+
+class StudioTurnCancelledException implements Exception {
+  const StudioTurnCancelledException();
+
+  @override
+  String toString() => 'Request cancelled.';
+}
+
+class _PlanArtifactNormalization {
+  final List<ToolCallInfo> toolCalls;
+  final List<ToolResultEnvelope> toolResults;
+  final ToolCallInfo? synthesizedToolCall;
+  final ToolResultEnvelope? synthesizedToolResult;
+
+  const _PlanArtifactNormalization({
+    required this.toolCalls,
+    required this.toolResults,
+    this.synthesizedToolCall,
+    this.synthesizedToolResult,
+  });
+}
+
+class StudioTurnOutcomeValidationException implements Exception {
+  final String message;
+
+  const StudioTurnOutcomeValidationException(this.message);
+
+  @override
+  String toString() => message;
+}

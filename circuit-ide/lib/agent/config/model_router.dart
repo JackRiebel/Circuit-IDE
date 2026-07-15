@@ -6,16 +6,31 @@ class ModelRouter {
   // --- Classification heuristics ---
 
   static final _simplePatterns = [
-    RegExp(r'^(what|who|where|when|how)\s+(is|are|was|were|do|does|did)\b', caseSensitive: false),
+    RegExp(
+      r'^(what|who|where|when|how)\s+(is|are|was|were|do|does|did)\b',
+      caseSensitive: false,
+    ),
     RegExp(r'^(explain|describe|show|list|tell me)\b', caseSensitive: false),
     RegExp(r'^(hi|hello|hey|thanks|thank you)\b', caseSensitive: false),
   ];
 
   static final _complexPatterns = [
-    RegExp(r'\b(refactor|redesign|implement|architect|migrate|rewrite)\b', caseSensitive: false),
-    RegExp(r'\b(debug|fix this error|stack trace|traceback)\b', caseSensitive: false),
-    RegExp(r'\b(multiple files|across files|entire project|all files)\b', caseSensitive: false),
-    RegExp(r'\b(security|vulnerability|performance|optimize)\b', caseSensitive: false),
+    RegExp(
+      r'\b(refactor|redesign|implement|architect|migrate|rewrite)\b',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\b(debug|fix this error|stack trace|traceback)\b',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\b(multiple files|across files|entire project|all files)\b',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'\b(security|vulnerability|performance|optimize)\b',
+      caseSensitive: false,
+    ),
   ];
 
   static final _codeBlockRe = RegExp(r'```');
@@ -80,7 +95,8 @@ class ModelRouter {
     // Apply preference bias
     if (config.preferSpeed && targetTier.index > 0) {
       targetTier = ModelTier.values[targetTier.index - 1];
-    } else if (config.preferQuality && targetTier.index < ModelTier.values.length - 1) {
+    } else if (config.preferQuality &&
+        targetTier.index < ModelTier.values.length - 1) {
       targetTier = ModelTier.values[targetTier.index + 1];
     }
 
@@ -98,15 +114,20 @@ class ModelRouter {
     String routedModel,
     int estimatedTokens,
   ) {
-    final powerfulModel = ModelsConfig.getModelForTier(provider, ModelTier.powerful);
+    final powerfulModel = ModelsConfig.getModelForTier(
+      provider,
+      ModelTier.powerful,
+    );
     final powerfulInfo = ModelsConfig.getModel(powerfulModel);
     final routedInfo = ModelsConfig.getModel(routedModel);
 
     if (powerfulInfo == null || routedInfo == null) return 0;
 
-    final powerfulCost = (estimatedTokens / 1000) *
+    final powerfulCost =
+        (estimatedTokens / 1000) *
         ((powerfulInfo.inputCostPer1k + powerfulInfo.outputCostPer1k) / 2);
-    final routedCost = (estimatedTokens / 1000) *
+    final routedCost =
+        (estimatedTokens / 1000) *
         ((routedInfo.inputCostPer1k + routedInfo.outputCostPer1k) / 2);
 
     return (powerfulCost - routedCost).clamp(0, double.infinity);

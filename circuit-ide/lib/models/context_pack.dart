@@ -6,8 +6,22 @@ enum ContextPackItemType {
   gitDiff,
   diagnostics,
   terminal,
+  instruction,
   rule,
   memory,
+}
+
+enum ContextPackSourceKind {
+  projectProfile,
+  editor,
+  git,
+  terminal,
+  instructionFile,
+  circuitRule,
+  memory,
+  packageScript,
+  diagnostics,
+  sourceArtifact,
 }
 
 class ContextPackItem {
@@ -16,8 +30,12 @@ class ContextPackItem {
   final String title;
   final String detail;
   final String? source;
+  final ContextPackSourceKind sourceKind;
   final int estimatedTokens;
   final bool removable;
+  final bool includedByDefault;
+  final int? retrievalScore;
+  final String? retrievalReason;
 
   const ContextPackItem({
     required this.id,
@@ -25,8 +43,12 @@ class ContextPackItem {
     required this.title,
     required this.detail,
     this.source,
+    this.sourceKind = ContextPackSourceKind.projectProfile,
     this.estimatedTokens = 0,
     this.removable = true,
+    this.includedByDefault = true,
+    this.retrievalScore,
+    this.retrievalReason,
   });
 
   String get promptBlock {
@@ -41,8 +63,12 @@ class ContextPackItem {
       'title': title,
       'detail': detail,
       'source': source,
+      'sourceKind': sourceKind.name,
       'estimatedTokens': estimatedTokens,
       'removable': removable,
+      'includedByDefault': includedByDefault,
+      'retrievalScore': retrievalScore,
+      'retrievalReason': retrievalReason,
     };
   }
 
@@ -57,8 +83,194 @@ class ContextPackItem {
         title: json['title'] as String? ?? '',
         detail: json['detail'] as String? ?? '',
         source: json['source'] as String?,
+        sourceKind: ContextPackSourceKind.values.firstWhere(
+          (value) => value.name == json['sourceKind'],
+          orElse: () => ContextPackSourceKind.projectProfile,
+        ),
         estimatedTokens: json['estimatedTokens'] as int? ?? 0,
         removable: json['removable'] as bool? ?? true,
+        includedByDefault: json['includedByDefault'] as bool? ?? true,
+        retrievalScore: json['retrievalScore'] as int?,
+        retrievalReason: json['retrievalReason'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+class ContextPackBudget {
+  final int maxTokens;
+  final int reservedForResponse;
+
+  const ContextPackBudget({
+    required this.maxTokens,
+    this.reservedForResponse = 4096,
+  });
+
+  int get availableForContext =>
+      (maxTokens - reservedForResponse).clamp(0, maxTokens);
+}
+
+class ContextPackWarning {
+  final String message;
+  final String? itemId;
+
+  const ContextPackWarning({required this.message, this.itemId});
+
+  Map<String, dynamic> toJson() => {'message': message, 'itemId': itemId};
+
+  static ContextPackWarning fromJson(Map<String, dynamic> json) {
+    return ContextPackWarning(
+      message: json['message'] as String? ?? '',
+      itemId: json['itemId'] as String?,
+    );
+  }
+}
+
+class ContextPackSource {
+  final ContextPackSourceKind kind;
+  final String label;
+  final String? path;
+
+  const ContextPackSource({required this.kind, required this.label, this.path});
+}
+
+class ContextCandidate {
+  final String id;
+  final String title;
+  final String? path;
+  final ContextPackSourceKind sourceKind;
+  final int score;
+  final int estimatedTokens;
+  final bool included;
+  final String reason;
+  final int rank;
+  final String contentFingerprint;
+  final bool truncated;
+
+  const ContextCandidate({
+    required this.id,
+    required this.title,
+    this.path,
+    required this.sourceKind,
+    required this.score,
+    required this.estimatedTokens,
+    required this.included,
+    required this.reason,
+    this.rank = 0,
+    this.contentFingerprint = '',
+    this.truncated = false,
+  });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'path': path,
+    'sourceKind': sourceKind.name,
+    'score': score,
+    'estimatedTokens': estimatedTokens,
+    'included': included,
+    'reason': reason,
+    'rank': rank,
+    'contentFingerprint': contentFingerprint,
+    'truncated': truncated,
+  };
+
+  static ContextCandidate fromJson(Map<String, dynamic> json) {
+    return ContextCandidate(
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? '',
+      path: json['path'] as String?,
+      sourceKind: ContextPackSourceKind.values.firstWhere(
+        (value) => value.name == json['sourceKind'],
+        orElse: () => ContextPackSourceKind.projectProfile,
+      ),
+      score: json['score'] as int? ?? 0,
+      estimatedTokens: json['estimatedTokens'] as int? ?? 0,
+      included: json['included'] as bool? ?? false,
+      reason: json['reason'] as String? ?? '',
+      rank: json['rank'] as int? ?? 0,
+      contentFingerprint: json['contentFingerprint'] as String? ?? '',
+      truncated: json['truncated'] as bool? ?? false,
+    );
+  }
+}
+
+class ContextBudgetReport {
+  final int maxTokens;
+  final int reservedForResponse;
+  final int availableForContext;
+  final int usedTokens;
+
+  const ContextBudgetReport({
+    required this.maxTokens,
+    required this.reservedForResponse,
+    required this.availableForContext,
+    required this.usedTokens,
+  });
+
+  bool get exceeded => usedTokens > availableForContext;
+
+  Map<String, dynamic> toJson() => {
+    'maxTokens': maxTokens,
+    'reservedForResponse': reservedForResponse,
+    'availableForContext': availableForContext,
+    'usedTokens': usedTokens,
+    'exceeded': exceeded,
+  };
+
+  static ContextBudgetReport fromJson(Map<String, dynamic>? json) {
+    return ContextBudgetReport(
+      maxTokens: json?['maxTokens'] as int? ?? 0,
+      reservedForResponse: json?['reservedForResponse'] as int? ?? 0,
+      availableForContext: json?['availableForContext'] as int? ?? 0,
+      usedTokens: json?['usedTokens'] as int? ?? 0,
+    );
+  }
+}
+
+class ContextRetrievalResult {
+  final List<ContextCandidate> rankedCandidates;
+  final ContextBudgetReport budget;
+  final List<ContextPackWarning> warnings;
+
+  const ContextRetrievalResult({
+    required this.rankedCandidates,
+    required this.budget,
+    this.warnings = const [],
+  });
+
+  List<ContextCandidate> get includedCandidates =>
+      rankedCandidates.where((candidate) => candidate.included).toList();
+
+  List<ContextCandidate> get omittedCandidates =>
+      rankedCandidates.where((candidate) => !candidate.included).toList();
+
+  Map<String, dynamic> toJson() => {
+    'rankedCandidates': rankedCandidates
+        .map((candidate) => candidate.toJson())
+        .toList(),
+    'budget': budget.toJson(),
+    'warnings': warnings.map((warning) => warning.toJson()).toList(),
+  };
+
+  static ContextRetrievalResult? fromJson(Map<String, dynamic>? json) {
+    if (json == null) return null;
+    try {
+      return ContextRetrievalResult(
+        rankedCandidates:
+            (json['rankedCandidates'] as List<dynamic>? ?? const [])
+                .whereType<Map<String, dynamic>>()
+                .map(ContextCandidate.fromJson)
+                .toList(),
+        budget: ContextBudgetReport.fromJson(
+          json['budget'] as Map<String, dynamic>?,
+        ),
+        warnings: (json['warnings'] as List<dynamic>? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(ContextPackWarning.fromJson)
+            .toList(),
       );
     } catch (_) {
       return null;
@@ -71,42 +283,122 @@ class ContextPack {
   final String projectKey;
   final DateTime createdAt;
   final List<ContextPackItem> items;
+  final List<ContextPackItem> instructionItems;
   final List<String> removedItemIds;
+  final ContextRetrievalResult? retrievalResult;
 
   const ContextPack({
     required this.id,
     required this.projectKey,
     required this.createdAt,
     this.items = const [],
+    this.instructionItems = const [],
     this.removedItemIds = const [],
+    this.retrievalResult,
   });
 
-  List<ContextPackItem> get visibleItems => items
+  List<ContextPackItem> get allItems => [...items, ...instructionItems];
+
+  List<ContextPackItem> get visibleItems => allItems
       .where((item) => !removedItemIds.contains(item.id))
       .toList(growable: false);
 
   int get estimatedTokens =>
       visibleItems.fold<int>(0, (total, item) => total + item.estimatedTokens);
 
+  List<ContextPackItem> get compactedVisibleItems {
+    final budget = retrievalResult?.budget;
+    if (budget == null ||
+        budget.availableForContext <= 0 ||
+        estimatedTokens <= budget.availableForContext) {
+      return visibleItems;
+    }
+
+    final scoreById = {
+      for (final candidate
+          in retrievalResult?.rankedCandidates ?? const <ContextCandidate>[])
+        candidate.id: candidate.score,
+    };
+    final candidates = [...visibleItems]
+      ..sort((a, b) {
+        if (a.removable != b.removable) return a.removable ? 1 : -1;
+        final scoreA = a.retrievalScore ?? scoreById[a.id] ?? _typePriority(a);
+        final scoreB = b.retrievalScore ?? scoreById[b.id] ?? _typePriority(b);
+        final scoreCompare = scoreB.compareTo(scoreA);
+        if (scoreCompare != 0) return scoreCompare;
+        return visibleItems.indexOf(a).compareTo(visibleItems.indexOf(b));
+      });
+
+    final selected = <ContextPackItem>[];
+    var used = 0;
+    for (final item in candidates) {
+      final nextUsed = used + item.estimatedTokens;
+      if (selected.isEmpty || nextUsed <= budget.availableForContext) {
+        selected.add(item);
+        used = nextUsed;
+      }
+    }
+    selected.sort(
+      (a, b) => visibleItems.indexOf(a).compareTo(visibleItems.indexOf(b)),
+    );
+    return selected;
+  }
+
+  List<ContextPackItem> get compactedOmittedItems {
+    final selectedIds = compactedVisibleItems.map((item) => item.id).toSet();
+    return visibleItems
+        .where((item) => !selectedIds.contains(item.id))
+        .toList(growable: false);
+  }
+
   ContextPack copyWith({
     List<ContextPackItem>? items,
+    List<ContextPackItem>? instructionItems,
     List<String>? removedItemIds,
+    ContextRetrievalResult? retrievalResult,
   }) {
     return ContextPack(
       id: id,
       projectKey: projectKey,
       createdAt: createdAt,
       items: items ?? this.items,
+      instructionItems: instructionItems ?? this.instructionItems,
       removedItemIds: removedItemIds ?? this.removedItemIds,
+      retrievalResult: retrievalResult ?? this.retrievalResult,
     );
   }
 
   String serializePrompt() {
-    if (visibleItems.isEmpty) return '';
+    final itemsForPrompt = compactedVisibleItems;
+    final warningsForPrompt = (retrievalResult?.warnings ?? const [])
+        .where((warning) => warning.message.trim().isNotEmpty)
+        .take(8)
+        .toList(growable: false);
+    if (itemsForPrompt.isEmpty && warningsForPrompt.isEmpty) return '';
+    final omitted = compactedOmittedItems;
     return [
       'Visible coding context pack:',
-      for (final item in visibleItems) item.promptBlock,
+      if (warningsForPrompt.isNotEmpty)
+        '[context-warnings]\n${warningsForPrompt.map((warning) => '- ${warning.message.trim()}').join('\n')}',
+      for (final item in itemsForPrompt) item.promptBlock,
+      if (omitted.isNotEmpty)
+        '[context-compaction]\n${omitted.length} visible context item${omitted.length == 1 ? '' : 's'} omitted to fit the selected model budget: ${omitted.take(8).map((item) => item.title).join(', ')}${omitted.length > 8 ? ', ...' : ''}',
     ].join('\n\n');
+  }
+
+  static int _typePriority(ContextPackItem item) {
+    return switch (item.type) {
+      ContextPackItemType.mentionedFile => 100,
+      ContextPackItemType.activeFile => 95,
+      ContextPackItemType.selection => 95,
+      ContextPackItemType.gitDiff => 90,
+      ContextPackItemType.instruction => 80,
+      ContextPackItemType.projectProfile => 75,
+      ContextPackItemType.diagnostics => 65,
+      ContextPackItemType.rule => 60,
+      ContextPackItemType.terminal => 45,
+      ContextPackItemType.memory => 35,
+    };
   }
 
   Map<String, dynamic> toJson() {
@@ -115,7 +407,11 @@ class ContextPack {
       'projectKey': projectKey,
       'createdAt': createdAt.toIso8601String(),
       'items': items.map((item) => item.toJson()).toList(),
+      'instructionItems': instructionItems
+          .map((item) => item.toJson())
+          .toList(),
       'removedItemIds': removedItemIds,
+      'retrievalResult': retrievalResult?.toJson(),
     };
   }
 
@@ -132,9 +428,17 @@ class ContextPack {
             .map(ContextPackItem.fromJson)
             .nonNulls
             .toList(),
+        instructionItems: (json['instructionItems'] as List<dynamic>? ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(ContextPackItem.fromJson)
+            .nonNulls
+            .toList(),
         removedItemIds:
             (json['removedItemIds'] as List<dynamic>?)?.cast<String>() ??
             const [],
+        retrievalResult: ContextRetrievalResult.fromJson(
+          json['retrievalResult'] as Map<String, dynamic>?,
+        ),
       );
     } catch (_) {
       return null;

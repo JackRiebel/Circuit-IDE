@@ -5,10 +5,13 @@ import 'package:path/path.dart' as p;
 
 import '../core/utils/logger.dart';
 import '../models/notebook.dart';
+import 'versioned_json_document.dart';
 
 /// Persists notebooks as JSON files in {projectRoot}/.circuit/notebooks/.
 class NotebookStorage {
   static const _notebooksDir = '.circuit/notebooks';
+  static const _schemaKind = 'circuit.notebook';
+  static const _schemaVersion = 2;
 
   /// Get the notebooks directory path for a given project root.
   String _notebooksPath(String projectRoot) {
@@ -24,8 +27,7 @@ class NotebookStorage {
       }
 
       final file = File(p.join(dir.path, '${notebook.id}.json'));
-      final json = const JsonEncoder.withIndent('  ').convert(notebook.toJson());
-      await file.writeAsString(json);
+      await writeVersionedJsonAtomically(file, _encode(notebook));
     } catch (e) {
       Logger.error('NotebookStorage.saveNotebook failed', e.toString());
     }
@@ -43,9 +45,29 @@ class NotebookStorage {
         if (entity is File && entity.path.endsWith('.json')) {
           try {
             final content = await entity.readAsString();
-            final json = jsonDecode(content) as Map<String, dynamic>;
-            notebooks.add(Notebook.fromJson(json));
+            final document = VersionedJsonDocument.decode(
+              jsonDecode(content),
+              expectedKind: _schemaKind,
+              currentSchemaVersion: _schemaVersion,
+            );
+            final payload = document.payload;
+            if (payload is! Map) {
+              throw const FormatException('Notebook payload is not an object.');
+            }
+            final notebook = Notebook.fromJson(
+              Map<String, dynamic>.from(payload),
+            );
+            if (document.schemaVersion < _schemaVersion) {
+              await migrateVersionedJsonFile(
+                file: entity,
+                originalContents: content,
+                migratedContents: _encode(notebook),
+                previousSchemaVersion: document.schemaVersion,
+              );
+            }
+            notebooks.add(notebook);
           } catch (e) {
+            if (e is UnsupportedRuntimeSchemaVersion) rethrow;
             Logger.error(
               'Failed to load notebook: ${entity.path}',
               e.toString(),
@@ -56,6 +78,8 @@ class NotebookStorage {
 
       // Sort by most recently modified
       notebooks.sort((a, b) => b.modifiedAt.compareTo(a.modifiedAt));
+    } on UnsupportedRuntimeSchemaVersion {
+      rethrow;
     } catch (e) {
       Logger.error('NotebookStorage.loadAll failed', e.toString());
     }
@@ -74,4 +98,10 @@ class NotebookStorage {
       Logger.error('NotebookStorage.deleteNotebook failed', e.toString());
     }
   }
+
+  String _encode(Notebook notebook) => VersionedJsonDocument(
+    kind: _schemaKind,
+    schemaVersion: _schemaVersion,
+    payload: notebook.toJson(),
+  ).encode(pretty: true);
 }

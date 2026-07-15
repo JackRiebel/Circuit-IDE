@@ -15,6 +15,7 @@ import '../search/search_panel.dart';
 import '../git/git_panel.dart';
 import '../mcp/mcp_hub_panel.dart';
 import '../security/security_scan_panel.dart';
+import '../../core/config/studio_feature_flags.dart';
 import '../testing/test_generation_panel.dart';
 import '../vericoding/vericoding_panel.dart';
 import 'tools_panel.dart';
@@ -26,6 +27,12 @@ class SidePanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tokens = ref.watch(themeProvider);
     final activeItem = ref.watch(activeActivityItemProvider);
+    final effectiveItem =
+        !StudioFeatureFlags.advancedStudioSurfaces &&
+            (activeItem.requiresAdvancedStudioSurface ||
+                activeItem == ActivityBarItem.tools)
+        ? ActivityBarItem.ai
+        : activeItem;
 
     return Container(
       decoration: BoxDecoration(
@@ -38,13 +45,13 @@ class SidePanel extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           CircuitPanelHeader(
-            icon: activeItem.icon,
-            title: activeItem.tooltip.toUpperCase(),
+            icon: effectiveItem.icon,
+            title: effectiveItem.tooltip.toUpperCase(),
           ),
 
           // Panel content
           Expanded(
-            child: switch (activeItem) {
+            child: switch (effectiveItem) {
               ActivityBarItem.explorer => const FileExplorer(),
               ActivityBarItem.search => const SearchPanel(),
               ActivityBarItem.git => const GitPanel(),

@@ -34,10 +34,7 @@ class _RulesPanelState extends ConsumerState<RulesPanel> {
       return Center(
         child: Text(
           'Open a project to manage rules',
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.sm,
-          ),
+          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
         ),
       );
     }
@@ -88,36 +85,40 @@ class _RulesPanelState extends ConsumerState<RulesPanel> {
                   ),
                 )
               : rulesState.rules.isEmpty
-                  ? _EmptyState(tokens: tokens)
-                  : ListView.builder(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: Spacing.md),
-                      itemCount: rulesState.rules.length,
-                      itemBuilder: (context, index) {
-                        return _RuleItem(
-                          rule: rulesState.rules[index],
-                          onEdit: () => _showRuleEditor(
-                              context, ref, rulesState.rules[index]),
-                          onDelete: () => _confirmDelete(
-                              context, ref, rulesState.rules[index]),
-                        );
-                      },
-                    ),
+              ? _EmptyState(tokens: tokens)
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.md),
+                  itemCount: rulesState.rules.length,
+                  itemBuilder: (context, index) {
+                    return _RuleItem(
+                      rule: rulesState.rules[index],
+                      onEdit: () => _showRuleEditor(
+                        context,
+                        ref,
+                        rulesState.rules[index],
+                      ),
+                      onDelete: () =>
+                          _confirmDelete(context, ref, rulesState.rules[index]),
+                    );
+                  },
+                ),
         ),
       ],
     );
   }
 
-  void _showRuleEditor(BuildContext context, WidgetRef ref,
-      [ProjectRule? existing]) {
+  void _showRuleEditor(
+    BuildContext context,
+    WidgetRef ref, [
+    ProjectRule? existing,
+  ]) {
     showDialog(
       context: context,
       builder: (ctx) => _RuleEditorDialog(existing: existing),
     );
   }
 
-  void _confirmDelete(
-      BuildContext context, WidgetRef ref, ProjectRule rule) {
+  void _confirmDelete(BuildContext context, WidgetRef ref, ProjectRule rule) {
     final tokens = ref.read(themeProvider);
     showDialog(
       context: context,
@@ -129,19 +130,19 @@ class _RulesPanelState extends ConsumerState<RulesPanel> {
         ),
         title: Text(
           'Delete Rule',
-          style:
-              TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
+          style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.lg),
         ),
         content: Text(
           'Delete "${rule.name}"? This cannot be undone.',
-          style: TextStyle(
-              color: tokens.textSecondary, fontSize: FontSizes.sm),
+          style: TextStyle(color: tokens.textSecondary, fontSize: FontSizes.sm),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child:
-                Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: tokens.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -173,11 +174,7 @@ class _EmptyState extends StatelessWidget {
               borderRadius: BorderRadius.circular(Radii.xl),
               color: (tokens.textMuted as Color).withValues(alpha: 0.06),
             ),
-            child: Icon(
-              Icons.rule_outlined,
-              size: 22,
-              color: tokens.textMuted,
-            ),
+            child: Icon(Icons.rule_outlined, size: 22, color: tokens.textMuted),
           ),
           const SizedBox(height: Spacing.xl),
           Text(
@@ -191,10 +188,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Rules guide the AI agent\'s behavior\nfor this project.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
         ],
       ),
@@ -276,26 +270,30 @@ class _RuleItemState extends ConsumerState<_RuleItem> {
                             Wrap(
                               spacing: 4,
                               runSpacing: 2,
-                              children: widget.rule.patterns.map((p) =>
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 5,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(3),
-                                    color: tokens.accent.withValues(alpha: 0.1),
-                                  ),
-                                  child: Text(
-                                    p,
-                                    style: TextStyle(
-                                      color: tokens.accent,
-                                      fontSize: FontSizes.xxs - 1,
-                                      fontFamily: 'JetBrains Mono',
+                              children: widget.rule.patterns
+                                  .map(
+                                    (p) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 1,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(3),
+                                        color: tokens.accent.withValues(
+                                          alpha: 0.1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        p,
+                                        style: TextStyle(
+                                          color: tokens.accent,
+                                          fontSize: FontSizes.xxs - 1,
+                                          fontFamily: 'JetBrains Mono',
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ).toList(),
+                                  )
+                                  .toList(),
                             ),
                           ],
                         ],
@@ -453,8 +451,9 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.existing?.name ?? '');
-    _contentController =
-        TextEditingController(text: widget.existing?.content ?? '');
+    _contentController = TextEditingController(
+      text: widget.existing?.content ?? '',
+    );
     _patterns = List<String>.from(widget.existing?.patterns ?? []);
   }
 
@@ -499,7 +498,9 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
               controller: _nameController,
               autofocus: true,
               style: TextStyle(
-                  color: tokens.textPrimary, fontSize: FontSizes.sm),
+                color: tokens.textPrimary,
+                fontSize: FontSizes.sm,
+              ),
               decoration: _inputDecoration(tokens, 'e.g., coding-style'),
             ),
             const SizedBox(height: Spacing.xl),
@@ -533,10 +534,10 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
                 decoration: _inputDecoration(
                   tokens,
                   'Write rules that guide the AI agent...\n\n'
-                      'Example:\n'
-                      '- Always use const constructors\n'
-                      '- Follow the existing naming conventions\n'
-                      '- Add doc comments to public APIs',
+                  'Example:\n'
+                  '- Always use const constructors\n'
+                  '- Follow the existing naming conventions\n'
+                  '- Add doc comments to public APIs',
                 ),
               ),
             ),
@@ -546,8 +547,7 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child:
-              Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
+          child: Text('Cancel', style: TextStyle(color: tokens.textSecondary)),
         ),
         TextButton(
           onPressed: _save,
@@ -588,13 +588,10 @@ class _RuleEditorDialogState extends ConsumerState<_RuleEditorDialog> {
     if (name.isEmpty || content.isEmpty) return;
 
     // Sanitize name for filename
-    final safeName =
-        name.replaceAll(RegExp(r'[^\w\-]'), '-').toLowerCase();
-    ref.read(rulesProvider.notifier).saveRule(
-          safeName,
-          content,
-          patterns: _patterns,
-        );
+    final safeName = name.replaceAll(RegExp(r'[^\w\-]'), '-').toLowerCase();
+    ref
+        .read(rulesProvider.notifier)
+        .saveRule(safeName, content, patterns: _patterns);
     Navigator.of(context).pop();
   }
 }

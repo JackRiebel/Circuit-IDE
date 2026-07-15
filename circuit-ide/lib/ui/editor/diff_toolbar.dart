@@ -132,11 +132,7 @@ class _NavButton extends StatelessWidget {
   final VoidCallback? onTap;
   final dynamic tokens;
 
-  const _NavButton({
-    required this.icon,
-    this.onTap,
-    required this.tokens,
-  });
+  const _NavButton({required this.icon, this.onTap, required this.tokens});
 
   @override
   Widget build(BuildContext context) {

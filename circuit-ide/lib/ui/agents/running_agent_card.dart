@@ -42,9 +42,7 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
       decoration: BoxDecoration(
         color: tokens.bgLighter,
         borderRadius: BorderRadius.circular(Radii.lg),
-        border: Border.all(
-          color: statusColor.withValues(alpha: 0.3),
-        ),
+        border: Border.all(color: statusColor.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -135,9 +133,7 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
           // Error message
           if (instance.error != null) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Spacing.lg,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
               child: Container(
                 padding: const EdgeInsets.all(Spacing.md),
                 decoration: BoxDecoration(
@@ -146,10 +142,7 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
                 ),
                 child: Text(
                   instance.error!,
-                  style: TextStyle(
-                    color: tokens.error,
-                    fontSize: FontSizes.xs,
-                  ),
+                  style: TextStyle(color: tokens.error, fontSize: FontSizes.xs),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -163,9 +156,7 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
               instance.streamingContent.isNotEmpty &&
               !_expanded) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Spacing.lg,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
               child: Text(
                 instance.streamingContent.length > 100
                     ? '${instance.streamingContent.substring(instance.streamingContent.length - 100)}...'
@@ -187,18 +178,14 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
           if (_expanded) ...[
             Container(
               constraints: const BoxConstraints(maxHeight: 250),
-              margin: const EdgeInsets.symmetric(
-                horizontal: Spacing.lg,
-              ),
+              margin: const EdgeInsets.symmetric(horizontal: Spacing.lg),
               decoration: BoxDecoration(
                 color: tokens.codeBlockBg,
                 borderRadius: BorderRadius.circular(Radii.md),
-                border: Border.all(
-                  color: tokens.border.withValues(alpha: 0.3),
-                ),
+                border: Border.all(color: tokens.border.withValues(alpha: 0.3)),
               ),
-              child: instance.messages.isEmpty &&
-                      instance.streamingContent.isEmpty
+              child:
+                  instance.messages.isEmpty && instance.streamingContent.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.all(Spacing.xl),
                       child: Center(
@@ -217,11 +204,11 @@ class _RunningAgentCardState extends ConsumerState<RunningAgentCard> {
                       padding: const EdgeInsets.all(Spacing.md),
                       children: [
                         ...instance.messages.map(
-                            (msg) => _MessageLine(message: msg)),
+                          (msg) => _MessageLine(message: msg),
+                        ),
                         if (instance.streamingContent.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(
-                                top: Spacing.sm),
+                            padding: const EdgeInsets.only(top: Spacing.sm),
                             child: Text(
                               instance.streamingContent,
                               style: TextStyle(

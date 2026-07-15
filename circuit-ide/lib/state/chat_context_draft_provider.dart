@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 
 import '../models/context_attachment.dart';
 import '../services/file_indexer.dart';
+import '../services/screenshot_comparison.dart';
+import '../services/screenshot_context_attachment_builder.dart';
 import 'ai_context_provider.dart';
 import 'editor_provider.dart';
 import 'file_tree_provider.dart';
@@ -70,6 +72,25 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
       label: 'Attach file',
       description: 'Attach a workspace file by relative path.',
       type: ContextAttachmentType.file,
+    ),
+    SlashCommandSpec(
+      command: '/image',
+      label: 'Attach image',
+      description: 'Attach screenshot/image metadata by path.',
+      type: ContextAttachmentType.image,
+    ),
+    SlashCommandSpec(
+      command: '/screenshot',
+      label: 'Attach screenshot',
+      description: 'Attach screenshot metadata by path.',
+      type: ContextAttachmentType.image,
+    ),
+    SlashCommandSpec(
+      command: '/compare',
+      label: 'Compare screenshots',
+      description:
+          'Attach reference and current screenshots with region notes.',
+      type: ContextAttachmentType.image,
     ),
     SlashCommandSpec(
       command: '/selection',
@@ -227,6 +248,14 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
           final attachment = await _fileAttachment(rootPath, arg);
           if (attachment != null) attachments.add(attachment);
           break;
+        case '/image':
+        case '/screenshot':
+          final attachment = await _imageAttachment(rootPath, arg);
+          if (attachment != null) attachments.add(attachment);
+          break;
+        case '/compare':
+          attachments.addAll(await _comparisonAttachments(rootPath, arg));
+          break;
         case '/diff':
           attachments.add(
             _attachment(
@@ -344,6 +373,68 @@ class ChatContextDraftNotifier extends Notifier<ChatContextDraftState> {
       content: '```\n${_truncate(content, 12000)}\n```',
       createdAt: DateTime.now(),
     );
+  }
+
+  Future<ContextAttachment?> _imageAttachment(
+    String? rootPath,
+    String rawPath,
+  ) async {
+    final trimmed = rawPath.trim();
+    if (trimmed.isEmpty) {
+      return ContextAttachment(
+        id: _uuid.v4(),
+        type: ContextAttachmentType.image,
+        label: 'Missing image path',
+        content:
+            'The /image command needs a PNG, JPG, GIF, or WebP path. Example: /image screenshots/home.png',
+        resolutionStatus: ContextAttachmentResolutionStatus.missing,
+        estimatedTokens: 24,
+        metadata: const {
+          'artifactRole': 'visual_evidence',
+          'visionInputStatus': 'missing_path',
+        },
+        createdAt: DateTime.now(),
+      );
+    }
+    final imagePath = p.isAbsolute(trimmed)
+        ? p.normalize(trimmed)
+        : rootPath == null
+        ? p.normalize(trimmed)
+        : p.normalize(p.join(rootPath, trimmed));
+    return const ScreenshotContextAttachmentBuilder().build(imagePath);
+  }
+
+  Future<List<ContextAttachment>> _comparisonAttachments(
+    String? rootPath,
+    String raw,
+  ) async {
+    final directive = ScreenshotComparisonDirective.tryParse(raw);
+    if (directive == null) {
+      return [
+        _attachment(
+          ContextAttachmentType.note,
+          'Invalid screenshot comparison',
+          'Use /compare reference.png | current.png. Optional region findings use `| current: description @ 0.10,0.20,0.30,0.15`.',
+        ).copyWith(
+          metadata: const {
+            'artifactRole': 'visual_comparison',
+            'comparisonStatus': 'invalid_directive',
+          },
+        ),
+      ];
+    }
+    String resolve(String path) => p.isAbsolute(path)
+        ? p.normalize(path)
+        : rootPath == null
+        ? p.normalize(path)
+        : p.normalize(p.join(rootPath, path));
+    final comparison = await const ScreenshotComparisonAttachmentBuilder()
+        .build(
+          referencePath: resolve(directive.referencePath),
+          currentPath: resolve(directive.currentPath),
+          findings: directive.findings,
+        );
+    return comparison.attachments;
   }
 
   ContextAttachment _attachment(

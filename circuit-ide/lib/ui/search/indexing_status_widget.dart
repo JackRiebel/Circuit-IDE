@@ -29,9 +29,7 @@ class IndexingStatusWidget extends ConsumerWidget {
       decoration: BoxDecoration(
         color: tokens.accent.withValues(alpha: 0.05),
         border: Border(
-          bottom: BorderSide(
-            color: tokens.border.withValues(alpha: 0.3),
-          ),
+          bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
         ),
       ),
       child: Column(

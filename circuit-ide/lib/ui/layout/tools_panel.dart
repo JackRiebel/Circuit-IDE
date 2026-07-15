@@ -5,6 +5,7 @@ import '../../core/constants/design_tokens.dart';
 import '../../state/theme_provider.dart';
 import '../common/circuit_primitives.dart';
 import '../project/project_cockpit_panel.dart';
+import '../../core/config/studio_feature_flags.dart';
 import 'activity_bar.dart';
 
 class ToolsPanel extends ConsumerWidget {
@@ -75,6 +76,33 @@ class ToolsPanel extends ConsumerWidget {
     ]),
   ];
 
+  static const _coreGroups = [
+    _ToolGroup('Project', [
+      _ToolLink(
+        ActivityBarItem.codebaseMap,
+        Icons.hub_outlined,
+        'Codebase Map',
+        'Project graph and architecture map',
+      ),
+    ]),
+    _ToolGroup('AI', [
+      _ToolLink(
+        ActivityBarItem.rules,
+        Icons.rule_outlined,
+        'Rules',
+        'Agent behavior and project guidance',
+      ),
+    ]),
+    _ToolGroup('Verification', [
+      _ToolLink(
+        ActivityBarItem.checkpoints,
+        Icons.history_outlined,
+        'Checkpoints',
+        'Review and restore AI edits',
+      ),
+    ]),
+  ];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListView(
@@ -82,7 +110,7 @@ class ToolsPanel extends ConsumerWidget {
       children: [
         const ProjectCockpitPanel(),
         const SizedBox(height: Spacing.lg),
-        for (final group in _groups)
+        for (final group in _visibleGroups)
           Padding(
             padding: const EdgeInsets.only(bottom: Spacing.sm),
             child: CircuitDisclosureRow(
@@ -113,6 +141,9 @@ class ToolsPanel extends ConsumerWidget {
       _ => Icons.widgets_outlined,
     };
   }
+
+  static List<_ToolGroup> get _visibleGroups =>
+      StudioFeatureFlags.advancedStudioSurfaces ? _groups : _coreGroups;
 }
 
 class _ToolButton extends ConsumerWidget {

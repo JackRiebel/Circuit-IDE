@@ -7,12 +7,9 @@ class Event {
   final DateTime timestamp;
   final Map<String, dynamic> data;
 
-  Event({
-    required this.type,
-    Map<String, dynamic>? data,
-    DateTime? timestamp,
-  })  : data = data ?? {},
-        timestamp = timestamp ?? DateTime.now();
+  Event({required this.type, Map<String, dynamic>? data, DateTime? timestamp})
+    : data = data ?? {},
+      timestamp = timestamp ?? DateTime.now();
 }
 
 typedef EventHandler = void Function(Event event);

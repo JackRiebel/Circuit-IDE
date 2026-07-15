@@ -16,6 +16,24 @@ void main() {
       expect(usage.formattedInputOutput, 'In 1.2K / Out 345');
       expect(usage.formattedWithBreakdown, '1.5K · In 1.2K / Out 345');
     });
+
+    test('keeps provider-specific dimensions out of the total', () {
+      const request = TokenUsage(
+        promptTokens: 100,
+        cachedInputTokens: 40,
+        completionTokens: 25,
+        reasoningTokens: 10,
+        toolTokens: 5,
+        totalTokens: 125,
+      );
+      final session = const TokenUsage().plus(request).plus(request);
+
+      expect(session.totalTokens, 250);
+      expect(session.cachedInputTokens, 80);
+      expect(session.reasoningTokens, 20);
+      expect(session.toolTokens, 10);
+      expect(session.formattedDetailedBreakdown, contains('cached 80'));
+    });
   });
 
   group('StreamingResponse', () {
@@ -27,6 +45,16 @@ void main() {
 
       expect(response.promptTokens, 500);
       expect(response.completionTokens, 125);
+      expect(response.totalTokens, 625);
+    });
+
+    test('preserves cached reasoning and tool usage dimensions', () {
+      final response = StreamingResponse();
+      response.updateUsage(500, 125, cachedInput: 300, reasoning: 40, tool: 12);
+
+      expect(response.cachedInputTokens, 300);
+      expect(response.reasoningTokens, 40);
+      expect(response.toolTokens, 12);
       expect(response.totalTokens, 625);
     });
   });

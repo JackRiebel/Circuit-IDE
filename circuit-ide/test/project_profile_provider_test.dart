@@ -132,6 +132,90 @@ dependencies:
       );
     },
   );
+
+  test(
+    'ProjectProfileController detects Rust and mixed-project checks',
+    () async {
+      final rust = await Directory.systemTemp.createTemp('profile_rust_');
+      final mixed = await Directory.systemTemp.createTemp('profile_mixed_');
+      addTearDown(() => _delete(rust));
+      addTearDown(() => _delete(mixed));
+      await File(
+        p.join(rust.path, 'Cargo.toml'),
+      ).writeAsString('[package]\nname = "sample"\nversion = "0.1.0"\n');
+      await File(p.join(mixed.path, 'pubspec.yaml')).writeAsString(
+        'name: mixed\ndependencies:\n  flutter:\n    sdk: flutter\n',
+      );
+      await File(
+        p.join(mixed.path, 'package.json'),
+      ).writeAsString('{"scripts":{"test":"vitest","lint":"eslint ."}}');
+      await File(
+        p.join(mixed.path, 'pyproject.toml'),
+      ).writeAsString('[project]\nname="mixed"\n');
+      await Directory(p.join(mixed.path, 'tests')).create();
+      await File(
+        p.join(mixed.path, 'tests', 'test_sample.py'),
+      ).writeAsString('def test_sample():\n    assert True\n');
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(rust.path);
+      await container.read(projectProfileProvider.notifier).refresh();
+      var profile = container.read(projectProfileProvider);
+      expect(profile.primaryType, ProjectType.rust);
+      expect(
+        profile.commands.map((command) => command.command),
+        contains('cargo test'),
+      );
+
+      await container.read(fileTreeProvider.notifier).openDirectory(mixed.path);
+      await container.read(projectProfileProvider.notifier).refresh();
+      profile = container.read(projectProfileProvider);
+      expect(
+        profile.projectTypes,
+        containsAll([
+          ProjectType.flutter,
+          ProjectType.node,
+          ProjectType.python,
+        ]),
+      );
+      expect(
+        profile.commands.map((command) => command.command),
+        containsAll(['flutter analyze', 'npm test', 'python -m pytest']),
+      );
+    },
+  );
+
+  test(
+    'ProjectProfileController requires an explicit check approval',
+    () async {
+      final root = await Directory.systemTemp.createTemp('profile_check_');
+      addTearDown(() => _delete(root));
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      await container.read(fileTreeProvider.notifier).openDirectory(root.path);
+      await container.read(projectProfileProvider.notifier).refresh();
+      const check = ProjectCommand(
+        id: 'safe-print',
+        name: 'Safe print',
+        command: 'printf "%s" "profile-ok"',
+        source: 'test',
+      );
+
+      final blocked = await container
+          .read(projectProfileProvider.notifier)
+          .runCommand(check);
+      expect(blocked.passed, isFalse);
+      expect(blocked.exitCode, -1);
+      expect(blocked.output, contains('requires review'));
+
+      final allowed = await container
+          .read(projectProfileProvider.notifier)
+          .runCommand(check, userApproved: true);
+      expect(allowed.passed, isTrue);
+      expect(allowed.output, 'profile-ok');
+    },
+  );
 }
 
 Future<void> _delete(Directory directory) async {

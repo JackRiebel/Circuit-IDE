@@ -36,7 +36,10 @@ class StreamingResponse {
   final List<StreamingToolCall> toolCalls = [];
   String? finishReason;
   int promptTokens = 0;
+  int cachedInputTokens = 0;
   int completionTokens = 0;
+  int reasoningTokens = 0;
+  int toolTokens = 0;
 
   bool get hasToolCalls => toolCalls.isNotEmpty;
   bool get isDone => finishReason != null;
@@ -63,13 +66,31 @@ class StreamingResponse {
     if (arguments != null) tc.argumentsBuffer += arguments;
   }
 
-  void setUsage(int prompt, int completion) {
+  void setUsage(
+    int prompt,
+    int completion, {
+    int cachedInput = 0,
+    int reasoning = 0,
+    int tool = 0,
+  }) {
     promptTokens = prompt;
     completionTokens = completion;
+    cachedInputTokens = cachedInput;
+    reasoningTokens = reasoning;
+    toolTokens = tool;
   }
 
-  void updateUsage(int prompt, int completion) {
+  void updateUsage(
+    int prompt,
+    int completion, {
+    int cachedInput = 0,
+    int reasoning = 0,
+    int tool = 0,
+  }) {
     if (prompt > 0) promptTokens = prompt;
     if (completion > 0) completionTokens = completion;
+    if (cachedInput > 0) cachedInputTokens = cachedInput;
+    if (reasoning > 0) reasoningTokens = reasoning;
+    if (tool > 0) toolTokens = tool;
   }
 }

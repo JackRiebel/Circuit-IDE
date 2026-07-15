@@ -13,6 +13,7 @@ import '../agent/providers/provider_interface.dart';
 import '../agent/providers/provider_registry.dart';
 import '../core/utils/logger.dart';
 import '../agent/mcp/mcp_client.dart';
+import '../agent/tools/tool_registry.dart';
 import '../enums/ai_provider.dart';
 import '../enums/connection_status.dart';
 import '../enums/event_type.dart';
@@ -34,6 +35,7 @@ class AgentService {
 
   CircuitAgent? _agent;
   AIProvider? _provider;
+  McpClient? _mcpClient;
   final ProviderRegistry _providerRegistry = const ProviderRegistry();
   AgentState _state = const AgentState();
 
@@ -162,6 +164,8 @@ class AgentService {
 
     final oldModel = _agent?.model ?? _state.model;
     final oldAutoApprove = _agent?.autoApprove ?? _state.autoApprove;
+    final oldStreamResponses =
+        _agent?.streamResponses ?? _state.streamResponses;
 
     _agent = CircuitAgent(
       provider: _provider!,
@@ -169,10 +173,19 @@ class AgentService {
       events: events,
       model: oldModel,
       autoApprove: oldAutoApprove,
+      streamResponses: oldStreamResponses,
     );
     await _agent!.init();
+    _agent!.setMcpClient(_mcpClient);
 
-    _updateState((s) => s.copyWith(workingDir: newDir));
+    _updateState(
+      (s) => s.copyWith(
+        workingDir: newDir,
+        model: oldModel,
+        autoApprove: oldAutoApprove,
+        streamResponses: oldStreamResponses,
+      ),
+    );
     Logger.info('Agent working directory updated to $newDir', 'AgentService');
   }
 
@@ -181,6 +194,10 @@ class AgentService {
     _agent?.cancel();
     _provider?.cancelActiveRequest();
     _updateState((s) => s.copyWith(isProcessing: false));
+  }
+
+  int cancelActiveCommands() {
+    return _agent?.toolExecutor.cancelActiveCommands() ?? 0;
   }
 
   /// Update routing config from provider
@@ -193,6 +210,7 @@ class AgentService {
 
   /// Set MCP client on the active agent
   void setMcpClient(McpClient? client) {
+    _mcpClient = client;
     _agent?.setMcpClient(client);
   }
 
@@ -224,7 +242,12 @@ class AgentService {
   }
 
   /// Send a message to the AI
-  Future<String?> sendMessage(String content, {String? requestId}) async {
+  Future<String?> sendMessage(
+    String content, {
+    String? requestId,
+    List<ChatMessage>? historyOverride,
+    AgentToolMode toolMode = AgentToolMode.code,
+  }) async {
     if (_agent == null) {
       _updateState(
         (s) => s.copyWith(error: 'Agent not initialized — connect first'),
@@ -272,6 +295,8 @@ class AgentService {
           .chat(
             content,
             requestId: requestId,
+            historyOverride: historyOverride,
+            toolMode: toolMode,
             onContent: (chunk) {
               // State updates happen via events already
             },
@@ -293,6 +318,10 @@ class AgentService {
     } on TimeoutException {
       _agent?.cancel();
       _provider?.cancelActiveRequest();
+      events.emit(EventType.messageError, {
+        'error': 'Request timed out after 4 minutes',
+        'requestId': ?requestId,
+      });
       _updateState(
         (s) => s.copyWith(
           isProcessing: false,
@@ -301,6 +330,10 @@ class AgentService {
       );
       return null;
     } catch (e) {
+      events.emit(EventType.messageError, {
+        'error': e.toString(),
+        'requestId': ?requestId,
+      });
       _updateState((s) => s.copyWith(isProcessing: false, error: e.toString()));
       return null;
     } finally {

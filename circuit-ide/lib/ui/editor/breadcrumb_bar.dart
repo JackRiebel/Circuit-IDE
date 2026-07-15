@@ -43,8 +43,9 @@ class BreadcrumbBar extends ConsumerWidget {
                     ? tokens.textPrimary
                     : tokens.textMuted,
                 fontSize: FontSizes.xxs,
-                fontWeight:
-                    i == parts.length - 1 ? FontWeight.w500 : FontWeight.w400,
+                fontWeight: i == parts.length - 1
+                    ? FontWeight.w500
+                    : FontWeight.w400,
                 letterSpacing: 0.1,
               ),
             ),

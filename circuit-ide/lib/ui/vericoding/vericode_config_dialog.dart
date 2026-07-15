@@ -49,7 +49,9 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
               padding: const EdgeInsets.all(Spacing.xl),
               decoration: BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: tokens.border.withValues(alpha: 0.3)),
+                  bottom: BorderSide(
+                    color: tokens.border.withValues(alpha: 0.3),
+                  ),
                 ),
               ),
               child: Row(
@@ -91,7 +93,8 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
                     label: 'Auto-run after AI edits',
                     value: _config.autoRunAfterEdit,
                     onChanged: (v) => setState(
-                        () => _config = _config.copyWith(autoRunAfterEdit: v)),
+                      () => _config = _config.copyWith(autoRunAfterEdit: v),
+                    ),
                     tokens: tokens,
                   ),
                   const SizedBox(height: Spacing.md),
@@ -116,15 +119,16 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
                         ),
                         underline: const SizedBox.shrink(),
                         items: [1, 2, 3, 5]
-                            .map((v) => DropdownMenuItem(
-                                  value: v,
-                                  child: Text('$v'),
-                                ))
+                            .map(
+                              (v) =>
+                                  DropdownMenuItem(value: v, child: Text('$v')),
+                            )
                             .toList(),
                         onChanged: (v) {
                           if (v != null) {
                             setState(
-                                () => _config = _config.copyWith(maxRetries: v));
+                              () => _config = _config.copyWith(maxRetries: v),
+                            );
                           }
                         },
                       ),
@@ -150,8 +154,11 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
                       const Spacer(),
                       TextButton.icon(
                         onPressed: _autoDetect,
-                        icon: Icon(Icons.auto_fix_high,
-                            size: 14, color: tokens.warning),
+                        icon: Icon(
+                          Icons.auto_fix_high,
+                          size: 14,
+                          color: tokens.warning,
+                        ),
                         label: Text(
                           'Auto-detect',
                           style: TextStyle(
@@ -184,13 +191,15 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
                         final checks = List<VericodeCheck>.from(_config.checks);
                         checks[entry.key] = check.copyWith(enabled: enabled);
                         setState(
-                            () => _config = _config.copyWith(checks: checks));
+                          () => _config = _config.copyWith(checks: checks),
+                        );
                       },
                       onDelete: () {
                         final checks = List<VericodeCheck>.from(_config.checks)
                           ..removeAt(entry.key);
                         setState(
-                            () => _config = _config.copyWith(checks: checks));
+                          () => _config = _config.copyWith(checks: checks),
+                        );
                       },
                     );
                   }),
@@ -214,7 +223,9 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
                     child: Text(
                       'Cancel',
                       style: TextStyle(
-                          color: tokens.textMuted, fontSize: FontSizes.sm),
+                        color: tokens.textMuted,
+                        fontSize: FontSizes.sm,
+                      ),
                     ),
                   ),
                   const SizedBox(width: Spacing.md),
@@ -255,14 +266,16 @@ class _VericodeConfigDialogState extends ConsumerState<VericodeConfigDialog> {
 
   void _addCheck() {
     final checks = List<VericodeCheck>.from(_config.checks);
-    checks.add(VericodeCheck(
-      id: _uuid.v4().substring(0, 8),
-      name: 'Custom Check',
-      command: 'echo "hello"',
-      type: VericodeCheckType.customCommand,
-      enabled: true,
-      order: checks.length,
-    ));
+    checks.add(
+      VericodeCheck(
+        id: _uuid.v4().substring(0, 8),
+        name: 'Custom Check',
+        command: 'echo "hello"',
+        type: VericodeCheckType.customCommand,
+        enabled: true,
+        order: checks.length,
+      ),
+    );
     setState(() => _config = _config.copyWith(checks: checks));
   }
 }
@@ -288,10 +301,7 @@ class _SwitchRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: TextStyle(
-              color: tokens.textPrimary,
-              fontSize: FontSizes.sm,
-            ),
+            style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.sm),
           ),
           const Spacer(),
           ToggleSwitch(

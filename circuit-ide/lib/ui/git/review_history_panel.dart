@@ -29,10 +29,7 @@ class ReviewHistoryPanel extends ConsumerWidget {
             const SizedBox(height: Spacing.sm),
             Text(
               'No review history',
-              style: TextStyle(
-                color: tokens.textMuted,
-                fontSize: FontSizes.sm,
-              ),
+              style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.sm),
             ),
           ],
         ),
@@ -56,8 +53,7 @@ class _ReviewHistoryItem extends ConsumerStatefulWidget {
   const _ReviewHistoryItem({required this.review});
 
   @override
-  ConsumerState<_ReviewHistoryItem> createState() =>
-      _ReviewHistoryItemState();
+  ConsumerState<_ReviewHistoryItem> createState() => _ReviewHistoryItemState();
 }
 
 class _ReviewHistoryItemState extends ConsumerState<_ReviewHistoryItem> {
@@ -71,8 +67,7 @@ class _ReviewHistoryItemState extends ConsumerState<_ReviewHistoryItem> {
 
     final (verdictLabel, verdictColor) = switch (review.verdict) {
       ReviewVerdict.pass => ('PASS', tokens.success),
-      ReviewVerdict.passWithWarnings =>
-        ('WARNINGS', tokens.warning),
+      ReviewVerdict.passWithWarnings => ('WARNINGS', tokens.warning),
       ReviewVerdict.needsChanges => ('CHANGES', tokens.error),
     };
 
@@ -92,9 +87,7 @@ class _ReviewHistoryItemState extends ConsumerState<_ReviewHistoryItem> {
                 ? tokens.accent.withValues(alpha: 0.05)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(Radii.sm),
-            border: Border.all(
-              color: tokens.border.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.15)),
           ),
           child: Row(
             children: [
@@ -156,11 +149,7 @@ class _ReviewHistoryItemState extends ConsumerState<_ReviewHistoryItem> {
                 ),
               ),
               const SizedBox(width: 2),
-              Icon(
-                Icons.comment_outlined,
-                size: 12,
-                color: tokens.textMuted,
-              ),
+              Icon(Icons.comment_outlined, size: 12, color: tokens.textMuted),
             ],
           ),
         ),

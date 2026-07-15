@@ -8,8 +8,7 @@ class TestPreviewDialog extends ConsumerStatefulWidget {
   const TestPreviewDialog({super.key});
 
   @override
-  ConsumerState<TestPreviewDialog> createState() =>
-      _TestPreviewDialogState();
+  ConsumerState<TestPreviewDialog> createState() => _TestPreviewDialogState();
 }
 
 class _TestPreviewDialogState extends ConsumerState<TestPreviewDialog> {
@@ -20,10 +19,8 @@ class _TestPreviewDialogState extends ConsumerState<TestPreviewDialog> {
   void initState() {
     super.initState();
     final result = ref.read(testGenerationProvider).result;
-    _contentController =
-        TextEditingController(text: result?.testContent ?? '');
-    _pathController =
-        TextEditingController(text: result?.testFilePath ?? '');
+    _contentController = TextEditingController(text: result?.testContent ?? '');
+    _pathController = TextEditingController(text: result?.testFilePath ?? '');
   }
 
   @override
@@ -59,9 +56,7 @@ class _TestPreviewDialogState extends ConsumerState<TestPreviewDialog> {
             Container(
               padding: const EdgeInsets.all(Spacing.xl),
               decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: tokens.border),
-                ),
+                border: Border(bottom: BorderSide(color: tokens.border)),
               ),
               child: Row(
                 children: [
@@ -101,7 +96,10 @@ class _TestPreviewDialogState extends ConsumerState<TestPreviewDialog> {
             // Output path
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                Spacing.xl, Spacing.lg, Spacing.xl, 0,
+                Spacing.xl,
+                Spacing.lg,
+                Spacing.xl,
+                0,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,7 +181,10 @@ class _TestPreviewDialogState extends ConsumerState<TestPreviewDialog> {
             // Actions
             Container(
               padding: const EdgeInsets.fromLTRB(
-                Spacing.xl, 0, Spacing.xl, Spacing.xl,
+                Spacing.xl,
+                0,
+                Spacing.xl,
+                Spacing.xl,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,

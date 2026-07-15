@@ -74,5 +74,5 @@ class ModelRoutingNotifier extends Notifier<RoutingConfig> {
 
 final modelRoutingProvider =
     NotifierProvider<ModelRoutingNotifier, RoutingConfig>(
-  ModelRoutingNotifier.new,
-);
+      ModelRoutingNotifier.new,
+    );

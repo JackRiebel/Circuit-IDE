@@ -1,200 +1,77 @@
-# Circuit IDE
+# CircuitCode
 
-A modern, VS Code-style AI-powered IDE built with Python and PySide6. Features dual AI provider support (Cisco Circuit API and Claude/Anthropic), integrated Git management, and a professional code editor with syntax highlighting.
+CircuitCode is a private, macOS-first AI workspace for planning, researching,
+reviewing code, preparing patches, running approved verification, and creating
+structured business artifacts. The supported application is the Flutter
+desktop product in [`circuit-ide/`](circuit-ide/).
 
-![Circuit IDE](assets/icon.png)
+The retired Python GUI, TUI, CLI, and historical plans now live in
+[`legacy/`](legacy/) for reference only. They are not supported, packaged,
+launched, or used for release validation.
 
-## Features
+## Run CircuitCode
 
-- **Dual AI Provider Support**: Switch between Cisco Circuit API and Claude (Anthropic) seamlessly
-- **VS Code-style Interface**: Familiar layout with activity bar, file explorer, tabs, and status bar
-- **Code Editor**: Syntax highlighting, line numbers, minimap, find/replace, and linting integration
-- **Git Integration**: Full source control with branch management, commit, push, pull, and diff viewer
-- **Theme Support**: Multiple dark themes (VS Code Dark, Monokai, Nord, Dracula)
-- **Real-time Linting**: Python linting with pylint/ruff/flake8 integration
-- **Token Tracking**: Monitor AI usage with token counts and cost estimates
+Requirements:
 
-## Quick Start
+- macOS with Xcode command-line tools
+- Flutter 3.41.2 (Dart 3.11.0)
+- Git
 
-### Prerequisites
-
-- Python 3.11 or higher
-- pip (Python package manager)
-- Git (for version control features)
-
-### Windows (One-Click Install)
-
-1. **Download or clone** the repository
-2. **Double-click `install-windows.bat`** - it will:
-   - Check that Python is installed
-   - Install all dependencies automatically
-   - Create a `run-circuit-ide.bat` launcher
-   - Offer to launch Circuit IDE immediately
-3. **Next time**, just double-click `run-circuit-ide.bat` to start
-
-> **Note:** Make sure "Add Python to PATH" was checked when you installed Python.
-> Download Python from [python.org](https://www.python.org/downloads/) if needed.
-
-### macOS / Linux
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/JackRiebel/Circuit-IDE.git
-   cd Circuit-IDE
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run the application:**
-   ```bash
-   python circuit_ide_gui/main.py
-   ```
-
-### First Launch
-
-1. Open a project folder via **File > Open Folder** or click "Open Folder" on the welcome screen
-2. Go to **Settings** (gear icon in activity bar) to configure your AI provider:
-   - For **Cisco Circuit**: Enter your Client ID, Client Secret, and App Key
-   - For **Claude/Anthropic**: Enter your Anthropic API key
-3. Start chatting with the AI in the right panel!
-
-## Configuration
-
-### AI Providers
-
-#### Cisco Circuit API
-Get credentials from: https://developer.cisco.com/site/ai-ml/
-- Navigate to "Manage Circuit API Keys" > "View"
-- You'll need: Client ID, Client Secret, and App Key
-
-#### Anthropic/Claude
-Get an API key from: https://console.anthropic.com/
-- Create an account and generate an API key
-- Supports Claude Sonnet 4, Opus 4, and other models
-
-### Settings Location
-
-Settings are stored in:
-- **macOS**: `~/.config/circuit-ide-gui/settings.json`
-- **Linux**: `~/.config/circuit-ide-gui/settings.json`
-- **Windows**: `%APPDATA%\circuit-ide-gui\settings.json`
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd/Ctrl + O` | Open folder |
-| `Cmd/Ctrl + S` | Save file |
-| `Cmd/Ctrl + F` | Find in file |
-| `Cmd/Ctrl + G` | Go to line |
-| `Cmd/Ctrl + W` | Close tab |
-| `Cmd/Ctrl + Tab` | Next tab |
-| `Cmd/Ctrl + Shift + Tab` | Previous tab |
-
-## Project Structure
-
-```
-circuit-ide/
-├── circuit_ide_gui/          # Main GUI application
-│   └── main.py               # Application entry point
-├── circuit_agent/            # Core agent package (CLI)
-│   ├── agent.py              # CircuitAgent class
-│   ├── cli.py                # CLI interface
-│   ├── config.py             # Configuration management
-│   ├── streaming.py          # SSE response parsing
-│   ├── security.py           # Secret detection, audit
-│   └── tools/                # Tool implementations
-├── assets/                   # Icons and images
-│   ├── icon.svg              # App icon (SVG)
-│   └── icon.png              # App icon (PNG)
-├── docs/                     # Documentation
-├── tests/                    # Test suite
-├── pyproject.toml            # Project configuration
-└── README.md                 # This file
-```
-
-## Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| PySide6 | >=6.6.0 | Qt GUI framework |
-| httpx | >=0.25.0 | HTTP client for API calls |
-| pygments | >=2.17.0 | Syntax highlighting |
-| anthropic | >=0.18.0 | Anthropic Claude API (optional) |
-
-## Git Integration
-
-The Git panel provides:
-- **Branch Management**: View and switch branches
-- **Staging**: Stage individual files or all changes
-- **Commits**: Write commit messages and commit
-- **Sync**: Pull from and push to remote
-- **History**: View recent commits
-- **Diff Viewer**: See changes before committing
-
-Git uses your system's git configuration, so make sure you have:
-- Git installed and in your PATH
-- GitHub/GitLab credentials configured (SSH key or credential helper)
-
-## Themes
-
-Available themes:
-- **VS Code Dark** (default)
-- **Monokai**
-- **Nord**
-- **Dracula**
-
-Change themes in Settings > Theme.
-
-## Troubleshooting
-
-### "AI agent not connected"
-- Check your API credentials in Settings
-- Ensure you have internet connectivity
-- Verify the API service is available
-
-### Git operations failing
-- Ensure git is installed: `git --version`
-- Check git credentials are configured: `git config --list`
-- For GitHub, set up SSH keys or use credential helper
-
-### Font warnings on startup
-The app tries to use Monospace/Consolas fonts. If unavailable, it falls back to system fonts. This warning can be safely ignored.
-
-## Development
-
-### Running Tests
 ```bash
-python -m pytest tests/
+git clone https://github.com/JackRiebel/Circuit-IDE.git
+cd Circuit-IDE/circuit-ide
+flutter pub get
+flutter run -d macos
 ```
 
-### Building for Distribution
+On macOS, double-click `circuit-ide.command` at the repository root to open an
+existing Flutter release build, or start the same Flutter application from
+source when no build is present.
 
-**Standalone executable (all platforms):**
+For a release-style local build:
+
 ```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed circuit_ide_gui/main.py
+cd circuit-ide
+flutter analyze
+flutter test
+flutter build macos --release
 ```
 
-**Flutter desktop app (Windows):**
-```
-Double-click build-windows.bat
-```
-Requires Flutter SDK and Visual Studio with C++ Desktop workload.
+The built application is at
+`circuit-ide/build/macos/Build/Products/Release/CircuitCode.app`.
 
-## License
+## Credentials and privacy
 
-MIT License - See LICENSE file for details.
+Configure Circuit Company AI credentials from **Settings** in the app. CircuitCode
+stores credentials in macOS Keychain through `flutter_secure_storage`; it does
+not intentionally store API secrets in its JSON preferences. Existing legacy
+credential preferences are migrated only after Keychain storage succeeds.
+
+Do not place credentials in project instruction files, chat messages, source
+files, or `.env` files exposed to a task. Studio policy blocks direct reads of
+common secret paths and removes ambient secret variables from agent-launched
+commands and MCP child processes.
+
+## Repository guide
+
+- [`circuit-ide/`](circuit-ide/) — supported Flutter desktop application
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current runtime boundaries
+- [`docs/PROVIDER_PROTOCOL.md`](docs/PROVIDER_PROTOCOL.md) — provider event and
+  capability expectations
+- [`docs/SECURITY.md`](docs/SECURITY.md) — current controls and open security
+  limitations
+- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — setup, provider,
+  approval, policy, and release recovery
+- [`docs/RELEASE.md`](docs/RELEASE.md) — build, CI, signing, and release steps
+- [`docs/RELEASE_READINESS_CHECKLIST.md`](docs/RELEASE_READINESS_CHECKLIST.md)
+  — required per-release evidence and sign-off record
+- [`docs/SECURITY_REVIEW_CHECKLIST.md`](docs/SECURITY_REVIEW_CHECKLIST.md)
+  — quarterly threat-model/control review and incident exercise
+- [`docs/CIRCUITCODE_PRODUCT_PARITY_MASTER_CHECKLIST.md`](docs/CIRCUITCODE_PRODUCT_PARITY_MASTER_CHECKLIST.md)
+  — evidence-based product-parity work ledger
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes
-4. Run tests: `python -m pytest`
-5. Commit: `git commit -m "Add feature"`
-6. Push: `git push origin feature-name`
-7. Open a Pull Request
+Every product change must keep `flutter analyze`, the relevant test suite, and
+the macOS build green. Do not mark a product-parity checklist item complete
+until its implementation and verification gates are both satisfied.

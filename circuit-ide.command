@@ -1,52 +1,21 @@
 #!/bin/bash
-# Circuit IDE Launcher
-# Double-click this file to launch Circuit IDE
+# CircuitCode macOS launcher. This is the only supported desktop entry point.
+set -euo pipefail
 
-cd "$(dirname "$0")"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_DIR="$ROOT_DIR/circuit-ide/build/macos/Build/Products/Release/CircuitCode.app"
 
-# Clear screen and set title
-clear
-echo -e "\033]0;Circuit IDE\007"
+if [[ -d "$APP_DIR" ]]; then
+  open -n "$APP_DIR"
+  exit 0
+fi
 
-# Colors
-CYAN='\033[96m'
-GREEN='\033[92m'
-MAGENTA='\033[95m'
-BOLD='\033[1m'
-DIM='\033[2m'
-RESET='\033[0m'
+cd "$ROOT_DIR/circuit-ide"
+if ! command -v flutter >/dev/null 2>&1; then
+  echo "Flutter 3.41.2 is required to launch CircuitCode from source." >&2
+  exit 1
+fi
 
-echo ""
-echo -e "${CYAN}╔══════════════════════════════════════════════════╗${RESET}"
-echo -e "${CYAN}║            ${BOLD}Circuit IDE Launcher${RESET}${CYAN}                 ║${RESET}"
-echo -e "${CYAN}╚══════════════════════════════════════════════════╝${RESET}"
-echo ""
-echo -e "  ${GREEN}1)${RESET} ${BOLD}GUI${RESET}          Desktop app (Qt)        ${DIM}— Full IDE experience${RESET}"
-echo -e "  ${GREEN}2)${RESET} ${BOLD}Terminal IDE${RESET}  TUI in this terminal     ${DIM}— Textual-based IDE${RESET}"
-echo -e "  ${GREEN}3)${RESET} ${BOLD}CLI Agent${RESET}    Chat in this terminal    ${DIM}— Lightweight agent${RESET}"
-echo ""
-read -p "  Select mode [1]: " choice
-choice=${choice:-1}
-
-case "$choice" in
-    1)
-        echo ""
-        echo -e "  ${CYAN}Launching GUI...${RESET}"
-        python3.11 -m circuit_ide_gui "$@"
-        ;;
-    2)
-        echo ""
-        echo -e "  ${CYAN}Launching Terminal IDE...${RESET}"
-        python3.11 -m circuit_ide "$@"
-        ;;
-    3)
-        echo ""
-        echo -e "  ${CYAN}Launching CLI Agent...${RESET}"
-        python3.11 circuit_agent.py "$@"
-        ;;
-    *)
-        echo ""
-        echo -e "  ${BOLD}Invalid choice.${RESET} Launching GUI..."
-        python3.11 -m circuit_ide_gui "$@"
-        ;;
-esac
+echo "No release build is available; starting the Flutter macOS app from source."
+flutter pub get
+exec flutter run -d macos "$@"

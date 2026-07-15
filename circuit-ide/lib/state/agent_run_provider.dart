@@ -55,6 +55,12 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
     String? retryPrompt,
     List<ContextAttachment> retryAttachments = const [],
     int contextAttachmentCount = 0,
+    String? agentTaskId,
+    String? parentRunId,
+    String? approvalId,
+    String? artifactId,
+    String? mascotAlias,
+    bool acceptsLegacyEvents = true,
   }) {
     final runId = id ?? _uuid.v4();
     final now = DateTime.now();
@@ -68,6 +74,12 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       retryPrompt: retryPrompt,
       retryAttachments: retryAttachments,
       contextAttachmentCount: contextAttachmentCount,
+      agentTaskId: agentTaskId,
+      parentRunId: parentRunId,
+      approvalId: approvalId,
+      artifactId: artifactId,
+      mascotAlias: mascotAlias,
+      acceptsLegacyEvents: acceptsLegacyEvents,
       startedAt: now,
       events: [
         AgentRunEvent(
@@ -281,6 +293,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       }
     });
     service.events.on(EventType.checkpointCreated, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       final checkpoint = event.data['checkpoint'];
       final checkpointId = _readProperty(checkpoint, 'id');
       addEvent(
@@ -300,6 +313,7 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
       addRunArtifacts(AgentRunKind.chat, checkpointId: checkpointId);
     });
     service.events.on(EventType.vericodeTriggered, (event) {
+      if (!_eventBelongsToActiveChat(event.data)) return;
       final files =
           (event.data['editedFiles'] as List<dynamic>?)
               ?.whereType<String>()
@@ -335,8 +349,8 @@ class AgentRunNotifier extends Notifier<AgentRunState> {
   bool _eventBelongsToActiveChat(Map<String, dynamic> data) {
     final requestId = data['requestId'] as String?;
     final active = state.activeChatRun;
-    if (requestId == null || active == null) return active != null;
-    return active.id == requestId;
+    if (requestId == null || active == null) return false;
+    return active.acceptsLegacyEvents && active.id == requestId;
   }
 
   void _updateActive(AgentRunKind kind, AgentRun Function(AgentRun) update) {

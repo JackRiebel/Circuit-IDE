@@ -36,12 +36,14 @@ class RulesLoader {
           final rawContent = await entity.readAsString();
           if (rawContent.trim().isNotEmpty) {
             final parsed = _parseFrontmatter(rawContent.trim());
-            rules.add(ProjectRule(
-              name: name.replaceAll('.md', ''),
-              content: parsed.content,
-              filePath: entity.path,
-              patterns: parsed.patterns,
-            ));
+            rules.add(
+              ProjectRule(
+                name: name.replaceAll('.md', ''),
+                content: parsed.content,
+                filePath: entity.path,
+                patterns: parsed.patterns,
+              ),
+            );
           }
         } catch (e) {
           Logger.warning('Could not read rule file $name: $e', 'Rules');
@@ -61,8 +63,7 @@ class RulesLoader {
 
     final buffer = StringBuffer();
     buffer.writeln('\n\n## Project Rules\n');
-    buffer.writeln(
-        'The following project-specific rules MUST be followed:\n');
+    buffer.writeln('The following project-specific rules MUST be followed:\n');
 
     for (final rule in rules) {
       buffer.writeln('### ${rule.name}\n');
@@ -133,7 +134,10 @@ class RulesLoader {
 
     // Simple YAML parsing for patterns list
     final patterns = <String>[];
-    final patternRegex = RegExp(r"""^\s*-\s*["']?(.+?)["']?\s*$""", multiLine: true);
+    final patternRegex = RegExp(
+      r"""^\s*-\s*["']?(.+?)["']?\s*$""",
+      multiLine: true,
+    );
     bool inPatterns = false;
 
     for (final line in frontmatter.split('\n')) {
@@ -145,7 +149,9 @@ class RulesLoader {
         final match = patternRegex.firstMatch(line);
         if (match != null) {
           patterns.add(match.group(1)!);
-        } else if (line.trim().isNotEmpty && !line.startsWith(' ') && !line.startsWith('\t')) {
+        } else if (line.trim().isNotEmpty &&
+            !line.startsWith(' ') &&
+            !line.startsWith('\t')) {
           inPatterns = false;
         }
       }

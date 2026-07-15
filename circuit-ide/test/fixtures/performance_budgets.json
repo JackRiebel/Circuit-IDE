@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "scope": "deterministic CI fixture budgets; not release-profile frame or memory evidence",
+  "referenceEnvironment": "GitHub macOS runner and local Flutter test runner",
+  "metrics": {
+    "task_summary_page_5000": {
+      "maxMilliseconds": 1000,
+      "fixture": "first 24 task summaries from a 5,000-task JSONL index"
+    },
+    "thread_summary_page_1000": {
+      "maxMilliseconds": 1000,
+      "fixture": "first 24 thread summaries from a 1,000-thread JSONL index"
+    },
+    "thread_hydration_1000": {
+      "maxMilliseconds": 2000,
+      "fixture": "hydrate a selected 1,000-turn thread from durable history"
+    },
+    "project_metadata_pages_500": {
+      "maxMilliseconds": 5000,
+      "fixture": "load two task and thread metadata rows across 500 projects"
+    },
+    "stream_state_updates_10000": {
+      "maxCount": 4,
+      "fixture": "10,000 assistant deltas after first-token paint and 120ms coalescing"
+    }
+  }
+}

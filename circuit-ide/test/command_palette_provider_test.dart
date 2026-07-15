@@ -1,3 +1,4 @@
+import 'package:circuit_ide/core/commands/core_command_registry.dart';
 import 'package:circuit_ide/models/command_descriptor.dart';
 import 'package:circuit_ide/state/command_palette_provider.dart';
 import 'package:flutter/material.dart';
@@ -79,4 +80,82 @@ void main() {
       'workspace.refresh',
     );
   });
+
+  testWidgets(
+    'Core Studio command registry quarantines legacy runtime commands',
+    (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, child) {
+                return TextButton(
+                  onPressed: () => CoreCommandRegistry.register(ref),
+                  child: const Text('register'),
+                );
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('register'));
+      await tester.pump();
+
+      final commandIds = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .map((command) => command.id)
+          .toSet();
+
+      expect(commandIds, contains('studio.home'));
+      expect(commandIds, contains('studio.newTask'));
+      expect(commandIds, contains('settings.open'));
+      expect(commandIds, isNot(contains('file.save')));
+      expect(commandIds, isNot(contains('view.tools')));
+      expect(commandIds, isNot(contains('view.toggleTerminal')));
+      expect(commandIds, isNot(contains('ai.copyLatestRun')));
+      expect(commandIds, isNot(contains('context.toggleActiveFile')));
+      expect(commandIds, isNot(contains('context.toggleTerminal')));
+      expect(commandIds, isNot(contains('context.toggleGitDiff')));
+      expect(commandIds, isNot(contains('project.startWorkItem')));
+      expect(commandIds, isNot(contains('agentWorkspace.startParallelTask')));
+      final registeredText = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .map(
+            (command) =>
+                '${command.id}\n${command.title}\n${command.description ?? ''}',
+          )
+          .join('\n')
+          .toLowerCase();
+      for (final hiddenTerm in [
+        'advanced tools',
+        'mcp',
+        'notebook',
+        'agent workspace',
+        'parallel task',
+        'background agent',
+        'terminal context',
+        'git diff context',
+        'active file context',
+      ]) {
+        expect(
+          registeredText,
+          isNot(contains(hiddenTerm)),
+          reason:
+              'Studio command palette must not expose $hiddenTerm while advanced Studio surfaces are quarantined.',
+        );
+      }
+
+      final settingsCommand = container
+          .read(commandPaletteProvider)
+          .allCommands
+          .singleWhere((command) => command.id == 'settings.open');
+      expect(settingsCommand.enabled, isTrue);
+    },
+  );
 }

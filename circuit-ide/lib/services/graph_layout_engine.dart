@@ -277,10 +277,7 @@ class GraphLayoutEngine {
         if (idx == null) continue;
         final angle = startAngle + ni * subAngle;
         result[idx] = result[idx].copyWith(
-          position: Offset(
-            radius * cos(angle),
-            radius * sin(angle),
-          ),
+          position: Offset(radius * cos(angle), radius * sin(angle)),
           velocity: Offset.zero,
         );
       }

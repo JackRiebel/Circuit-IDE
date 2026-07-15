@@ -72,7 +72,9 @@ class SecurityScanPanel extends ConsumerWidget {
                   label: 'Critical',
                   count: scanState.lastResult!.criticalCount,
                   color: tokens.error,
-                  isActive: scanState.activeSeverityFilters.contains('critical'),
+                  isActive: scanState.activeSeverityFilters.contains(
+                    'critical',
+                  ),
                   onTap: () => ref
                       .read(securityScanProvider.notifier)
                       .toggleSeverityFilter('critical'),
@@ -140,39 +142,41 @@ class SecurityScanPanel extends ConsumerWidget {
                   ),
                 )
               : scanState.lastResult == null
-                  ? _EmptyState(tokens: tokens)
-                  : scanState.filteredFindings.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check_circle_outline,
-                                  size: 32, color: tokens.success),
-                              const SizedBox(height: Spacing.lg),
-                              Text(
-                                'No findings match current filters',
-                                style: TextStyle(
-                                  color: tokens.textMuted,
-                                  fontSize: FontSizes.sm,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: Spacing.md,
-                            vertical: Spacing.sm,
-                          ),
-                          itemCount: scanState.filteredFindings.length,
-                          itemBuilder: (context, index) {
-                            return _FindingItem(
-                              finding: scanState.filteredFindings[index],
-                              rootPath:
-                                  ref.read(fileTreeProvider).rootPath ?? '',
-                            );
-                          },
+              ? _EmptyState(tokens: tokens)
+              : scanState.filteredFindings.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 32,
+                        color: tokens.success,
+                      ),
+                      const SizedBox(height: Spacing.lg),
+                      Text(
+                        'No findings match current filters',
+                        style: TextStyle(
+                          color: tokens.textMuted,
+                          fontSize: FontSizes.sm,
                         ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.md,
+                    vertical: Spacing.sm,
+                  ),
+                  itemCount: scanState.filteredFindings.length,
+                  itemBuilder: (context, index) {
+                    return _FindingItem(
+                      finding: scanState.filteredFindings[index],
+                      rootPath: ref.read(fileTreeProvider).rootPath ?? '',
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -216,9 +220,7 @@ class _ScanButtonState extends ConsumerState<_ScanButton> {
                   ? tokens.accent.withValues(alpha: 0.15)
                   : tokens.accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(Radii.md),
-              border: Border.all(
-                color: tokens.accent.withValues(alpha: 0.3),
-              ),
+              border: Border.all(color: tokens.accent.withValues(alpha: 0.3)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -265,18 +267,12 @@ class _ResultSummary extends ConsumerWidget {
       children: [
         Text(
           '${result.findings.length} findings in ${result.filesScanned} files',
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xxs,
-          ),
+          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
         ),
         const Spacer(),
         Text(
           '${duration}ms',
-          style: TextStyle(
-            color: tokens.textMuted,
-            fontSize: FontSizes.xxs,
-          ),
+          style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xxs),
         ),
       ],
     );
@@ -320,8 +316,8 @@ class _SeverityFilterState extends ConsumerState<_SeverityFilter> {
               color: widget.isActive
                   ? widget.color.withValues(alpha: _isHovered ? 0.15 : 0.1)
                   : _isHovered
-                      ? widget.color.withValues(alpha: 0.05)
-                      : Colors.transparent,
+                  ? widget.color.withValues(alpha: 0.05)
+                  : Colors.transparent,
               borderRadius: BorderRadius.circular(Radii.sm),
               border: Border.all(
                 color: widget.isActive
@@ -501,11 +497,11 @@ class _FindingItemState extends ConsumerState<_FindingItem> {
   }
 
   Color _severityColor(String severity, dynamic tokens) => switch (severity) {
-        'critical' => tokens.error as Color,
-        'high' => const Color(0xFFFF6B35),
-        'medium' => tokens.warning as Color,
-        _ => tokens.textMuted as Color,
-      };
+    'critical' => tokens.error as Color,
+    'high' => const Color(0xFFFF6B35),
+    'medium' => tokens.warning as Color,
+    _ => tokens.textMuted as Color,
+  };
 }
 
 class _EmptyState extends StatelessWidget {
@@ -543,10 +539,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             'Click "Scan" to check your project\nfor security vulnerabilities.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: tokens.textMuted,
-              fontSize: FontSizes.xs,
-            ),
+            style: TextStyle(color: tokens.textMuted, fontSize: FontSizes.xs),
           ),
         ],
       ),

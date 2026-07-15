@@ -75,7 +75,11 @@ class TestGenerationNotifier extends Notifier<TestGenerationState> {
       return;
     }
 
-    state = state.copyWith(isGenerating: true, clearError: true, clearResult: true);
+    state = state.copyWith(
+      isGenerating: true,
+      clearError: true,
+      clearResult: true,
+    );
 
     try {
       final file = File(sourceFilePath);
@@ -91,7 +95,8 @@ class TestGenerationNotifier extends Notifier<TestGenerationState> {
       final ext = p.extension(sourceFilePath).replaceFirst('.', '');
       final language = _extToLanguage(ext);
       final framework =
-          state.selectedFramework ?? TestGeneratorService.detectFramework(language);
+          state.selectedFramework ??
+          TestGeneratorService.detectFramework(language);
 
       final request = TestGenerationRequest(
         sourceFilePath: sourceFilePath,
@@ -114,10 +119,11 @@ class TestGenerationNotifier extends Notifier<TestGenerationState> {
       }
 
       final testContent = TestGeneratorService.parseResponse(response);
-      final testPath =
-          TestGeneratorService.deriveTestPath(sourceFilePath, language);
-      final testCount =
-          TestGeneratorService.countTests(testContent, framework);
+      final testPath = TestGeneratorService.deriveTestPath(
+        sourceFilePath,
+        language,
+      );
+      final testCount = TestGeneratorService.countTests(testContent, framework);
 
       state = state.copyWith(
         isGenerating: false,
@@ -125,16 +131,14 @@ class TestGenerationNotifier extends Notifier<TestGenerationState> {
           testFilePath: testPath,
           testContent: testContent,
           testCount: testCount,
-          summary: '$testCount tests generated for ${p.basename(sourceFilePath)}',
+          summary:
+              '$testCount tests generated for ${p.basename(sourceFilePath)}',
         ),
         selectedFramework: framework,
       );
     } catch (e) {
       Logger.error('Test generation failed', e);
-      state = state.copyWith(
-        isGenerating: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isGenerating: false, error: e.toString());
     }
   }
 
@@ -183,5 +187,5 @@ class TestGenerationNotifier extends Notifier<TestGenerationState> {
 
 final testGenerationProvider =
     NotifierProvider<TestGenerationNotifier, TestGenerationState>(
-  TestGenerationNotifier.new,
-);
+      TestGenerationNotifier.new,
+    );

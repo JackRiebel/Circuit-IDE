@@ -26,11 +26,7 @@ class GitFileChange {
   final GitChangeType type;
   final String? oldPath;
 
-  const GitFileChange({
-    required this.path,
-    required this.type,
-    this.oldPath,
-  });
+  const GitFileChange({required this.path, required this.type, this.oldPath});
 }
 
 enum GitChangeType {
@@ -67,4 +63,76 @@ class GitCommit {
     required this.author,
     required this.date,
   });
+}
+
+enum GitMutationType {
+  stage,
+  unstage,
+  discardFile,
+  discardHunk,
+  commit,
+  createBranch,
+  push,
+}
+
+/// A user-reviewable Git operation. The UI must present this before calling
+/// the corresponding mutation; it contains only operational evidence, never
+/// credentials or a shell command string.
+class GitMutationPreview {
+  final GitMutationType type;
+  final String title;
+  final String summary;
+  final List<String> affectedPaths;
+  final String diffPreview;
+  final String undoGuidance;
+  final bool requiresConfirmation;
+  final bool canApply;
+  final String? blockedReason;
+  final String? commitMessage;
+  final String? branchName;
+  final GitDiffHunk? hunk;
+
+  const GitMutationPreview({
+    required this.type,
+    required this.title,
+    required this.summary,
+    this.affectedPaths = const [],
+    this.diffPreview = '',
+    required this.undoGuidance,
+    this.requiresConfirmation = true,
+    this.canApply = true,
+    this.blockedReason,
+    this.commitMessage,
+    this.branchName,
+    this.hunk,
+  });
+}
+
+class GitMutationResult {
+  final GitMutationPreview preview;
+  final bool applied;
+  final String evidence;
+  final String undoGuidance;
+
+  const GitMutationResult({
+    required this.preview,
+    required this.applied,
+    required this.evidence,
+    required this.undoGuidance,
+  });
+}
+
+/// A stable, reviewable hunk from an unstaged text diff.
+class GitDiffHunk {
+  final String path;
+  final String header;
+  final String patch;
+
+  const GitDiffHunk({
+    required this.path,
+    required this.header,
+    required this.patch,
+  });
+
+  String get label => '$path · $header';
 }

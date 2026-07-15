@@ -25,12 +25,23 @@ class FileIndexerNotifier extends Notifier<FileIndexer?> {
     await state?.index();
   }
 
+  Future<void> refreshIfStale() async {
+    final rootPath = ref.read(fileTreeProvider).rootPath;
+    if (rootPath == null) return;
+
+    var indexer = state;
+    if (indexer == null || indexer.workingDir != rootPath) {
+      indexer = FileIndexer(workingDir: rootPath);
+      state = indexer;
+    }
+    await indexer.refreshIfStale();
+  }
+
   List<IndexedFile> search(String query, {int limit = 20}) {
     return state?.search(query, limit: limit) ?? [];
   }
 }
 
-final fileIndexerProvider =
-    NotifierProvider<FileIndexerNotifier, FileIndexer?>(
+final fileIndexerProvider = NotifierProvider<FileIndexerNotifier, FileIndexer?>(
   FileIndexerNotifier.new,
 );

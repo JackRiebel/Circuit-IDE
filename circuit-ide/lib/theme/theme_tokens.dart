@@ -5,6 +5,10 @@ class ThemeTokens {
   final String displayName;
   final Brightness brightness;
 
+  /// True only for the non-persisted variant selected by the operating
+  /// system's accessibility setting. The user's saved theme remains [name].
+  final bool highContrast;
+
   // Core UI
   final Color bgDark;
   final Color bgMain;
@@ -92,10 +96,66 @@ class ThemeTokens {
   Color get outlineSubtle => outlineSoft;
   Color get outlineStrong => borderLight.withValues(alpha: 0.78);
 
+  Color get studioCanvas => highContrast
+      ? bgDark
+      : brightness == Brightness.dark
+      ? const Color(0xFF111111)
+      : bgDark;
+  Color get studioRail => activityBarBg;
+  Color get studioTopBar => highContrast
+      ? bgMain
+      : brightness == Brightness.dark
+      ? const Color(0xFF141414)
+      : bgMain;
+  Color get studioPanel => surfacePanel;
+  Color get studioDrawer => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF202020)
+      : surfacePanel;
+  Color get studioCard => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF1B1B1B)
+      : surfacePopover.withValues(alpha: 0.54);
+  Color get studioComposer => highContrast
+      ? inputBg
+      : brightness == Brightness.dark
+      ? const Color(0xFF262626)
+      : inputBg;
+  Color get studioBubble => highContrast
+      ? userMsgBg
+      : brightness == Brightness.dark
+      ? const Color(0xFF242424)
+      : userMsgBg;
+  Color get studioControl => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF2C2C2C)
+      : surfacePanel;
+  Color get studioActivityRow => highContrast
+      ? surfacePanel
+      : brightness == Brightness.dark
+      ? const Color(0xFF191919)
+      : surfacePanel;
+  Color get studioRailSelected => highContrast
+      ? surfacePressed
+      : brightness == Brightness.dark
+      ? const Color(0xFF333333)
+      : surfacePressed;
+  Color get studioTaskSelected => highContrast
+      ? surfacePressed
+      : brightness == Brightness.dark
+      ? const Color(0xFF2A2A2A)
+      : surfacePressed;
+  Color get studioDivider => outlineSoft;
+  Color get studioHover => surfaceHover;
+
   const ThemeTokens({
     required this.name,
     required this.displayName,
     required this.brightness,
+    this.highContrast = false,
     required this.bgDark,
     required this.bgMain,
     required this.bgLight,
@@ -155,60 +215,134 @@ class ThemeTokens {
        _outlineSoft = outlineSoft,
        _outlineFocus = outlineFocus;
 
+  /// Returns a high-contrast rendering of the saved theme without changing
+  /// its name or persistence identity. Keeping this here means Studio's
+  /// direct token consumers and Material controls change together.
+  ThemeTokens get highContrastVariant {
+    if (highContrast) return this;
+    final dark = brightness == Brightness.dark;
+    return ThemeTokens(
+      name: name,
+      displayName: '$displayName High Contrast',
+      brightness: brightness,
+      highContrast: true,
+      bgDark: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgMain: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgLight: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      bgLighter: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      border: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      borderLight: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textPrimary: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textSecondary: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      textMuted: dark ? const Color(0xFFE5E5E5) : const Color(0xFF262626),
+      textDisabled: dark ? const Color(0xFFBDBDBD) : const Color(0xFF595959),
+      accent: const Color(0xFF005FCC),
+      accentHover: const Color(0xFF004494),
+      success: dark ? const Color(0xFF00D26A) : const Color(0xFF006E2E),
+      warning: dark ? const Color(0xFFFFCC00) : const Color(0xFF7A4B00),
+      error: const Color(0xFFB00020),
+      info: dark ? const Color(0xFF66B2FF) : const Color(0xFF005FCC),
+      activityBarBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      activityBarIcon: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      activityBarIconActive: dark
+          ? const Color(0xFFFFFFFF)
+          : const Color(0xFF000000),
+      activityBarBadge: const Color(0xFF005FCC),
+      editorBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      editorLineHighlight: dark
+          ? const Color(0xFF1A1A1A)
+          : const Color(0xFFE5E5E5),
+      editorSelection: dark ? const Color(0xFF003A80) : const Color(0xFFB3D7FF),
+      editorCursor: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      editorLineNumber: dark
+          ? const Color(0xFFE5E5E5)
+          : const Color(0xFF262626),
+      editorLineNumberActive: dark
+          ? const Color(0xFFFFFFFF)
+          : const Color(0xFF000000),
+      userMsgBg: dark ? const Color(0xFF111111) : const Color(0xFFF2F2F2),
+      agentMsgBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      codeBlockBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      codeBlockBorder: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      inputBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      inputBorder: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      inputFocusBorder: dark
+          ? const Color(0xFF00E5FF)
+          : const Color(0xFF005FCC),
+      tabActive: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      tabInactive: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      tabHover: dark ? const Color(0xFF1A1A1A) : const Color(0xFFE5E5E5),
+      tabIndicator: dark ? const Color(0xFF00E5FF) : const Color(0xFF005FCC),
+      statusBarBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      statusBarText: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      circuitColor: const Color(0xFF005FCC),
+      terminalBg: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      terminalText: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      surfaceBase: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfacePanel: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfaceInset: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfacePopover: dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+      surfaceHover: dark ? const Color(0x33FFFFFF) : const Color(0x26000000),
+      surfacePressed: dark ? const Color(0xFF003A80) : const Color(0xFFB3D7FF),
+      outlineSoft: dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+      outlineFocus: dark ? const Color(0xFF00E5FF) : const Color(0xFF005FCC),
+    );
+  }
+
   static const dark = ThemeTokens(
     name: 'dark',
     displayName: 'Dark',
     brightness: Brightness.dark,
-    bgDark: Color(0xFF171717),
-    bgMain: Color(0xFF1F1F1E),
-    bgLight: Color(0xFF292827),
-    bgLighter: Color(0xFF343230),
-    border: Color(0xFF3E3C39),
-    borderLight: Color(0xFF56514B),
-    textPrimary: Color(0xFFE7E2DA),
-    textSecondary: Color(0xFFC1B9AE),
-    textMuted: Color(0xFF8C857B),
-    textDisabled: Color(0xFF625D56),
+    bgDark: Color(0xFF111111),
+    bgMain: Color(0xFF151515),
+    bgLight: Color(0xFF202020),
+    bgLighter: Color(0xFF2A2A2A),
+    border: Color(0xFF2D2D2D),
+    borderLight: Color(0xFF3A3A3A),
+    textPrimary: Color(0xFFECECEC),
+    textSecondary: Color(0xFFC9C9C9),
+    textMuted: Color(0xFF8E8E8E),
+    textDisabled: Color(0xFF5C5C5C),
     accent: Color(0xFF7EA7A0),
     accentHover: Color(0xFF95BBB4),
     success: Color(0xFF7FB58B),
     warning: Color(0xFFD4B06A),
     error: Color(0xFFE27D73),
     info: Color(0xFF8FAFCE),
-    activityBarBg: Color(0xFF1A1A19),
-    activityBarIcon: Color(0xFF8C857B),
-    activityBarIconActive: Color(0xFFE7E2DA),
+    activityBarBg: Color(0xFF1C1C1C),
+    activityBarIcon: Color(0xFF8E8E8E),
+    activityBarIconActive: Color(0xFFE6E6E6),
     activityBarBadge: Color(0xFF7EA7A0),
-    editorBg: Color(0xFF171717),
-    editorLineHighlight: Color(0xFF232322),
+    editorBg: Color(0xFF131313),
+    editorLineHighlight: Color(0xFF222222),
     editorSelection: Color(0xFF354A4A),
-    editorCursor: Color(0xFFD8D1C7),
-    editorLineNumber: Color(0xFF625D56),
-    editorLineNumberActive: Color(0xFFC1B9AE),
-    userMsgBg: Color(0xFF2B302F),
-    agentMsgBg: Color(0xFF1B1B1A),
-    codeBlockBg: Color(0xFF151514),
-    codeBlockBorder: Color(0xFF3E3C39),
-    inputBg: Color(0xFF252423),
-    inputBorder: Color(0xFF423F3B),
+    editorCursor: Color(0xFFDCDCDC),
+    editorLineNumber: Color(0xFF666666),
+    editorLineNumberActive: Color(0xFFC2C2C2),
+    userMsgBg: Color(0xFF242424),
+    agentMsgBg: Color(0xFF151515),
+    codeBlockBg: Color(0xFF111111),
+    codeBlockBorder: Color(0xFF343434),
+    inputBg: Color(0xFF242424),
+    inputBorder: Color(0xFF343434),
     inputFocusBorder: Color(0xFF7EA7A0),
     tabActive: Color(0xFF171717),
-    tabInactive: Color(0xFF242321),
-    tabHover: Color(0xFF302E2B),
+    tabInactive: Color(0xFF202020),
+    tabHover: Color(0xFF2B2B2B),
     tabIndicator: Color(0xFF7EA7A0),
-    statusBarBg: Color(0xFF272624),
-    statusBarText: Color(0xFFD8D1C7),
+    statusBarBg: Color(0xFF222222),
+    statusBarText: Color(0xFFDCDCDC),
     circuitColor: Color(0xFF9AC7C0),
-    terminalBg: Color(0xFF151514),
-    terminalText: Color(0xFFD8D1C7),
-    surfaceBase: Color(0xFF1F1F1E),
-    surfacePanel: Color(0xFF292827),
-    surfaceInset: Color(0xFF171717),
-    surfacePopover: Color(0xFF343230),
-    surfaceHover: Color(0x1AE7E2DA),
-    surfacePressed: Color(0x267EA7A0),
-    outlineSoft: Color(0x663E3C39),
-    outlineFocus: Color(0x997EA7A0),
+    terminalBg: Color(0xFF111111),
+    terminalText: Color(0xFFDCDCDC),
+    surfaceBase: Color(0xFF151515),
+    surfacePanel: Color(0xFF202020),
+    surfaceInset: Color(0xFF101010),
+    surfacePopover: Color(0xFF2A2A2A),
+    surfaceHover: Color(0x14E6E6E6),
+    surfacePressed: Color(0x1F7EA7A0),
+    outlineSoft: Color(0x553A3A3A),
+    outlineFocus: Color(0x887EA7A0),
   );
 
   static const light = ThemeTokens(

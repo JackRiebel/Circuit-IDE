@@ -60,7 +60,8 @@ class ProjectDetector {
     final pubspec = File(p.join(rootPath, 'pubspec.yaml'));
     if (await pubspec.exists()) {
       final content = await pubspec.readAsString();
-      final isFlutter = content.contains('flutter:') &&
+      final isFlutter =
+          content.contains('flutter:') &&
           (content.contains('sdk: flutter') ||
               content.contains('flutter/flutter'));
 
@@ -68,91 +69,107 @@ class ProjectDetector {
         types.add(ProjectType.flutter);
         features['flutter'] = true;
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Flutter Analyze',
-          command: 'flutter analyze',
-          type: VericodeCheckType.dartAnalyze,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 90,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Flutter Analyze',
+            command: 'flutter analyze',
+            type: VericodeCheckType.dartAnalyze,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 90,
+          ),
+        );
 
         final testDir = Directory(p.join(rootPath, 'test'));
-        final hasTests = await testDir.exists() &&
+        final hasTests =
+            await testDir.exists() &&
             await testDir.list().any((e) => e.path.endsWith('_test.dart'));
         features['tests'] = hasTests;
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Flutter Test',
-          command: 'flutter test',
-          type: VericodeCheckType.flutterTest,
-          enabled: hasTests,
-          order: order++,
-          timeoutSeconds: 180,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Flutter Test',
+            command: 'flutter test',
+            type: VericodeCheckType.flutterTest,
+            enabled: hasTests,
+            order: order++,
+            timeoutSeconds: 180,
+          ),
+        );
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Dart Format',
-          command: 'dart format --set-exit-if-changed .',
-          type: VericodeCheckType.flutterFormat,
-          enabled: false,
-          order: order++,
-          timeoutSeconds: 30,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Dart Format',
+            command: 'dart format --set-exit-if-changed .',
+            type: VericodeCheckType.flutterFormat,
+            enabled: false,
+            order: order++,
+            timeoutSeconds: 30,
+          ),
+        );
 
         // Check for build_runner
         if (content.contains('build_runner')) {
           features['build_runner'] = true;
-          checks.add(VericodeCheck(
-            id: _id(),
-            name: 'Build Runner',
-            command: 'dart run build_runner build --delete-conflicting-outputs',
-            type: VericodeCheckType.customCommand,
-            enabled: false,
-            order: order++,
-            timeoutSeconds: 120,
-          ));
+          checks.add(
+            VericodeCheck(
+              id: _id(),
+              name: 'Build Runner',
+              command:
+                  'dart run build_runner build --delete-conflicting-outputs',
+              type: VericodeCheckType.customCommand,
+              enabled: false,
+              order: order++,
+              timeoutSeconds: 120,
+            ),
+          );
         }
       } else {
         types.add(ProjectType.dart);
         features['dart'] = true;
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Dart Analyze',
-          command: 'dart analyze',
-          type: VericodeCheckType.dartAnalyze,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 60,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Dart Analyze',
+            command: 'dart analyze',
+            type: VericodeCheckType.dartAnalyze,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 60,
+          ),
+        );
 
         final testDir = Directory(p.join(rootPath, 'test'));
         final hasTests = await testDir.exists();
         features['tests'] = hasTests;
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Dart Test',
-          command: 'dart test',
-          type: VericodeCheckType.flutterTest,
-          enabled: hasTests,
-          order: order++,
-          timeoutSeconds: 120,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Dart Test',
+            command: 'dart test',
+            type: VericodeCheckType.flutterTest,
+            enabled: hasTests,
+            order: order++,
+            timeoutSeconds: 120,
+          ),
+        );
 
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Dart Format',
-          command: 'dart format --set-exit-if-changed .',
-          type: VericodeCheckType.flutterFormat,
-          enabled: false,
-          order: order++,
-          timeoutSeconds: 30,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Dart Format',
+            command: 'dart format --set-exit-if-changed .',
+            type: VericodeCheckType.flutterFormat,
+            enabled: false,
+            order: order++,
+            timeoutSeconds: 30,
+          ),
+        );
       }
     }
 
@@ -173,30 +190,34 @@ class ProjectDetector {
       if (hasTs) {
         types.add(ProjectType.typescript);
         features['typescript'] = true;
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'TypeScript Check',
-          command: 'npx tsc --noEmit',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 90,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'TypeScript Check',
+            command: 'npx tsc --noEmit',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 90,
+          ),
+        );
       }
 
       // Detect test runner
       final hasTestScript = pkgContent.contains('"test"');
       features['npm_test'] = hasTestScript;
       if (hasTestScript) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'npm test',
-          command: 'npm test',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 120,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'npm test',
+            command: 'npm test',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 120,
+          ),
+        );
       }
 
       // Detect ESLint
@@ -212,15 +233,17 @@ class ProjectDetector {
       ]);
       features['eslint'] = hasEslint;
       if (hasEslint) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'ESLint',
-          command: 'npx eslint .',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 60,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'ESLint',
+            command: 'npx eslint .',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 60,
+          ),
+        );
       }
 
       // Detect Prettier
@@ -233,21 +256,24 @@ class ProjectDetector {
       ]);
       features['prettier'] = hasPrettier;
       if (hasPrettier) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Prettier Check',
-          command: 'npx prettier --check .',
-          type: VericodeCheckType.customCommand,
-          enabled: false,
-          order: order++,
-          timeoutSeconds: 30,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Prettier Check',
+            command: 'npx prettier --check .',
+            type: VericodeCheckType.customCommand,
+            enabled: false,
+            order: order++,
+            timeoutSeconds: 30,
+          ),
+        );
       }
 
       // Detect package manager
       final hasYarnLock = await File(p.join(rootPath, 'yarn.lock')).exists();
-      final hasPnpmLock =
-          await File(p.join(rootPath, 'pnpm-lock.yaml')).exists();
+      final hasPnpmLock = await File(
+        p.join(rootPath, 'pnpm-lock.yaml'),
+      ).exists();
       if (hasYarnLock) {
         features['yarn'] = true;
       } else if (hasPnpmLock) {
@@ -269,22 +295,25 @@ class ProjectDetector {
       features['python'] = true;
 
       // Detect test framework
-      final hasTestDir = await Directory(p.join(rootPath, 'tests')).exists() ||
+      final hasTestDir =
+          await Directory(p.join(rootPath, 'tests')).exists() ||
           await Directory(p.join(rootPath, 'test')).exists();
-      final hasPytest = await _anyExists(['pytest.ini', 'conftest.py']) ||
-          hasTestDir;
+      final hasPytest =
+          await _anyExists(['pytest.ini', 'conftest.py']) || hasTestDir;
       features['pytest'] = hasPytest;
 
       if (hasPytest) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'pytest',
-          command: 'python -m pytest',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 120,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'pytest',
+            command: 'python -m pytest',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 120,
+          ),
+        );
       }
 
       // Detect linters
@@ -296,53 +325,62 @@ class ProjectDetector {
         } catch (_) {}
       }
 
-      final hasRuff = pyContent.contains('[tool.ruff]') ||
+      final hasRuff =
+          pyContent.contains('[tool.ruff]') ||
           await File(p.join(rootPath, 'ruff.toml')).exists() ||
           await File(p.join(rootPath, '.ruff.toml')).exists();
       features['ruff'] = hasRuff;
       if (hasRuff) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Ruff Lint',
-          command: 'ruff check .',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 30,
-        ));
-      }
-
-      final hasMypy = pyContent.contains('[tool.mypy]') ||
-          await File(p.join(rootPath, 'mypy.ini')).exists() ||
-          await File(p.join(rootPath, '.mypy.ini')).exists();
-      features['mypy'] = hasMypy;
-      if (hasMypy) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'mypy Type Check',
-          command: 'python -m mypy .',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 90,
-        ));
-      }
-
-      // Fallback: flake8 if no ruff
-      if (!hasRuff) {
-        final hasFlake8 = await _anyExists(['.flake8', 'setup.cfg']) ||
-            pyContent.contains('[tool.flake8]');
-        features['flake8'] = hasFlake8;
-        if (hasFlake8) {
-          checks.add(VericodeCheck(
+        checks.add(
+          VericodeCheck(
             id: _id(),
-            name: 'flake8 Lint',
-            command: 'flake8 .',
+            name: 'Ruff Lint',
+            command: 'ruff check .',
             type: VericodeCheckType.customCommand,
             enabled: true,
             order: order++,
             timeoutSeconds: 30,
-          ));
+          ),
+        );
+      }
+
+      final hasMypy =
+          pyContent.contains('[tool.mypy]') ||
+          await File(p.join(rootPath, 'mypy.ini')).exists() ||
+          await File(p.join(rootPath, '.mypy.ini')).exists();
+      features['mypy'] = hasMypy;
+      if (hasMypy) {
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'mypy Type Check',
+            command: 'python -m mypy .',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 90,
+          ),
+        );
+      }
+
+      // Fallback: flake8 if no ruff
+      if (!hasRuff) {
+        final hasFlake8 =
+            await _anyExists(['.flake8', 'setup.cfg']) ||
+            pyContent.contains('[tool.flake8]');
+        features['flake8'] = hasFlake8;
+        if (hasFlake8) {
+          checks.add(
+            VericodeCheck(
+              id: _id(),
+              name: 'flake8 Lint',
+              command: 'flake8 .',
+              type: VericodeCheckType.customCommand,
+              enabled: true,
+              order: order++,
+              timeoutSeconds: 30,
+            ),
+          );
         }
       }
 
@@ -350,15 +388,17 @@ class ProjectDetector {
       final hasBlack = pyContent.contains('[tool.black]');
       features['black'] = hasBlack;
       if (hasBlack) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'Black Format Check',
-          command: 'python -m black --check .',
-          type: VericodeCheckType.customCommand,
-          enabled: false,
-          order: order++,
-          timeoutSeconds: 30,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'Black Format Check',
+            command: 'python -m black --check .',
+            type: VericodeCheckType.customCommand,
+            enabled: false,
+            order: order++,
+            timeoutSeconds: 30,
+          ),
+        );
       }
     }
 
@@ -368,45 +408,53 @@ class ProjectDetector {
       types.add(ProjectType.rust);
       features['rust'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Cargo Check',
-        command: 'cargo check',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Cargo Check',
+          command: 'cargo check',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Cargo Test',
-        command: 'cargo test',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 180,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Cargo Test',
+          command: 'cargo test',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 180,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Clippy',
-        command: 'cargo clippy -- -D warnings',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Clippy',
+          command: 'cargo clippy -- -D warnings',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Rust Format Check',
-        command: 'cargo fmt --check',
-        type: VericodeCheckType.customCommand,
-        enabled: false,
-        order: order++,
-        timeoutSeconds: 30,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Rust Format Check',
+          command: 'cargo fmt --check',
+          type: VericodeCheckType.customCommand,
+          enabled: false,
+          order: order++,
+          timeoutSeconds: 30,
+        ),
+      );
     }
 
     // ── Go ──────────────────────────────────────────────────────────
@@ -415,51 +463,59 @@ class ProjectDetector {
       types.add(ProjectType.go);
       features['go'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Go Vet',
-        command: 'go vet ./...',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 60,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Go Vet',
+          command: 'go vet ./...',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 60,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Go Test',
-        command: 'go test ./...',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Go Test',
+          command: 'go test ./...',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Go Build',
-        command: 'go build ./...',
-        type: VericodeCheckType.customCommand,
-        enabled: false,
-        order: order++,
-        timeoutSeconds: 90,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Go Build',
+          command: 'go build ./...',
+          type: VericodeCheckType.customCommand,
+          enabled: false,
+          order: order++,
+          timeoutSeconds: 90,
+        ),
+      );
 
       // Detect golangci-lint
       final hasGolangCiLint =
           await File(p.join(rootPath, '.golangci.yml')).exists() ||
-              await File(p.join(rootPath, '.golangci.yaml')).exists();
+          await File(p.join(rootPath, '.golangci.yaml')).exists();
       features['golangci-lint'] = hasGolangCiLint;
       if (hasGolangCiLint) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'golangci-lint',
-          command: 'golangci-lint run',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 90,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'golangci-lint',
+            command: 'golangci-lint run',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 90,
+          ),
+        );
       }
     }
 
@@ -469,25 +525,29 @@ class ProjectDetector {
       types.add(ProjectType.java);
       features['maven'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Maven Compile',
-        command: 'mvn compile -q',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 180,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Maven Compile',
+          command: 'mvn compile -q',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 180,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Maven Test',
-        command: 'mvn test -q',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 300,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Maven Test',
+          command: 'mvn test -q',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 300,
+        ),
+      );
     }
 
     // ── Java / Kotlin (Gradle) ──────────────────────────────────────
@@ -500,25 +560,29 @@ class ProjectDetector {
       final gradlew = File(p.join(rootPath, 'gradlew'));
       final cmd = await gradlew.exists() ? './gradlew' : 'gradle';
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Gradle Build',
-        command: '$cmd build -x test',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 180,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Gradle Build',
+          command: '$cmd build -x test',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 180,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Gradle Test',
-        command: '$cmd test',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 300,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Gradle Test',
+          command: '$cmd test',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 300,
+        ),
+      );
     }
 
     // ── .NET / C# ──────────────────────────────────────────────────
@@ -527,25 +591,29 @@ class ProjectDetector {
       types.add(ProjectType.csharp);
       features['dotnet'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'dotnet build',
-        command: 'dotnet build --no-restore',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'dotnet build',
+          command: 'dotnet build --no-restore',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'dotnet test',
-        command: 'dotnet test --no-build',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 180,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'dotnet test',
+          command: 'dotnet test --no-build',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 180,
+        ),
+      );
     }
 
     // ── Ruby ────────────────────────────────────────────────────────
@@ -554,33 +622,36 @@ class ProjectDetector {
       types.add(ProjectType.ruby);
       features['ruby'] = true;
 
-      final hasRspec =
-          await Directory(p.join(rootPath, 'spec')).exists();
+      final hasRspec = await Directory(p.join(rootPath, 'spec')).exists();
       features['rspec'] = hasRspec;
       if (hasRspec) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'RSpec',
-          command: 'bundle exec rspec',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 120,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'RSpec',
+            command: 'bundle exec rspec',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 120,
+          ),
+        );
       }
 
       final hasRubocop = await File(p.join(rootPath, '.rubocop.yml')).exists();
       features['rubocop'] = hasRubocop;
       if (hasRubocop) {
-        checks.add(VericodeCheck(
-          id: _id(),
-          name: 'RuboCop',
-          command: 'bundle exec rubocop',
-          type: VericodeCheckType.customCommand,
-          enabled: true,
-          order: order++,
-          timeoutSeconds: 60,
-        ));
+        checks.add(
+          VericodeCheck(
+            id: _id(),
+            name: 'RuboCop',
+            command: 'bundle exec rubocop',
+            type: VericodeCheckType.customCommand,
+            enabled: true,
+            order: order++,
+            timeoutSeconds: 60,
+          ),
+        );
       }
     }
 
@@ -590,25 +661,29 @@ class ProjectDetector {
       types.add(ProjectType.swift);
       features['swift'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Swift Build',
-        command: 'swift build',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Swift Build',
+          command: 'swift build',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Swift Test',
-        command: 'swift test',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Swift Test',
+          command: 'swift test',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
     }
 
     // ── C/C++ (CMake) ──────────────────────────────────────────────
@@ -617,15 +692,17 @@ class ProjectDetector {
       types.add(ProjectType.cpp);
       features['cmake'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'CMake Build',
-        command: 'cmake --build build',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 180,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'CMake Build',
+          command: 'cmake --build build',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 180,
+        ),
+      );
     }
 
     // ── C/C++ (Makefile) ───────────────────────────────────────────
@@ -634,30 +711,33 @@ class ProjectDetector {
       types.add(ProjectType.cpp);
       features['make'] = true;
 
-      checks.add(VericodeCheck(
-        id: _id(),
-        name: 'Make',
-        command: 'make',
-        type: VericodeCheckType.customCommand,
-        enabled: true,
-        order: order++,
-        timeoutSeconds: 120,
-      ));
+      checks.add(
+        VericodeCheck(
+          id: _id(),
+          name: 'Make',
+          command: 'make',
+          type: VericodeCheckType.customCommand,
+          enabled: true,
+          order: order++,
+          timeoutSeconds: 120,
+        ),
+      );
 
       // Check if Makefile has test target
       try {
         final makeContent = await makefile.readAsString();
-        if (makeContent.contains('test:') ||
-            makeContent.contains('test :')) {
-          checks.add(VericodeCheck(
-            id: _id(),
-            name: 'Make Test',
-            command: 'make test',
-            type: VericodeCheckType.customCommand,
-            enabled: true,
-            order: order++,
-            timeoutSeconds: 120,
-          ));
+        if (makeContent.contains('test:') || makeContent.contains('test :')) {
+          checks.add(
+            VericodeCheck(
+              id: _id(),
+              name: 'Make Test',
+              command: 'make test',
+              type: VericodeCheckType.customCommand,
+              enabled: true,
+              order: order++,
+              timeoutSeconds: 120,
+            ),
+          );
         }
       } catch (_) {}
     }

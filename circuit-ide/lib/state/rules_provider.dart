@@ -8,11 +8,7 @@ class RulesState {
   final bool isLoading;
   final String? error;
 
-  const RulesState({
-    this.rules = const [],
-    this.isLoading = false,
-    this.error,
-  });
+  const RulesState({this.rules = const [], this.isLoading = false, this.error});
 
   RulesState copyWith({
     List<ProjectRule>? rules,
@@ -70,5 +66,6 @@ class RulesNotifier extends Notifier<RulesState> {
   }
 }
 
-final rulesProvider =
-    NotifierProvider<RulesNotifier, RulesState>(RulesNotifier.new);
+final rulesProvider = NotifierProvider<RulesNotifier, RulesState>(
+  RulesNotifier.new,
+);

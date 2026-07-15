@@ -21,9 +21,7 @@ class CellOutputWidget extends ConsumerWidget {
       decoration: BoxDecoration(
         color: tokens.editorBg,
         border: Border(
-          top: BorderSide(
-            color: tokens.border.withValues(alpha: 0.4),
-          ),
+          top: BorderSide(color: tokens.border.withValues(alpha: 0.4)),
         ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(Radii.md),
@@ -87,12 +85,7 @@ class CellOutputWidget extends ConsumerWidget {
 
   Widget _buildStdout(dynamic tokens, String text) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Spacing.lg,
-        Spacing.lg,
-        Spacing.lg,
-        0,
-      ),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, Spacing.lg, Spacing.lg, 0),
       child: SelectableText(
         text,
         style: TextStyle(
@@ -107,12 +100,7 @@ class CellOutputWidget extends ConsumerWidget {
 
   Widget _buildStderr(dynamic tokens, String text) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Spacing.lg,
-        Spacing.md,
-        Spacing.lg,
-        0,
-      ),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, Spacing.md, Spacing.lg, 0),
       child: SelectableText(
         text,
         style: TextStyle(
@@ -127,22 +115,13 @@ class CellOutputWidget extends ConsumerWidget {
 
   Widget _buildError(dynamic tokens, String message) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        Spacing.lg,
-        Spacing.md,
-        Spacing.lg,
-        0,
-      ),
+      padding: const EdgeInsets.fromLTRB(Spacing.lg, Spacing.md, Spacing.lg, 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(
-              Icons.error_outline,
-              size: 13,
-              color: tokens.error,
-            ),
+            child: Icon(Icons.error_outline, size: 13, color: tokens.error),
           ),
           const SizedBox(width: Spacing.sm),
           Expanded(
@@ -162,7 +141,9 @@ class CellOutputWidget extends ConsumerWidget {
 
   Widget _buildTimeBadge(dynamic tokens, CellOutput output) {
     final ms = output.executionTime.inMilliseconds;
-    final timeStr = ms < 1000 ? '${ms}ms' : '${(ms / 1000).toStringAsFixed(1)}s';
+    final timeStr = ms < 1000
+        ? '${ms}ms'
+        : '${(ms / 1000).toStringAsFixed(1)}s';
     final isSuccess = output.exitCode == 0;
 
     return Padding(
@@ -175,19 +156,23 @@ class CellOutputWidget extends ConsumerWidget {
               vertical: 2,
             ),
             decoration: BoxDecoration(
-              color: (isSuccess ? tokens.success : tokens.error)
-                  .withValues(alpha: 0.1),
+              color: (isSuccess ? tokens.success : tokens.error).withValues(
+                alpha: 0.1,
+              ),
               borderRadius: BorderRadius.circular(Radii.sm),
               border: Border.all(
-                color: (isSuccess ? tokens.success : tokens.error)
-                    .withValues(alpha: 0.2),
+                color: (isSuccess ? tokens.success : tokens.error).withValues(
+                  alpha: 0.2,
+                ),
               ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  isSuccess ? Icons.check_circle_outline : Icons.cancel_outlined,
+                  isSuccess
+                      ? Icons.check_circle_outline
+                      : Icons.cancel_outlined,
                   size: 11,
                   color: isSuccess ? tokens.success : tokens.error,
                 ),

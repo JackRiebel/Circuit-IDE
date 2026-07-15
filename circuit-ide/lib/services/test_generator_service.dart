@@ -24,27 +24,27 @@ class TestGeneratorService {
 
     return switch (language) {
       'dart' => () {
-          // lib/foo.dart → test/foo_test.dart
-          final testPath = dir.replaceFirst('lib', 'test');
-          return p.join(testPath, '${baseName}_test$ext');
-        }(),
+        // lib/foo.dart → test/foo_test.dart
+        final testPath = dir.replaceFirst('lib', 'test');
+        return p.join(testPath, '${baseName}_test$ext');
+      }(),
       'python' => () {
-          // src/foo.py → tests/test_foo.py
-          final testPath = dir.replaceFirst('src', 'tests');
-          return p.join(testPath, 'test_$baseName$ext');
-        }(),
+        // src/foo.py → tests/test_foo.py
+        final testPath = dir.replaceFirst('src', 'tests');
+        return p.join(testPath, 'test_$baseName$ext');
+      }(),
       'javascript' || 'typescript' => () {
-          // src/foo.ts → src/__tests__/foo.test.ts
-          return p.join(dir, '__tests__', '$baseName.test$ext');
-        }(),
+        // src/foo.ts → src/__tests__/foo.test.ts
+        return p.join(dir, '__tests__', '$baseName.test$ext');
+      }(),
       'go' => () {
-          // foo.go → foo_test.go
-          return p.join(dir, '${baseName}_test$ext');
-        }(),
+        // foo.go → foo_test.go
+        return p.join(dir, '${baseName}_test$ext');
+      }(),
       'rust' => () {
-          // src/foo.rs → tests/foo_test.rs
-          return p.join(p.dirname(dir), 'tests', '${baseName}_test$ext');
-        }(),
+        // src/foo.rs → tests/foo_test.rs
+        return p.join(p.dirname(dir), 'tests', '${baseName}_test$ext');
+      }(),
       _ => p.join(dir, '${baseName}_test$ext'),
     };
   }
@@ -52,27 +52,34 @@ class TestGeneratorService {
   /// Build a comprehensive test generation prompt.
   static String buildPrompt(TestGenerationRequest request) {
     final frameworkInstructions = switch (request.framework) {
-      TestFramework.dartTest => '''Use the `test` package with `group()` and `test()`.
+      TestFramework.dartTest =>
+        '''Use the `test` package with `group()` and `test()`.
 Import `package:test/test.dart`.
 Use `expect()` with matchers like `equals`, `isTrue`, `throwsA`, etc.''',
-      TestFramework.pytest => '''Use pytest conventions.
+      TestFramework.pytest =>
+        '''Use pytest conventions.
 Use `def test_` function naming.
 Use `assert` statements and pytest fixtures where appropriate.''',
-      TestFramework.jest => '''Use Jest with `describe()` and `it()`.
+      TestFramework.jest =>
+        '''Use Jest with `describe()` and `it()`.
 Use `expect().toBe()`, `toEqual()`, `toThrow()`, etc.
 Use `jest.fn()` for mocks if needed.''',
-      TestFramework.mocha => '''Use Mocha with `describe()` and `it()`.
+      TestFramework.mocha =>
+        '''Use Mocha with `describe()` and `it()`.
 Use Chai's `expect` for assertions.''',
-      TestFramework.goTest => '''Use the `testing` package.
+      TestFramework.goTest =>
+        '''Use the `testing` package.
 Use `func Test` naming convention.
 Use `t.Error()`, `t.Fatal()`, etc.''',
-      TestFramework.rustTest => '''Use `#[cfg(test)]` module with `#[test]` attribute.
+      TestFramework.rustTest =>
+        '''Use `#[cfg(test)]` module with `#[test]` attribute.
 Use `assert!`, `assert_eq!`, `assert_ne!` macros.''',
     };
 
     final buffer = StringBuffer();
     buffer.writeln(
-        'Generate comprehensive tests for the following source file.\n');
+      'Generate comprehensive tests for the following source file.\n',
+    );
     buffer.writeln('File: ${p.basename(request.sourceFilePath)}');
     buffer.writeln('Language: ${request.language}');
     buffer.writeln('Framework: ${request.framework.displayName}\n');
@@ -82,17 +89,21 @@ Use `assert!`, `assert_eq!`, `assert_ne!` macros.''',
 
     if (request.includeEdgeCases) {
       buffer.writeln(
-          'Include edge case tests (null/empty inputs, boundary values, error conditions).');
+        'Include edge case tests (null/empty inputs, boundary values, error conditions).',
+      );
     }
     if (request.includeMocks) {
       buffer.writeln(
-          'Include mocks/stubs for external dependencies where appropriate.');
+        'Include mocks/stubs for external dependencies where appropriate.',
+      );
     }
 
     buffer.writeln(
-        '\nSource code:\n```${request.language}\n${request.sourceContent}\n```');
+      '\nSource code:\n```${request.language}\n${request.sourceContent}\n```',
+    );
     buffer.writeln(
-        '\nGenerate the complete test file. Return ONLY the test code, no markdown fences, no explanation.');
+      '\nGenerate the complete test file. Return ONLY the test code, no markdown fences, no explanation.',
+    );
 
     return buffer.toString();
   }

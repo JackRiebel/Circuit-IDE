@@ -27,8 +27,9 @@ class CodeReviewState {
     bool? isReviewing,
   }) {
     return CodeReviewState(
-      currentReview:
-          clearCurrentReview ? null : (currentReview ?? this.currentReview),
+      currentReview: clearCurrentReview
+          ? null
+          : (currentReview ?? this.currentReview),
       history: history ?? this.history,
       isReviewing: isReviewing ?? this.isReviewing,
     );
@@ -54,14 +55,11 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
 
     try {
       // Get the diff
-      final diffArg = staged && git.status.staged.isNotEmpty
-          ? '--cached'
-          : '';
-      final result = await Process.run(
-        'git',
-        ['diff', if (diffArg.isNotEmpty) diffArg],
-        workingDirectory: workingDir,
-      );
+      final diffArg = staged && git.status.staged.isNotEmpty ? '--cached' : '';
+      final result = await Process.run('git', [
+        'diff',
+        if (diffArg.isNotEmpty) diffArg,
+      ], workingDirectory: workingDir);
 
       final rawDiff = (result.stdout as String).trim();
       if (rawDiff.isEmpty) {
@@ -77,10 +75,7 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
       }
 
       // Create the in-progress review
-      final review = CodeReview(
-        branch: git.status.branch,
-        isReviewing: true,
-      );
+      final review = CodeReview(branch: git.status.branch, isReviewing: true);
       state = state.copyWith(currentReview: review, isReviewing: true);
 
       // Review each file
@@ -89,8 +84,9 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
         final prompt = CodeReviewService.buildReviewPrompt(fileDiff);
 
         // Truncate very large diffs to stay within token limits
-        final truncatedPrompt =
-            prompt.length > 8000 ? prompt.substring(0, 8000) : prompt;
+        final truncatedPrompt = prompt.length > 8000
+            ? prompt.substring(0, 8000)
+            : prompt;
 
         final aiResponse = await agentService.sendOneShot(
           truncatedPrompt,
@@ -101,14 +97,18 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
 
         final annotations = aiResponse != null
             ? CodeReviewService.parseReviewResponse(
-                aiResponse, fileDiff.filePath)
+                aiResponse,
+                fileDiff.filePath,
+              )
             : <ReviewAnnotation>[];
 
-        fileResults.add(FileReviewResult(
-          filePath: fileDiff.filePath,
-          diffContent: fileDiff.diffContent,
-          annotations: annotations,
-        ));
+        fileResults.add(
+          FileReviewResult(
+            filePath: fileDiff.filePath,
+            diffContent: fileDiff.diffContent,
+            annotations: annotations,
+          ),
+        );
       }
 
       // Get overall assessment
@@ -116,8 +116,7 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
       ReviewVerdict verdict = ReviewVerdict.pass;
 
       if (fileResults.any((f) => f.annotations.isNotEmpty)) {
-        final overallPrompt =
-            CodeReviewService.buildOverallPrompt(fileResults);
+        final overallPrompt = CodeReviewService.buildOverallPrompt(fileResults);
         final overallResponse = await agentService.sendOneShot(
           overallPrompt,
           systemPrompt:
@@ -125,8 +124,9 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
         );
 
         if (overallResponse != null) {
-          final (assessment, v) =
-              CodeReviewService.parseOverallResponse(overallResponse);
+          final (assessment, v) = CodeReviewService.parseOverallResponse(
+            overallResponse,
+          );
           overallAssessment = assessment;
           verdict = v;
         }
@@ -183,15 +183,15 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
           await file.writeAsString('${lines.join('\n')}\n');
 
           // Mark annotation as fixed and update state
-          final updatedFileResults =
-              review.fileResults.map((fr) {
+          final updatedFileResults = review.fileResults.map((fr) {
             if (fr.filePath != fileResult.filePath) return fr;
             return FileReviewResult(
               filePath: fr.filePath,
               diffContent: fr.diffContent,
               annotations: fr.annotations
-                  .map((a) =>
-                      a.id == annotationId ? a.copyWith(isFixed: true) : a)
+                  .map(
+                    (a) => a.id == annotationId ? a.copyWith(isFixed: true) : a,
+                  )
                   .toList(),
             );
           }).toList();
@@ -224,8 +224,7 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
       return FileReviewResult(
         filePath: fr.filePath,
         diffContent: fr.diffContent,
-        annotations:
-            fr.annotations.where((a) => a.id != annotationId).toList(),
+        annotations: fr.annotations.where((a) => a.id != annotationId).toList(),
       );
     }).toList();
 
@@ -242,5 +241,5 @@ class CodeReviewNotifier extends Notifier<CodeReviewState> {
 
 final codeReviewProvider =
     NotifierProvider<CodeReviewNotifier, CodeReviewState>(
-  CodeReviewNotifier.new,
-);
+      CodeReviewNotifier.new,
+    );

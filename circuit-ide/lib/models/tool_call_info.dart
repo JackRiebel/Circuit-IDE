@@ -44,8 +44,7 @@ class ToolCallInfo {
       error: error ?? this.error,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
-      requiresConfirmation:
-          requiresConfirmation ?? this.requiresConfirmation,
+      requiresConfirmation: requiresConfirmation ?? this.requiresConfirmation,
     );
   }
 }

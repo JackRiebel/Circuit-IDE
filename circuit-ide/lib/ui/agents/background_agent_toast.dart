@@ -51,10 +51,12 @@ class _BackgroundAgentToastOverlayState
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: _visibleToasts
-            .map((result) => _Toast(
-                  result: result,
-                  onDismiss: () => _dismissToast(result),
-                ))
+            .map(
+              (result) => _Toast(
+                result: result,
+                onDismiss: () => _dismissToast(result),
+              ),
+            )
             .toList(),
       ),
     );
@@ -68,7 +70,8 @@ class _BackgroundAgentToastOverlayState
       }
     });
 
-    final key = '${result.agentName}:${result.timestamp.millisecondsSinceEpoch}';
+    final key =
+        '${result.agentName}:${result.timestamp.millisecondsSinceEpoch}';
     _timers[key] = Timer(const Duration(seconds: 8), () {
       _dismissToast(result);
       _timers.remove(key);
@@ -110,10 +113,7 @@ class _ToastState extends ConsumerState<_Toast>
     _slideAnimation = Tween<Offset>(
       begin: const Offset(1, 0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
-    ));
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(_controller);
     _controller.forward();
   }
@@ -194,11 +194,7 @@ class _ToastState extends ConsumerState<_Toast>
                 onTap: widget.onDismiss,
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: Icon(
-                    Icons.close,
-                    size: 14,
-                    color: tokens.textMuted,
-                  ),
+                  child: Icon(Icons.close, size: 14, color: tokens.textMuted),
                 ),
               ),
             ],

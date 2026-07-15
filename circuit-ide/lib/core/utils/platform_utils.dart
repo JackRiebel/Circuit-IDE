@@ -1,6 +1,8 @@
 import 'dart:io';
 
 class PlatformUtils {
+  static String? configDirOverride;
+
   static bool get isMacOS => Platform.isMacOS;
   static bool get isWindows => Platform.isWindows;
   static bool get isLinux => Platform.isLinux;
@@ -13,6 +15,8 @@ class PlatformUtils {
   }
 
   static String get configDir {
+    final override = configDirOverride;
+    if (override != null && override.isNotEmpty) return override;
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'] ?? '';
       return '$appData\\CircuitIDE';
@@ -39,6 +43,12 @@ class PlatformUtils {
   /// A safe scratch workspace for when no project folder is open.
   /// Lives inside the app's config dir so it never triggers macOS TCC prompts.
   static String get scratchDir => '$configDir/workspace';
+
+  /// Default parent for user-created Circuit Studio projects.
+  static String get defaultProjectsDir {
+    if (isMacOS || isLinux) return '$homeDir/Desktop/CircuitCode Projects';
+    return '$homeDir\\Desktop\\CircuitCode Projects';
+  }
 
   static Future<String> ensureScratchDir() async {
     final dir = Directory(scratchDir);

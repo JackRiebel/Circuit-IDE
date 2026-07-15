@@ -123,6 +123,12 @@ class AgentRun {
   final List<String> changedFiles;
   final List<String> commandSummaries;
   final String? checkpointId;
+  final String? agentTaskId;
+  final String? parentRunId;
+  final String? approvalId;
+  final String? artifactId;
+  final String? mascotAlias;
+  final bool acceptsLegacyEvents;
 
   const AgentRun({
     required this.id,
@@ -145,6 +151,12 @@ class AgentRun {
     this.changedFiles = const [],
     this.commandSummaries = const [],
     this.checkpointId,
+    this.agentTaskId,
+    this.parentRunId,
+    this.approvalId,
+    this.artifactId,
+    this.mascotAlias,
+    this.acceptsLegacyEvents = true,
   });
 
   AgentRun copyWith({
@@ -165,6 +177,12 @@ class AgentRun {
     List<String>? changedFiles,
     List<String>? commandSummaries,
     Object? checkpointId = _sentinel,
+    Object? agentTaskId = _sentinel,
+    Object? parentRunId = _sentinel,
+    Object? approvalId = _sentinel,
+    Object? artifactId = _sentinel,
+    Object? mascotAlias = _sentinel,
+    bool? acceptsLegacyEvents,
   }) {
     return AgentRun(
       id: id,
@@ -190,6 +208,22 @@ class AgentRun {
       checkpointId: identical(checkpointId, _sentinel)
           ? this.checkpointId
           : checkpointId as String?,
+      agentTaskId: identical(agentTaskId, _sentinel)
+          ? this.agentTaskId
+          : agentTaskId as String?,
+      parentRunId: identical(parentRunId, _sentinel)
+          ? this.parentRunId
+          : parentRunId as String?,
+      approvalId: identical(approvalId, _sentinel)
+          ? this.approvalId
+          : approvalId as String?,
+      artifactId: identical(artifactId, _sentinel)
+          ? this.artifactId
+          : artifactId as String?,
+      mascotAlias: identical(mascotAlias, _sentinel)
+          ? this.mascotAlias
+          : mascotAlias as String?,
+      acceptsLegacyEvents: acceptsLegacyEvents ?? this.acceptsLegacyEvents,
     );
   }
 
@@ -210,13 +244,22 @@ class AgentRun {
       'startedAt': startedAt.toIso8601String(),
       'endedAt': endedAt?.toIso8601String(),
       'promptTokens': tokenUsage.promptTokens,
+      'cachedInputTokens': tokenUsage.cachedInputTokens,
       'completionTokens': tokenUsage.completionTokens,
+      'reasoningTokens': tokenUsage.reasoningTokens,
+      'toolTokens': tokenUsage.toolTokens,
       'totalTokens': tokenUsage.totalTokens,
       'error': error,
       'cancelRequested': cancelRequested,
       'changedFiles': changedFiles,
       'commandSummaries': commandSummaries,
       'checkpointId': checkpointId,
+      'agentTaskId': agentTaskId,
+      'parentRunId': parentRunId,
+      'approvalId': approvalId,
+      'artifactId': artifactId,
+      'mascotAlias': mascotAlias,
+      'acceptsLegacyEvents': acceptsLegacyEvents,
       'events': events
           .map(
             (event) => {
@@ -321,7 +364,10 @@ class AgentRun {
         endedAt: DateTime.tryParse(json['endedAt'] as String? ?? ''),
         tokenUsage: TokenUsage(
           promptTokens: json['promptTokens'] as int? ?? 0,
+          cachedInputTokens: json['cachedInputTokens'] as int? ?? 0,
           completionTokens: json['completionTokens'] as int? ?? 0,
+          reasoningTokens: json['reasoningTokens'] as int? ?? 0,
+          toolTokens: json['toolTokens'] as int? ?? 0,
           totalTokens: json['totalTokens'] as int? ?? 0,
         ),
         error: json['error'] as String?,
@@ -335,6 +381,12 @@ class AgentRun {
             (json['commandSummaries'] as List<dynamic>?)?.cast<String>() ??
             const [],
         checkpointId: json['checkpointId'] as String?,
+        agentTaskId: json['agentTaskId'] as String?,
+        parentRunId: json['parentRunId'] as String?,
+        approvalId: json['approvalId'] as String?,
+        artifactId: json['artifactId'] as String?,
+        mascotAlias: json['mascotAlias'] as String?,
+        acceptsLegacyEvents: json['acceptsLegacyEvents'] as bool? ?? true,
       );
     } catch (_) {
       return null;

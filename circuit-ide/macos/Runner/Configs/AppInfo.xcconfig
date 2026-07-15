@@ -12,3 +12,12 @@ PRODUCT_BUNDLE_IDENTIFIER = com.circuitide.app
 
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 CircuitCode. All rights reserved.
+
+// These are deliberately not defaulted in source. A signed distribution must
+// inject them through its protected build environment. An unset local build
+// retains the unresolved placeholders in Info.plist and the native updater
+// rejects that configuration before it can make a network request.
+
+// Bump only after release migration fixtures prove the new build can read all
+// required historical records. Signed appcasts may require this minimum.
+CIRCUIT_DATA_COMPATIBILITY_VERSION = 1

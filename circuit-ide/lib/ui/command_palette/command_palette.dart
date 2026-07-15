@@ -15,17 +15,29 @@ class CommandPalette extends ConsumerStatefulWidget {
 
 class _CommandPaletteState extends ConsumerState<CommandPalette> {
   final _controller = TextEditingController();
-  final _focusNode = FocusNode();
+  final _focusNode = FocusNode(debugLabel: 'command-palette-search');
+  FocusNode? _previousFocus;
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.requestFocus();
+    _previousFocus = FocusManager.instance.primaryFocus;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   @override
   void dispose() {
+    final previousFocus = _previousFocus;
+    if (previousFocus != null &&
+        previousFocus.context != null &&
+        previousFocus.canRequestFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        previousFocus.requestFocus();
+      });
+    }
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -45,71 +57,83 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
     return GestureDetector(
       onTap: () => ref.read(commandPaletteProvider.notifier).close(),
       child: Container(
-        color: Colors.black.withValues(alpha: 0.35),
+        color: Colors.black.withValues(alpha: 0.28),
         child: Align(
-          alignment: const Alignment(0, -0.35),
+          alignment: const Alignment(0, -0.2),
           child: GestureDetector(
-            onTap: () {},
+            onTap: _focusNode.requestFocus,
             child: Container(
               width: 520,
-              constraints: const BoxConstraints(maxHeight: 460),
+              constraints: const BoxConstraints(maxHeight: 380),
               decoration: BoxDecoration(
-                color: tokens.surfacePopover,
-                borderRadius: BorderRadius.circular(Radii.xl),
-                border: Border.all(color: tokens.outlineSoft),
-                boxShadow: Shadows.elevated,
+                color: tokens.studioPanel.withValues(alpha: 0.98),
+                borderRadius: BorderRadius.circular(Radii.md),
+                border: Border.all(
+                  color: tokens.studioDivider.withValues(alpha: 0.42),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 14,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // Search input
                   Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: Spacing.xl,
-                      vertical: Spacing.lg,
-                    ),
-                    child: KeyboardListener(
-                      focusNode: FocusNode(),
-                      onKeyEvent: (event) {
-                        if (event is KeyDownEvent) {
-                          if (event.logicalKey == LogicalKeyboardKey.escape) {
-                            ref.read(commandPaletteProvider.notifier).close();
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.arrowDown) {
-                            if (visibleCommands.isEmpty) return;
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                    child: Focus(
+                      onKeyEvent: (_, event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.escape) {
+                          ref.read(commandPaletteProvider.notifier).close();
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                          if (visibleCommands.isNotEmpty) {
                             setState(() {
                               _selectedIndex = (_selectedIndex + 1).clamp(
                                 0,
                                 visibleCommands.length - 1,
                               );
                             });
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.arrowUp) {
-                            if (visibleCommands.isEmpty) return;
+                          }
+                          return KeyEventResult.handled;
+                        }
+                        if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                          if (visibleCommands.isNotEmpty) {
                             setState(() {
                               _selectedIndex = (_selectedIndex - 1).clamp(
                                 0,
                                 visibleCommands.length - 1,
                               );
                             });
-                          } else if (event.logicalKey ==
-                              LogicalKeyboardKey.enter) {
-                            if (visibleCommands.isNotEmpty) {
-                              final index = _selectedIndex.clamp(
-                                0,
-                                visibleCommands.length - 1,
-                              );
-                              ref
-                                  .read(commandPaletteProvider.notifier)
-                                  .execute(visibleCommands[index]);
-                            }
                           }
+                          return KeyEventResult.handled;
                         }
+                        if (event.logicalKey == LogicalKeyboardKey.enter) {
+                          if (visibleCommands.isNotEmpty) {
+                            final index = _selectedIndex.clamp(
+                              0,
+                              visibleCommands.length - 1,
+                            );
+                            ref
+                                .read(commandPaletteProvider.notifier)
+                                .execute(visibleCommands[index]);
+                          }
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
                       },
                       child: Row(
                         children: [
-                          Icon(Icons.search, size: 16, color: tokens.textMuted),
-                          const SizedBox(width: Spacing.md),
+                          Icon(Icons.search, size: 14, color: tokens.textMuted),
+                          const SizedBox(width: 9),
                           Expanded(
                             child: TextField(
                               controller: _controller,
@@ -118,10 +142,15 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                               enableSuggestions: false,
                               style: TextStyle(
                                 color: tokens.textPrimary,
-                                fontSize: FontSizes.base,
+                                fontSize: FontSizes.sm,
+                                height: 1.2,
                               ),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
                                 hintText: 'Search commands...',
+                                hintStyle: TextStyle(
+                                  color: tokens.textMuted,
+                                  fontSize: FontSizes.sm,
+                                ),
                                 border: InputBorder.none,
                                 enabledBorder: InputBorder.none,
                                 focusedBorder: InputBorder.none,
@@ -141,15 +170,13 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       ),
                     ),
                   ),
-                  Divider(color: tokens.outlineSoft, height: 1),
+                  Divider(
+                    color: tokens.studioDivider.withValues(alpha: 0.36),
+                    height: 1,
+                  ),
                   if (paletteState.query.isEmpty) ...[
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        Spacing.lg,
-                        Spacing.sm,
-                        Spacing.lg,
-                        0,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(10, 7, 10, 0),
                       child: _CategoryChips(
                         categories: paletteState.categories,
                         selected: paletteState.categoryFilter,
@@ -159,7 +186,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(
                           Spacing.xl,
-                          Spacing.md,
+                          9,
                           Spacing.xl,
                           Spacing.xs,
                         ),
@@ -170,7 +197,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                             style: TextStyle(
                               color: tokens.textMuted,
                               fontSize: FontSizes.xxs,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -181,7 +208,7 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                   Flexible(
                     child: ListView.builder(
                       shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
+                      padding: const EdgeInsets.symmetric(vertical: 5),
                       itemCount: visibleCommands.length,
                       itemBuilder: (context, index) {
                         final command = visibleCommands[index];
@@ -196,79 +223,90 @@ class _CommandPaletteState extends ConsumerState<CommandPalette> {
                               .read(commandPaletteProvider.notifier)
                               .execute(command),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: Spacing.xl,
-                              vertical: Spacing.lg,
-                            ),
+                            height: 36,
+                            padding: const EdgeInsets.symmetric(horizontal: 9),
                             decoration: BoxDecoration(
                               color: isSelected
-                                  ? tokens.surfacePressed
-                                  : Colors.transparent,
+                                  ? tokens.studioControl.withValues(alpha: 0.54)
+                                  : tokens.studioActivityRow.withValues(
+                                      alpha: 0.22,
+                                    ),
                               borderRadius: BorderRadius.circular(Radii.sm),
+                              border: Border.all(
+                                color: isSelected
+                                    ? tokens.studioDivider.withValues(
+                                        alpha: 0.44,
+                                      )
+                                    : Colors.transparent,
+                              ),
                             ),
                             margin: const EdgeInsets.symmetric(
-                              horizontal: Spacing.sm,
+                              horizontal: 5,
+                              vertical: 1,
                             ),
                             child: Row(
                               children: [
                                 Icon(
                                   command.icon,
-                                  size: 16,
+                                  size: 14,
                                   color: !enabled
                                       ? tokens.textDisabled
                                       : isSelected
                                       ? tokens.accent
                                       : tokens.textMuted,
                                 ),
-                                const SizedBox(width: Spacing.md),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        '${command.category}: ${command.title}',
+                                        command.title,
                                         style: TextStyle(
                                           color: !enabled
                                               ? tokens.textDisabled
                                               : isSelected
                                               ? tokens.textPrimary
                                               : tokens.textSecondary,
-                                          fontSize: FontSizes.md,
-                                          fontWeight: FontWeight.w600,
+                                          fontSize: FontSizes.xs,
+                                          fontWeight: FontWeight.w500,
                                         ),
                                       ),
-                                      if (command.description != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 2,
-                                          ),
-                                          child: Text(
-                                            command.description!,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                              color: tokens.textMuted,
-                                              fontSize: FontSizes.xs,
-                                            ),
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Text(
+                                          command.description ??
+                                              command.category,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: tokens.textMuted,
+                                            fontSize: FontSizes.xxs,
+                                            height: 1.1,
                                           ),
                                         ),
+                                      ),
                                     ],
                                   ),
                                 ),
                                 if (command.shortcut != null)
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
+                                      horizontal: 5,
                                       vertical: 1,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: tokens.surfaceInset,
+                                      color: tokens.studioCanvas.withValues(
+                                        alpha: 0.72,
+                                      ),
                                       borderRadius: BorderRadius.circular(
                                         Radii.xs,
                                       ),
                                       border: Border.all(
-                                        color: tokens.outlineSoft,
+                                        color: tokens.studioDivider.withValues(
+                                          alpha: 0.38,
+                                        ),
                                       ),
                                     ),
                                     child: Text(
@@ -353,23 +391,24 @@ class _PaletteChip extends ConsumerWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(Radii.pill),
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: 4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
-          color: selected ? tokens.surfacePressed : tokens.surfaceInset,
+          color: selected
+              ? tokens.studioControl.withValues(alpha: 0.7)
+              : tokens.studioActivityRow.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(Radii.pill),
           border: Border.all(
-            color: selected ? tokens.outlineFocus : tokens.outlineSoft,
+            color: selected
+                ? tokens.studioDivider.withValues(alpha: 0.55)
+                : tokens.studioDivider.withValues(alpha: 0.22),
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
             color: selected ? tokens.textPrimary : tokens.textMuted,
-            fontSize: FontSizes.xs,
-            fontWeight: FontWeight.w700,
+            fontSize: FontSizes.xxs,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

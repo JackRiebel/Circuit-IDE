@@ -1,0 +1,15 @@
+title = "CircuitCode committed-secret policy"
+
+[extend]
+useDefault = true
+
+# Keep full-history scanning strict. These are the only two reviewed historic
+# false positives: a synthetic unit-test string and an invalid one-line PEM
+# documentation example. The API example is made visibly non-PEM in the
+# current revision; both entries are limited to their original commits.
+[[allowlists]]
+description = "Reviewed historical synthetic-secret examples"
+commits = [
+  "29dabc9ca2a4238769d6abdade4c37e4a0f726fd",
+  "bb1c1963fef1ef520dd4f9f31c515a023fa2d585",
+]

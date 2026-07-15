@@ -210,15 +210,11 @@ class _TierDropdown extends ConsumerWidget {
         child: DropdownButton<ModelTier>(
           value: value,
           dropdownColor: tokens.bgLighter,
-          style: TextStyle(
-            color: tokens.textPrimary,
-            fontSize: FontSizes.xs,
-          ),
+          style: TextStyle(color: tokens.textPrimary, fontSize: FontSizes.xs),
           items: ModelTier.values
-              .map((t) => DropdownMenuItem(
-                    value: t,
-                    child: Text(_tierLabel(t)),
-                  ))
+              .map(
+                (t) => DropdownMenuItem(value: t, child: Text(_tierLabel(t))),
+              )
               .toList(),
           onChanged: (v) {
             if (v != null) onChanged(v);
@@ -229,10 +225,10 @@ class _TierDropdown extends ConsumerWidget {
   }
 
   String _tierLabel(ModelTier tier) => switch (tier) {
-        ModelTier.fast => 'Fast (nano/haiku)',
-        ModelTier.balanced => 'Balanced (mini/sonnet)',
-        ModelTier.powerful => 'Powerful (full)',
-      };
+    ModelTier.fast => 'Fast (nano/haiku)',
+    ModelTier.balanced => 'Balanced (mini/sonnet)',
+    ModelTier.powerful => 'Powerful (full)',
+  };
 }
 
 class _PreferenceChip extends ConsumerWidget {

@@ -16,24 +16,36 @@ class SecretDetector {
   static final _patterns = <_SecretPattern>[
     // API Keys (HIGH severity)
     _SecretPattern(
-      RegExp(r"""(api[_-]?key|apikey)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""", caseSensitive: false),
+      RegExp(
+        r"""(api[_-]?key|apikey)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""",
+        caseSensitive: false,
+      ),
       'API Key',
       'high',
     ),
     _SecretPattern(
-      RegExp(r"""(secret[_-]?key|secretkey)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""", caseSensitive: false),
+      RegExp(
+        r"""(secret[_-]?key|secretkey)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""",
+        caseSensitive: false,
+      ),
       'Secret Key',
       'high',
     ),
 
     // Passwords (CRITICAL severity)
     _SecretPattern(
-      RegExp(r"""(password|passwd|pwd)\s*[:=]\s*["']([^"']{4,})["']""", caseSensitive: false),
+      RegExp(
+        r"""(password|passwd|pwd)\s*[:=]\s*["']([^"']{4,})["']""",
+        caseSensitive: false,
+      ),
       'Password',
       'critical',
     ),
     _SecretPattern(
-      RegExp(r"""(password|passwd|pwd)\s*[:=]\s*([^\s"']{8,})""", caseSensitive: false),
+      RegExp(
+        r"""(password|passwd|pwd)\s*[:=]\s*([^\s"']{8,})""",
+        caseSensitive: false,
+      ),
       'Password',
       'critical',
     ),
@@ -45,7 +57,10 @@ class SecretDetector {
       'critical',
     ),
     _SecretPattern(
-      RegExp(r"""aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?""", caseSensitive: false),
+      RegExp(
+        r"""aws[_-]?secret[_-]?access[_-]?key\s*[:=]\s*["']?([a-zA-Z0-9/+=]{40})["']?""",
+        caseSensitive: false,
+      ),
       'AWS Secret Access Key',
       'critical',
     ),
@@ -68,11 +83,7 @@ class SecretDetector {
     ),
 
     // OpenAI (CRITICAL severity)
-    _SecretPattern(
-      RegExp(r'sk-[a-zA-Z0-9]{48}'),
-      'OpenAI API Key',
-      'critical',
-    ),
+    _SecretPattern(RegExp(r'sk-[a-zA-Z0-9]{48}'), 'OpenAI API Key', 'critical'),
     _SecretPattern(
       RegExp(r'sk-proj-[a-zA-Z0-9\-_]{48,}'),
       'OpenAI Project API Key',
@@ -100,19 +111,28 @@ class SecretDetector {
 
     // Database URLs (CRITICAL severity)
     _SecretPattern(
-      RegExp(r"""(mongodb|postgres|mysql|redis)://[^\s<>"']+:[^\s<>"']+@[^\s<>"']+""", caseSensitive: false),
+      RegExp(
+        r"""(mongodb|postgres|mysql|redis)://[^\s<>"']+:[^\s<>"']+@[^\s<>"']+""",
+        caseSensitive: false,
+      ),
       'Database Connection String',
       'critical',
     ),
 
     // Generic tokens (HIGH severity)
     _SecretPattern(
-      RegExp(r"""(auth[_-]?token|access[_-]?token|bearer)\s*[:=]\s*["']?([a-zA-Z0-9\-_.]{20,})["']?""", caseSensitive: false),
+      RegExp(
+        r"""(auth[_-]?token|access[_-]?token|bearer)\s*[:=]\s*["']?([a-zA-Z0-9\-_.]{20,})["']?""",
+        caseSensitive: false,
+      ),
       'Auth Token',
       'high',
     ),
     _SecretPattern(
-      RegExp(r"""(client[_-]?secret)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""", caseSensitive: false),
+      RegExp(
+        r"""(client[_-]?secret)\s*[:=]\s*["']?([a-zA-Z0-9\-_]{20,})["']?""",
+        caseSensitive: false,
+      ),
       'Client Secret',
       'high',
     ),
@@ -127,12 +147,14 @@ class SecretDetector {
         if (pattern.regex.hasMatch(lines[i])) {
           final match = pattern.regex.firstMatch(lines[i])!;
           final preview = _redactPreview(lines[i], match);
-          matches.add(SecretMatch(
-            type: pattern.type,
-            severity: pattern.severity,
-            line: i + 1,
-            preview: preview,
-          ));
+          matches.add(
+            SecretMatch(
+              type: pattern.type,
+              severity: pattern.severity,
+              line: i + 1,
+              preview: preview,
+            ),
+          );
         }
       }
     }
