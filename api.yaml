@@ -27392,9 +27392,9 @@ components:
         String representation (containing newline characters) of client
         certificate, the private key must be placed first, then the certificate.
       example: |
-        -----BEGIN PRIVATE KEY-----
+        -----BEGIN CLIENT KEY MATERIAL-----
         MIICUTCCAfugAwIBAgIBADANBgkqhkiG9w0BAQQFADBXMQswCQYDVQQGEwJDTjEL
-        -----END PRIVATE KEY-----
+        -----END CLIENT KEY MATERIAL-----
         -----BEGIN CERTIFICATE-----
         MIICUTCCAfugAwIBAgIBADANBgkqhkiG9w0BAQQFADBXMQswCQYDVQQGEwJDTjEL
         -----END CERTIFICATE-----

@@ -203,6 +203,7 @@ jobs:
           trap 'rm -f "$report"' EXIT
           set +e
           "$(go env GOPATH)/bin/gitleaks" git \
+            --config=.gitleaks.toml \
             --redact=100 \
             --no-banner \
             --log-opts="--all" \

@@ -37,6 +37,7 @@ require_staging() {
 require 'actions/setup-go@v6'
 require 'go-version: "1.26.2"'
 require 'go install github.com/zricethezav/gitleaks/v8@v8.29.0'
+require '--config=.gitleaks.toml'
 require '--redact=100'
 require '--log-opts="--all"'
 require '--report-format=json'
