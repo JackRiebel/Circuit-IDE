@@ -34,7 +34,10 @@ require_staging() {
   fi
 }
 
-require 'gitleaks/gitleaks-action@v2'
+require 'actions/setup-go@v6'
+require 'go-version: "1.26.2"'
+require 'go install github.com/zricethezav/gitleaks/v8@v8.29.0'
+require 'gitleaks" git --redact=100 --no-banner --log-opts="--all" .'
 require 'google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8'
 require 'anchore/sbom-action@v0'
 require 'bash scripts/verify_release_entitlements.sh "$APP"'
