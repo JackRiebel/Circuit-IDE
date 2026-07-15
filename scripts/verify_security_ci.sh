@@ -4,6 +4,7 @@ set -euo pipefail
 workflow=".github/workflows/ci.yml"
 fixture_workflow=".github/workflows/security-scan-fixture-exercise.yml"
 staging_workflow=".github/workflows/provider-staging-acceptance.yml"
+gitleaks_config=".gitleaks.toml"
 
 if [[ ! -f "$workflow" ]]; then
   echo "Missing required CI workflow: $workflow" >&2
@@ -34,6 +35,14 @@ require_staging() {
   fi
 }
 
+require_gitleaks_config() {
+  local pattern="$1"
+  if ! grep -Fq -- "$pattern" "$gitleaks_config"; then
+    echo "Gitleaks exception policy is missing: $pattern" >&2
+    exit 1
+  fi
+}
+
 require 'actions/setup-go@v6'
 require 'go-version: "1.26.2"'
 require 'go install github.com/zricethezav/gitleaks/v8@v8.29.0'
@@ -54,6 +63,31 @@ require 'github.com/zricethezav/gitleaks/v8@v8.29.0'
 require 'github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8'
 require 'needs: [product-boundary, flutter-macos, security-red-team, secret-scan, dependency-vulnerability-scan, sbom, security-scanner-fixture-exercise]'
 require 'needs.security-scanner-fixture-exercise.result'
+
+if [[ ! -f "$gitleaks_config" ]]; then
+  echo "Missing required Gitleaks exception policy: $gitleaks_config" >&2
+  exit 1
+fi
+
+# Full-history scans retain Gitleaks' default detector set. The only allowed
+# exceptions are two audited historic fixtures; never allow a broad path,
+# regex, stopword, or disabled-rule escape hatch in this policy.
+require_gitleaks_config '[extend]'
+require_gitleaks_config 'useDefault = true'
+require_gitleaks_config '[[allowlists]]'
+require_gitleaks_config '29dabc9ca2a4238769d6abdade4c37e4a0f726fd'
+require_gitleaks_config 'bb1c1963fef1ef520dd4f9f31c515a023fa2d585'
+
+allowed_exception_count="$(grep -Ec '^[[:space:]]*"[0-9a-f]{40}",[[:space:]]*$' "$gitleaks_config")"
+if [[ "$allowed_exception_count" -ne 2 ]]; then
+  echo 'Gitleaks exception policy must contain exactly two reviewed commit ids.' >&2
+  exit 1
+fi
+
+if grep -Eq '^[[:space:]]*(paths|regexes|stopwords|targetRules|disabledRules)[[:space:]]*=' "$gitleaks_config"; then
+  echo 'Gitleaks exception policy must not suppress detectors by path, pattern, or rule.' >&2
+  exit 1
+fi
 
 if [[ ! -f "$fixture_workflow" ]]; then
   echo "Missing required CI scanner fixture workflow: $fixture_workflow" >&2
