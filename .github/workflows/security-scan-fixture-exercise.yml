@@ -15,7 +15,7 @@ jobs:
     name: Gitleaks rejects a temporary synthetic credential pattern
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
 
@@ -59,7 +59,7 @@ jobs:
     name: OSV rejects a temporary vulnerable dependency record
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
 

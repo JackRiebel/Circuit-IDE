@@ -75,7 +75,7 @@ require_staging 'workflow_dispatch:'
 require_staging 'CIRCUIT_STAGING_APP_KEY: ${{ secrets.CIRCUIT_STAGING_APP_KEY }}'
 require_staging 'bash scripts/verify_provider_staging.sh'
 require_staging 'bash scripts/verify_vision_staging.sh'
-require_staging 'actions/upload-artifact@v4'
+require_staging 'actions/upload-artifact@v6'
 require_staging 'provider-staging-evidence-${{ github.run_id }}'
 require_staging 'vision-staging-evidence-${{ github.run_id }}'
 

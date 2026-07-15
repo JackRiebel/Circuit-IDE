@@ -23,7 +23,7 @@ jobs:
     name: Canonical product boundary
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify Flutter is the only root product entry point
         run: |
           bash scripts/verify_canonical_product.sh
@@ -39,7 +39,7 @@ jobs:
       run:
         working-directory: circuit-ide
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -146,7 +146,7 @@ jobs:
           upload-release-assets: false
 
       - name: Upload macOS app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: CircuitCode-macos-unsigned
           path: circuit-ide/build/macos/Build/Products/Release/CircuitCode.app
@@ -159,7 +159,7 @@ jobs:
       run:
         working-directory: circuit-ide
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -178,7 +178,7 @@ jobs:
     name: Secret scanning gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
     name: Source SBOM gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Generate source SBOM
         uses: anchore/sbom-action@v0
@@ -218,7 +218,7 @@ jobs:
     name: Security scanner fixture exercise
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: "1.24.x"
 
