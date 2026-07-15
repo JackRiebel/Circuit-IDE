@@ -46,7 +46,7 @@ unapproved-command network denial.
 
 ## XPC Feasibility Evidence
 
-On 2026-07-15, a disposable signed app bundle embedded an XPC service with
+On 2026-07-14, a disposable signed app bundle embedded an XPC service with
 `com.apple.security.app-sandbox=true`. The service received a plain bookmark
 for one temporary workspace, explicitly started access, read that workspace,
 and launched `/bin/sh` successfully. The inherited command could not read a
