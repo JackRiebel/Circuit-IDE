@@ -516,9 +516,20 @@ private enum CircuitNetworkAddressPolicy {
       if bytes.prefix(12).allSatisfy({ $0 == 0 }) {
         return ipv4BlockReason(Array(bytes.suffix(4))) ?? "IPv4-compatible"
       }
-      if (bytes[0] == 0x20 && bytes[1] == 0x02) ||
-          (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00) ||
+      // The proxy has a stricter target policy than a generic internet
+      // client: a reviewed command gets ordinary globally reachable unicast,
+      // not IANA special-purpose ranges. Blocking each assigned prefix is
+      // intentional even where a narrower allocation has an exception; the
+      // command boundary has no use for protocol anycast, translation,
+      // benchmark, documentation, discard, or SRv6 destinations.
+      if (bytes[0] == 0x20 && bytes[1] == 0x02) || // 6to4
+          (bytes[0] == 0x20 && bytes[1] == 0x01 && (bytes[2] & 0xfe) == 0) || // 2001::/23
           (bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b) ||
+          (bytes[0] == 0x01 && bytes[1] == 0x00 &&
+              bytes[2] == 0x00 && bytes[3] == 0x00 &&
+              bytes[4] == 0x00 && bytes[5] == 0x00) || // 100::/48
+          (bytes[0] == 0x3f && bytes[1] == 0xff && (bytes[2] & 0xf0) == 0) ||
+          (bytes[0] == 0x5f && bytes[1] == 0x00) ||
           (bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x0d && bytes[3] == 0xb8) {
         return "special-purpose IPv6"
       }
@@ -556,7 +567,13 @@ private enum CircuitNetworkAddressPolicy {
         (first == 169 && second == 254) {
       return "private IPv4"
     }
+    // 192.0.0.0/24 is allocated to IETF protocol assignments. Two anycast
+    // exceptions are globally reachable, but are deliberately excluded from
+    // this command-only public egress path along with the rest of the special
+    // prefix. The deprecated 6to4 relay range is likewise not a public tool
+    // destination even though ordinary routing tables may accept it.
     if (first == 192 && second == 0 && (third == 0 || third == 2)) ||
+        (first == 192 && second == 88 && third == 99) ||
         (first == 198 && (second == 18 || second == 19)) ||
         (first == 198 && second == 51 && third == 100) ||
         (first == 203 && second == 0 && third == 113) ||

@@ -163,6 +163,26 @@ expect_network_denied \
   "private target through network proxy" \
   '/usr/bin/curl -fsS --connect-timeout 2 --max-time 5 http://127.0.0.1:9/ >/dev/null'
 
+# Network review is for ordinary public unicast only. DNS or a literal URL
+# must not make IANA special-purpose addresses reachable through the proxy.
+# These fail at the proxy address-policy boundary before an upstream socket is
+# opened, so the probes do not contact the listed destinations.
+expect_network_denied \
+  "IANA special-purpose IPv4 target through network proxy" \
+  '/usr/bin/curl -fsS --connect-timeout 2 --max-time 5 http://192.0.0.8/ >/dev/null'
+
+expect_network_denied \
+  "deprecated relay IPv4 target through network proxy" \
+  '/usr/bin/curl -fsS --connect-timeout 2 --max-time 5 http://192.88.99.2/ >/dev/null'
+
+expect_network_denied \
+  "discard-only IPv6 target through network proxy" \
+  '/usr/bin/curl -g -fsS --connect-timeout 2 --max-time 5 http://[100::]/ >/dev/null'
+
+expect_network_denied \
+  "IETF special-purpose IPv6 target through network proxy" \
+  '/usr/bin/curl -g -fsS --connect-timeout 2 --max-time 5 http://[2001:2::]/ >/dev/null'
+
 expect_allowed \
   "process and output-file resource limits" \
   'test "$(ulimit -u)" -le 512; test "$(ulimit -f)" -le 524288'

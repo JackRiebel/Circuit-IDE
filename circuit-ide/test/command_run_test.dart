@@ -313,6 +313,19 @@ void main() {
     expect(harness, contains('direct network egress bypass'));
     expect(harness, contains('pinned public network egress'));
     expect(harness, contains('private target through network proxy'));
+    expect(
+      harness,
+      contains('IANA special-purpose IPv4 target through network proxy'),
+    );
+    expect(
+      harness,
+      contains('deprecated relay IPv4 target through network proxy'),
+    );
+    expect(harness, contains('discard-only IPv6 target through network proxy'));
+    expect(
+      harness,
+      contains('IETF special-purpose IPv6 target through network proxy'),
+    );
     expect(harness, contains('staged_broker'));
     expect(harness, contains('codesign --verify --strict'));
     expect(harness, contains('unrelated process inspection'));
