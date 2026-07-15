@@ -31,4 +31,23 @@ void main() {
     expect(NetworkAddressPolicy.isExplicitLoopbackHost('::1'), isTrue);
     expect(NetworkAddressPolicy.isExplicitLoopbackHost('::127.0.0.1'), isFalse);
   });
+
+  test('rejects IANA special-purpose targets consistently with the broker', () {
+    final blocked = <String, String>{
+      '192.0.0.8': 'reserved IPv4 addresses are not allowed',
+      '192.88.99.2': 'reserved IPv4 addresses are not allowed',
+      '100::': 'special-purpose IPv6 addresses are not allowed',
+      '2001:2::': 'special-purpose IPv6 addresses are not allowed',
+      '3fff::': 'special-purpose IPv6 addresses are not allowed',
+      '5f00::': 'special-purpose IPv6 addresses are not allowed',
+    };
+
+    for (final entry in blocked.entries) {
+      expect(
+        NetworkAddressPolicy.publicHostBlockReason(entry.key),
+        entry.value,
+        reason: entry.key,
+      );
+    }
+  });
 }

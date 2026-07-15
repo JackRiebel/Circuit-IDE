@@ -104,6 +104,7 @@ class NetworkAddressPolicy {
     }
     if (first == 192 && second == 0 && third == 0 ||
         first == 192 && second == 0 && third == 2 ||
+        first == 192 && second == 88 && third == 99 ||
         first == 198 && (second == 18 || second == 19) ||
         first == 198 && second == 51 && third == 100 ||
         first == 203 && second == 0 && third == 113 ||
@@ -165,11 +166,16 @@ class NetworkAddressPolicy {
     if (_isWellKnownNat64(bytes) || _isLocalUseNat64(bytes)) {
       return 'NAT64 IPv6 addresses are not allowed';
     }
-    if (bytes[0] == 0x20 &&
-        bytes[1] == 0x01 &&
-        bytes[2] == 0x0d &&
-        bytes[3] == 0xb8) {
-      return 'reserved IPv6 documentation addresses are not allowed';
+    // Outbound product paths use ordinary globally reachable unicast only.
+    // Reject IANA special-purpose allocations as a class, even where a more
+    // specific protocol anycast address is globally routable: those
+    // exceptions are not valid targets for a model-selected request and would
+    // make the policy differ from the brokered-command boundary.
+    if (_isIetfProtocolAllocation(bytes) ||
+        _isDiscardOnly(bytes) ||
+        _isDocumentationIpv6(bytes) ||
+        _isSrv6Sid(bytes)) {
+      return 'special-purpose IPv6 addresses are not allowed';
     }
     return null;
   }
@@ -193,6 +199,27 @@ class NetworkAddressPolicy {
       bytes[1] == 0x01 &&
       bytes[2] == 0x00 &&
       bytes[3] == 0x00;
+
+  static bool _isIetfProtocolAllocation(List<int> bytes) =>
+      bytes[0] == 0x20 && bytes[1] == 0x01 && (bytes[2] & 0xfe) == 0;
+
+  static bool _isDiscardOnly(List<int> bytes) =>
+      bytes[0] == 0x01 &&
+      bytes[1] == 0x00 &&
+      bytes[2] == 0x00 &&
+      bytes[3] == 0x00 &&
+      bytes[4] == 0x00 &&
+      bytes[5] == 0x00;
+
+  static bool _isDocumentationIpv6(List<int> bytes) =>
+      bytes[0] == 0x20 &&
+          bytes[1] == 0x01 &&
+          bytes[2] == 0x0d &&
+          bytes[3] == 0xb8 ||
+      bytes[0] == 0x3f && bytes[1] == 0xff && (bytes[2] & 0xf0) == 0;
+
+  static bool _isSrv6Sid(List<int> bytes) =>
+      bytes[0] == 0x5f && bytes[1] == 0x00;
 
   static bool _isWellKnownNat64(List<int> bytes) =>
       bytes[0] == 0x00 &&
