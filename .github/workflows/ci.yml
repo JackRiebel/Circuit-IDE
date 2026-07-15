@@ -220,7 +220,10 @@ jobs:
     steps:
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          # OSV Scanner v2.3.8 declares Go 1.26.2 as its minimum toolchain.
+          # Keep this exact so the pinned scanner cannot silently rely on a
+          # runner-provided or automatically substituted compiler.
+          go-version: "1.26.2"
           # These jobs install pinned standalone binaries; no repository Go
           # module exists to cache, so avoid a misleading missing-go.sum warn.
           cache: false
